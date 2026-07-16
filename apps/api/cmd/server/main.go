@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"elproof/internal/adminseed"
+	"elproof/internal/migrator"
 	"elproof/internal/modules/billing"
 	"elproof/internal/modules/clients"
 	"elproof/internal/modules/identity"
@@ -23,9 +28,80 @@ import (
 	"elproof/internal/shared/storage"
 )
 
+// main dispatches on an optional subcommand so the one compiled binary this
+// project ships as its deploy image (see infra/docker/Dockerfile) is
+// everything a production host needs — no separate migrate CLI, seed
+// binary, or curl/wget in the container for Docker's HEALTHCHECK. With no
+// argument it serves, exactly as before this dispatch existed.
+//
+//	./api                 serve the API (default, unchanged behavior)
+//	./api migrate up|down  apply/roll back one embedded SQL migration step
+//	./api seed             reset to the minimal clean-slate dataset
+//	./api healthcheck      exit 0/1 for Docker's HEALTHCHECK (self GET /api/v1/health)
 func main() {
 	cfg := config.Load()
 
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "migrate":
+			runMigrate(cfg, os.Args[2:])
+			return
+		case "seed":
+			runSeed(cfg)
+			return
+		case "healthcheck":
+			runHealthcheck(cfg)
+			return
+		}
+	}
+
+	serve(cfg)
+}
+
+func runMigrate(cfg config.Config, args []string) {
+	if len(args) != 1 || (args[0] != "up" && args[0] != "down") {
+		log.Fatal("usage: api migrate up|down")
+	}
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	if args[0] == "up" {
+		err = migrator.Up(db)
+	} else {
+		err = migrator.Down(db)
+	}
+	if err != nil {
+		log.Fatalf("migrate %s: %v", args[0], err)
+	}
+	log.Printf("migrate %s: done", args[0])
+}
+
+func runSeed(cfg config.Config) {
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	if err := adminseed.Run(context.Background(), db); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runHealthcheck(cfg config.Config) {
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%s/api/v1/health", cfg.AppPort))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
+	resp.Body.Close()
+	os.Exit(0)
+}
+
+func serve(cfg config.Config) {
 	db, err := database.Open(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)

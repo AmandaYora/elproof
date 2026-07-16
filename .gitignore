@@ -9,6 +9,7 @@ coverage/
 # Go
 /dist/api
 apps/api/tmp/
+apps/api/*.exe
 # Prisma
 apps/api/prisma/*.db
 
