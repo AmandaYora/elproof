@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#172741"/>
+      <stop offset="100%" stop-color="#24476F"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="640" fill="url(#bg)"/>
+  <rect x="24" y="24" width="912" height="592" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(480,268)" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="3">
+    <circle cx="-26" cy="0" r="34"/>
+    <circle cx="26" cy="0" r="34"/>
+  </g>
+  <text x="480" y="372" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#ffffff">Pratinjau Foto Contoh</text>
+  <text x="480" y="408" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#ffffff" fill-opacity="0.7">Foto asli akan tampil di sini pada implementasi penuh</text>
+</svg>

@@ -1,0 +1,32 @@
+CREATE TABLE tenants (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  business_name VARCHAR(150) NOT NULL,
+  owner_name VARCHAR(150) NOT NULL,
+  username VARCHAR(100) NOT NULL,
+  email VARCHAR(150) NOT NULL,
+  phone VARCHAR(30) NOT NULL,
+  city VARCHAR(100) NOT NULL,
+  joined_at DATE NOT NULL,
+  plan_id BIGINT UNSIGNED NULL,
+  subscription_status ENUM('active', 'expiring_soon', 'expired', 'pending_payment') NOT NULL DEFAULT 'pending_payment',
+  subscription_expires_at DATE NULL,
+  is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+  last_credential_reset_at DATE NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE platform_admins (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(150) NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  role ENUM('Super Admin', 'Support') NOT NULL,
+  username VARCHAR(100) NOT NULL,
+  email VARCHAR(150) NOT NULL,
+  phone VARCHAR(30) NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+);

@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    # .env's DATABASE_URL points at `localhost` for local (non-Docker) runs of
+    # the API binary — inside this container `localhost` would mean the
+    # container itself, not the host machine, so it must be overridden here
+    # to reach the host-run MySQL via the special Docker Desktop DNS name.
+    environment:
+      DATABASE_URL: "mysql://${DB_USER:-root}:${DB_PASSWORD}@tcp(host.docker.internal:${DB_PORT:-3306})/${DB_NAME:-elproof_db}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
