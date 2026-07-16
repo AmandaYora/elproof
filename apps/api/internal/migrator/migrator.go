@@ -55,3 +55,21 @@ func Down(databaseURL string) error {
 	}
 	return nil
 }
+
+// Force sets schema_migrations to the given version with dirty cleared,
+// without running any migration SQL — mirroring the upstream golang-migrate
+// CLI's `migrate force <version>`. This is the standard recovery tool for a
+// migration left "dirty" by a prior failed run (e.g. an interrupted
+// container, a driver bug since fixed): once the actual schema state at
+// that version has been verified by hand, Force just corrects the tracking
+// table so Up/Down can proceed again.
+func Force(databaseURL string, version int) error {
+	m, err := newMigrate(databaseURL)
+	if err != nil {
+		return err
+	}
+	if err := m.Force(version); err != nil {
+		return fmt.Errorf("migrator: force: %w", err)
+	}
+	return nil
+}

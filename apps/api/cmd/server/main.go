@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,10 +35,11 @@ import (
 // binary, or curl/wget in the container for Docker's HEALTHCHECK. With no
 // argument it serves, exactly as before this dispatch existed.
 //
-//	./api                 serve the API (default, unchanged behavior)
-//	./api migrate up|down  apply/roll back one embedded SQL migration step
-//	./api seed             reset to the minimal clean-slate dataset
-//	./api healthcheck      exit 0/1 for Docker's HEALTHCHECK (self GET /api/v1/health)
+//	./api                       serve the API (default, unchanged behavior)
+//	./api migrate up|down        apply/roll back one embedded SQL migration step
+//	./api migrate force <version> clear a "dirty" migration state without running SQL
+//	./api seed                   reset to the minimal clean-slate dataset
+//	./api healthcheck             exit 0/1 for Docker's HEALTHCHECK (self GET /api/v1/health)
 func main() {
 	cfg := config.Load()
 
@@ -59,8 +61,20 @@ func main() {
 }
 
 func runMigrate(cfg config.Config, args []string) {
+	if len(args) == 2 && args[0] == "force" {
+		version, convErr := strconv.Atoi(args[1])
+		if convErr != nil {
+			log.Fatalf("usage: api migrate force <version>")
+		}
+		if err := migrator.Force(cfg.DatabaseURL, version); err != nil {
+			log.Fatalf("migrate force %d: %v", version, err)
+		}
+		log.Printf("migrate force %d: done", version)
+		return
+	}
+
 	if len(args) != 1 || (args[0] != "up" && args[0] != "down") {
-		log.Fatal("usage: api migrate up|down")
+		log.Fatal("usage: api migrate up|down|force <version>")
 	}
 
 	var err error
