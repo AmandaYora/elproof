@@ -62,16 +62,12 @@ func runMigrate(cfg config.Config, args []string) {
 	if len(args) != 1 || (args[0] != "up" && args[0] != "down") {
 		log.Fatal("usage: api migrate up|down")
 	}
-	db, err := database.Open(cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
-	defer db.Close()
 
+	var err error
 	if args[0] == "up" {
-		err = migrator.Up(db)
+		err = migrator.Up(cfg.DatabaseURL)
 	} else {
-		err = migrator.Down(db)
+		err = migrator.Down(cfg.DatabaseURL)
 	}
 	if err != nil {
 		log.Fatalf("migrate %s: %v", args[0], err)
