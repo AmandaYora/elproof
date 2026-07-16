@@ -21,4 +21,4 @@ RUN chown -R app:app /app
 USER app
 ENV APP_PORT=8080
 EXPOSE 8080
-CMD ["./api"]
+ENTRYPOINT ["./api"]
