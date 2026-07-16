@@ -108,6 +108,9 @@ See ADR-0011 for the full decision record. The target VPS ("Elcodelabs", also ho
      the external `golang-migrate` CLI. Both paths share one `schema_migrations` table format, so
      they're interchangeable — the CLI (§1 prerequisite) stays a local-dev convenience only, never
      required in production.
+   - `./api migrate force <version>` — clear a "dirty" `schema_migrations` state without running
+     any SQL (mirrors the upstream golang-migrate CLI's `migrate force`); the standard recovery
+     tool if a migration is ever interrupted mid-way.
    - `./api seed` — the same minimal reseed as `go run ./cmd/seed` (§3), shared via
      `apps/api/internal/adminseed`.
    - `./api healthcheck` — self-GETs `/api/v1/health`, exit 0/1; this is what
@@ -118,17 +121,28 @@ See ADR-0011 for the full decision record. The target VPS ("Elcodelabs", also ho
    cross-app user or a Dockerized database. Secrets (`DB_PASSWORD`, `JWT_SECRET`,
    `PAYMENT_ENCRYPTION_KEY`, S3 keys) live only in `~/elproof/.env` on the VPS (`chmod 600`),
    generated fresh for this environment — never copied from local dev's `.env`.
-5. **nginx + TLS** front the container's `127.0.0.1:8082` once a domain is assigned (not done yet
-   — see status below).
+5. **nginx + TLS** front the container's `127.0.0.1:8082`.
 
-**Status as of 2026-07-17 — infra set up, nothing deployed yet:**
-- Done: `elproof_db` + `elproof_user` created; `~/elproof/.env`, `docker-compose.prod.yml`,
-  `deploy.sh` written on the VPS; `.github/workflows/deploy.yml` added to this repo; VPS's own
-  `SERVER_PLAYBOOK.md` App registry updated with elproof's row (port `8082`).
-- Not done: no CI run yet (no image in GHCR yet), so no container has ever been started on the
-  VPS; no domain assigned; no nginx site/TLS. `elkasir` currently holds nginx's one allowed
-  `default_server` on port 80 — elproof's future nginx config must set its own `server_name` and
-  must **not** add a second `default_server` (see the playbook's caveat).
-- Next steps once a domain is chosen: push to `main` (or run the workflow manually) to get the
-  first image into GHCR, add the nginx site + `certbot --nginx -d <domain>`, then run
-  `~/elproof/deploy.sh <git-sha>` for the first real deploy.
+**Status as of 2026-07-17 — LIVE at <https://elproof.elcodelabs.com>:**
+- `elproof-app` container running and healthy on `127.0.0.1:8082`; `elproof_db` fully migrated
+  (all 25 tables) and seeded (`superadmin`/`superadmin`, "Paket 1 Tahun"); nginx site + certbot
+  TLS in place (its own `server_name`, does not touch elkasir's `default_server`); end-to-end
+  verified (health check, login, and the built frontend all reachable over HTTPS).
+- The domain's DNS record needed a fix before this worked: `elproof.elcodelabs.com` initially
+  pointed at an unrelated Hostinger-hosting ALIAS record (leftover from something else on the
+  same registrar account), not this VPS — corrected to a plain `A` record → `103.189.235.79`.
+- The first deploy attempt hit two real bugs, both fixed and worth knowing about if this ever
+  needs debugging again:
+  1. `infra/docker/Dockerfile` used `CMD ["./api"]` instead of `ENTRYPOINT ["./api"]` — `CMD` is
+     fully replaced by arguments passed to `docker run`, so `docker run <image> migrate up` tried
+     to exec a binary literally named `migrate` instead of running `./api migrate up`.
+  2. `apps/api/internal/migrator` originally wrapped the app's shared `*sql.DB` via
+     `mysql.WithInstance`, which doesn't enable multi-statement queries — several migration files
+     (e.g. `000004_create_billing_tables`) have more than one `CREATE TABLE` per file, and the
+     driver rejected the second statement onward. Fixed by using
+     `migrate.NewWithSourceInstance(...databaseURL)`, which opens its own connection and enables
+     multi-statement support the same way the golang-migrate CLI already does for local dev.
+  3. Bug #2 left `schema_migrations` "dirty" at version 4 with migration 4's DDL never actually
+     applied. Recovered with the new `./api migrate force <version>` subcommand (mirrors upstream
+     golang-migrate's `migrate force`) rather than a manual SQL `UPDATE` against the production
+     database — see `apps/api/internal/migrator`'s `Force`.

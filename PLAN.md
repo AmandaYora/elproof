@@ -1000,6 +1000,32 @@ hal-hal berkaitan dengan demo"), dikerjakan sampai tuntas, bukan sekadar audit:
 
 ---
 
+### Catatan Operasional — Deploy Produksi Pertama (di luar penomoran fase)
+
+ElProof sekarang **live** di <https://elproof.elcodelabs.com> (VPS "Elcodelabs", 2026-07-17).
+Detail teknis lengkap ada di `docs/DEPLOYMENT.md` §6 dan `knowledge/decisions/ADR-0011-deployment-target.md`
+— ringkasan:
+
+1. VPS ini sudah punya konvensi multi-app baku sendiri (`elkasir` adalah app pertama): CI (GitHub
+   Actions) yang build image → push ke GHCR, VPS cuma `docker pull` + jalankan (server 2GB RAM
+   tidak pernah build). ElProof mengikuti pola ini persis, bukan `docker compose up --build`
+   langsung di server seperti asumsi awal.
+2. `cmd/server` sekarang punya subcommand (`migrate up/down/force`, `seed`, `healthcheck`) supaya
+   satu binary/image sudah cukup untuk semua kebutuhan operasional — tidak perlu CLI migrate/seed
+   binary terpisah di VPS.
+3. Deploy pertama menemukan 2 bug nyata (keduanya sudah diperbaiki): Dockerfile pakai `CMD` bukan
+   `ENTRYPOINT` (bikin `docker run image migrate up` gagal exec), dan migrator awalnya reuse shared
+   `*sql.DB` tanpa `multiStatements` (bikin file migrasi multi-statement gagal). Bug kedua sempat
+   meninggalkan `schema_migrations` dalam status "dirty" — dipulihkan lewat subcommand baru
+   `migrate force <version>`, bukan SQL manual ke database produksi.
+4. Domain `elproof.elcodelabs.com` awalnya salah arah (ALIAS record sisa hosting Hostinger lain di
+   registrar yang sama) — diperbaiki jadi A record ke IP VPS sebelum nginx/certbot dipasang.
+5. Status akhir terverifikasi: container sehat, 25 tabel ter-migrasi lengkap, data seed minimal
+   (`superadmin`/`superadmin` + "Paket 1 Tahun") ada, login dan frontend teruji end-to-end lewat
+   HTTPS publik.
+
+---
+
 ## 6. Keputusan Terbuka (Butuh Konfirmasi User)
 
 Item berikut **sengaja tidak diputuskan sepihak** dalam dokumen ini karena menyentuh preferensi

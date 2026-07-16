@@ -1,9 +1,9 @@
 # ADR-0011: Source repository and production deployment target
 
 ## Status
-Accepted — updated 2026-07-17 once the VPS's own deployment convention was discovered and
-followed (see "Update" section below). Infrastructure is now set up; production deployment
-(first real `docker compose up`) has still not been executed — pending a domain assignment.
+Accepted and deployed. ElProof is **live** at <https://elproof.elcodelabs.com> as of 2026-07-17
+(see "Update" section for the pipeline alignment, and "Deployment" below for the first real
+deploy and the bugs it surfaced).
 
 ## Context
 The project needed a canonical Git remote and a concrete production server before any real deploy
@@ -79,10 +79,35 @@ introducing a second, inconsistent deploy style on the same machine) means:
 - **Own port, own secrets.** Container publishes to `127.0.0.1:8082` (elkasir already holds
   `8081`); `~/elproof/.env` holds freshly generated `JWT_SECRET`/`PAYMENT_ENCRYPTION_KEY`/DB
   password — none copied from local dev's `.env` or from elkasir's.
-- **nginx/TLS deferred.** elkasir currently holds nginx's one allowed `default_server` for port
-  80 (catches the bare IP). ElProof needs its own domain and `server_name` before an nginx site
-  can be added — this is the one remaining blocker before the first real deploy, and is a decision
-  only the project owner can make (which domain to point at this VPS).
-- The VPS's own `/opt/elcodelabs/SERVER_PLAYBOOK.md` (root-owned, backed up before editing) now
-  has an elproof row in its App registry table and a "Status — elproof" section, kept in sync
-  with reality per that document's own instruction ("UPDATE THIS when you add an app").
+- **Own domain, own nginx site.** `elproof.elcodelabs.com`, its own `server_name` — never touching
+  elkasir's `default_server` on port 80.
+- The VPS's own `/opt/elcodelabs/SERVER_PLAYBOOK.md` (root-owned, backed up before each edit) is
+  kept in sync with reality per that document's own instruction ("UPDATE THIS when you add an
+  app") — App registry row + a "Status — elproof" section.
+
+## Deployment — 2026-07-17: first real deploy, live
+
+Domain chosen: `elproof.elcodelabs.com` (same subdomain pattern as `elkasir.elcodelabs.com`). Its
+DNS had to be corrected first — it was an ALIAS record pointing at an unrelated Hostinger-hosting
+CDN target (leftover from something else on the same registrar account), not this VPS; fixed to a
+plain `A` record → `103.189.235.79` at the registrar, then verified propagated before touching
+nginx.
+
+nginx site + `certbot --nginx -d elproof.elcodelabs.com` succeeded cleanly. The first
+`deploy.sh` run then surfaced two real bugs (both fixed, both now covered by this repo's own
+regression-proofing via manual verification, not automated tests — see `docs/DEPLOYMENT.md` §6
+for the full technical detail):
+
+1. `infra/docker/Dockerfile` used `CMD` instead of `ENTRYPOINT`, so passing `migrate up` to
+   `docker run` replaced the whole command instead of appending an argument.
+2. `apps/api/internal/migrator` wrapped the app's shared `*sql.DB` instead of opening its own
+   multi-statement-enabled connection, so migration files with more than one `CREATE TABLE`
+   (`000004_create_billing_tables`) failed partway through.
+
+Bug #2 left `schema_migrations` dirty at version 4 (with migration 4's DDL never actually
+applied — verified by hand before touching anything). Recovering it by hand would have meant a
+raw SQL `UPDATE` against the production database over SSH; instead, a `migrate force <version>`
+subcommand (mirroring upstream golang-migrate's own recovery command) was added to `cmd/server`
+so the fix goes through the same image/tooling as every other deploy operation, not an
+out-of-band database edit. Redeployed clean afterward: all 25 tables present, `schema_migrations`
+at version 10 / not dirty, minimal seed data in place, login verified end-to-end over HTTPS.
