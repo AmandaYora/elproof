@@ -37,6 +37,9 @@
   --radius-lg: 14px;
 
   --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, sans-serif;
+  /* Display face for marketing/homepage headings only — see modules/homepage.
+     Body copy and every app UI element stay on --font-sans (Inter). */
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
 }
 
 @theme inline {
@@ -66,6 +69,7 @@
   --color-neutral-soft: var(--color-neutral-soft);
 
   --font-family-sans: var(--font-sans);
+  --font-display: var(--font-display);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);

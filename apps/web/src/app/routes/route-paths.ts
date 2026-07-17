@@ -4,6 +4,9 @@ export type ClientPortalTab = "ringkasan" | "vendor" | "pembayaran" | "kendala";
 export const ROUTE_PATHS = {
   home: "/",
   login: "/login",
+  homepage: "/homepage",
+  homepageTerms: "/homepage/syarat-ketentuan",
+  homepageContact: "/homepage/kontak",
   dashboard: "/dashboard",
   projects: "/projects",
   projectDetail: (id: string, tab: ProjectDetailTab = "vendor") => `/projects/${id}/${tab}`,

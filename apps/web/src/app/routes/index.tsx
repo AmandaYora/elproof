@@ -4,6 +4,7 @@ import { publicRoutes } from "@/app/routes/public.routes";
 import { protectedRoutes } from "@/app/routes/protected.routes";
 import { clientPortalRoutes } from "@/app/routes/client-portal.routes";
 import { platformRoutes } from "@/app/routes/platform.routes";
+import { homepageRoutes } from "@/app/routes/homepage.routes";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { NotFoundPage } from "@/shared/components/NotFoundPage";
 
@@ -15,5 +16,6 @@ export const router = createBrowserRouter([
   { ...protectedRoutes },
   { ...clientPortalRoutes },
   { ...platformRoutes },
+  { ...homepageRoutes },
   { path: "*", element: <NotFoundPage /> },
 ]);

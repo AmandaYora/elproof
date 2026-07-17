@@ -64,6 +64,7 @@ machinery is only for genuine two-way relationships (see the `clients`↔`projec
 | `subscription` | `billing` |
 | `client-portal` | `projects`, `clients` (read-scoped) |
 | `platform-admin` | `platform`, `billing`, `payment` (Konfigurasi Gateway page, Fase 9) |
+| `homepage` | none — public marketing pages (`/homepage`, `/homepage/syarat-ketentuan`, `/homepage/kontak`), static content only, no API calls |
 
 Full column-level schema: [`docs/DB_SCHEMA.md`](../docs/DB_SCHEMA.md). Full endpoint list:
 [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md).

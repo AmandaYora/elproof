@@ -4,9 +4,11 @@
 
 ## Apps
 
-- `apps/web` — React 19 + Tailwind 4 SPA. Three route trees sharing one router
-  (`app/routes/index.tsx`): protected WO Console (`AppLayout`), Client Portal (`ClientPortalLayout`),
-  Platform Console (`PlatformLayout`), plus public routes (`/login`).
+- `apps/web` — React 19 + Tailwind 4 SPA. Route trees sharing one router (`app/routes/index.tsx`):
+  protected WO Console (`AppLayout`), Client Portal (`ClientPortalLayout`), Platform Console
+  (`PlatformLayout`), public auth (`/login`), and the public marketing site (`MarketingLayout`,
+  `/homepage*`) — the latter is frontend-only, no backend module or API calls (see `homepage` row
+  in [MODULE_MAP.md](MODULE_MAP.md)).
 - `apps/api` — Go modular monolith. See [MODULE_MAP.md](MODULE_MAP.md) for the module list and
   [BACKEND_GUIDE.md](BACKEND_GUIDE.md) for conventions.
 

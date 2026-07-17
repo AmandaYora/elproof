@@ -1026,6 +1026,33 @@ Detail teknis lengkap ada di `docs/DEPLOYMENT.md` §6 dan `knowledge/decisions/A
 
 ---
 
+### Catatan Operasional — Halaman Marketing Publik `/homepage` (di luar penomoran fase)
+
+Ditambahkan modul frontend baru `modules/homepage` — **murni frontend, tanpa modul backend maupun
+panggilan API sama sekali** (lihat baris `homepage` di `knowledge/MODULE_MAP.md`):
+
+1. Tiga route baru: `/homepage` (landing), `/homepage/syarat-ketentuan`, `/homepage/kontak` — dengan
+   `MarketingLayout` sendiri (nav atas + footer), terpisah dari layout WO Console/Client Portal/
+   Platform Console yang sudah ada.
+2. Desain memakai `frontend-design` skill: tetap 100% palet token yang sudah ada (navy 950/900/800,
+   aksen `warning` yang sudah ada), tambah font `Fraunces` khusus judul (token baru `--font-display`
+   di `theme.css`, dipakai lewat utility Tailwind `font-display`) — body tetap Inter.
+3. Elemen tanda tangan visual: segel SVG "ElProof · Satu Pintu, Semua Terbukti"
+   (`modules/homepage/components/ProofSeal.tsx`), dianimasikan sekali di hero.
+4. Bug kecil ditemukan & diperbaiki saat verifikasi: token font kustom awalnya salah namespace
+   (`--font-family-display`, bukan `--font-display`) sehingga Tailwind v4 tidak membuatkan utility
+   `font-display` — judul sempat ikut Inter, bukan Fraunces.
+5. CTA utama "Hubungi Kami" (bukan "Daftar Sekarang") — konsisten dengan arsitektur ElProof yang
+   *sales-assisted* (tenant didaftarkan admin platform, bukan self-service signup).
+6. Data kontak di `modules/homepage/data/contact.ts` — awalnya placeholder jelas-palsu, sudah diganti
+   data asli dari user (email `cs@elcodelabs.com`, telepon/WhatsApp `0851-7347-1146`, alamat kantor,
+   jam layanan, website `elkasir.elcodelabs.com`).
+7. Karena tidak menyentuh backend/database, deploy fitur ini hanya perlu lewat pipeline CI→GHCR→VPS
+   yang sudah ada (Fase 9 operasional di atas) — tidak ada migration, tidak ada perubahan `.env`,
+   tidak ada perubahan infra baru.
+
+---
+
 ## 6. Keputusan Terbuka (Butuh Konfirmasi User)
 
 Item berikut **sengaja tidak diputuskan sepihak** dalam dokumen ini karena menyentuh preferensi
