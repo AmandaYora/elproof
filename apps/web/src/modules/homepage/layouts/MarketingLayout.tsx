@@ -4,17 +4,20 @@ import { Menu, X } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { APP_NAME } from "@/shared/constants/brand";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
+import { CONTACT } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
 
 const NAV_LINKS = [
   { to: ROUTE_PATHS.homepage, label: "Beranda" },
   { to: ROUTE_PATHS.homepageAbout, label: "Tentang Kami" },
+  { to: ROUTE_PATHS.homepageFaq, label: "FAQ" },
   { to: ROUTE_PATHS.homepageContact, label: "Kontak" },
 ];
 
 const LEGAL_LINKS = [
   { to: ROUTE_PATHS.homepageTerms, label: "Syarat & Ketentuan" },
   { to: ROUTE_PATHS.homepagePrivacy, label: "Kebijakan Privasi" },
+  { to: ROUTE_PATHS.homepageRefund, label: "Kebijakan Refund" },
 ];
 
 export default function MarketingLayout() {
@@ -100,7 +103,7 @@ export default function MarketingLayout() {
       </main>
 
       <footer className="border-t border-white/10 bg-navy-950 text-white/70">
-        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.3fr_1fr_1fr_1fr]">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.2fr_0.8fr_0.9fr_1.1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">
               <ProofSeal size={40} className="text-warning" />
@@ -152,6 +155,25 @@ export default function MarketingLayout() {
               </Link>{" "}
               untuk mulai.
             </p>
+          </div>
+
+          <div>
+            <p className="text-[12.5px] font-semibold uppercase tracking-wide text-white/40">Kontak</p>
+            <ul className="mt-3.5 flex flex-col gap-2.5 text-[13.5px] text-white/60">
+              <li>
+                <a href={`mailto:${CONTACT.email}`} className="hover:text-white">
+                  {CONTACT.email}
+                </a>
+              </li>
+              {CONTACT.phones.map((phone) => (
+                <li key={phone.number}>
+                  <a href={`tel:+${phone.number}`} className="hover:text-white">
+                    {phone.display}
+                  </a>
+                </li>
+              ))}
+              <li className="leading-relaxed">{CONTACT.address}</li>
+            </ul>
           </div>
         </div>
 

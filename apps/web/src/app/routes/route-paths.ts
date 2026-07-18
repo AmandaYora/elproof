@@ -8,6 +8,8 @@ export const ROUTE_PATHS = {
   homepageAbout: "/homepage/tentang-kami",
   homepageTerms: "/homepage/syarat-ketentuan",
   homepagePrivacy: "/homepage/kebijakan-privasi",
+  homepageRefund: "/homepage/kebijakan-refund",
+  homepageFaq: "/homepage/faq",
   homepageContact: "/homepage/kontak",
   dashboard: "/dashboard",
   projects: "/projects",

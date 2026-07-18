@@ -22,26 +22,32 @@ export default function ContactPage() {
               <Phone className="h-[18px] w-[18px]" />
             </div>
             <h2 className="mt-4 text-[15px] font-semibold text-text-primary">Telepon</h2>
-            <p className="mt-1 text-[14px] font-medium text-navy-900">{CONTACT.phoneDisplay}</p>
-            <p className="mt-2 flex-1 text-[13px] leading-relaxed text-text-secondary">
+            <div className="mt-1 flex flex-col gap-3">
+              {CONTACT.phones.map((phone) => (
+                <div key={phone.number}>
+                  <p className="text-[14px] font-medium text-navy-900">{phone.display}</p>
+                  <div className="mt-1 flex items-center gap-4">
+                    <a
+                      href={`tel:+${phone.number}`}
+                      className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-navy-900 hover:underline"
+                    >
+                      Telepon <ArrowRight className="h-3.5 w-3.5" />
+                    </a>
+                    <a
+                      href={`https://wa.me/${phone.number}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-navy-900 hover:underline"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 flex-1 text-[13px] leading-relaxed text-text-secondary">
               Bisa dihubungi lewat telepon langsung atau chat WhatsApp.
             </p>
-            <div className="mt-4 flex items-center gap-4">
-              <a
-                href={`tel:+${CONTACT.phoneNumber}`}
-                className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-navy-900 hover:underline"
-              >
-                Telepon <ArrowRight className="h-3.5 w-3.5" />
-              </a>
-              <a
-                href={`https://wa.me/${CONTACT.phoneNumber}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-navy-900 hover:underline"
-              >
-                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-              </a>
-            </div>
           </div>
 
           <div className="flex flex-col rounded-xl border border-border bg-surface p-6">
