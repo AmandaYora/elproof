@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet } from "lucide-react";
+import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: ROUTE_PATHS.platformTransactions, label: "Transaksi", icon: Receipt },
   { to: ROUTE_PATHS.platformUsers, label: "Pengguna", icon: UserCog },
   { to: ROUTE_PATHS.platformGatewayConfig, label: "Gateway Pembayaran", icon: Wallet },
+  { to: ROUTE_PATHS.platformApps, label: "Manajemen Aplikasi", icon: Boxes },
 ];
 
 export default function PlatformLayout() {

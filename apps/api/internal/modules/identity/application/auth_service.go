@@ -29,6 +29,10 @@ type RefreshTokenRepository interface {
 // TokenIssuer signs access tokens and mints/hashes opaque refresh tokens.
 type TokenIssuer interface {
 	IssueAccessToken(cred *domain.Credential, ttl time.Duration) (string, error)
+	// IssueServiceToken signs an access-token-only JWT for a principal that
+	// isn't backed by a Credential row (e.g. payment's external Apps, see
+	// knowledge/MODULE_PAYMENT.md §7.1) — no refresh token, no tenant/role.
+	IssueServiceToken(principalType, principalID string, ttl time.Duration) (string, error)
 	NewRefreshTokenValue() (plain string, hash string, err error)
 	HashToken(plain string) string
 }
@@ -115,6 +119,19 @@ func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*S
 		return nil, err
 	}
 	return s.issueSession(ctx, cred)
+}
+
+// IssueServiceToken mints a bearer access token for a principal the caller
+// has already authenticated against its own store (e.g. `payment` verifying
+// an external App's appId+secret) — identity only ever signs the token here,
+// never checks a password or touches the credentials table. No refresh token
+// is issued; the caller re-authenticates from scratch once this expires.
+func (s *AuthService) IssueServiceToken(ctx context.Context, principalType, principalID string, ttl time.Duration) (string, error) {
+	token, err := s.issuer.IssueServiceToken(principalType, principalID, ttl)
+	if err != nil {
+		return "", apperror.Internal("Gagal menerbitkan token")
+	}
+	return token, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, refreshTokenPlain string) error {

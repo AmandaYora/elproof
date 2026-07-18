@@ -142,10 +142,12 @@ func serve(cfg config.Config) {
 		log.Fatalf("failed to create object storage client: %v", err)
 	}
 
-	// payment is built first — it depends on no other module (see
-	// MODULE_PAYMENT.md §3), so any App internal (e.g. platform) can receive
-	// its Client at their own construction time.
-	paymentModule, err := payment.NewModule(db, cfg.PaymentEncryptionKey)
+	// payment depends on identity (Fase 10, one-way, same shape as
+	// vendors -> projects — see knowledge/MODULE_MAP.md) to mint bearer
+	// tokens for external Apps; it still depends on no other module for its
+	// own gateway/App-registry logic, so any App internal (e.g. platform)
+	// can receive its Client at their own construction time.
+	paymentModule, err := payment.NewModule(db, cfg.PaymentEncryptionKey, identityModule.Contracts(), cfg.AppTokenTTL)
 	if err != nil {
 		log.Fatalf("failed to init payment module: %v", err)
 	}

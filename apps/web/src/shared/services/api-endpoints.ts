@@ -16,10 +16,16 @@ export const API = {
     planToggleActive: (id: string) => `/api/v1/plans/${id}/toggle-active`,
     transactions: "/api/v1/subscription-transactions",
   },
-  // `payment` module (Fase 9) — see MODULE_PAYMENT.md. Only the internal-mode
-  // admin surface exists so far; Fase 10 adds App management endpoints.
+  // `payment` module — see knowledge/MODULE_PAYMENT.md. Internal-mode
+  // (Fase 9) config + external-mode App registry (Fase 10, Platform
+  // Console's "Manajemen Aplikasi"). `/auth/app/token` and
+  // `/external/payments/*` are consumed by external SaaS callers directly,
+  // never by this frontend.
   payment: {
     gatewayConfig: "/api/v1/payment/gateway-config",
+    apps: "/api/v1/payment/apps",
+    appResetSecret: (appId: string) => `/api/v1/payment/apps/${appId}/reset-secret`,
+    appToggleActive: (appId: string) => `/api/v1/payment/apps/${appId}/toggle-active`,
   },
   platform: {
     tenants: "/api/v1/tenants",

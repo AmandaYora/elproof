@@ -313,11 +313,13 @@ MODULE_PAYMENT.md's non-goals), so this mapping has to live here, not in `paymen
 
 ---
 
-## Module `payment` — **implemented (internal mode), Fase 9** — see `MODULE_PAYMENT.md`
+## Module `payment` — **implemented, internal + external mode (Fase 9 + Fase 10)** — see `knowledge/MODULE_PAYMENT.md`
 
-None of these four tables is a business ledger — see `MODULE_PAYMENT.md` §4. Fase 9 only ever
-populates one `payment_apps` row (`kind='internal'`, the fixed row `platform` registers itself as);
-the `kind='external'`-only columns exist already so Fase 10 needs no further migration.
+None of these four tables is a business ledger — see `MODULE_PAYMENT.md` §4. The schema needed zero
+new migrations between Fase 9 and Fase 10: `payment_apps`' `kind='external'`-only columns
+(`secret_hash`, `secret_encrypted`, `callback_url`) were already present from Fase 9's own
+migration, just unpopulated until Fase 10's "Manajemen Aplikasi" page started writing external App
+rows through them.
 
 ### `payment_gateway_config`
 | Column | Type | Notes |
@@ -334,7 +336,7 @@ the `kind='external'`-only columns exist already so Fase 10 needs no further mig
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
-| app_id | VARCHAR(100) UNIQUE | e.g. `platform-billing` (the one Fase 9 row) |
+| app_id | VARCHAR(100) UNIQUE | `platform-billing` (`kind=internal`, auto-bootstrapped) plus one row per registered `kind=external` App, e.g. `app_a1b2c3d4e5f6` |
 | name | VARCHAR(150) | |
 | kind | ENUM('internal','external') | |
 | secret_hash | VARCHAR(255) NULL | bcrypt — `kind='external'` only (Fase 10) |

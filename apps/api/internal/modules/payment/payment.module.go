@@ -10,20 +10,28 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
+	identitycontracts "elproof/internal/modules/identity/contracts"
 	"elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/payment/infrastructure"
 	"elproof/internal/modules/payment/presentation"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/middleware"
 )
 
 type Module struct {
 	service *infrastructure.PaymentService
 	handler *presentation.Handler
+
+	// appTokenLimiter guards POST /auth/app/token — separate limiter
+	// instance per module (not shared global state) so tests/restarts start
+	// with a clean budget.
+	appTokenLimiter *middleware.RateLimiter
 }
 
-func NewModule(db *sql.DB, encryptionKey string) (*Module, error) {
-	service, err := infrastructure.NewPaymentService(db, encryptionKey)
+func NewModule(db *sql.DB, encryptionKey string, identity identitycontracts.Contracts, appTokenTTL time.Duration) (*Module, error) {
+	service, err := infrastructure.NewPaymentService(db, encryptionKey, identity, appTokenTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +46,11 @@ func NewModule(db *sql.DB, encryptionKey string) (*Module, error) {
 	return &Module{
 		service: service,
 		handler: presentation.NewHandler(service),
+		// 10 attempts/minute/IP — strict enough to blunt secret-guessing
+		// against /auth/app/token (see knowledge/MODULE_PAYMENT.md §7.1),
+		// generous enough that a legitimate App re-authenticating after
+		// token expiry never trips it under normal use.
+		appTokenLimiter: middleware.NewRateLimiter(10, time.Minute),
 	}, nil
 }
 
@@ -57,10 +70,26 @@ func (m *Module) Dispatcher() contracts.Dispatcher {
 	return m.service
 }
 
-// RegisterRoutes registers the module's own HTTP surface: the permanent
-// webhook route (unauthenticated — trust comes from signature verification)
-// and the gateway-config admin CRUD (platform_admin only, via `authed`).
+// RegisterRoutes registers the module's own HTTP surface:
+//   - the permanent webhook route (unauthenticated — trust comes from
+//     signature verification)
+//   - gateway-config + App-registry admin CRUD (platform_admin only, via
+//     `authed`)
+//   - `/auth/app/token` (Fase 10) — unauthenticated (it IS the login step
+//     for Apps), but rate-limited per IP
+//   - `/external/payments/*` (Fase 10) — `authed` (valid JWT) then
+//     `requireActiveApp` (principal must be an `app`, checked live against
+//     the registry) — see knowledge/MODULE_PAYMENT.md §7.1/§7.2
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.HandleFunc("/webhooks/payment", httpx.Method(http.MethodPost, m.handler.Webhook))
 	mux.Handle("/api/v1/payment/gateway-config", authed(http.HandlerFunc(m.handler.Config)))
+	mux.Handle("/api/v1/payment/apps", authed(http.HandlerFunc(m.handler.Apps)))
+	mux.Handle("/api/v1/payment/apps/", authed(http.HandlerFunc(m.handler.AppItem)))
+
+	rateLimited := middleware.RateLimit(m.appTokenLimiter)
+	mux.Handle("/api/v1/auth/app/token", rateLimited(http.HandlerFunc(httpx.Method(http.MethodPost, m.handler.AppToken))))
+
+	mux.Handle("/api/v1/external/payments/charges", authed(http.HandlerFunc(m.handler.RequireActiveApp(m.handler.ExternalCreateCharge))))
+	mux.Handle("/api/v1/external/payments/charges/", authed(http.HandlerFunc(m.handler.RequireActiveApp(m.handler.ExternalChargeStatus))))
+	mux.Handle("/api/v1/external/payments/channels", authed(http.HandlerFunc(m.handler.RequireActiveApp(m.handler.ExternalListChannels))))
 }

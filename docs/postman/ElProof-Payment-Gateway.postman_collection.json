@@ -1,0 +1,149 @@
+{
+  "info": {
+    "_postman_id": "a3f1e6d2-8b4c-4e2a-9c7f-1d5e6a2b3c4d",
+    "name": "ElProof Payment Gateway (External App API)",
+    "description": "Koleksi untuk aplikasi eksternal yang ingin membuat charge lewat dompet merchant Tripay milik ElProof (Fase 10 — Payment Gateway as a Service). Panduan lengkap: docs/PAYMENT_INTEGRATION_GUIDE.md.\n\nUrutan pakai:\n1. Isi variable `appId` dan `secret` (didapat dari tim ElProof lewat Platform Console, ditampilkan sekali saat pendaftaran).\n2. Jalankan request \"Tukar appId + secret -> Token\" di folder Autentikasi — variable `accessToken` otomatis terisi lewat test script, dipakai otomatis oleh semua request lain di folder Pembayaran.\n3. Jalankan request lain sesuai kebutuhan.\n\nTidak ada refresh token — kalau `accessToken` kedaluwarsa (`expiresIn`, default 3600 detik), ulangi langkah 2.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://elproof.elcodelabs.com/api/v1", "type": "string", "description": "Ganti ke http://localhost:8080/api/v1 kalau menguji ElProof yang dijalankan sendiri" },
+    { "key": "appId", "value": "", "type": "string", "description": "Client ID App eksternal Anda, dari tim ElProof" },
+    { "key": "secret", "value": "", "type": "string", "description": "Secret App eksternal Anda — rahasia, jangan commit ke repo manapun" },
+    { "key": "accessToken", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Tukar appId + secret -> Token'" },
+    { "key": "orderRef", "value": "CONTOH-ORDER-0001", "type": "string", "description": "ID transaksi milik sistem Anda sendiri — ganti dengan ID unik yang belum pernah dipakai sebelum membuat charge baru" }
+  ],
+  "item": [
+    {
+      "name": "1. Autentikasi",
+      "item": [
+        {
+          "name": "Tukar appId + secret -> Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.collectionVariables.set(\"accessToken\", data.accessToken);",
+                  "    pm.test(\"accessToken tersimpan ke variable collection\", function () {",
+                  "        pm.expect(data.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "    });",
+                  "    console.log(\"Token berlaku \" + data.expiresIn + \" detik\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"appId\": \"{{appId}}\",\n  \"secret\": \"{{secret}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/app/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "app", "token"]
+            },
+            "description": "Tidak perlu Authorization header — ini langkah 'login' untuk App eksternal. Rate-limited 10 percobaan/menit per IP (lihat header Retry-After pada respons 429)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Langkah pertama sebelum memanggil endpoint apa pun di folder Pembayaran."
+    },
+    {
+      "name": "2. Pembayaran",
+      "item": [
+        {
+          "name": "Lihat Daftar Kanal Pembayaran",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/external/payments/channels",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "payments", "channels"]
+            },
+            "description": "Ambil kode kanal (QRIS/BRIVA/dll.) yang sedang aktif secara dinamis — jangan hardcode di sistem Anda, karena bergantung konfigurasi merchant Tripay ElProof yang bisa berubah."
+          },
+          "response": []
+        },
+        {
+          "name": "Buat Charge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201 (sukses) atau 409 (orderRef sudah dipakai)\", function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json().data;",
+                  "    console.log(\"Charge dibuat: \" + data.orderRef + \" status=\" + data.status);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderRef\": \"{{orderRef}}\",\n  \"amount\": 150000,\n  \"channel\": \"QRIS\",\n  \"customerName\": \"Budi Santoso\",\n  \"customerEmail\": \"budi@example.com\",\n  \"customerPhone\": \"081234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/external/payments/charges",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "payments", "charges"]
+            },
+            "description": "amount dalam Rupiah utuh (bukan sen). orderRef harus unik selamanya milik sistem Anda sendiri — mengirim ulang orderRef yang sama menghasilkan 409 Conflict (aman untuk retry logic), bukan charge duplikat. channel opsional, default QRIS kalau dikosongkan."
+          },
+          "response": []
+        },
+        {
+          "name": "Cek Status Charge",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/external/payments/charges/{{orderRef}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "payments", "charges", "{{orderRef}}", "status"]
+            },
+            "description": "Sumber kebenaran paling andal untuk status charge — pakai polling di sini sebagai fallback, jangan hanya mengandalkan webhook relay (fire-and-forget, bisa hilang). orderRef yang bukan milik App Anda mengembalikan 404, bukan bocor data App lain."
+          },
+          "response": []
+        }
+      ],
+      "description": "Perlu {{accessToken}} dari folder Autentikasi — semua request di sini sudah dikonfigurasi memakainya otomatis lewat Bearer Auth."
+    }
+  ]
+}

@@ -26,18 +26,29 @@ instead of a filter being applied only to one already-paginated page.
 | POST | `/auth/refresh` | body `{refreshToken}` → new `{accessToken, refreshToken}`, rotates old refresh token |
 | POST | `/auth/logout` | revokes the refresh token; requires auth header |
 
-## `payment` — "one merchant wallet, many consumers" — **implemented (internal mode), Fase 9** — see `MODULE_PAYMENT.md`
+## `payment` — "one merchant wallet, many consumers" — **implemented, internal + external mode (Fase 9 + Fase 10)** — see [`knowledge/MODULE_PAYMENT.md`](../knowledge/MODULE_PAYMENT.md)
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/webhooks/payment` | **Unauthenticated** (no JWT — the gateway can't carry a bearer token). Trust comes entirely from `X-Callback-Signature` (HMAC-SHA256 of the raw body, keyed with the merchant private key), verified inside the handler. Idempotent — a duplicate delivery of the same event is a no-op. The single, permanent callback URL registered with Tripay; never changes as new Apps are added (Fase 10). |
+| POST | `/webhooks/payment` | **Unauthenticated** (no JWT — the gateway can't carry a bearer token). Trust comes entirely from `X-Callback-Signature` (HMAC-SHA256 of the raw body, keyed with the merchant private key), verified inside the handler. Idempotent — a duplicate delivery of the same event is a no-op. The single, permanent callback URL registered with Tripay; never changes as new Apps are added. Dispatches to `kind=internal` Apps in-process, or relays (HMAC-signed, fire-and-forget) to `kind=external` Apps' `callback_url`. |
 | GET | `/payment/gateway-config` | `platform_admin` only. Returns `{activeProvider, isSandbox, tripayMerchantCode, hasTripayApiKey, hasTripayPrivateKey}` — booleans only for the two secret fields, never the plaintext/encrypted value itself. |
 | PATCH | `/payment/gateway-config` | `platform_admin` only. Body `{activeProvider, isSandbox, tripayMerchantCode, tripayApiKey, tripayPrivateKey}` — `tripayApiKey`/`tripayPrivateKey` are write-only: an empty string means "leave the currently-stored value unchanged," never "clear it." |
+| GET | `/payment/apps` | `platform_admin` only. Lists every App (internal + external) — `{appId, name, kind, callbackUrl, isActive, createdAt}`, never the secret hash/encrypted copy. |
+| POST | `/payment/apps` | `platform_admin` only. Body `{name, callbackUrl}` → registers a new `kind=external` App, returns `{appId, name, secret}` — the plaintext secret is shown exactly once. |
+| POST | `/payment/apps/{appId}/reset-secret` | `platform_admin` only. Rotates an external App's secret, returns `{appId, secret}` — again, shown once. |
+| POST | `/payment/apps/{appId}/toggle-active` | `platform_admin` only. Single toggle (flips current state); rejected for `kind=internal` Apps — disabling `platform-billing` would sever ElProof's own subscription billing. |
+| POST | `/auth/app/token` | **Unauthenticated** (this IS the login step for external Apps) but rate-limited per IP. Body `{appId, secret}` → `{accessToken, tokenType: "Bearer", expiresIn}`. No refresh token — the App re-exchanges appId+secret once expired. |
+| POST | `/external/payments/charges` | `app` principal only (see below). Body `{orderRef, amount, channel?, customerName?, customerEmail?, customerPhone?}` — `appId` always resolved from the token, never the body. Duplicate `orderRef` → `409` with `errors.code = "conflict"`. |
+| GET | `/external/payments/charges/{orderRef}/status` | `app` principal only. `404` if `orderRef` doesn't belong to the calling App. |
+| GET | `/external/payments/channels` | `app` principal only. |
 
-No App-management endpoints yet (`ListApps`/`CreateApp`/`ResetAppSecret`/`SetAppStatus`, and the
-external-mode `/auth/app/token` + `/external/payments/*` routes) — those are Fase 10 scope. Fase 9
-only ever has one App in the registry (`platform-billing`, `kind=internal`), bootstrapped
-automatically on every server startup (idempotent upsert), not through any endpoint.
+**The `app` principal (Fase 10):** minted only via `/auth/app/token`, never through `/auth/login`.
+Every `/external/payments/*` request re-checks the App's `is_active` status live against the
+registry (not just JWT validity) — deactivating an App from Platform Console's "Manajemen Aplikasi"
+page takes effect on the very next request, not at token expiry. The three external routes return
+an additional machine-readable `errors.code` (`bad_request`/`unauthorized`/`forbidden`/`not_found`/
+`conflict`/`rate_limited`/`internal`) alongside the usual `message` — every other route in the app
+is unaffected, this is additive.
 
 ## `platform` (Platform Console — `platform_admin` only unless noted) — **implemented, Fase 2**
 

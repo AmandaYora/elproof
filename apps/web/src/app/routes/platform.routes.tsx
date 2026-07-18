@@ -10,6 +10,7 @@ const PlanListPage = lazy(() => import("@/modules/platform-admin/pages/PlanListP
 const PlatformTransactionsPage = lazy(() => import("@/modules/platform-admin/pages/PlatformTransactionsPage"));
 const PlatformUserListPage = lazy(() => import("@/modules/platform-admin/pages/PlatformUserListPage"));
 const GatewayConfigPage = lazy(() => import("@/modules/platform-admin/pages/GatewayConfigPage"));
+const AppListPage = lazy(() => import("@/modules/platform-admin/pages/AppListPage"));
 
 export const platformRoutes: RouteObject = {
   element: <RequireAuth allow={["platform_admin"]} />,
@@ -23,6 +24,7 @@ export const platformRoutes: RouteObject = {
         { path: ROUTE_PATHS.platformTransactions, element: <PlatformTransactionsPage /> },
         { path: ROUTE_PATHS.platformUsers, element: <PlatformUserListPage /> },
         { path: ROUTE_PATHS.platformGatewayConfig, element: <GatewayConfigPage /> },
+        { path: ROUTE_PATHS.platformApps, element: <AppListPage /> },
       ],
     },
   ],

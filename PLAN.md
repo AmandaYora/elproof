@@ -876,6 +876,11 @@ Checkpoint:
    S3 yang dulu diperlukan Fase 4, ini dependency eksternal yang tidak bisa disimulasikan penuh.
    Setelah kredensial tersedia: input lewat Platform Console → Konfigurasi Gateway, lalu uji
    `Pay` sungguhan dari WO Console dan bayar QR-nya langsung dari HP.
+   **Update:** user berencana memasukkan kredensial Tripay **production** (bukan sandbox) langsung
+   di `/platform/pembayaran` pada environment production `elproof.elcodelabs.com` sendiri —
+   checkpoint webhook di atas baru bisa benar-benar dicentang setelah itu dilakukan dan sebuah
+   pembayaran sungguhan diverifikasi tuntas (charge dibuat → QR dibayar → webhook diterima →
+   langganan aktif). Tidak ada perubahan kode yang menunggu langkah ini; murni konfigurasi runtime.
 5. `QuoteFee` (§5) mengasumsikan skema biaya Tripay flat+persentase (`domain.Channel.QuoteFee`) —
    belum diverifikasi terhadap skema biaya QRIS Tripay yang sesungguhnya (juga menunggu kredensial
    nyata), tapi tidak dipakai di jalur kritis `Pay` (cuma metode pelengkap di kontrak).
@@ -900,7 +905,10 @@ Checkpoint:
 ---
 
 ### Fase 10 — Modul `payment` (Mode Eksternal) — Payment Gateway as a Service untuk SaaS Lain
-**Status:** 🔴 Belum mulai
+**Status:** 🟢 Selesai (backend + frontend, terverifikasi lewat curl — token exchange, App CRUD,
+idempotensi, isolasi antar-App, deaktivasi live, dan seluruh pipeline relay webhook termasuk
+signature-nya — lihat catatan implementasi untuk satu bagian yang masih bergantung kredensial
+Tripay sungguhan, sama seperti Fase 9)
 
 Tujuan: membuka dompet merchant yang sama (dibangun Fase 9) sebagai API server-to-server, sehingga
 SaaS lain di luar ElProof — codebase terpisah, server terpisah — bisa membuat charge QRIS/VA lewat
@@ -938,11 +946,54 @@ Lingkup:
   `rate_limited`/`internal`) dipakai konsisten di ketiga route eksternal.
 
 Checkpoint:
-- [ ] SaaS eksternal (disimulasikan lewat curl/Postman, tanpa akses ke codebase ElProof sama sekali) berhasil menukar `appId`+`secret` jadi token, membuat charge, dan menerima relay webhook tertandatangani saat charge lunas
-- [ ] Menonaktifkan App eksternal lewat Platform Console langsung menolak token yang sedang berjalan (bukan menunggu expiry)
-- [ ] Percobaan membuat charge dengan `order_ref` yang sama dua kali menghasilkan `409 Conflict`, bukan charge duplikat
-- [ ] Menambah App eksternal baru tidak mengubah/mengganggu perilaku `platform` (App internal) sama sekali — diverifikasi dengan menjalankan ulang alur `Pay` Fase 9 setelah App eksternal pertama didaftarkan
-- [ ] Secret App eksternal tidak pernah bisa dibaca ulang lewat API/Platform Console setelah dibuat — hanya reset (nilai baru, ditampilkan sekali lagi)
+- [x] SaaS eksternal (disimulasikan lewat curl, tanpa akses ke codebase ElProof sama sekali) berhasil menukar `appId`+`secret` jadi token dan menerima relay webhook tertandatangani saat charge "lunas" — diverifikasi end-to-end: gateway config diisi kredensial uji (private key diketahui), sebuah `payment_charge_dispatch` row disuntik langsung ke DB untuk mensimulasikan "charge sudah pernah dibuat" (karena tidak ada kredensial Tripay sungguhan tersedia untuk benar-benar membuat charge — lihat poin 1 di Catatan implementasi), lalu webhook Tripay palsu namun ber-signature valid dikirim ke `/webhooks/payment`; App eksternal (listener HTTP lokal berperan sebagai App eksternal) menerima relay-nya, dan signature `X-Webhook-Signature` yang diterima dihitung ulang secara independen dari secret App tersebut — cocok persis. Bagian yang **belum** terverifikasi: `CreateChannelCharge` benar-benar berhasil membuat charge QRIS sungguhan di Tripay (sama seperti satu-satunya gap Fase 9 — butuh kredensial Tripay sungguhan, lihat catatan implementasi)
+- [x] Menonaktifkan App eksternal lewat Platform Console langsung menolak token yang sedang berjalan (bukan menunggu expiry) — diverifikasi: token App yang masih valid ditolak `403` tepat setelah `toggle-active` dipanggil, dan percobaan tukar `appId`+`secret` yang sama juga langsung ditolak `401`
+- [x] Percobaan membuat charge dengan `order_ref` yang sama dua kali menghasilkan `409 Conflict`, bukan charge duplikat — diverifikasi lewat curl (idempotency check dipindah agar berjalan sebelum pengecekan gateway, sehingga berlaku bahkan dalam mode simulasi — lihat catatan implementasi)
+- [x] Menambah App eksternal baru tidak mengubah/mengganggu perilaku `platform` (App internal) sama sekali — `platform-billing` tetap terdaftar `kind=internal`, tidak bisa dinonaktifkan lewat endpoint App eksternal (`403`), dan tidak tersentuh oleh pembuatan/reset/toggle App eksternal manapun (diverifikasi lewat `GET /payment/apps` menunjukkan keduanya hidup berdampingan)
+- [x] Secret App eksternal tidak pernah bisa dibaca ulang lewat API/Platform Console setelah dibuat — hanya reset (nilai baru, ditampilkan sekali lagi) — diverifikasi: `GET /payment/apps` tidak pernah menyertakan field secret sama sekali, dan secret lama benar-benar berhenti berfungsi setelah reset
+
+**Catatan implementasi:**
+1. **Sama seperti satu-satunya gap Fase 9: butuh kredensial Tripay sungguhan untuk verifikasi
+   penuh.** `CreateChannelCharge` yang benar-benar sukses (bukan gagal di langkah "gateway belum
+   dikonfigurasi") tidak bisa diuji tanpa kredensial merchant sungguhan — sama seperti webhook Fase
+   9. Semua yang bisa diuji tanpa kredensial nyata (token exchange, App CRUD, idempotensi, isolasi
+   antar-App, deaktivasi live, dan — berkat kredensial gateway *uji* dengan private key yang
+   diketahui — seluruh mekanisme signature relay webhook) sudah diverifikasi lewat curl.
+2. **Desain final untuk penerbitan token App:** `identity.Contracts` mendapat method baru,
+   `IssueServiceToken(ctx, principalType, principalID, ttl)` — menandatangani JWT untuk principal
+   yang *tidak* punya baris `credentials` (App eksternal tidak pernah menyentuh tabel `credentials`
+   sama sekali; `payment` memverifikasi appId+secret dari registrinya sendiri, `identity` hanya
+   menandatangani). `payment` mendapat dependency satu-arah baru ke `identity.Contracts` (pola yang
+   sama seperti `vendors -> projects`) — lihat `knowledge/MODULE_PAYMENT.md` §7.1 dan
+   `knowledge/MODULE_MAP.md`. Tidak ada refresh token untuk principal `app` — App cukup menukar
+   ulang `appId`+`secret` saat token kedaluwarsa, sesuai rencana awal.
+3. **Rate limiting tanpa Redis/Memcache** (`.claude/rules/monorepo.md`): limiter in-memory
+   per-IP sederhana (`shared/middleware/ratelimit.go`, sliding window, 10 percobaan/menit) memasangi
+   `POST /auth/app/token` — diverifikasi lewat curl (percobaan ke-11 dst. dalam satu menit ditolak
+   `429`).
+4. **Idempotensi charge dipindah agar berjalan sebelum pengecekan gateway** (bukan sesudah, seperti
+   draf awal) — mengecek `order_ref` pada Charge Dispatch Index itu murni operasi database, tidak
+   bergantung pada gateway yang aktif, jadi App eksternal (atau `platform`) yang retry dengan
+   `order_ref` sama tetap mendapat `409` yang bersih bahkan dalam mode simulasi, dan sekaligus tidak
+   pernah membuat percobaan charge kedua yang sia-sia ke gateway sungguhan.
+5. **Kode error `§7.6` bersifat aditif**, bukan perubahan pada `.claude/rules/api-standard.md`'s
+   kontrak yang sudah ada — field `code` (`bad_request`/`unauthorized`/`forbidden`/`not_found`/
+   `conflict`/`rate_limited`/`internal`) hanya pernah muncul di `errors` untuk `/auth/app/token` dan
+   ketiga route `/external/payments/*`; seluruh 100+ handler lain di codebase ini tidak berubah
+   perilakunya sama sekali.
+6. **`knowledge/MODULE_PAYMENT.md` ditulis ulang dari nol di sesi ini** — dokumen ini dikutip lewat
+   nomor bagian (`§3`, `§7.5`, dst.) di puluhan komentar kode sejak Fase 9, tapi file-nya sendiri
+   ternyata tidak pernah benar-benar tersimpan di repo. Direkonstruksi dari komentar-komentar
+   tersebut + bagian Fase 9/10 dokumen ini + bentuk akhir kode (yang jadi rujukan kebenaran kalau
+   ada perbedaan) — nomor bagian dipertahankan persis seperti yang sudah dikutip kode, bukan
+   dinomori ulang.
+7. Diverifikasi lewat curl end-to-end (database uji lokal sekali-pakai, dibuat dan dihapus lagi di
+   sesi ini): login platform_admin → daftar App eksternal → tukar token → panggil ketiga route
+   eksternal → nonaktifkan App (token lama langsung ditolak) → reset secret (secret lama berhenti
+   berfungsi) → aktifkan lagi → suntik satu baris Charge Dispatch Index secara manual (mensimulasikan
+   charge yang "sudah dibuat", karena tidak ada kredensial Tripay sungguhan) → kirim webhook Tripay
+   palsu ber-signature valid → App eksternal (listener HTTP lokal) menerima relay dengan signature
+   yang cocok persis saat dihitung ulang independen dari secret App tersebut.
 
 ---
 
@@ -1031,9 +1082,12 @@ Detail teknis lengkap ada di `docs/DEPLOYMENT.md` §6 dan `knowledge/decisions/A
 Ditambahkan modul frontend baru `modules/homepage` — **murni frontend, tanpa modul backend maupun
 panggilan API sama sekali** (lihat baris `homepage` di `knowledge/MODULE_MAP.md`):
 
-1. Tiga route baru: `/homepage` (landing), `/homepage/syarat-ketentuan`, `/homepage/kontak` — dengan
-   `MarketingLayout` sendiri (nav atas + footer), terpisah dari layout WO Console/Client Portal/
-   Platform Console yang sudah ada.
+1. Tujuh route (bertambah dari 3 semula): `/homepage` (landing), `/homepage/tentang-kami`,
+   `/homepage/syarat-ketentuan`, `/homepage/kebijakan-privasi`, `/homepage/kebijakan-refund`,
+   `/homepage/faq`, `/homepage/kontak` — dengan `MarketingLayout` sendiri (nav atas + footer),
+   terpisah dari layout WO Console/Client Portal/Platform Console yang sudah ada. Halaman FAQ dan
+   Kebijakan Refund ditambahkan belakangan (di luar sesi awal ini) atas permintaan verifikasi
+   merchant iPaymu — lihat catatan operasional "Verifikasi Merchant iPaymu" di bawah.
 2. Desain memakai `frontend-design` skill: tetap 100% palet token yang sudah ada (navy 950/900/800,
    aksen `warning` yang sudah ada), tambah font `Fraunces` khusus judul (token baru `--font-display`
    di `theme.css`, dipakai lewat utility Tailwind `font-display`) — body tetap Inter.
@@ -1044,12 +1098,49 @@ panggilan API sama sekali** (lihat baris `homepage` di `knowledge/MODULE_MAP.md`
    `font-display` — judul sempat ikut Inter, bukan Fraunces.
 5. CTA utama "Hubungi Kami" (bukan "Daftar Sekarang") — konsisten dengan arsitektur ElProof yang
    *sales-assisted* (tenant didaftarkan admin platform, bukan self-service signup).
-6. Data kontak di `modules/homepage/data/contact.ts` — awalnya placeholder jelas-palsu, sudah diganti
-   data asli dari user (email `cs@elcodelabs.com`, telepon/WhatsApp `0851-7347-1146`, alamat kantor,
-   jam layanan, website `elkasir.elcodelabs.com`).
+6. Data kontak di `modules/homepage/data/contact.ts` — awalnya placeholder jelas-palsu, diganti data
+   asli dari user (email `cs@elcodelabs.com`, dua nomor telepon/WhatsApp, alamat kantor, jam
+   layanan). `website` sempat salah — copy-paste dari sisa data `elkasir` (`elkasir.elcodelabs.com`)
+   alih-alih domain ElProof sendiri; ditemukan dan diperbaiki jadi `elproof.elcodelabs.com` saat
+   verifikasi merchant iPaymu (lihat catatan operasional di bawah), sudah live.
 7. Karena tidak menyentuh backend/database, deploy fitur ini hanya perlu lewat pipeline CI→GHCR→VPS
    yang sudah ada (Fase 9 operasional di atas) — tidak ada migration, tidak ada perubahan `.env`,
    tidak ada perubahan infra baru.
+
+---
+
+### Catatan Operasional — Verifikasi Merchant iPaymu (di luar penomoran fase)
+
+User mendaftarkan ElProof sebagai merchant di **iPaymu** dan menerima requirement verifikasi
+aplikasi: link FAQ, link Refund Policy, link Syarat & Ketentuan, link Kontak, dan halaman
+kontak/website wajib menampilkan email, nomor telepon, dan alamat usaha (harus cocok dengan alamat
+yang didaftarkan di iPaymu). Ini murni **verifikasi bisnis/legal di sisi iPaymu** — tidak ada
+hubungannya dengan arsitektur teknis `payment` module (Fase 9/10 di atas), yang sampai sekarang
+hanya pernah mengimplementasikan **Tripay** sebagai provider. **iPaymu tidak disebut sama sekali di
+manapun dalam kode `payment` module** — kalau iPaymu nantinya akan jadi gateway pembayaran aktif
+(bukan cuma proses verifikasi merchant), itu berarti menambah provider baru (`ipaymu.go`, mengikuti
+pola `tripay.go` di balik interface `gateway` yang sama, lihat `knowledge/MODULE_PAYMENT.md` §3) —
+pekerjaan baru yang belum tercatat di fase manapun.
+
+Yang dikerjakan untuk memenuhi requirement verifikasi:
+1. Halaman **FAQ** (`/homepage/faq`) dan **Kebijakan Refund** (`/homepage/kebijakan-refund`) baru —
+   lihat "Halaman Marketing Publik" di atas.
+2. Footer `MarketingLayout` diperluas menampilkan email, kedua nomor telepon, dan alamat langsung
+   (sebelumnya cuma tautan ke halaman Kontak — reviewer iPaymu yang tidak klik masuk akan menganggap
+   info kontak tidak ada).
+3. Nomor telepon kedua ditambahkan ke `data/contact.ts` (`phones: []` array, sebelumnya satu field
+   tunggal).
+4. Bug `website` (`elkasir.elcodelabs.com` → `elproof.elcodelabs.com`) ditemukan & diperbaiki — lihat
+   poin 6 di atas.
+5. Kredensial verifikasi ("Catatan Credentials untuk Tim Verifikasi" di form iPaymu) **sengaja tidak
+   diisi sepihak** — menyangkut akun mana yang dibagikan ke pihak luar (superadmin Platform Console
+   vs akun Tenant demo baru), keputusan ini diserahkan ke user.
+6. Semua perubahan sudah di-push ke `main` dan dideploy lewat pipeline CI→GHCR→VPS yang sama, live
+   di `elproof.elcodelabs.com` — diverifikasi lewat Playwright (browser sungguhan) baik di lokal
+   maupun langsung di domain produksi.
+
+**Alamat usaha yang tercantum tidak diverifikasi sama dengan yang didaftarkan di form iPaymu** —
+itu di luar jangkauan kode, hanya user yang tahu isi form pendaftarannya.
 
 ---
 
@@ -1076,9 +1167,11 @@ atau menyimpang dari default proyek — konfirmasi sebelum fase terkait dimulai:
    tabel audit terpisah.** `POST /clients/{id}/replace-representative` menimpa baris `clients` yang
    sama, konsisten dengan perilaku mock sebelumnya — lihat `docs/DB_SCHEMA.md` §`clients` dan
    catatan implementasi Fase 4 di atas.
-4. **Fitur paket sebagai kolom JSON vs tabel `plan_features`** terpisah — berdampak ke Fase 2,
-   tergantung apakah fitur perlu di-query/di-filter individual di masa depan atau cukup ditampilkan
-   sebagai daftar.
+4. ~~**Fitur paket sebagai kolom JSON vs tabel `plan_features`** terpisah~~ — **DIPUTUSKAN (Fase
+   2): tabel `plan_features` terpisah**, bukan kolom JSON — lihat
+   `apps/api/migrations/000004_create_billing_tables.up.sql` (`plan_features` dengan FK ke
+   `subscription_plans`). Keputusan ini sudah diambil sejak implementasi Fase 2, tapi baru
+   di-strike-through di sini sekarang (drift dokumentasi murni, bukan perubahan kode).
 
 ---
 

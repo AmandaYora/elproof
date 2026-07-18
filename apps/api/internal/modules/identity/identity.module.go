@@ -30,7 +30,7 @@ func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration
 
 	return &Module{
 		handler:   presentation.NewHandler(authService),
-		contracts: contracts.New(managementService),
+		contracts: contracts.New(managementService, authService),
 	}
 }
 

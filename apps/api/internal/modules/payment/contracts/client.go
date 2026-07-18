@@ -13,14 +13,18 @@ import (
 // calls to CreateCharge/RegisterConsumer can never drift out of sync.
 const InternalAppBilling = "platform-billing"
 
+// Channel is serialized directly as the /external/payments/channels response
+// body (Fase 10) — json tags keep it camelCase, consistent with every other
+// endpoint in this API, since this is the only place this type is ever
+// marshaled (no frontend consumer exists yet).
 type Channel struct {
-	Code        string
-	Name        string
-	Type        string
-	FeeCustomer int64
-	FeeMerchant int64
-	IconURL     string
-	Active      bool
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	FeeCustomer int64  `json:"feeCustomer"`
+	FeeMerchant int64  `json:"feeMerchant"`
+	IconURL     string `json:"iconUrl"`
+	Active      bool   `json:"active"`
 }
 
 // ChargeResult is what CreateCharge/CreateChannelCharge/CheckStatus return —

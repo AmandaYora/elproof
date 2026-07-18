@@ -36,3 +36,11 @@ Domain errors (not found, forbidden, conflict) map to standard HTTP status with 
 
 See [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md) — kept in sync per phase as `PLAN.md` phases
 land, not written all at once.
+
+## External-facing integration guide (Fase 10)
+
+The `/auth/app/token` + `/external/payments/*` routes (`payment` module, external mode) are meant
+for **other SaaS products'** engineering teams, not ElProof's own frontend — they get a dedicated,
+audience-appropriate guide instead of just an API_CONTRACT.md entry:
+[`docs/PAYMENT_INTEGRATION_GUIDE.md`](../docs/PAYMENT_INTEGRATION_GUIDE.md), plus a ready-to-import
+Postman collection at `docs/postman/ElProof-Payment-Gateway.postman_collection.json`.

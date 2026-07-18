@@ -15,6 +15,7 @@ const (
 	KindUnauthorized Kind = "unauthorized"
 	KindForbidden    Kind = "forbidden"
 	KindConflict     Kind = "conflict"
+	KindRateLimited  Kind = "rate_limited"
 	KindInternal     Kind = "internal"
 )
 
@@ -46,6 +47,10 @@ func Conflict(message string) *AppError {
 	return &AppError{Kind: KindConflict, Message: message}
 }
 
+func RateLimited(message string) *AppError {
+	return &AppError{Kind: KindRateLimited, Message: message}
+}
+
 func Validation(message string, fields map[string][]string) *AppError {
 	return &AppError{Kind: KindValidation, Message: message, Fields: fields}
 }
@@ -72,6 +77,8 @@ func HTTPStatus(err error) int {
 		return http.StatusForbidden
 	case KindConflict:
 		return http.StatusConflict
+	case KindRateLimited:
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}

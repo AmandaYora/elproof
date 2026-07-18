@@ -47,6 +47,24 @@ func (i *JWTIssuer) IssueAccessToken(cred *domain.Credential, ttl time.Duration)
 	return token.SignedString(i.secret)
 }
 
+// IssueServiceToken signs an access-token-only JWT for a principal not backed
+// by a Credential row — see application.TokenIssuer's doc. tenant_id/role are
+// left empty; the caller (e.g. `payment`) doesn't have those concepts.
+func (i *JWTIssuer) IssueServiceToken(principalType, principalID string, ttl time.Duration) (string, error) {
+	claims := middleware.Claims{
+		PrincipalType: principalType,
+		PrincipalID:   principalID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   principalID,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(i.secret)
+}
+
 // NewRefreshTokenValue mints a random opaque refresh token and returns both the
 // plain value (sent to the client) and its sha256 hash (stored server-side) —
 // the server never stores the plain refresh token.

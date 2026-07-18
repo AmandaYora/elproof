@@ -8,7 +8,7 @@ frontend's own module folders under `apps/web/src/modules/<name>`.
 | Module | Responsibility | Owns (tables) | Consumes (via other modules' contracts) |
 |---|---|---|---|
 | `identity` | Login/refresh/logout for all principal types; password hashing; token issuance | `credentials`, `refresh_tokens` | none — deliberately profile-agnostic (see ADR-0005) |
-| `payment` | One payment-gateway merchant wallet (Tripay), wrapped for many consumers ("Apps") — gateway config, App registry, webhook dispatch. Owns no business ledger of its own — see `MODULE_PAYMENT.md`. Fase 9: internal mode only (`platform` is the sole App so far); Fase 10 adds external Apps over HTTP. | `payment_gateway_config`, `payment_apps`, `payment_charge_dispatch`, `payment_webhook_events` | none — built first, depends on no other module |
+| `payment` | One payment-gateway merchant wallet (Tripay), wrapped for many consumers ("Apps") — gateway config, App registry, webhook dispatch. Owns no business ledger of its own — see `MODULE_PAYMENT.md`. Fase 9: internal mode (`platform` as the one App internal). Fase 10 (implemented): external Apps over HTTP — `/auth/app/token` + `/external/payments/*`, Platform Console's "Manajemen Aplikasi" page. | `payment_gateway_config`, `payment_apps`, `payment_charge_dispatch`, `payment_webhook_events` | `identity` (mint bearer tokens for external Apps — one-way, same shape as `vendors -> projects` below) |
 | `platform` | Tenant lifecycle (register/suspend/activate/pay), Platform Console's own admin accounts | `tenants`, `platform_admins`, `pending_subscription_charges` | `staff` (create Owner on tenant registration), `identity` (create credentials), `billing` (read plan, record/update transaction), `payment` (create charge; also registers itself as `payment`'s webhook consumer for `platform-billing`, Fase 9) |
 | `billing` | Subscription plan catalog + subscription transaction ledger — single source of truth shared by both consoles | `subscription_plans`, `subscription_transactions` | none |
 | `staff` | WO internal users (Owner/Admin/Staff), tenant-scoped | `staff_members` | none |
@@ -50,6 +50,13 @@ from `vendors`, this is just an ordinary constructor dependency — `main.go` si
 machinery is only for genuine two-way relationships (see the `clients`↔`projects` and
 `payment`↔`platform` cases above).
 
+**`payment` → `identity`, the same plain one-way shape (Fase 10):** `payment.NewModule` takes
+`identity.Contracts` as a constructor argument, to mint bearer tokens for external Apps
+(`IssueServiceToken`, see `MODULE_PAYMENT.md` §7.1) — `identity` never needs anything back from
+`payment`, so `main.go` simply builds `identityModule` before `paymentModule` (already the existing
+order). `payment` still depends on nothing else, and no other App internal's webhook-dispatch
+bridging (see above) changes because of this.
+
 ## Frontend module ↔ backend module
 
 | Frontend (`apps/web/src/modules/*`) | Backend module(s) it talks to |
@@ -63,8 +70,8 @@ machinery is only for genuine two-way relationships (see the `clients`↔`projec
 | `users` | `staff` |
 | `subscription` | `billing` |
 | `client-portal` | `projects`, `clients` (read-scoped) |
-| `platform-admin` | `platform`, `billing`, `payment` (Konfigurasi Gateway page, Fase 9) |
-| `homepage` | none — public marketing pages (`/homepage`, `/homepage/syarat-ketentuan`, `/homepage/kontak`), static content only, no API calls |
+| `platform-admin` | `platform`, `billing`, `payment` (Konfigurasi Gateway + Manajemen Aplikasi pages) |
+| `homepage` | none — public marketing pages (`/homepage`, `/homepage/tentang-kami`, `/homepage/syarat-ketentuan`, `/homepage/kebijakan-privasi`, `/homepage/kebijakan-refund`, `/homepage/faq`, `/homepage/kontak`), static content only, no API calls |
 
 Full column-level schema: [`docs/DB_SCHEMA.md`](../docs/DB_SCHEMA.md). Full endpoint list:
 [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md).

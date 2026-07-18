@@ -20,6 +20,11 @@ type Config struct {
 	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
 
+	// AppTokenTTL is how long an external payment App's access token (Fase
+	// 10, `POST /auth/app/token`) is valid — no refresh token exists for
+	// this principal type, it simply re-exchanges appId+secret once expired.
+	AppTokenTTL time.Duration
+
 	S3Endpoint  string
 	S3Bucket    string
 	S3AccessKey string
@@ -48,6 +53,7 @@ func Load() Config {
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		JWTAccessTTL:  getDuration("JWT_ACCESS_TTL", 30*time.Minute),
 		JWTRefreshTTL: getDuration("JWT_REFRESH_TTL", 168*time.Hour),
+		AppTokenTTL:   getDuration("APP_TOKEN_TTL", time.Hour),
 
 		S3Endpoint:  getEnv("S3_ENDPOINT", ""),
 		S3Bucket:    getEnv("S3_BUCKET", ""),

@@ -26,4 +26,5 @@ export const ROUTE_PATHS = {
   platformTransactions: "/platform/transaksi",
   platformUsers: "/platform/pengguna",
   platformGatewayConfig: "/platform/pembayaran",
+  platformApps: "/platform/aplikasi",
 } as const;

@@ -1,11 +1,23 @@
 package infrastructure
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
 	"sync"
+	"time"
 
+	"github.com/go-sql-driver/mysql"
+
+	identitycontracts "elproof/internal/modules/identity/contracts"
 	"elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/payment/domain"
 	"elproof/internal/shared/apperror"
@@ -24,11 +36,18 @@ type PaymentService struct {
 	webhookRepo  *MySQLWebhookLogRepository
 	cryptor      *cryptor
 
+	// identity mints bearer tokens for external Apps (Fase 10) — `payment`
+	// verifies the appId+secret itself (its own registry), identity only
+	// ever signs the resulting JWT. One-way dependency, same shape as
+	// `vendors -> projects` (see knowledge/MODULE_MAP.md).
+	identity    identitycontracts.Contracts
+	appTokenTTL time.Duration
+
 	mu        sync.RWMutex
 	consumers map[string]contracts.WebhookConsumer
 }
 
-func NewPaymentService(db *sql.DB, encryptionKey string) (*PaymentService, error) {
+func NewPaymentService(db *sql.DB, encryptionKey string, identity identitycontracts.Contracts, appTokenTTL time.Duration) (*PaymentService, error) {
 	c, err := newCryptor(encryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("payment: %w", err)
@@ -39,6 +58,8 @@ func NewPaymentService(db *sql.DB, encryptionKey string) (*PaymentService, error
 		dispatchRepo: NewMySQLDispatchRepository(db),
 		webhookRepo:  NewMySQLWebhookLogRepository(db),
 		cryptor:      c,
+		identity:     identity,
+		appTokenTTL:  appTokenTTL,
 		consumers:    make(map[string]contracts.WebhookConsumer),
 	}, nil
 }
@@ -139,6 +160,19 @@ func (s *PaymentService) CreateChannelCharge(
 	channel string,
 	opts contracts.ChargeOptions,
 ) (*contracts.ChargeResult, error) {
+	// Check order_ref uniqueness before anything else — see
+	// MODULE_PAYMENT.md §4/§7.3. This is orthogonal to whether a gateway is
+	// even configured, so a repeat attempt gets a clean 409 regardless
+	// (including in simulation mode), without a second real charge ever
+	// being created upstream.
+	existing, err := s.dispatchRepo.FindByOrderRef(ctx, orderRef)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, apperror.Conflict(fmt.Sprintf("order_ref %q sudah pernah dipakai", orderRef))
+	}
+
 	gw, _, err := s.loadGateway(ctx)
 	if err != nil {
 		return nil, err
@@ -155,15 +189,35 @@ func (s *PaymentService) CreateChannelCharge(
 		return nil, err
 	}
 
-	// Uniqueness on order_ref doubles as idempotency for repeat attempts
-	// with the same ref — see MODULE_PAYMENT.md §4/§7.3.
 	if err := s.dispatchRepo.Create(ctx, &domain.ChargeDispatch{
 		OrderRef: orderRef, AppID: appID, ProviderRef: charge.ProviderRef,
 	}); err != nil {
-		return nil, fmt.Errorf("payment: order_ref %q sudah pernah dipakai: %w", orderRef, err)
+		// Race with another request for the same order_ref that won between
+		// our pre-check and this insert — the DB's own uniqueness is the
+		// real guarantee, the pre-check above is just the common-case
+		// optimization that avoids a wasted gateway call.
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			return nil, apperror.Conflict(fmt.Sprintf("order_ref %q sudah pernah dipakai", orderRef))
+		}
+		return nil, fmt.Errorf("payment: gagal menyimpan dispatch order_ref %q: %w", orderRef, err)
 	}
 
 	return toChargeResult(charge), nil
+}
+
+// CheckStatusForApp is CheckStatus scoped to charges the calling App actually
+// owns — used by the external-mode status route (Fase 10) so one App can
+// never poll another App's order_ref (see knowledge/MODULE_PAYMENT.md §7.2).
+func (s *PaymentService) CheckStatusForApp(ctx context.Context, appID, orderRef string) (*contracts.ChargeResult, error) {
+	dispatch, err := s.dispatchRepo.FindByOrderRef(ctx, orderRef)
+	if err != nil {
+		return nil, err
+	}
+	if dispatch == nil || dispatch.AppID != appID {
+		return nil, apperror.NotFound("order_ref tidak ditemukan")
+	}
+	return s.CheckStatus(ctx, dispatch.ProviderRef)
 }
 
 func (s *PaymentService) CheckStatus(ctx context.Context, providerRef string) (*contracts.ChargeResult, error) {
@@ -254,9 +308,67 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, signature string, ra
 		}
 		return consumer.ApplyWebhookEvent(ctx, event.OrderRef, consumerEvent)
 	default:
-		// kind=external relay (fire-and-forget, HMAC-signed) is Fase 10 scope.
-		return fmt.Errorf("payment: relay webhook ke App eksternal belum diimplementasikan (Fase 10)")
+		return s.relayWebhookToExternalApp(ctx, app, consumerEvent)
 	}
+}
+
+// externalWebhookPayload is the fixed JSON shape relayed to an external
+// App's callback_url — see knowledge/MODULE_PAYMENT.md §7 relay note.
+type externalWebhookPayload struct {
+	OrderRef string `json:"orderRef"`
+	Paid     bool   `json:"paid"`
+	Amount   int64  `json:"amount"`
+	PaidAt   string `json:"paidAt,omitempty"`
+}
+
+// relayWebhookToExternalApp signs and POSTs one fire-and-forget attempt to an
+// external App's callback_url — no retry, short timeout. A missed relay
+// (network blip, App down) is recovered by the App itself polling
+// `GET /external/payments/charges/{orderRef}/status` (see §7.2), so a failed
+// relay here is logged, never surfaced as an error to the gateway (which
+// would otherwise interpret it as "please retry the whole webhook").
+func (s *PaymentService) relayWebhookToExternalApp(ctx context.Context, app *domain.App, event contracts.WebhookEvent) error {
+	if app.CallbackURL == "" {
+		log.Printf("payment: App eksternal %q tidak punya callback_url, relay dilewati", app.AppID)
+		return nil
+	}
+	secret, err := s.cryptor.decrypt(app.SecretEncrypted)
+	if err != nil {
+		log.Printf("payment: gagal mendekripsi secret App %q untuk relay: %v", app.AppID, err)
+		return nil
+	}
+
+	var paidAt string
+	if !event.PaidAt.IsZero() {
+		paidAt = event.PaidAt.Format(time.RFC3339)
+	}
+	payload, err := json.Marshal(externalWebhookPayload{
+		OrderRef: event.OrderRef, Paid: event.Paid, Amount: event.Amount, PaidAt: paidAt,
+	})
+	if err != nil {
+		return err
+	}
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	signature := hex.EncodeToString(mac.Sum(nil))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, app.CallbackURL, bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("payment: gagal menyusun request relay ke App %q: %v", app.AppID, err)
+		return nil
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Webhook-Signature", signature)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("payment: relay webhook ke App eksternal %q (%s) gagal, App diharapkan polling status: %v", app.AppID, app.CallbackURL, err)
+		return nil
+	}
+	defer resp.Body.Close()
+	return nil
 }
 
 // --- Admin CRUD (called directly by this module's own presentation layer) ---
@@ -326,4 +438,170 @@ func (s *PaymentService) UpdateConfig(ctx context.Context, input UpdateConfigInp
 		cfg.TripayPrivateKeyEncrypted = enc
 	}
 	return s.configRepo.Update(ctx, cfg)
+}
+
+// --- App registry (Fase 10 — Platform Console "Manajemen Aplikasi") ---
+
+// AppView is the safe-to-display shape of an App row — never the secret
+// hash/encrypted copy, see knowledge/MODULE_PAYMENT.md §7.5.
+type AppView struct {
+	AppID       string
+	Name        string
+	Kind        string
+	CallbackURL string
+	IsActive    bool
+	CreatedAt   time.Time
+}
+
+func toAppView(a domain.App) AppView {
+	return AppView{
+		AppID: a.AppID, Name: a.Name, Kind: string(a.Kind),
+		CallbackURL: a.CallbackURL, IsActive: a.IsActive, CreatedAt: a.CreatedAt,
+	}
+}
+
+func (s *PaymentService) ListApps(ctx context.Context) ([]AppView, error) {
+	apps, err := s.appRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]AppView, 0, len(apps))
+	for _, a := range apps {
+		result = append(result, toAppView(a))
+	}
+	return result, nil
+}
+
+func (s *PaymentService) GetApp(ctx context.Context, appID string) (*AppView, error) {
+	app, err := s.appRepo.FindByAppID(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, apperror.NotFound("Aplikasi tidak ditemukan")
+	}
+	view := toAppView(*app)
+	return &view, nil
+}
+
+// IsAppActive is checked fresh on every external-mode request (never cached
+// off the JWT) — deactivating an App must immediately reject its in-flight
+// token, not wait for expiry. See knowledge/MODULE_PAYMENT.md §7.1.
+func (s *PaymentService) IsAppActive(ctx context.Context, appID string) (bool, error) {
+	app, err := s.appRepo.FindByAppID(ctx, appID)
+	if err != nil {
+		return false, err
+	}
+	return app != nil && app.IsActive, nil
+}
+
+// CreateExternalApp registers a new external App and returns its plaintext
+// secret exactly once — the caller (Platform Console) must display it now;
+// it can never be retrieved again, only reset.
+func (s *PaymentService) CreateExternalApp(ctx context.Context, name, callbackURL string) (appID, secret string, err error) {
+	fields := map[string][]string{}
+	if name == "" {
+		fields["name"] = []string{"Nama aplikasi wajib diisi"}
+	}
+	if callbackURL == "" {
+		fields["callbackUrl"] = []string{"URL callback wajib diisi"}
+	}
+	if len(fields) > 0 {
+		return "", "", apperror.Validation("Data aplikasi tidak valid", fields)
+	}
+
+	appID, err = generateAppID()
+	if err != nil {
+		return "", "", err
+	}
+	secret, err = generateSecret()
+	if err != nil {
+		return "", "", err
+	}
+	hash, err := hashSecret(secret)
+	if err != nil {
+		return "", "", err
+	}
+	encrypted, err := s.cryptor.encrypt(secret)
+	if err != nil {
+		return "", "", err
+	}
+
+	app := &domain.App{
+		AppID: appID, Name: name, Kind: domain.AppKindExternal,
+		SecretHash: hash, SecretEncrypted: encrypted, CallbackURL: callbackURL, IsActive: true,
+	}
+	if err := s.appRepo.Create(ctx, app); err != nil {
+		return "", "", err
+	}
+	return appID, secret, nil
+}
+
+// ResetAppSecret replaces an external App's secret — like CreateExternalApp,
+// the plaintext is returned exactly once.
+func (s *PaymentService) ResetAppSecret(ctx context.Context, appID string) (secret string, err error) {
+	app, err := s.appRepo.FindByAppID(ctx, appID)
+	if err != nil {
+		return "", err
+	}
+	if app == nil || app.Kind != domain.AppKindExternal {
+		return "", apperror.NotFound("Aplikasi eksternal tidak ditemukan")
+	}
+
+	secret, err = generateSecret()
+	if err != nil {
+		return "", err
+	}
+	hash, err := hashSecret(secret)
+	if err != nil {
+		return "", err
+	}
+	encrypted, err := s.cryptor.encrypt(secret)
+	if err != nil {
+		return "", err
+	}
+	if err := s.appRepo.SetSecret(ctx, appID, hash, encrypted); err != nil {
+		return "", err
+	}
+	return secret, nil
+}
+
+// SetAppStatus enables/disables an external App. The internal App
+// (`platform-billing`) is never toggleable through this admin path — turning
+// it off would sever ElProof's own subscription billing.
+func (s *PaymentService) SetAppStatus(ctx context.Context, appID string, isActive bool) error {
+	app, err := s.appRepo.FindByAppID(ctx, appID)
+	if err != nil {
+		return err
+	}
+	if app == nil {
+		return apperror.NotFound("Aplikasi tidak ditemukan")
+	}
+	if app.Kind == domain.AppKindInternal {
+		return apperror.Forbidden("Aplikasi internal tidak dapat dinonaktifkan lewat halaman ini")
+	}
+	return s.appRepo.SetActive(ctx, appID, isActive)
+}
+
+// IssueAppToken verifies an external App's appId+secret against this
+// module's own registry, then asks identity to sign an access token for it —
+// see knowledge/MODULE_PAYMENT.md §7.1. No refresh token: the App simply
+// repeats this exchange once its token expires.
+func (s *PaymentService) IssueAppToken(ctx context.Context, appID, secret string) (token string, expiresAt time.Time, err error) {
+	app, err := s.appRepo.FindByAppID(ctx, appID)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if app == nil || app.Kind != domain.AppKindExternal || !app.IsActive || app.SecretHash == "" {
+		return "", time.Time{}, apperror.Unauthorized("appId atau secret tidak valid")
+	}
+	if err := compareSecret(app.SecretHash, secret); err != nil {
+		return "", time.Time{}, apperror.Unauthorized("appId atau secret tidak valid")
+	}
+
+	token, err = s.identity.IssueServiceToken(ctx, "app", app.AppID, s.appTokenTTL)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return token, time.Now().Add(s.appTokenTTL), nil
 }
