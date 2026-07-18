@@ -1,13 +1,13 @@
 # Panduan Integrasi Payment Gateway ElProof (untuk Aplikasi Eksternal)
 
-> Audiens dokumen ini: **tim teknis di luar ElProof** yang ingin membuat charge (QRIS/VA/dll.)
-> lewat satu dompet merchant (Tripay) yang sama dipakai ElProof sendiri, tanpa pernah menyentuh
-> kredensial Tripay itu sendiri. Detail desain internal (kenapa modul ini dibangun seperti ini) ada
-> di `knowledge/MODULE_PAYMENT.md` — dokumen ini murni panduan pemakaian API-nya.
+> Audiens dokumen ini: **tim teknis (manusia atau AI agent) di luar ElProof** yang ingin membuat
+> charge (QRIS/VA/dll.) lewat satu dompet merchant (Tripay) yang sama dipakai ElProof sendiri,
+> tanpa pernah menyentuh kredensial Tripay itu sendiri.
 >
-> Referensi lengkap seluruh endpoint ElProof (termasuk yang bukan bagian dari integrasi eksternal
-> ini) ada di `docs/API_CONTRACT.md`. Collection Postman siap pakai:
-> `docs/postman/ElProof-Payment-Gateway.postman_collection.json`.
+> **Dokumen ini berdiri sendiri** — semua yang dibutuhkan untuk integrasi yang benar ada di sini,
+> tidak ada dokumen lain yang perlu dibaca. Dokumen ini dikirim berpasangan dengan satu file lain:
+> collection Postman siap pakai `ElProof-Payment-Gateway.postman_collection.json` (folder
+> "Autentikasi" dan "Pembayaran", tinggal isi `appId`/`secret` lalu jalankan).
 
 ---
 
@@ -43,12 +43,12 @@ server-to-server, perlakukan seperti API key rahasia.
 
 ## 3. Base URL
 
-| Environment | Base URL |
-|---|---|
-| Production | `https://elproof.elcodelabs.com/api/v1` |
-| Lokal (kalau Anda menjalankan ElProof sendiri untuk uji coba) | `http://localhost:8080/api/v1` |
+```
+https://elproof.elcodelabs.com/api/v1
+```
 
-Semua path di dokumen ini relatif terhadap base URL di atas.
+Semua path di dokumen ini relatif terhadap base URL di atas — hanya ada satu environment
+(production), tidak ada sandbox terpisah untuk API ini.
 
 ## 4. Autentikasi — `POST /auth/app/token`
 
