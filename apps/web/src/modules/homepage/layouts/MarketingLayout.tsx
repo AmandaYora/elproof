@@ -8,8 +8,13 @@ import { cn } from "@/shared/lib/cn";
 
 const NAV_LINKS = [
   { to: ROUTE_PATHS.homepage, label: "Beranda" },
-  { to: ROUTE_PATHS.homepageTerms, label: "Syarat & Ketentuan" },
+  { to: ROUTE_PATHS.homepageAbout, label: "Tentang Kami" },
   { to: ROUTE_PATHS.homepageContact, label: "Kontak" },
+];
+
+const LEGAL_LINKS = [
+  { to: ROUTE_PATHS.homepageTerms, label: "Syarat & Ketentuan" },
+  { to: ROUTE_PATHS.homepagePrivacy, label: "Kebijakan Privasi" },
 ];
 
 export default function MarketingLayout() {
@@ -95,7 +100,7 @@ export default function MarketingLayout() {
       </main>
 
       <footer className="border-t border-white/10 bg-navy-950 text-white/70">
-        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.3fr_1fr_1fr]">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.3fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">
               <ProofSeal size={40} className="text-warning" />
@@ -122,6 +127,19 @@ export default function MarketingLayout() {
                   Masuk ke ElProof
                 </Link>
               </li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="text-[12.5px] font-semibold uppercase tracking-wide text-white/40">Legal</p>
+            <ul className="mt-3.5 flex flex-col gap-2.5 text-[13.5px]">
+              {LEGAL_LINKS.map((link) => (
+                <li key={link.to}>
+                  <Link to={link.to} className="hover:text-white">
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
