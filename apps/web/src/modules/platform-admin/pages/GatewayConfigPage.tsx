@@ -66,8 +66,8 @@ export default function GatewayConfigPage() {
       <div>
         <h1 className="text-xl font-bold text-text-primary">Konfigurasi Gateway</h1>
         <p className="mt-1 text-[13px] text-text-secondary">
-          Satu kredensial gateway pembayaran dipakai bersama oleh langganan ElProof sendiri dan (nanti) aplikasi
-          eksternal yang terdaftar — lihat MODULE_PAYMENT.md.
+          Kredensial ini dipakai untuk memproses pembayaran langganan ElProof, dan juga oleh aplikasi eksternal
+          yang sudah didaftarkan di halaman Manajemen Aplikasi.
         </p>
       </div>
 

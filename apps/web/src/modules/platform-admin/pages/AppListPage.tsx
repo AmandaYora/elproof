@@ -69,10 +69,10 @@ export default function AppListPage() {
         <div>
           <h1 className="text-xl font-bold text-text-primary">Manajemen Aplikasi</h1>
           <p className="mt-1 max-w-2xl text-[13px] text-text-secondary">
-            Aplikasi (App) yang boleh membuat charge lewat satu dompet gateway pembayaran ElProof — lihat
-            knowledge/MODULE_PAYMENT.md. <span className="font-medium text-text-primary">ElProof Billing</span> di
-            bawah adalah App internal (langganan ElProof sendiri); App eksternal adalah SaaS lain yang didaftarkan
-            di sini.
+            Kelola aplikasi yang diizinkan memproses pembayaran melalui ElProof.{" "}
+            <span className="font-medium text-text-primary">ElProof Billing</span> mewakili sistem langganan
+            ElProof sendiri dan selalu aktif secara otomatis; aplikasi lain di bawah adalah pihak eksternal yang
+            Anda daftarkan sendiri.
           </p>
         </div>
         <Button icon={<Plus className="h-4 w-4" />} onClick={() => setModalOpen(true)}>
@@ -111,7 +111,7 @@ export default function AppListPage() {
                   <TD className="font-mono text-[12.5px] text-text-secondary">{app.appId}</TD>
                   <TD>
                     <Badge tone={app.kind === "internal" ? "navy" : "info"}>
-                      {app.kind === "internal" ? "Internal" : "Eksternal"}
+                      {app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}
                     </Badge>
                   </TD>
                   <TD className="max-w-[220px] truncate text-[12.5px] text-text-secondary" title={app.callbackUrl}>
@@ -163,8 +163,9 @@ export default function AppListPage() {
               <span className="font-mono font-semibold text-text-primary">{secretReveal.secret}</span>
             </div>
             <p className="text-[13px] leading-relaxed text-text-secondary">
-              Gunakan keduanya untuk menukar token lewat <code>POST /api/v1/auth/app/token</code>. Jika hilang,
-              gunakan tombol "Reset Secret" — nilai lama langsung tidak berlaku.
+              Berikan App ID dan Secret ini kepada tim teknis aplikasi eksternal tersebut untuk menyambungkan
+              sistem mereka ke pembayaran ElProof. Jika Secret hilang, gunakan tombol "Reset Secret" — nilai lama
+              langsung tidak berlaku lagi.
             </p>
           </div>
         )}

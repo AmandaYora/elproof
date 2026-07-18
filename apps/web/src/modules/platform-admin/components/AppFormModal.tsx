@@ -46,7 +46,7 @@ export function AppFormModal({ open, onClose, onSubmit }: AppFormModalProps) {
       open={open}
       onClose={handleClose}
       title="Tambah Aplikasi Eksternal"
-      description="Aplikasi lain akan menggunakan appId + secret ini untuk membuat charge lewat dompet merchant ElProof."
+      description="Aplikasi ini akan menerima App ID dan Secret untuk memproses pembayaran melalui ElProof."
       footer={
         <>
           <Button variant="ghost" onClick={handleClose}>Batal</Button>
