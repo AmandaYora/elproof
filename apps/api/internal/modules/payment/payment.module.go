@@ -70,6 +70,15 @@ func (m *Module) Dispatcher() contracts.Dispatcher {
 	return m.service
 }
 
+// StartReconciler starts the background safety net for charges whose
+// webhook was never received — see knowledge/MODULE_PAYMENT.md. Must be
+// called after every App internal has already registered its consumer
+// (`Dispatcher().RegisterConsumer(...)`), since a sweep tick may need to
+// dispatch to one immediately.
+func (m *Module) StartReconciler(ctx context.Context, interval time.Duration) {
+	m.service.StartReconciler(ctx, interval)
+}
+
 // RegisterRoutes registers the module's own HTTP surface:
 //   - the permanent webhook route (unauthenticated — trust comes from
 //     signature verification)

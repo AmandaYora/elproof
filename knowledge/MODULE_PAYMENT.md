@@ -81,6 +81,10 @@ None of the four tables are a ledger — see §2.2.
 - **`payment_charge_dispatch`** — a thin `order_ref -> app_id` (+ `provider_ref`) index, primary
   keyed on `order_ref`. This is the **entire** idempotency mechanism for charge creation (§7.3):
   attempting to reuse an `order_ref` fails fast, before ever calling the gateway a second time.
+  Also carries `expires_at` (the charge's own deadline, recorded at creation) and `resolved_at`
+  (NULL until a terminal outcome — paid/expired/failed/refund — has been dispatched to the owning
+  App, via webhook or the reconciliation sweep, see §6 step 6) — the one exception to "never a
+  ledger": these are completion markers, not amounts or history.
 - **`payment_webhook_events`** — `(provider, event_id)` uniqueness gives webhook processing
   idempotency: the same gateway callback delivered twice is a no-op the second time, not a double
   application of the same payment.
@@ -125,8 +129,12 @@ without either importing the other's package.
 4. Once the signature verifies, the event is parsed into the provider-agnostic `WebhookEvent` shape
    and logged into `payment_webhook_events` — a duplicate delivery of an already-seen
    `(provider, event_id)` is a no-op from here on (idempotent).
-5. The event's `order_ref` is looked up in the Charge Dispatch Index to find which App owns it, and
-   dispatched:
+5. The event's `order_ref` is looked up in the Charge Dispatch Index to find which App owns it.
+   Before dispatching, a non-`unpaid` status first has to win `ClaimUnresolved` — an atomic
+   `UPDATE ... WHERE resolved_at IS NULL` on that dispatch row. Losing the claim (`resolved_at`
+   already set) means the reconciliation sweep (step 6 below) — or an earlier delivery of this same
+   webhook — already dispatched a terminal outcome for this charge, so this call is a no-op. Winning
+   it dispatches exactly once:
    - `kind = internal` → the App's registered `WebhookConsumer.ApplyWebhookEvent` is invoked
      in-process, same request (Fase 9).
    - `kind = external` → the event is relayed over HTTP to the App's `callback_url`, HMAC-signed
@@ -134,7 +142,30 @@ without either importing the other's package.
      short timeout, no retry (Fase 10). A relay that fails (network blip, App down) is **not**
      retried and does not fail the webhook handler back to the gateway — the external App's
      fallback is polling `GET /external/payments/charges/{orderRef}/status` (§7.2), which always
-     reflects the gateway's own source of truth regardless of whether the relay arrived.
+     reflects the gateway's own source of truth regardless of whether the relay arrived. Note this
+     specific failure mode (delivery attempted, network drop reaching the App) is **not** covered by
+     step 6's reconciliation sweep either — the claim is already consumed by the time delivery is
+     attempted. Only a genuinely *missed or never-received* webhook is covered.
+6. **Reconciliation — the safety net for a webhook ElProof itself never received at all**
+   (`PaymentService.ReconcilePending`, run on a ticker — `PAYMENT_RECONCILE_INTERVAL`, default 3m,
+   see `StartReconciler`). Every dispatch still `resolved_at IS NULL` and older than a couple of
+   minutes (no point checking something that was just created) is re-checked directly against the
+   gateway (`CheckStatus`, the same `GET /transaction/detail` Tripay call the status endpoints
+   already use), batched (50/tick) and oldest-first:
+   - A definitive terminal answer (paid/expired/failed/refund) is dispatched exactly like a webhook
+     would be — same `ClaimUnresolved` guard, same consumer/relay switch, so downstream behavior
+     is identical regardless of whether the outcome was discovered via webhook or by polling.
+   - Still `unpaid`, or the status check itself errored (gateway/network trouble) — left alone,
+     *unless* it's more than an hour past its own `expires_at` (or, for the small number of rows
+     that predate this column, 24 hours past `created_at`), in which case it's force-resolved as
+     expired locally rather than left open forever. This bounds every dispatch to eventually reach a
+     terminal state, regardless of the gateway's or the network's behavior.
+   - Genuinely still-open charges (unpaid, not yet past grace) are simply left for the next tick.
+
+   This exists because, before it, the *only* paths that ever updated a pending charge's status were
+   the webhook itself and (for the internal subscription flow) a client-side poll in the open
+   browser tab that stops the moment the tab/modal closes — a charge whose webhook silently never
+   arrived, combined with the customer closing the tab, had no path back to a resolved state at all.
 
 ## 7. External mode (Fase 10) — Apps outside this codebase
 
@@ -237,3 +268,15 @@ as before (validation field-errors or `null`); only these external-facing handle
   that would sever ElProof's own subscription billing). Purely additive on top of Fase 9's
   infrastructure — registering an external App, or that App creating charges, never changes how
   `platform` (the internal App) behaves.
+- **Reconciliation (post-Fase-10 hardening, no phase number of its own)** — §6 step 6 above. Added
+  after production Tripay credentials were configured, in response to a gap found during an
+  architecture review: nothing previously reconciled a charge whose webhook was never received —
+  Tripay itself has no cancel/void endpoint (confirmed against its own public docs) and no
+  `CANCELLED` status, so an abandoned charge's only ordinary path to resolution was its own
+  `expires_at` plus a webhook ElProof might never actually receive. Verified end-to-end against a
+  local test database with a deliberately-invalid gateway credential (so every status check fails,
+  the worst case): a dispatch created hours in the past and long past its grace period is correctly
+  force-resolved and dispatched to both an internal consumer and an external App's relay; a
+  still-open dispatch is correctly left untouched across repeated sweep runs; and a legitimate
+  webhook arriving for an order_ref the sweep already resolved is correctly treated as a no-op
+  (confirmed via a captured HTTP relay log showing exactly one delivery, not two).

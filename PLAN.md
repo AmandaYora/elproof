@@ -997,6 +997,70 @@ Checkpoint:
 
 ---
 
+### Catatan Operasional — Rekonsiliasi Charge Otomatis (di luar penomoran fase)
+
+Setelah kredensial Tripay **production** dimasukkan user lewat `/platform/pembayaran`, dilakukan
+tinjauan arsitektur atas seluruh pemakaian Tripay (internal dan eksternal). Temuan paling signifikan
+(bukan sekadar catatan gaya): **tidak ada mekanisme apa pun — manual maupun otomatis — yang pernah
+menyelesaikan charge yang webhook-nya tidak pernah diterima ElProof sama sekali.** Satu-satunya jalan
+sebelumnya adalah webhook itu sendiri, atau (khusus alur langganan internal) polling di sisi browser
+yang berhenti begitu tab/modal ditutup — charge yang ditinggal pelanggan tanpa webhook yang berhasil
+diterima akan tersangkut selamanya di status pending.
+
+Dikonfirmasi juga (lewat pengecekan langsung ke dokumentasi publik Tripay, bukan asumsi): **Tripay
+sendiri tidak punya endpoint cancel/void/close transaksi sama sekali**, dan tidak punya status
+`CANCELLED` — cuma `PAID`/`FAILED`/`EXPIRED`/`REFUND`. Jadi solusinya bukan "tambah tombol batalkan"
+(Tripay tidak menyediakan cara itu), tapi memastikan charge yang ditinggalkan tetap **berakhir** di
+status yang benar, bukan tersangkut permanen.
+
+**Yang dibangun:** rekonsiliasi berkala di dalam modul `payment` sendiri (bukan modul terpisah) —
+lihat `knowledge/MODULE_PAYMENT.md` §6 langkah 6 untuk desain lengkapnya. Ringkasnya:
+- 2 kolom baru di `payment_charge_dispatch` (migrasi `000011`): `expires_at` (disalin dari charge
+  saat dibuat) dan `resolved_at` (NULL sampai hasil akhir charge benar-benar didispatch ke App
+  pemiliknya — lewat webhook ATAU sweep ini).
+- `ClaimUnresolved` — klaim atomik (`UPDATE ... WHERE resolved_at IS NULL`) yang jadi satu-satunya
+  gerbang dispatch, dipasang baik di `HandleWebhook` maupun sweep — mencegah webhook yang datang
+  terlambat mendispatch ulang charge yang sudah lebih dulu diselesaikan oleh sweep (atau sebaliknya).
+- Sweep (`ReconcilePending`, ticker `PAYMENT_RECONCILE_INTERVAL` default 3 menit, di-start dari
+  `main.go` setelah semua consumer App internal terdaftar): mengecek ulang tiap dispatch yang belum
+  selesai langsung ke gateway; kalau dapat jawaban pasti (bukan `unpaid`) langsung didispatch; kalau
+  masih belum ada jawaban pasti (termasuk kalau pengecekan gateway sendiri gagal) **dan** sudah
+  lewat `expires_at` + 1 jam toleransi, dipaksa selesai sebagai `expired` — supaya tidak ada satu pun
+  charge yang tersangkut selamanya, apa pun yang terjadi dengan gateway/jaringan.
+
+Checkpoint:
+- [x] `go build`/`go vet` bersih
+- [x] Diverifikasi lewat database uji lokal sekali-pakai (dibuat & dihapus lagi di sesi ini), dengan
+  kredensial gateway sengaja tidak valid (worst case — setiap pengecekan status gagal): dispatch yang
+  dibuat jauh di masa lalu dan sudah lewat batas toleransi berhasil dipaksa `expired` dan didispatch
+  ke **kedua** jenis consumer (App internal via fungsi langsung, App eksternal via relay HTTP —
+  signature relay dicocokkan ulang secara independen dari secret App tersebut dan cocok persis)
+- [x] Dispatch yang masih sah (belum lewat masa berlaku) terbukti dibiarkan tidak tersentuh across
+  dua kali sweep berturut-turut
+- [x] Webhook sungguhan yang datang untuk order_ref yang sudah lebih dulu diselesaikan sweep terbukti
+  jadi no-op (dikonfirmasi dari log capture HTTP relay: tepat satu pengiriman, bukan dua)
+- [x] Sweep kedua langsung setelah sweep pertama tidak menemukan apa pun yang baru untuk
+  diselesaikan pada dispatch yang sudah selesai
+
+**Catatan implementasi:**
+- Rekonsiliasi ini menutup gap "webhook ElProof sendiri tidak pernah menerima notifikasi sama
+  sekali" — **bukan** gap "relay ke App eksternal terkirim tapi gagal sampai" (itu tetap
+  fire-and-forget tanpa retry seperti semula, karena klaim `resolved_at` sudah dipakai sebelum
+  percobaan relay dilakukan). Dokumentasi eksternal (`docs/PAYMENT_INTEGRATION_GUIDE.md` §8)
+  diperbarui dengan hati-hati supaya tidak melebih-lebihkan perbaikan ini — saran "tetap polling
+  status sendiri" tidak berubah sama sekali.
+- Tidak butuh infrastruktur baru (tanpa Redis/cron eksternal, sesuai `.claude/rules/monorepo.md`) —
+  cuma goroutine + `time.Ticker` biasa, dimulai di `main.go` setelah semua App internal terdaftar,
+  berjalan sepanjang umur proses (server ini memang tidak punya graceful-shutdown di manapun juga).
+- Pertanyaan legal/compliance soal "satu dompet Tripay dipakai bareng untuk beberapa produk" (yang
+  sempat diangkat saat tinjauan arsitektur) **dikonfirmasi user bukan masalah** — seluruh produk
+  (ElProof, Elkasir, dst.) berada di bawah satu badan usaha yang sama (Elcodelabs), jadi berbagi satu
+  dompet pembayaran sama seperti satu kasir menaungi penjualan beberapa jenis produk sekaligus,
+  selama pencatatan per produk (App) tetap benar — yang memang sudah dijamin oleh Charge Dispatch
+  Index (`app_id` per charge).
+
+---
+
 ### Catatan Operasional — Reset Data ke Minimal (di luar penomoran fase)
 
 Atas permintaan eksplisit user, `cmd/seed` (dan database dev yang sudah dijalankan) diubah dari

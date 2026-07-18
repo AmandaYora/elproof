@@ -169,6 +169,12 @@ func serve(cfg config.Config) {
 	// internal) to know its webhook consumer, so main.go registers it here,
 	// after both modules are built — see payment.module.go's Dispatcher doc.
 	paymentModule.Dispatcher().RegisterConsumer(paymentcontracts.InternalAppBilling, platformModule)
+	// Started only after every App internal's consumer is registered above —
+	// a sweep tick may need to dispatch to one right away. Runs for the
+	// lifetime of the process; no separate shutdown signal exists anywhere
+	// else in this server either (see log.Fatal(http.ListenAndServe(...))
+	// below), so this goroutine simply ends when the process does.
+	paymentModule.StartReconciler(context.Background(), cfg.PaymentReconcileInterval)
 
 	paymentModule.RegisterRoutes(mux, authed)
 	billingModule.RegisterRoutes(mux, authed)

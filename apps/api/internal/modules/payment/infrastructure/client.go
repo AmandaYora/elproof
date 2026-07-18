@@ -190,7 +190,7 @@ func (s *PaymentService) CreateChannelCharge(
 	}
 
 	if err := s.dispatchRepo.Create(ctx, &domain.ChargeDispatch{
-		OrderRef: orderRef, AppID: appID, ProviderRef: charge.ProviderRef,
+		OrderRef: orderRef, AppID: appID, ProviderRef: charge.ProviderRef, ExpiresAt: charge.ExpiresAt,
 	}); err != nil {
 		// Race with another request for the same order_ref that won between
 		// our pre-check and this insert — the DB's own uniqueness is the
@@ -293,6 +293,23 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, signature string, ra
 		return apperror.NotFound("App pemilik charge ini tidak ditemukan atau nonaktif")
 	}
 
+	// Only a non-terminal status (still "unpaid") leaves the dispatch open —
+	// anything else is this charge's final word, whether it arrives here via
+	// webhook or is discovered later by the reconciliation sweep polling
+	// Tripay directly. Claiming resolution here (not just relying on the
+	// webhook-event idempotency log above) is what stops the SAME underlying
+	// charge being dispatched twice if the sweep and a delayed webhook both
+	// end up reporting the same outcome — see MySQLDispatchRepository.ClaimUnresolved.
+	if event.Status != domain.ChargeUnpaid {
+		won, err := s.dispatchRepo.ClaimUnresolved(ctx, event.OrderRef)
+		if err != nil {
+			return err
+		}
+		if !won {
+			return nil // reconciliation sweep (or an earlier webhook) already dispatched this outcome
+		}
+	}
+
 	consumerEvent := contracts.WebhookEvent{
 		ProviderRef: event.ProviderRef, OrderRef: event.OrderRef,
 		Paid: event.Paid(), Amount: event.Amount, PaidAt: event.PaidAt,
@@ -369,6 +386,142 @@ func (s *PaymentService) relayWebhookToExternalApp(ctx context.Context, app *dom
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+// --- Reconciliation (safety net for a charge whose webhook was never received) ---
+
+const (
+	// reconcileMinAge keeps a charge out of the sweep until it's had a
+	// realistic chance to be paid — no point re-checking something created
+	// seconds ago.
+	reconcileMinAge = 2 * time.Minute
+	// reconcileBatchLimit caps how many dispatches one sweep tick re-checks
+	// against the gateway, so a large backlog can't turn one tick into a
+	// long-running burst of outbound requests.
+	reconcileBatchLimit = 50
+	// reconcileExpiryGrace is added on top of a charge's own expiresAt
+	// before it's force-resolved locally as expired even without a
+	// definitive answer from the gateway — generous buffer in case the
+	// gateway's own status update itself lags a bit past nominal expiry.
+	reconcileExpiryGrace = 1 * time.Hour
+	// reconcileMaxAgeFallback is the deadline used for dispatch rows that
+	// predate the expires_at column (NULL) — so nothing pre-existing is left
+	// open forever just because it wasn't recorded.
+	reconcileMaxAgeFallback = 24 * time.Hour
+)
+
+// StartReconciler runs ReconcilePending on a fixed interval until ctx is
+// cancelled. Errors are logged, never fatal — a bad tick just retries next
+// interval. See knowledge/MODULE_PAYMENT.md's reconciliation section.
+func (s *PaymentService) StartReconciler(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				checked, resolved, err := s.ReconcilePending(ctx)
+				if err != nil {
+					log.Printf("payment: reconciliation sweep gagal: %v", err)
+					continue
+				}
+				if checked > 0 {
+					log.Printf("payment: reconciliation sweep — %d diperiksa, %d diselesaikan", checked, resolved)
+				}
+			}
+		}
+	}()
+}
+
+// ReconcilePending is the safety net for a charge whose webhook was never
+// received (network blip, an external App's endpoint down at delivery time,
+// etc.): it re-checks every still-open dispatch directly against the
+// gateway and dispatches a terminal result exactly the way HandleWebhook
+// would — same consumer/relay code path, so downstream behavior is
+// identical regardless of how the outcome was discovered.
+func (s *PaymentService) ReconcilePending(ctx context.Context) (checked int, resolved int, err error) {
+	pending, err := s.dispatchRepo.ListUnresolvedForSweep(ctx, time.Now().Add(-reconcileMinAge), reconcileBatchLimit)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, dispatch := range pending {
+		checked++
+		if s.reconcileOne(ctx, dispatch) {
+			resolved++
+		}
+	}
+	return checked, resolved, nil
+}
+
+// reconcileOne handles a single dispatch, returning whether it ended up
+// resolved (a terminal event was dispatched) this round.
+func (s *PaymentService) reconcileOne(ctx context.Context, dispatch domain.ChargeDispatch) bool {
+	deadline := dispatch.ExpiresAt.Add(reconcileExpiryGrace)
+	if dispatch.ExpiresAt.IsZero() {
+		// Pre-existing rows from before expires_at was tracked — fall back
+		// to a generous max age from creation instead of never expiring.
+		deadline = dispatch.CreatedAt.Add(reconcileMaxAgeFallback)
+	}
+
+	result, statusErr := s.CheckStatus(ctx, dispatch.ProviderRef)
+
+	var event contracts.WebhookEvent
+	switch {
+	case statusErr == nil && result.Status != string(domain.ChargeUnpaid):
+		// The gateway gave us a definitive terminal answer.
+		event = contracts.WebhookEvent{
+			OrderRef: dispatch.OrderRef, ProviderRef: dispatch.ProviderRef,
+			Paid: result.Status == string(domain.ChargePaid), Amount: result.Amount, PaidAt: time.Now(),
+		}
+	case time.Now().After(deadline):
+		// Still no definitive answer (unpaid, or the status check itself
+		// failed) long past its own expiry — force-resolve as expired
+		// locally. The gateway's real state stops mattering practically once
+		// the payment window has been closed this long.
+		if statusErr != nil {
+			log.Printf("payment: reconciliation — order_ref %q gagal dicek (%v), dipaksa expired karena sudah lewat masa berlaku", dispatch.OrderRef, statusErr)
+		}
+		event = contracts.WebhookEvent{OrderRef: dispatch.OrderRef, ProviderRef: dispatch.ProviderRef, Paid: false}
+	default:
+		// Still legitimately open — leave it, check again next sweep.
+		return false
+	}
+
+	won, err := s.dispatchRepo.ClaimUnresolved(ctx, dispatch.OrderRef)
+	if err != nil {
+		log.Printf("payment: reconciliation — gagal klaim order_ref %q: %v", dispatch.OrderRef, err)
+		return false
+	}
+	if !won {
+		return false // a webhook resolved it in the meantime — not our job anymore
+	}
+
+	app, err := s.appRepo.FindByAppID(ctx, dispatch.AppID)
+	if err != nil || app == nil {
+		log.Printf("payment: reconciliation — App %q untuk order_ref %q tidak ditemukan: %v", dispatch.AppID, dispatch.OrderRef, err)
+		return true
+	}
+
+	switch app.Kind {
+	case domain.AppKindInternal:
+		s.mu.RLock()
+		consumer, ok := s.consumers[app.AppID]
+		s.mu.RUnlock()
+		if !ok {
+			log.Printf("payment: reconciliation — tidak ada consumer terdaftar untuk App internal %q", app.AppID)
+			return true
+		}
+		if err := consumer.ApplyWebhookEvent(ctx, dispatch.OrderRef, event); err != nil {
+			log.Printf("payment: reconciliation — consumer App %q gagal memproses order_ref %q: %v", app.AppID, dispatch.OrderRef, err)
+		}
+	default:
+		if err := s.relayWebhookToExternalApp(ctx, app, event); err != nil {
+			log.Printf("payment: reconciliation — gagal relay ke App eksternal %q untuk order_ref %q: %v", app.AppID, dispatch.OrderRef, err)
+		}
+	}
+	return true
 }
 
 // --- Admin CRUD (called directly by this module's own presentation layer) ---

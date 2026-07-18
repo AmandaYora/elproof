@@ -34,6 +34,11 @@ type Config struct {
 	// PaymentEncryptionKey derives the AES-256-GCM key `payment` uses to
 	// encrypt gateway credentials at rest — see MODULE_PAYMENT.md §8.
 	PaymentEncryptionKey string
+
+	// PaymentReconcileInterval is how often `payment` re-checks charges whose
+	// webhook was never received against the gateway directly — the safety
+	// net described in knowledge/MODULE_PAYMENT.md.
+	PaymentReconcileInterval time.Duration
 }
 
 // Load reads .env from the repo root (or the current directory) into the process
@@ -61,7 +66,8 @@ func Load() Config {
 		S3SecretKey: getEnv("S3_SECRET_KEY", ""),
 		S3UseSSL:    getEnv("S3_USE_SSL", "true") == "true",
 
-		PaymentEncryptionKey: getEnv("PAYMENT_ENCRYPTION_KEY", ""),
+		PaymentEncryptionKey:     getEnv("PAYMENT_ENCRYPTION_KEY", ""),
+		PaymentReconcileInterval: getDuration("PAYMENT_RECONCILE_INTERVAL", 3*time.Minute),
 	}
 }
 

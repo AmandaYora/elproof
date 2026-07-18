@@ -351,10 +351,13 @@ rows through them.
 | order_ref | VARCHAR(100) PK | the ref the calling App supplied when creating the charge |
 | app_id | VARCHAR(100) | `FK*` → `payment_apps.app_id` — who owns this charge, for webhook routing |
 | provider_ref | VARCHAR(150) NULL | the gateway's own transaction reference, for pull-based status checks |
+| expires_at | TIMESTAMP NULL | the charge's own deadline, recorded at creation — NULL for rows created before this column existed |
+| resolved_at | TIMESTAMP NULL | NULL until a terminal outcome (paid/expired/failed/refund) has been dispatched to the owning App — via webhook or the reconciliation sweep, see `knowledge/MODULE_PAYMENT.md` §6 step 6. Indexed with `created_at` for that sweep's query. |
 | created_at | TIMESTAMP | |
 
 Thin dispatch index only — PK uniqueness on `order_ref` doubles as idempotency (a repeat charge
 attempt with the same ref fails with a DB duplicate-key error, surfaced as `409`-equivalent).
+`expires_at`/`resolved_at` are the one exception to "not a ledger": completion markers, not amounts.
 
 ### `payment_webhook_events`
 | Column | Type | Notes |

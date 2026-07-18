@@ -48,10 +48,15 @@ func (c GatewayConfig) Enabled() bool {
 }
 
 // ChargeDispatch is the thin order_ref -> app_id index — never a ledger.
+// ExpiresAt/ResolvedAt exist only so this module can reconcile a charge whose
+// webhook was never received — ResolvedAt is nil until either a webhook or
+// the reconciliation sweep has dispatched a terminal outcome for it.
 type ChargeDispatch struct {
 	OrderRef    string
 	AppID       string
 	ProviderRef string
+	ExpiresAt   time.Time
+	ResolvedAt  *time.Time
 	CreatedAt   time.Time
 }
 

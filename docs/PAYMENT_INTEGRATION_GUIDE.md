@@ -201,10 +201,17 @@ menerima notifikasi (jaringan, server Anda down saat itu, dll).
 
 ## 8. Notifikasi webhook (best-effort, bukan satu-satunya sumber kebenaran)
 
-Saat charge Anda berubah status di Tripay (lunas, kedaluwarsa, gagal, refund), ElProof mencoba
-mengirim **satu kali** POST ke `callbackUrl` yang Anda daftarkan — **fire-and-forget**: tidak ada
-retry otomatis, timeout 5 detik. Kalau server Anda sedang down/lambat saat itu, relay hilang begitu
-saja — karena itu §7 (polling status) tetap wajib ada di sistem Anda, webhook ini murni percepatan.
+Saat charge Anda berubah status (lunas, kedaluwarsa, gagal, refund), ElProof mencoba mengirim
+**satu kali** POST ke `callbackUrl` yang Anda daftarkan — **fire-and-forget**: tidak ada retry
+otomatis, timeout 5 detik. Kalau server Anda sedang down/lambat tepat saat itu, pengiriman itu
+hilang begitu saja — karena itu §7 (polling status) tetap wajib ada di sistem Anda, webhook ini
+murni percepatan, bukan pengganti.
+
+ElProof secara berkala juga memeriksa ulang charge yang belum selesai langsung ke gateway (jaga-jaga
+kalau notifikasi awalnya tidak pernah sampai ke ElProof sama sekali), jadi Anda tetap akan menerima
+percobaan pengiriman webhook untuk charge yang sempat "terlewat" — tapi ini tidak mengubah saran di
+atas: percobaan pengiriman ke server Anda sendiri tetap cuma sekali per notifikasi, tanpa retry.
+Polling `GET .../status` (§7) tetap satu-satunya cara yang benar-benar andal.
 
 ```http
 POST <callbackUrl Anda>
