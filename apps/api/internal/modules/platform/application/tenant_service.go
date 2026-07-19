@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"strconv"
-	"strings"
 	"time"
 
 	billingcontracts "elproof/internal/modules/billing/contracts"
@@ -13,6 +12,7 @@ import (
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/pagination"
+	"elproof/internal/shared/validator"
 )
 
 type TenantRepository interface {
@@ -76,14 +76,10 @@ func (s *TenantService) Get(ctx context.Context, id int64) (*domain.Tenant, erro
 	return tenant, nil
 }
 
-func deriveUsername(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	return local
-}
-
 type RegisterTenantInput struct {
 	BusinessName string
 	OwnerName    string
+	Username     string
 	Email        string
 	Phone        string
 	City         string
@@ -101,12 +97,16 @@ type RegisterTenantResult struct {
 // credential (identity), and records an initial "unpaid" transaction
 // (billing) — see ADR-0008. Each module still only writes its own tables.
 func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput) (*RegisterTenantResult, error) {
+	if err := validator.Username(input.Username); err != nil {
+		return nil, err
+	}
+
 	plan, err := s.billing.GetPlan(ctx, input.PlanID)
 	if err != nil {
 		return nil, err
 	}
 
-	username := deriveUsername(input.Email)
+	username := input.Username
 	planID := input.PlanID
 
 	tenant := &domain.Tenant{

@@ -13,13 +13,14 @@ import {
 import type { PlatformAdmin } from "@/modules/platform-admin/data/types";
 
 interface FormState extends PlatformAdminFormValues {
+  username: string;
   password: string;
   confirmPassword: string;
 }
 
 function toFormState(admin?: PlatformAdmin): FormState {
   if (!admin) {
-    return { name: "", title: "", role: "Support", email: "", phone: "", password: "", confirmPassword: "" };
+    return { name: "", title: "", role: "Support", email: "", phone: "", username: "", password: "", confirmPassword: "" };
   }
   return {
     name: admin.name,
@@ -27,6 +28,7 @@ function toFormState(admin?: PlatformAdmin): FormState {
     role: admin.role,
     email: admin.email,
     phone: admin.phone,
+    username: "",
     password: "",
     confirmPassword: "",
   };
@@ -127,6 +129,15 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
 
         {!isEditing && (
           <>
+            <div className="sm:col-span-2">
+              <Field label="Username" required hint={errors.username}>
+                <Input
+                  value={values.username}
+                  onChange={(e) => set("username", e.target.value)}
+                  placeholder="cth. reza.hakim"
+                />
+              </Field>
+            </div>
             <Field label="Password" required hint={errors.password}>
               <div className="relative">
                 <Input

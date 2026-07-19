@@ -8,6 +8,7 @@ import (
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/pagination"
+	"elproof/internal/shared/validator"
 )
 
 type PlatformAdminRepository interface {
@@ -51,13 +52,17 @@ type RegisterPlatformAdminInput struct {
 	Name     string
 	Title    string
 	Role     domain.PlatformAdminRole
+	Username string
 	Email    string
 	Phone    string
 	Password string
 }
 
 func (s *PlatformAdminService) Register(ctx context.Context, input RegisterPlatformAdminInput) (*domain.PlatformAdmin, error) {
-	username := deriveUsername(input.Email)
+	if err := validator.Username(input.Username); err != nil {
+		return nil, err
+	}
+	username := input.Username
 
 	admin := &domain.PlatformAdmin{
 		Name: input.Name, Title: input.Title, Role: input.Role,

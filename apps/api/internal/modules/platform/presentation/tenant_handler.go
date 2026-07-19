@@ -125,6 +125,7 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 type registerTenantBody struct {
 	BusinessName string `json:"businessName"`
 	OwnerName    string `json:"ownerName"`
+	Username     string `json:"username"`
 	Email        string `json:"email"`
 	Phone        string `json:"phone"`
 	City         string `json:"city"`
@@ -139,7 +140,7 @@ func (h *TenantHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.tenants.Register(r.Context(), application.RegisterTenantInput{
-		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Email: body.Email,
+		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Username: body.Username, Email: body.Email,
 		Phone: body.Phone, City: body.City, PlanID: body.PlanID, Password: body.Password,
 	})
 	if err != nil {

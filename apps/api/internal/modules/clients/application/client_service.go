@@ -10,6 +10,7 @@ import (
 	"elproof/internal/modules/clients/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/pagination"
+	"elproof/internal/shared/validator"
 )
 
 type ClientRepository interface {
@@ -64,6 +65,7 @@ type CreateClientInput struct {
 	RelationNote string
 	Name         string
 	Phone        string
+	Username     string
 	Email        string
 	Password     string
 }
@@ -73,6 +75,10 @@ type CreateClientInput struct {
 // provisions a real login credential in the same flow, mirroring how
 // `platform`'s tenant registration works (ADR-0008).
 func (s *ClientService) Create(ctx context.Context, tenantID int64, input CreateClientInput) (*domain.Client, error) {
+	if err := validator.Username(input.Username); err != nil {
+		return nil, err
+	}
+
 	exists, err := s.projects.ProjectExists(ctx, tenantID, input.ProjectID)
 	if err != nil {
 		return nil, err
@@ -89,10 +95,9 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 		return nil, err
 	}
 
-	username := deriveUsername(input.Email)
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalClient, PrincipalID: formatID(c.ID),
-		Username: username, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
+		Username: input.Username, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
 	}); err != nil {
 		return nil, err
 	}

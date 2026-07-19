@@ -14,6 +14,7 @@ import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
 import { formatCurrency } from "@/shared/lib/formatters";
 
 interface FormState extends TenantFormValues {
+  username: string;
   planId: string;
   password: string;
   confirmPassword: string;
@@ -21,7 +22,7 @@ interface FormState extends TenantFormValues {
 
 function toFormState(tenant?: Tenant, defaultPlanId = ""): FormState {
   if (!tenant) {
-    return { businessName: "", ownerName: "", email: "", phone: "", city: "", planId: defaultPlanId, password: "", confirmPassword: "" };
+    return { businessName: "", ownerName: "", email: "", phone: "", city: "", username: "", planId: defaultPlanId, password: "", confirmPassword: "" };
   }
   return {
     businessName: tenant.businessName,
@@ -29,6 +30,7 @@ function toFormState(tenant?: Tenant, defaultPlanId = ""): FormState {
     email: tenant.email,
     phone: tenant.phone,
     city: tenant.city,
+    username: "",
     planId: tenant.planId ?? defaultPlanId,
     password: "",
     confirmPassword: "",
@@ -142,6 +144,13 @@ export function TenantFormModal({ open, onClose, initialTenant, plans, onSubmitC
 
         {!isEditing && (
           <>
+            <Field label="Username" required hint={errors.username}>
+              <Input
+                value={values.username}
+                onChange={(e) => set("username", e.target.value)}
+                placeholder="cth. budi.rahman"
+              />
+            </Field>
             <Field label="Paket Langganan" required hint={errors.planId}>
               <Select value={values.planId} onChange={(e) => set("planId", e.target.value)}>
                 {activePlans.map((plan) => (

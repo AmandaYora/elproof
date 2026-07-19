@@ -86,6 +86,7 @@ type registerPlatformAdminBody struct {
 	Name     string `json:"name"`
 	Title    string `json:"title"`
 	Role     string `json:"role"`
+	Username string `json:"username"`
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
@@ -98,7 +99,7 @@ func (h *PlatformAdminHandler) register(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	admin, err := h.admins.Register(r.Context(), application.RegisterPlatformAdminInput{
-		Name: body.Name, Title: body.Title, Role: domain.PlatformAdminRole(body.Role),
+		Name: body.Name, Title: body.Title, Role: domain.PlatformAdminRole(body.Role), Username: body.Username,
 		Email: body.Email, Phone: body.Phone, Password: body.Password,
 	})
 	if err != nil {

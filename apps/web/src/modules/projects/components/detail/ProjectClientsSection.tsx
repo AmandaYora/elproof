@@ -409,7 +409,7 @@ function CreateClientModal({
   onClose: () => void;
   onSubmit: (values: ClientCreateFormValues) => void;
 }) {
-  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", password: "" });
+  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", username: "", password: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof ClientCreateFormValues, string>>>({});
 
   function set<K extends keyof ClientCreateFormValues>(key: K, value: ClientCreateFormValues[K]) {
@@ -460,6 +460,9 @@ function CreateClientModal({
         </Field>
         <Field label="Email" required hint={errors.email}>
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
+        </Field>
+        <Field label="Username" required hint={errors.username}>
+          <Input value={values.username} onChange={(e) => set("username", e.target.value)} placeholder="cth. budi.rahman" />
         </Field>
         <Field label="Password Login" required hint={errors.password}>
           <Input type="password" value={values.password} onChange={(e) => set("password", e.target.value)} placeholder="Minimal 6 karakter" />

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usernameSchema } from "@/shared/lib/validators";
 
 export const PLATFORM_ADMIN_ROLE_OPTIONS = ["Super Admin", "Support"] as const;
 
@@ -14,6 +15,7 @@ export type PlatformAdminFormValues = z.infer<typeof platformAdminSchema>;
 
 export const platformAdminCreateSchema = platformAdminSchema
   .extend({
+    username: usernameSchema,
     password: z.string().min(8, "Password minimal 8 karakter"),
     confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
   })

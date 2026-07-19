@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usernameSchema } from "@/shared/lib/validators";
 
 export const tenantSchema = z.object({
   businessName: z.string().min(2, "Nama WO wajib diisi"),
@@ -12,6 +13,7 @@ export type TenantFormValues = z.infer<typeof tenantSchema>;
 
 export const tenantCreateSchema = tenantSchema
   .extend({
+    username: usernameSchema,
     planId: z.string().min(1, "Pilih paket langganan"),
     password: z.string().min(8, "Password minimal 8 karakter"),
     confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),

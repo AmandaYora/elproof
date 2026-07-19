@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usernameSchema } from "@/shared/lib/validators";
 
 export const CLIENT_ROLE_OPTIONS = ["Bride", "Groom", "Family Representative"] as const;
 
@@ -12,6 +13,7 @@ export type ClientContactFormValues = z.infer<typeof clientContactSchema>;
 
 export const clientCreateSchema = clientContactSchema.extend({
   relationNote: z.string().optional().default(""),
+  username: usernameSchema,
   password: z.string().min(6, "Password minimal 6 karakter"),
 });
 

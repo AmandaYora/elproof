@@ -134,6 +134,7 @@ type createClientBody struct {
 	RelationNote string `json:"relationNote"`
 	Name         string `json:"name"`
 	Phone        string `json:"phone"`
+	Username     string `json:"username"`
 	Email        string `json:"email"`
 	Password     string `json:"password"`
 }
@@ -146,7 +147,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 	}
 	c, err := h.clients.Create(r.Context(), tenantID, application.CreateClientInput{
 		ProjectID: body.ProjectID, Role: domain.ClientRole(body.Role), RelationNote: body.RelationNote,
-		Name: body.Name, Phone: body.Phone, Email: body.Email, Password: body.Password,
+		Name: body.Name, Phone: body.Phone, Username: body.Username, Email: body.Email, Password: body.Password,
 	})
 	if err != nil {
 		writeAppError(w, err)
