@@ -10,6 +10,7 @@ import (
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform/domain"
 	staffcontracts "elproof/internal/modules/staff/contracts"
+	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/validator"
@@ -41,6 +42,7 @@ type TenantService struct {
 	identity       identitycontracts.Contracts
 	billing        billingcontracts.Contracts
 	payment        paymentcontracts.Client
+	vendors        vendorscontracts.Contracts
 }
 
 func NewTenantService(
@@ -55,6 +57,14 @@ func NewTenantService(
 		repo: repo, pendingCharges: pendingCharges,
 		staff: staff, identity: identity, billing: billing, payment: payment,
 	}
+}
+
+// SetVendors completes two-phase wiring with the vendors module — main.go
+// builds `platform` before `vendors` (which itself depends on `projects`), so
+// this can't be a NewTenantService constructor argument. Same idiom as
+// projects' SetClientAccessResolver for the clients<->projects cycle.
+func (s *TenantService) SetVendors(vendors vendorscontracts.Contracts) {
+	s.vendors = vendors
 }
 
 func (s *TenantService) List(ctx context.Context) ([]domain.Tenant, error) {
@@ -121,6 +131,10 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		SubscriptionStatus: domain.StatusPendingPayment,
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
+		return nil, err
+	}
+
+	if err := s.vendors.SeedDefaultCategories(ctx, tenant.ID); err != nil {
 		return nil, err
 	}
 

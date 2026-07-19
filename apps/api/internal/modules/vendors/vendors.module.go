@@ -11,6 +11,7 @@ import (
 
 	projectscontracts "elproof/internal/modules/projects/contracts"
 	"elproof/internal/modules/vendors/application"
+	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/modules/vendors/infrastructure"
 	"elproof/internal/modules/vendors/presentation"
 )
@@ -18,6 +19,7 @@ import (
 type Module struct {
 	categoryHandler *presentation.VendorCategoryHandler
 	vendorHandler   *presentation.VendorHandler
+	contracts       vendorscontracts.Contracts
 }
 
 func NewModule(db *sql.DB, projects projectscontracts.Contracts) *Module {
@@ -30,7 +32,16 @@ func NewModule(db *sql.DB, projects projectscontracts.Contracts) *Module {
 	return &Module{
 		categoryHandler: presentation.NewVendorCategoryHandler(categoryService),
 		vendorHandler:   presentation.NewVendorHandler(vendorService, projects),
+		contracts:       vendorscontracts.New(categoryService),
 	}
+}
+
+// Contracts exposes vendors' cross-module surface — currently used by
+// `platform` to seed a new tenant's default vendor categories on
+// registration. See the two-phase wiring note in main.go: `platform` is
+// built before `vendors`, so this can't be a `platform.NewModule` argument.
+func (m *Module) Contracts() vendorscontracts.Contracts {
+	return m.contracts
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {

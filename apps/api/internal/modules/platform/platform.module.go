@@ -15,6 +15,7 @@ import (
 	"elproof/internal/modules/platform/infrastructure"
 	"elproof/internal/modules/platform/presentation"
 	staffcontracts "elproof/internal/modules/staff/contracts"
+	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/httpx"
 )
 
@@ -43,6 +44,13 @@ func NewModule(
 		adminHandler:  presentation.NewPlatformAdminHandler(adminService),
 		tenantService: tenantService,
 	}
+}
+
+// SetVendors completes two-phase wiring with the vendors module — see
+// TenantService.SetVendors. main.go calls this right after vendorsModule is
+// built, the same slot as projectsModule.SetClientAccessResolver.
+func (m *Module) SetVendors(vendors vendorscontracts.Contracts) {
+	m.tenantService.SetVendors(vendors)
 }
 
 // ApplyWebhookEvent makes *Module itself satisfy

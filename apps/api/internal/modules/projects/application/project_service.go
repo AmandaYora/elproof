@@ -106,6 +106,9 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffI
 	if err := s.repo.Create(ctx, p); err != nil {
 		return nil, err
 	}
+	if err := s.seedDefaultMilestones(ctx, p.ID, p.EventDate, p.PrepStartDate); err != nil {
+		return nil, err
+	}
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
 		"Project baru dibuat: "+p.Name)
 	return p, nil

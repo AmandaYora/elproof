@@ -9,7 +9,7 @@ frontend's own module folders under `apps/web/src/modules/<name>`.
 |---|---|---|---|
 | `identity` | Login/refresh/logout for all principal types; password hashing; token issuance | `credentials`, `refresh_tokens` | none — deliberately profile-agnostic (see ADR-0005) |
 | `payment` | One payment-gateway merchant wallet (Tripay), wrapped for many consumers ("Apps") — gateway config, App registry, webhook dispatch. Owns no business ledger of its own — see `MODULE_PAYMENT.md`. Fase 9: internal mode (`platform` as the one App internal). Fase 10 (implemented): external Apps over HTTP — `/auth/app/token` + `/external/payments/*`, Platform Console's "Manajemen Aplikasi" page. | `payment_gateway_config`, `payment_apps`, `payment_charge_dispatch`, `payment_webhook_events` | `identity` (mint bearer tokens for external Apps — one-way, same shape as `vendors -> projects` below) |
-| `platform` | Tenant lifecycle (register/suspend/activate/pay), Platform Console's own admin accounts | `tenants`, `platform_admins`, `pending_subscription_charges` | `staff` (create Owner on tenant registration), `identity` (create credentials), `billing` (read plan, record/update transaction), `payment` (create charge; also registers itself as `payment`'s webhook consumer for `platform-billing`, Fase 9) |
+| `platform` | Tenant lifecycle (register/suspend/activate/pay), Platform Console's own admin accounts | `tenants`, `platform_admins`, `pending_subscription_charges` | `staff` (create Owner on tenant registration), `identity` (create credentials), `billing` (read plan, record/update transaction), `payment` (create charge; also registers itself as `payment`'s webhook consumer for `platform-billing`, Fase 9), `vendors` (seed a new tenant's default vendor categories on registration) |
 | `billing` | Subscription plan catalog + subscription transaction ledger — single source of truth shared by both consoles | `subscription_plans`, `subscription_transactions` | none |
 | `staff` | WO internal users (Owner/Admin/Staff), tenant-scoped | `staff_members` | none |
 | `clients` | Client contacts per project, tenant-scoped | `clients` | `projects` (validate `project_id` exists) |
@@ -49,6 +49,16 @@ from `vendors`, this is just an ordinary constructor dependency — `main.go` si
 `projectsModule` before `vendorsModule`. No dependency-inversion/bridge pattern required; that
 machinery is only for genuine two-way relationships (see the `clients`↔`projects` and
 `payment`↔`platform` cases above).
+
+**`platform` → `vendors`, a one-way dependency blocked only by build order (not a real cycle):**
+`platform` needs `vendors.Contracts` to seed a new tenant's default vendor categories on
+registration, but `main.go` builds `platformModule` *before* `vendorsModule` (which itself must be
+built after `projectsModule`, since `vendors.NewModule` takes `projects.Contracts`) — so
+`vendors.Contracts` can't be a `platform.NewModule` constructor argument without reordering the
+whole composition root. Since `vendors` never calls back into `platform`, this isn't a genuine
+cycle and needs no dependency-inversion/interface-splitting — just the same setter idiom as the
+two-phase cases above: `TenantService.SetVendors` / `platform.Module.SetVendors`, called from
+`main.go` right after `vendorsModule` is built (`platformModule.SetVendors(vendorsModule.Contracts())`).
 
 **`payment` → `identity`, the same plain one-way shape (Fase 10):** `payment.NewModule` takes
 `identity.Contracts` as a constructor argument, to mint bearer tokens for external Apps

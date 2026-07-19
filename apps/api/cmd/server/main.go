@@ -160,6 +160,11 @@ func serve(cfg config.Config) {
 	// (project_vendors is owned by projects, not vendors).
 	projectsModule := projects.NewModule(db, storageClient)
 	vendorsModule := vendors.NewModule(db, projectsModule.Contracts())
+	// Two-phase wiring: platform needs vendors' contract (seed default vendor
+	// categories on tenant registration) but platformModule is built above,
+	// before vendorsModule exists — same bridging pattern as the
+	// SetClientAccessResolver call below.
+	platformModule.SetVendors(vendorsModule.Contracts())
 	clientsModule := clients.NewModule(db, projectsModule.Contracts(), identityModule.Contracts())
 	// Two-phase wiring: projects needs clients' contract (Fase 6 client-portal
 	// scoping) but clients.NewModule already needs projects.Contracts() to
