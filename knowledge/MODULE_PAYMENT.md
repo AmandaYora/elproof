@@ -139,19 +139,27 @@ without either importing the other's package.
      in-process, same request (Fase 9).
    - `kind = external` → the event is relayed over HTTP to the App's `callback_url`, HMAC-signed
      with that App's own secret (decrypted via `secret_encrypted`), fire-and-forget: one attempt,
-     short timeout, no retry (Fase 10). A relay that fails (network blip, App down) is **not**
-     retried and does not fail the webhook handler back to the gateway — the external App's
-     fallback is polling `GET /external/payments/charges/{orderRef}/status` (§7.2), which always
-     reflects the gateway's own source of truth regardless of whether the relay arrived. Note this
-     specific failure mode (delivery attempted, network drop reaching the App) is **not** covered by
-     step 6's reconciliation sweep either — the claim is already consumed by the time delivery is
-     attempted. Only a genuinely *missed or never-received* webhook is covered.
+     short timeout, no retry (Fase 10). **Genuinely asynchronous** (its own goroutine, detached from
+     the request context) — a slow or unreachable external App must never add its own latency to
+     Tripay's webhook response, which is why this runs in the background rather than being awaited.
+     Confirmed: a webhook to an App whose endpoint took 3s to respond still got a ~10ms response
+     back to the caller. A relay that fails (network blip, App down) is **not** retried and does not
+     fail the webhook handler back to the gateway — the external App's fallback is polling
+     `GET /external/payments/charges/{orderRef}/status` (§7.2), which always reflects the gateway's
+     own source of truth regardless of whether the relay arrived. Note this specific failure mode
+     (delivery attempted, network drop reaching the App) is **not** covered by step 6's
+     reconciliation sweep either — the claim is already consumed by the time delivery is attempted.
+     Only a genuinely *missed or never-received* webhook is covered.
 6. **Reconciliation — the safety net for a webhook ElProof itself never received at all**
    (`PaymentService.ReconcilePending`, run on a ticker — `PAYMENT_RECONCILE_INTERVAL`, default 3m,
    see `StartReconciler`). Every dispatch still `resolved_at IS NULL` and older than a couple of
    minutes (no point checking something that was just created) is re-checked directly against the
    gateway (`CheckStatus`, the same `GET /transaction/detail` Tripay call the status endpoints
-   already use), batched (50/tick) and oldest-first:
+   already use), batched (50/tick) and oldest-first, up to `reconcileConcurrency` (10) checked
+   *concurrently* rather than one at a time — each check is a live network round trip, so a full
+   batch run sequentially could turn one sweep tick into minutes; `ClaimUnresolved`'s atomic `UPDATE`
+   is what makes the concurrent version safe (the same guarantee that already protects a webhook
+   racing this same sweep, extended to dispatches racing each other):
    - A definitive terminal answer (paid/expired/failed/refund) is dispatched exactly like a webhook
      would be — same `ClaimUnresolved` guard, same consumer/relay switch, so downstream behavior
      is identical regardless of whether the outcome was discovered via webhook or by polling.
@@ -199,7 +207,7 @@ expire.
 |---|---|---|
 | POST | `/external/payments/charges` | body `{orderRef, amount, channel?, customerName?, customerEmail?, customerPhone?}`. `appId` always comes from the token, never the body. Duplicate `orderRef` → `409 conflict` (§7.3), no duplicate charge ever created upstream. |
 | GET | `/external/payments/charges/{orderRef}/status` | Only returns a charge if the Charge Dispatch Index says this `orderRef` belongs to the calling App — another App's `orderRef` is `404 not_found`, never leaked as "exists but not yours". |
-| GET | `/external/payments/channels` | Same live channel list `Client.ListChannels` returns internally. |
+| GET | `/external/payments/channels` | Same channel list `Client.ListChannels` returns internally — cached, see §7.4. |
 
 ### 7.3 Idempotency
 
@@ -210,11 +218,18 @@ has a race window (two concurrent requests for the same fresh `orderRef`), close
 own uniqueness constraint: a losing insert is translated to the same `409 conflict` rather than a
 raw SQL error.
 
-### 7.4 (reserved — fee quoting)
+### 7.4 Fee quoting and channel-list caching
 
 `QuoteFee`/`Channel.QuoteFee` compute Tripay's flat+percentage fee shape; not part of the critical
 charge-creation path, available to any caller (internal or external) that wants to show a fee
 estimate before charging.
+
+Both `ListChannels` and `QuoteFee` share one in-memory cache of the gateway's raw channel list
+(`loadChannels`, TTL `channelCacheTTL` = 5 minutes) instead of each hitting the gateway live on
+every call — this data (fees, active state) rarely changes, so a live round trip on every single
+call was avoidable latency, not a correctness requirement (unlike gateway config/App-status checks,
+§8, which are deliberately never cached). `UpdateConfig` clears this cache explicitly, so switching
+provider/mode is never served stale channels from whatever was active before.
 
 ### 7.5 Secret storage
 
@@ -280,3 +295,18 @@ as before (validation field-errors or `null`); only these external-facing handle
   still-open dispatch is correctly left untouched across repeated sweep runs; and a legitimate
   webhook arriving for an order_ref the sweep already resolved is correctly treated as a no-op
   (confirmed via a captured HTTP relay log showing exactly one delivery, not two).
+- **Performance hardening (no phase number of its own)** — a follow-up architecture review asked
+  specifically whether this module's performance was optimal. Three findings, all fixed:
+  1. `HandleWebhook` used to block Tripay's own webhook response on the external relay's full HTTP
+     round trip (up to its 5s timeout) — `relayWebhookToExternalApp` is now genuinely asynchronous
+     (its own goroutine), so a slow/unreachable external App can no longer add its own latency to
+     the gateway's response. Confirmed: a webhook to an App whose endpoint took 3s to respond still
+     got a ~10ms response.
+  2. `ReconcilePending`'s batch used to check every dispatch sequentially — now bounded-concurrent
+     (`reconcileConcurrency` = 10), so a full batch of slow gateway checks can no longer turn one
+     sweep tick into minutes. Confirmed correct (not just faster) with 13 seeded rows — 3 more than
+     the concurrency cap — all still checked and resolved/left-alone correctly, none dropped.
+  3. `ListChannels`/`QuoteFee` used to hit the gateway live on every single call; both now share one
+     5-minute in-memory cache (`loadChannels`), invalidated explicitly by `UpdateConfig` on a
+     provider/mode switch. Confirmed via an isolated test with a stub gateway: exactly one live call
+     across 6 requests within the TTL window, a 2nd live call only after forcing the cache stale.

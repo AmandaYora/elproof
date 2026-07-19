@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -45,7 +46,19 @@ type PaymentService struct {
 
 	mu        sync.RWMutex
 	consumers map[string]contracts.WebhookConsumer
+
+	// channelCache holds the gateway's own channel list (fees, active state)
+	// for channelCacheTTL — this rarely changes, so avoiding a live gateway
+	// round trip on every single ListChannels/QuoteFee call is a clear win.
+	// Cleared by UpdateConfig so a provider/mode switch is never served stale
+	// channels from the previous provider.
+	channelCacheMu sync.RWMutex
+	channelCache   []domain.Channel
+	channelCacheAt time.Time
 }
+
+// channelCacheTTL bounds how stale the cached channel list can be.
+const channelCacheTTL = 5 * time.Minute
 
 func NewPaymentService(db *sql.DB, encryptionKey string, identity identitycontracts.Contracts, appTokenTTL time.Duration) (*PaymentService, error) {
 	c, err := newCryptor(encryptionKey)
@@ -112,7 +125,7 @@ func (s *PaymentService) ListChannels(ctx context.Context) ([]contracts.Channel,
 	if gw == nil {
 		return nil, apperror.Validation("Gateway pembayaran belum dikonfigurasi", nil)
 	}
-	channels, err := gw.ListChannels(ctx)
+	channels, err := s.loadChannels(ctx, gw)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +148,7 @@ func (s *PaymentService) QuoteFee(ctx context.Context, channel string, amount in
 	if gw == nil {
 		return 0, apperror.Validation("Gateway pembayaran belum dikonfigurasi", nil)
 	}
-	channels, err := gw.ListChannels(ctx)
+	channels, err := s.loadChannels(ctx, gw)
 	if err != nil {
 		return 0, err
 	}
@@ -145,6 +158,33 @@ func (s *PaymentService) QuoteFee(ctx context.Context, channel string, amount in
 		}
 	}
 	return 0, apperror.NotFound("Kanal pembayaran tidak ditemukan")
+}
+
+// loadChannels returns the gateway's channel list, cached for channelCacheTTL
+// — this data (fees, active state) rarely changes, so a live gateway round
+// trip on every single call is avoidable latency. Shared by ListChannels and
+// QuoteFee so both benefit from one cache instead of each hitting the
+// gateway independently.
+func (s *PaymentService) loadChannels(ctx context.Context, gw gateway) ([]domain.Channel, error) {
+	s.channelCacheMu.RLock()
+	fresh := !s.channelCacheAt.IsZero() && time.Since(s.channelCacheAt) < channelCacheTTL
+	cached := s.channelCache
+	s.channelCacheMu.RUnlock()
+	if fresh {
+		return cached, nil
+	}
+
+	channels, err := gw.ListChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	s.channelCacheMu.Lock()
+	s.channelCache = channels
+	s.channelCacheAt = time.Now()
+	s.channelCacheMu.Unlock()
+
+	return channels, nil
 }
 
 const defaultChargeChannel = "QRIS"
@@ -325,7 +365,8 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, signature string, ra
 		}
 		return consumer.ApplyWebhookEvent(ctx, event.OrderRef, consumerEvent)
 	default:
-		return s.relayWebhookToExternalApp(ctx, app, consumerEvent)
+		s.relayWebhookToExternalApp(app, consumerEvent)
+		return nil
 	}
 }
 
@@ -339,53 +380,62 @@ type externalWebhookPayload struct {
 }
 
 // relayWebhookToExternalApp signs and POSTs one fire-and-forget attempt to an
-// external App's callback_url — no retry, short timeout. A missed relay
-// (network blip, App down) is recovered by the App itself polling
-// `GET /external/payments/charges/{orderRef}/status` (see §7.2), so a failed
-// relay here is logged, never surfaced as an error to the gateway (which
-// would otherwise interpret it as "please retry the whole webhook").
-func (s *PaymentService) relayWebhookToExternalApp(ctx context.Context, app *domain.App, event contracts.WebhookEvent) error {
-	if app.CallbackURL == "" {
-		log.Printf("payment: App eksternal %q tidak punya callback_url, relay dilewati", app.AppID)
-		return nil
-	}
-	secret, err := s.cryptor.decrypt(app.SecretEncrypted)
-	if err != nil {
-		log.Printf("payment: gagal mendekripsi secret App %q untuk relay: %v", app.AppID, err)
-		return nil
-	}
+// external App's callback_url — no retry, short timeout. Genuinely
+// asynchronous: the network call runs in its own goroutine so neither
+// Tripay's webhook response (HandleWebhook) nor the reconciliation sweep's
+// throughput (reconcileOne) ever blocks on a third party's server — a slow
+// or unreachable external App must never add its own latency to either of
+// those. Deliberately detached from the caller's context (`context.Background()`,
+// not the caller's `ctx`): this goroutine outlives the request/sweep-tick
+// that launched it, so a context tied to that would already be cancelled
+// before the relay even has a chance to complete. A missed relay (network
+// blip, App down) is recovered by the App itself polling
+// `GET /external/payments/charges/{orderRef}/status` (see §7.2) — errors
+// here are only ever logged, never surfaced to the caller.
+func (s *PaymentService) relayWebhookToExternalApp(app *domain.App, event contracts.WebhookEvent) {
+	go func() {
+		if app.CallbackURL == "" {
+			log.Printf("payment: App eksternal %q tidak punya callback_url, relay dilewati", app.AppID)
+			return
+		}
+		secret, err := s.cryptor.decrypt(app.SecretEncrypted)
+		if err != nil {
+			log.Printf("payment: gagal mendekripsi secret App %q untuk relay: %v", app.AppID, err)
+			return
+		}
 
-	var paidAt string
-	if !event.PaidAt.IsZero() {
-		paidAt = event.PaidAt.Format(time.RFC3339)
-	}
-	payload, err := json.Marshal(externalWebhookPayload{
-		OrderRef: event.OrderRef, Paid: event.Paid, Amount: event.Amount, PaidAt: paidAt,
-	})
-	if err != nil {
-		return err
-	}
+		var paidAt string
+		if !event.PaidAt.IsZero() {
+			paidAt = event.PaidAt.Format(time.RFC3339)
+		}
+		payload, err := json.Marshal(externalWebhookPayload{
+			OrderRef: event.OrderRef, Paid: event.Paid, Amount: event.Amount, PaidAt: paidAt,
+		})
+		if err != nil {
+			log.Printf("payment: gagal membuat payload relay untuk App %q: %v", app.AppID, err)
+			return
+		}
 
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
-	signature := hex.EncodeToString(mac.Sum(nil))
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write(payload)
+		signature := hex.EncodeToString(mac.Sum(nil))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, app.CallbackURL, bytes.NewReader(payload))
-	if err != nil {
-		log.Printf("payment: gagal menyusun request relay ke App %q: %v", app.AppID, err)
-		return nil
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Webhook-Signature", signature)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, app.CallbackURL, bytes.NewReader(payload))
+		if err != nil {
+			log.Printf("payment: gagal menyusun request relay ke App %q: %v", app.AppID, err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Webhook-Signature", signature)
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("payment: relay webhook ke App eksternal %q (%s) gagal, App diharapkan polling status: %v", app.AppID, app.CallbackURL, err)
-		return nil
-	}
-	defer resp.Body.Close()
-	return nil
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("payment: relay webhook ke App eksternal %q (%s) gagal, App diharapkan polling status: %v", app.AppID, app.CallbackURL, err)
+			return
+		}
+		defer resp.Body.Close()
+	}()
 }
 
 // --- Reconciliation (safety net for a charge whose webhook was never received) ---
@@ -408,6 +458,10 @@ const (
 	// predate the expires_at column (NULL) — so nothing pre-existing is left
 	// open forever just because it wasn't recorded.
 	reconcileMaxAgeFallback = 24 * time.Hour
+	// reconcileConcurrency bounds how many dispatches are checked against the
+	// gateway at once within a single sweep tick — keeps a full batch from
+	// running as `reconcileBatchLimit` sequential round trips.
+	reconcileConcurrency = 10
 )
 
 // StartReconciler runs ReconcilePending on a fixed interval until ctx is
@@ -446,13 +500,31 @@ func (s *PaymentService) ReconcilePending(ctx context.Context) (checked int, res
 	if err != nil {
 		return 0, 0, err
 	}
+
+	// Bounded fan-out, not sequential: each iteration's dominant cost is a
+	// live network round trip to the gateway (CheckStatus), so checking a
+	// full batch one at a time could turn a single sweep tick into minutes
+	// under a real backlog. reconcileConcurrency caps how many of those
+	// round trips are in flight at once — ClaimUnresolved's atomic UPDATE is
+	// what makes this safe (it's the same guarantee that already protects a
+	// concurrent webhook delivery racing this same sweep).
+	sem := make(chan struct{}, reconcileConcurrency)
+	var wg sync.WaitGroup
+	var resolvedCount int64
 	for _, dispatch := range pending {
-		checked++
-		if s.reconcileOne(ctx, dispatch) {
-			resolved++
-		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(d domain.ChargeDispatch) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if s.reconcileOne(ctx, d) {
+				atomic.AddInt64(&resolvedCount, 1)
+			}
+		}(dispatch)
 	}
-	return checked, resolved, nil
+	wg.Wait()
+
+	return len(pending), int(resolvedCount), nil
 }
 
 // reconcileOne handles a single dispatch, returning whether it ended up
@@ -517,9 +589,7 @@ func (s *PaymentService) reconcileOne(ctx context.Context, dispatch domain.Charg
 			log.Printf("payment: reconciliation — consumer App %q gagal memproses order_ref %q: %v", app.AppID, dispatch.OrderRef, err)
 		}
 	default:
-		if err := s.relayWebhookToExternalApp(ctx, app, event); err != nil {
-			log.Printf("payment: reconciliation — gagal relay ke App eksternal %q untuk order_ref %q: %v", app.AppID, dispatch.OrderRef, err)
-		}
+		s.relayWebhookToExternalApp(app, event)
 	}
 	return true
 }
@@ -590,7 +660,16 @@ func (s *PaymentService) UpdateConfig(ctx context.Context, input UpdateConfigInp
 		}
 		cfg.TripayPrivateKeyEncrypted = enc
 	}
-	return s.configRepo.Update(ctx, cfg)
+	if err := s.configRepo.Update(ctx, cfg); err != nil {
+		return err
+	}
+	// A provider/mode switch must never keep serving the previous provider's
+	// cached channel list — clear it so the next ListChannels/QuoteFee call
+	// fetches fresh from whatever gateway is now active.
+	s.channelCacheMu.Lock()
+	s.channelCacheAt = time.Time{}
+	s.channelCacheMu.Unlock()
+	return nil
 }
 
 // --- App registry (Fase 10 — Platform Console "Manajemen Aplikasi") ---
