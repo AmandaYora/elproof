@@ -30,3 +30,10 @@ library is introduced. Every domain module gets one store at
 - This resolves PLAN.md §6 item 1 — it is no longer an open decision. Fase 3 and Fase 4's frontend
   work (building stores for `staff`, `clients`, `vendors`, `vendor-categories`, `projects`) must
   follow this exact pattern, not introduce a different one per module.
+- **Update (Fase 9/10):** `platform-admin` ended up with three stores
+  (`usePlatformAdminStore.ts`, `usePaymentGatewayStore.ts`, `useAppsStore.ts`) rather than one — this
+  is not a violation of "one store per module," it's "one store per concern," since gateway config
+  and the external App registry are genuinely unrelated resources that happen to live in the same
+  frontend module (both are Platform Console admin surfaces over the `payment` backend module). The
+  "no exception" language above still means no React Query/SWR and no per-module deviation from the
+  fetch-then-set pattern — it was never meant to force unrelated resources into one store file.

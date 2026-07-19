@@ -127,7 +127,10 @@ See ADR-0011 for the full decision record. The target VPS ("Elcodelabs", also ho
 - `elproof-app` container running and healthy on `127.0.0.1:8082`; `elproof_db` fully migrated
   (all 25 tables) and seeded (`superadmin`/`superadmin`, "Paket 1 Tahun"); nginx site + certbot
   TLS in place (its own `server_name`, does not touch elkasir's `default_server`); end-to-end
-  verified (health check, login, and the built frontend all reachable over HTTPS).
+  verified (health check, login, and the built frontend all reachable over HTTPS). This is a
+  point-in-time snapshot from the first deploy — later migrations (e.g. `000011` for Fase 10's
+  reconciliation sweep) have landed since through the same `deploy.sh` pipeline without incident;
+  see ADR-0011's own "Update" note rather than treating the migration count/version here as current.
 - The domain's DNS record needed a fix before this worked: `elproof.elcodelabs.com` initially
   pointed at an unrelated Hostinger-hosting ALIAS record (leftover from something else on the
   same registrar account), not this VPS — corrected to a plain `A` record → `103.189.235.79`.

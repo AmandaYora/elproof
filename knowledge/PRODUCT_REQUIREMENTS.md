@@ -18,8 +18,9 @@ surface actually does, at the feature level, as already implemented in the front
 - **Pengguna** (Users): WO's own internal staff (Admin/Staff only — Owner is managed via Platform
   Console, see below).
 - **Langganan** (Subscription): Owner-only. Shows the tenant's current plan, features, expiry, and
-  transaction history; "pay" is currently simulated client-side (Tripay wording removed from UI by
-  design — see ADR history in `PLAN.md`).
+  transaction history; "Bayar Sekarang" creates a real QRIS charge through Tripay (`payment` module,
+  Fase 9) and polls the transaction status until the gateway confirms it — see
+  [MODULE_PAYMENT.md](MODULE_PAYMENT.md).
 
 ## Client Portal (`/portal/*`)
 
@@ -39,9 +40,25 @@ client's own project only.
   is the single source of truth also rendered on the WO Console's `Langganan` card.
 - **Transaksi**: subscription transaction ledger across all tenants.
 - **Pengguna**: manage Platform Console's own admin accounts (Super Admin / Support roles).
+- **Gateway Pembayaran** (`/platform/pembayaran`): configure the active payment provider (Tripay),
+  sandbox/production mode, and merchant credentials (write-only — never echoed back) — see
+  [MODULE_PAYMENT.md](MODULE_PAYMENT.md).
+- **Manajemen Aplikasi** (`/platform/aplikasi`): register/manage the external Apps allowed to create
+  charges through ElProof's payment gateway as a service (Fase 10) — list Apps, register a new
+  external App (App ID + secret, shown once), reset a secret, toggle active/inactive. ElProof's own
+  billing (`ElProof Billing`, internal) is always listed and can't be disabled here.
+
+## Public Marketing Site (`/homepage/*`)
+
+Frontend-only, no backend module or API calls (see the `homepage` row in
+[MODULE_MAP.md](MODULE_MAP.md)) — landing page, Tentang Kami, Syarat & Ketentuan, Kebijakan Privasi,
+Kebijakan Refund, FAQ, and Kontak (showing email, phone, and business address, kept in sync with
+what's registered with payment-gateway merchants like iPaymu).
 
 ## Explicitly out of scope for now
 
-- Real payment gateway integration (Tripay is UI-hidden/mocked; wording deliberately kept
-  non-developer-centric).
 - Anything beyond a single WO business per tenant (no franchise/multi-branch concept).
+- Multiple simultaneous active payment gateway providers (one active provider at a time, chosen in
+  Gateway Pembayaran — no per-tenant or per-App provider choice).
+- Cancelling an already-created payment charge (Tripay itself has no cancel/void endpoint — an
+  abandoned charge is left to expire naturally; see [MODULE_PAYMENT.md](MODULE_PAYMENT.md)).

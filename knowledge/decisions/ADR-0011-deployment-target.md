@@ -111,3 +111,12 @@ subcommand (mirroring upstream golang-migrate's own recovery command) was added 
 so the fix goes through the same image/tooling as every other deploy operation, not an
 out-of-band database edit. Redeployed clean afterward: all 25 tables present, `schema_migrations`
 at version 10 / not dirty, minimal seed data in place, login verified end-to-end over HTTPS.
+
+**Update — since 2026-07-17:** migrations `000011` (Fase 10 reconciliation columns on
+`payment_charge_dispatch`) have landed and deployed the same way (`deploy.sh` → `migrate up`), each
+time without incident. Table count is unaffected by 000011 (it only adds columns to an existing
+table), so "all 25 tables" is still accurate; `schema_migrations`'s version number itself is not —
+treat "version 10" above as a point-in-time snapshot from the first deploy, not a claim about the
+current version. Check the deploy log or `SELECT version FROM schema_migrations` for the live
+number rather than trusting a number written here, since this note will itself go stale again the
+next time a migration lands.

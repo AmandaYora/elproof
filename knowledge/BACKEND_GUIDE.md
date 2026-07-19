@@ -20,6 +20,13 @@ internal/modules/<name>/
   <name>.module.go     # wiring: constructs repository → service → handler, registers routes
 ```
 
+**Documented exception: `payment` (Fase 9/10) has no `application/` and no `domain/events/`.** Its
+`infrastructure.PaymentService` implements the module's contracts directly — see `MODULE_PAYMENT.md`
+§3 and ADR-0008's update for why (it owns no business process complex enough to need a use-case
+layer separated from its infrastructure). Don't treat this template as an unconditional per-module
+invariant; a module with a similarly thin domain may reasonably skip `application/` too, as long as
+the deviation gets the same explicit callout `payment` did rather than silently diverging.
+
 ## Cross-module calls
 
 A module needing data from another module calls that module's `contracts` package directly (in-process

@@ -39,3 +39,25 @@ different authorization rules.
 - Three principal types share one login endpoint (`POST /api/v1/auth/login`) that tries to resolve
   `username` against `credentials` regardless of type — this mirrors the frontend's existing
   sequential-check behavior in `LoginPage.tsx`, just moved server-side and made real.
+
+## Update — Fase 10: a 4th principal type (`app`), issued without a `credentials` row
+
+`payment`'s external mode (Payment Gateway as a Service — see `MODULE_PAYMENT.md` §7.1) introduces a
+4th JWT principal type, `app`, for external SaaS consumers exchanging an `appId`+`secret` at
+`POST /auth/app/token`. This principal deliberately does **not** fit the model this ADR originally
+described:
+
+- No `credentials` row is ever created or checked for it — `payment` verifies the appId+secret
+  itself, against its own `payment_apps` registry (bcrypt hash), never touching `identity`'s
+  `credentials` table at all.
+- `identity.Contracts` gained one new method, `IssueServiceToken(ctx, principalType, principalID,
+  ttl)`, which signs a bearer JWT for *any* caller-vouched-for principal — no password check, no
+  `tenant_id`/`role` claims, and critically **no refresh token** (the App simply re-exchanges its
+  secret once the token expires, rather than rotating a refresh token).
+- This keeps `identity` "profile-agnostic" in spirit (it still never becomes a dumping ground for
+  another module's domain data) but stretches "owns authentication for all principal types" to mean
+  *signing*, not always *verifying a password against a stored credential* — a real, if narrow,
+  widening of this ADR's original decision that's worth naming explicitly rather than leaving only
+  implicit in `payment`'s own docs.
+- `shared/middleware`'s verification side is unaffected — `Claims.PrincipalType` was always a plain
+  string, so no schema change was needed there to accept `"app"` alongside the original three.

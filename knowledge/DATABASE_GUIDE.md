@@ -44,9 +44,12 @@ owning module's contract function when the display layer needs the related data.
 `cc1.exe: sorry, unimplemented: 64-bit mode not compiled in` — the local MinGW/gcc toolchain used
 for CGO is 32-bit-only, but one of sqlc's transitive dependencies needs to compile a CGO package in
 64-bit mode. Fixing this requires installing a 64-bit MinGW-w64 toolchain (out of scope for a
-quick fix). Until then, the `identity` module's repositories
-(`internal/modules/identity/infrastructure/mysql_*_repository.go`) are hand-written with
-`database/sql` directly, behind the exact same repository interfaces `application/auth_service.go`
-expects — so swapping in sqlc-generated code later (once the toolchain is fixed) only touches
-`infrastructure/`, nothing else. New modules should follow the same fallback until `sqlc generate`
-works locally.
+quick fix). Until then, **every module's** repositories are hand-written with `database/sql`
+directly, behind the exact same repository interfaces their `application`/`infrastructure` layers
+expect — not just `identity` (the first module built): `billing`, `staff`, `clients`, `vendors`,
+`platform`, `projects`, and `payment` (Fase 9/10) all followed the identical fallback. Every
+module's `infrastructure/queries/` directory (where sqlc-generated code would read `.sql` from)
+exists but is empty — dead scaffolding, not active input — and `internal/database/` (sqlc's `out:`
+target) has never had anything generated into it. Swapping in sqlc-generated code later (once the
+toolchain is fixed) only touches each module's own `infrastructure/`, nothing else, since the
+repository interfaces were always designed against this eventual swap.

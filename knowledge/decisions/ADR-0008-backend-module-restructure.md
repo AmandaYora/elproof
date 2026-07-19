@@ -33,3 +33,17 @@ modules even though they were created at different times.
   "orchestrate cross-module flows via app services" in `.claude/rules/backend-modular-monolith.md`.
 - Future modules follow the same seven-folder layout; deviations should be raised as a new ADR
   rather than silently diverging per module.
+
+## Update — Fase 9: an 8th module, `payment`, with a documented layout deviation
+
+| Module | Owns | Replaces/derived from |
+|---|---|---|
+| `payment` | `payment_gateway_config`, `payment_apps`, `payment_charge_dispatch`, `payment_webhook_events` | new (one merchant wallet, many consumers — see `MODULE_PAYMENT.md`) |
+
+Per this ADR's own rule that a layout deviation should be raised explicitly rather than silently
+diverging: `payment` has **no `application/` layer** and no `domain/events/` subfolder. Its
+`infrastructure.PaymentService` directly implements both `contracts.Client` and `contracts.Dispatcher`
+— `MODULE_PAYMENT.md` §3 explains why: this module owns no business process complex enough to
+warrant separating a use-case layer from its infrastructure (it owns gateway config, an App
+registry, and a dispatch index — never a business ledger). The `contracts`/`domain`/
+`infrastructure`/`presentation` split and the module-boundary rules themselves are unchanged.

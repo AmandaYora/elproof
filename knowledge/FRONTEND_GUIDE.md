@@ -9,7 +9,11 @@ convention, since it's the single biggest structural gap found in the pre-integr
 ## State management: Zustand only, one store per module (ADR-0009)
 
 Every domain module gets exactly one store at `modules/<module>/stores/use<Module>Store.ts`,
-shaped like the existing `usePlatformAdminStore.ts`:
+shaped like the existing `usePlatformAdminStore.ts` — **except** `platform-admin`, which owns three
+separate admin concerns that don't share state (`usePlatformAdminStore.ts` for tenants/plans/admins,
+`usePaymentGatewayStore.ts` for Fase 9's gateway config, `useAppsStore.ts` for Fase 10's external App
+registry): one store per *concern* within that module, not literally one file, when a module's admin
+surface covers genuinely unrelated resources.
 
 - State: the entity array(s) for that module, plus any `isLoading`/`error` flags the UI needs.
 - Actions: async functions that call `httpClient` against the module's endpoints
@@ -43,6 +47,8 @@ re-implementing envelope parsing per store.
 
 ## Routing
 
-Route guards (`ProtectedRoute`/`RequireAuth` wrapper components, one per principal type/role
-combination) wrap the three route trees (`protected.routes.tsx`, `client-portal.routes.tsx`,
-`platform.routes.tsx`) — tracked as PLAN.md Fase 7, since none exist yet.
+Route guards (`RequireAuth` wrapper components, one per principal type/role combination) wrap the
+three *authenticated* route trees (`protected.routes.tsx`, `client-portal.routes.tsx`,
+`platform.routes.tsx`) — built in Fase 7. Two more route files carry no guard, by design:
+`public.routes.tsx` (`/login`) and `homepage.routes.tsx` (the public marketing site, `/homepage/*`
+— frontend-only, no API calls, see the `homepage` row in `MODULE_MAP.md`).

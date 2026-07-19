@@ -26,9 +26,14 @@ always going through the payment gateway (e.g. sales-negotiated deals, trials, m
 outside Tripay). This is a distinct bounded context from any one tenant's data — it operates
 *across* tenants, never scoped to one.
 
-## Current state (as of PLAN.md creation)
+## Current state
 
-Frontend (`apps/web`) is a mature, fully-designed React app across both consoles + the client
-portal, built against static mock data — see [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md)
-and `PLAN.md` at the repo root for the full readiness audit and the phased plan to build
-`apps/api` and wire it up for real.
+ElProof is **live in production** at <https://elproof.elcodelabs.com>. `apps/api` is a real Go
+backend across all three consoles plus a `payment` module (Tripay-backed subscription billing, and
+a Payment Gateway as a Service API other SaaS products can integrate against — see
+[MODULE_PAYMENT.md](MODULE_PAYMENT.md)); the mock-data era this brief originally described is gone
+— `apps/web/src/mock/` was deleted once every real feature had a backend to call. A public
+marketing site also exists at `/homepage/*` for FAQ/Terms/Privacy/Refund/Contact pages, separate
+from the three consoles above. See [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) and
+`PLAN.md` at the repo root (a living phase-by-phase log, not a one-time plan) for the full history
+and current status of each capability.
