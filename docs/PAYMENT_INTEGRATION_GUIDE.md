@@ -256,24 +256,39 @@ Gunakan `raw_body` **sebelum** di-parse JSON — signature dihitung atas byte me
 
 ## 9. Format error & kode yang bisa Anda tangani secara programatik
 
-Semua error mengikuti envelope `{ success: false, message, errors }`, dengan **tambahan** field
-`errors.code` khusus di keempat endpoint eksternal ini (endpoint lain ElProof tidak punya field
-ini):
+Semua error mengikuti envelope `{ success: false, message, errors }`. Di keempat endpoint eksternal
+ini, `errors.code` **biasanya** ada (endpoint lain ElProof tidak punya field ini sama sekali) —
+**kecuali satu kasus penting, lihat peringatan di bawah tabel:**
 
 | `errors.code` | Kapan muncul | Contoh HTTP status |
 |---|---|---|
-| `bad_request` | Body tidak valid / field wajib kosong / gateway ElProof sendiri belum dikonfigurasi | `400` **atau** `422` — lihat catatan di bawah |
-| `unauthorized` | `appId`/`secret` salah, atau token tidak valid/kedaluwarsa | `401` |
+| `bad_request` | Body tidak valid / field wajib kosong / gateway ElProof sendiri belum dikonfigurasi / metode HTTP salah **pada ketiga endpoint `/external/payments/*`** (metode salah spesifik di `/auth/app/token` sendiri direspons `405` tanpa `errors.code` — kasus langka, seharusnya tidak pernah terjadi kalau Anda selalu mengirim `POST` sesuai §4) | `400` **atau** `422` — lihat catatan di bawah |
+| `unauthorized` | `appId`/`secret` salah saat tukar token di `/auth/app/token` | `401` |
 | `forbidden` | Token bukan milik App (principal type salah), atau App Anda dinonaktifkan | `403` |
 | `not_found` | `orderRef` tidak ada / bukan milik App Anda | `404` |
 | `conflict` | `orderRef` duplikat | `409` |
 | `rate_limited` | Melebihi limit `/auth/app/token` | `429` |
 | `internal` | Kesalahan tak terduga di sisi ElProof (termasuk error dari Tripay yang belum dipetakan jadi kode spesifik — lihat §11) | `500` |
 
-**Penting:** `bad_request` bisa datang dengan status `400` (kesalahan bentuk request, terdeteksi
+**Penting #1:** `bad_request` bisa datang dengan status `400` (kesalahan bentuk request, terdeteksi
 sebelum memanggil layanan apa pun) **atau** `422` (kegagalan validasi bisnis, mis. gateway ElProof
-sedang tidak aktif). **Cek `errors.code`, jangan hanya switch berdasarkan status HTTP**, untuk
-membedakan kelas kegagalan secara andal.
+sedang tidak aktif). Cek `errors.code`, jangan hanya switch berdasarkan status HTTP, untuk
+membedakan keduanya.
+
+**Penting #2 — pengecualian nyata, bukan sekadar catatan kaki:** kalau `accessToken` yang Anda
+kirim ke salah satu dari 3 endpoint `/external/payments/*` **kosong/tidak ada, salah format, atau
+sudah kedaluwarsa**, penolakannya terjadi di lapisan verifikasi token yang sama untuk seluruh
+ElProof (bukan kode khusus modul pembayaran) — responsnya `401`, **tanpa field `errors` sama
+sekali** (bukan `errors: null`, benar-benar tidak ada key-nya):
+```json
+{ "success": false, "message": "Token tidak valid atau sudah kedaluwarsa" }
+```
+Ini justru kasus yang **paling sering terjadi** dalam praktik, karena `accessToken` kedaluwarsa tiap
+~1 jam (§4). **Untuk mendeteksi token kedaluwarsa di ketiga endpoint pembayaran, cek status HTTP
+`401` secara langsung — jangan bergantung pada `errors.code` untuk kasus ini, karena field itu bisa
+saja tidak ada.** `errors.code = "unauthorized"` hanya muncul untuk kegagalan `appId`/`secret` saat
+menukar token di `/auth/app/token` sendiri (§4) — bukan untuk token yang sudah kedaluwarsa di
+endpoint lain.
 
 ## 10. Ringkasan alur lengkap
 
