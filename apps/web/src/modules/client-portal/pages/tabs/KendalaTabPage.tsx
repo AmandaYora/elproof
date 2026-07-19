@@ -37,23 +37,32 @@ export default function KendalaTabPage() {
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
       <section>
-        <div className="mb-4 flex items-center gap-2 sm:mb-5">
-          <HeartHandshake className="h-5 w-5 shrink-0 text-navy-900" />
-          <h2 className="text-base font-bold text-text-primary sm:text-lg">Kendala yang Sedang Kami Tangani</h2>
+        <div className="mb-4 flex items-center gap-3 border-b border-border pb-4 sm:mb-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning-soft text-warning-strong">
+            <HeartHandshake className="h-5 w-5 shrink-0" />
+          </div>
+          <div>
+            <h2 className="text-[18px] font-bold text-navy-950 sm:text-[20px]">Kendala yang Sedang Kami Tangani</h2>
+            <p className="mt-0.5 text-[13px] text-text-secondary sm:text-[14px]">
+              Kami percaya Anda berhak mengetahui setiap kendala dan penanganannya — sekecil apa pun itu.
+            </p>
+          </div>
         </div>
-        <p className="mb-5 max-w-2xl text-[13px] leading-relaxed text-text-secondary sm:mb-6 sm:text-[13.5px]">
-          Kami percaya Anda berhak mengetahui setiap kendala dan bagaimana kami menanganinya — sekecil apa pun itu.
-        </p>
 
         {sortedIssues.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-surface p-6 text-center sm:p-10">
-            <CheckCircle2 className="h-8 w-8 text-success" />
-            <p className="max-w-md text-[13.5px] font-medium text-text-primary sm:text-[14px]">
-              Tidak ada kendala yang tercatat saat ini — persiapan pernikahan Anda berjalan lancar.
+          <div className="flex flex-col items-center gap-4 rounded-3xl border border-border bg-white p-10 text-center shadow-sm sm:p-16">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 shadow-sm border border-emerald-100 mb-2">
+              <CheckCircle2 className="h-10 w-10" />
+            </div>
+            <p className="max-w-md text-[15px] font-bold text-navy-950 sm:text-[16px]">
+              Semuanya Berjalan Lancar
+            </p>
+            <p className="max-w-sm text-[14px] text-text-secondary mt-1">
+              Tidak ada kendala yang tercatat saat ini. Tim kami terus memantau persiapan pernikahan Anda.
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 sm:gap-4">
+          <div className="flex flex-col gap-4 sm:gap-5">
             {sortedIssues.map((issue) => {
               const pv = vendorEngagements.find((v) => v.id === issue.projectVendorId);
               const vendorName = pv ? vendors.find((v) => v.id === pv.vendorId)?.name : undefined;

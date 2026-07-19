@@ -49,11 +49,16 @@ export default function VendorProgressTabPage() {
         </p>
 
         {vendorEngagements.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border bg-surface p-4 text-center text-[13px] text-text-secondary sm:p-6 sm:text-[13.5px]">
-            Belum ada vendor yang tercatat untuk pernikahan Anda.
-          </p>
+          <div className="rounded-3xl border border-dashed border-border bg-white p-12 text-center shadow-sm">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-muted mb-4">
+              <Users className="h-8 w-8 text-text-secondary opacity-50" />
+            </div>
+            <p className="text-[14px] text-text-secondary sm:text-[15px] font-medium">
+              Belum ada vendor yang tercatat untuk pernikahan Anda.
+            </p>
+          </div>
         ) : (
-          <div className="flex flex-col gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {vendorEngagements.map((pv) => (
               <VendorCard
                 key={pv.id}
@@ -106,71 +111,77 @@ function VendorCard({
   const openIssueCount = issues.filter((i) => i.status !== "Resolved" && i.status !== "Closed").length;
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
+    <div className="flex flex-col overflow-hidden rounded-3xl border border-border bg-white shadow-sm transition-all hover:shadow-xl hover:shadow-navy-900/5 hover:-translate-y-1">
+      <div className="flex flex-wrap items-start justify-between gap-3 bg-gradient-to-br from-surface-muted/50 to-white p-5 sm:p-6 border-b border-border/50">
         <div>
-          <p className="text-[14px] font-bold text-text-primary sm:text-[15px]">{vendorName}</p>
-          <p className="mt-0.5 text-[12px] text-text-secondary sm:text-[12.5px]">
-            {categoryName} · {projectVendor.scope}
+          <h3 className="text-[16px] font-bold text-navy-950 sm:text-[18px]">{vendorName}</h3>
+          <p className="mt-1 text-[13px] font-medium text-text-secondary sm:text-[13.5px] inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-0.5 border border-border">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> {categoryName} <span className="text-border mx-1">|</span> {projectVendor.scope}
           </p>
         </div>
         <EngagementStatusBadge status={projectVendor.engagementStatus} />
       </div>
 
-      {openIssueCount > 0 && (
-        <div className="mt-3 flex items-center gap-1.5 rounded-md bg-danger-soft px-2.5 py-1.5 text-[12px] font-semibold text-danger sm:text-[12.5px]">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          {openIssueCount} kendala aktif sedang kami tangani untuk vendor ini
-        </div>
-      )}
+      <div className="flex flex-col p-5 sm:p-6">
+        {openIssueCount > 0 && (
+          <div className="mb-5 flex items-center gap-2 rounded-xl border border-warning/20 bg-warning-soft/50 px-3.5 py-2.5 text-[13px] font-semibold text-warning-strong shadow-sm">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{openIssueCount} kendala aktif sedang kami tangani</span>
+          </div>
+        )}
 
-      <div className="mt-3 sm:mt-4">
-        {milestones.length === 0 ? (
-          <p className="text-[12.5px] text-text-secondary sm:text-[13px]">Belum ada progress yang tercatat untuk vendor ini.</p>
-        ) : (
-          <>
-            <MilestoneRail milestones={relevantMilestones} size="md" showCount={false} />
-            <p className="mt-1.5 text-[12px] font-medium text-text-secondary sm:text-[12.5px]">
-              {completedCount} dari {relevantMilestones.length} tahapan selesai
-            </p>
-          </>
+        <div>
+          {milestones.length === 0 ? (
+            <p className="text-[13px] text-text-secondary sm:text-[13.5px] text-center bg-surface py-4 rounded-xl border border-dashed border-border">Belum ada progress yang tercatat untuk vendor ini.</p>
+          ) : (
+            <div className="rounded-2xl border border-border bg-surface/30 p-4">
+              <MilestoneRail milestones={relevantMilestones} size="md" showCount={false} />
+              <p className="mt-3 text-[13px] font-medium text-navy-900 text-center">
+                {completedCount} dari {relevantMilestones.length} tahapan selesai
+              </p>
+            </div>
+          )}
+        </div>
+
+        {milestones.length > 0 && (
+          <details className="group mt-5 rounded-2xl border border-border bg-white shadow-sm overflow-hidden [&_summary::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer items-center justify-between bg-surface-muted/30 px-4 py-3 text-[13.5px] font-bold text-navy-950 hover:bg-surface-muted/60 transition-colors">
+              Lihat rincian tahapan
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white border border-border text-navy-900 transition-transform group-open:rotate-180">
+                <ChevronDown className="h-4 w-4 shrink-0" />
+              </span>
+            </summary>
+            <ul className="flex flex-col gap-3 p-4 bg-surface-muted/10 border-t border-border">
+              {milestones.map((m) => (
+                <MilestoneRow key={m.id} milestone={m} evidence={evidence.filter((e) => e.relatedKind === "vendorMilestone" && e.relatedId === m.id)} onViewEvidence={onViewEvidence} />
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {sortedIssues.length > 0 && (
+          <details className="group mt-3 rounded-2xl border border-warning/30 bg-white shadow-sm overflow-hidden [&_summary::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer items-center justify-between bg-warning-soft/30 px-4 py-3 text-[13.5px] font-bold text-warning-strong hover:bg-warning-soft/60 transition-colors">
+              Lihat detail kendala ({sortedIssues.length})
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white border border-warning/30 text-warning-strong transition-transform group-open:rotate-180">
+                <ChevronDown className="h-4 w-4 shrink-0" />
+              </span>
+            </summary>
+            <div className="flex flex-col gap-4 p-4 border-t border-warning/20 bg-warning-soft/10">
+              {sortedIssues.map((issue) => (
+                <IssueCard
+                  key={issue.id}
+                  issue={issue}
+                  evidence={evidence.filter((e) => e.relatedKind === "issue" && e.relatedId === issue.id)}
+                  onViewEvidence={onViewEvidence}
+                  showVendorName={false}
+                  vendorName={vendorName}
+                />
+              ))}
+            </div>
+          </details>
         )}
       </div>
-
-      {milestones.length > 0 && (
-        <details className="group mt-3 border-t border-border pt-3 sm:mt-4">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-semibold text-navy-900 sm:text-[12.5px] [&::-webkit-details-marker]:hidden">
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
-            Lihat detail tahapan
-          </summary>
-          <ul className="mt-3 flex flex-col gap-2.5">
-            {milestones.map((m) => (
-              <MilestoneRow key={m.id} milestone={m} evidence={evidence.filter((e) => e.relatedKind === "vendorMilestone" && e.relatedId === m.id)} onViewEvidence={onViewEvidence} />
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {sortedIssues.length > 0 && (
-        <details className="group mt-3 border-t border-border pt-3 sm:mt-4">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-semibold text-navy-900 sm:text-[12.5px] [&::-webkit-details-marker]:hidden">
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
-            Lihat detail kendala ({sortedIssues.length})
-          </summary>
-          <div className="mt-3 flex flex-col gap-3">
-            {sortedIssues.map((issue) => (
-              <IssueCard
-                key={issue.id}
-                issue={issue}
-                evidence={evidence.filter((e) => e.relatedKind === "issue" && e.relatedId === issue.id)}
-                onViewEvidence={onViewEvidence}
-                showVendorName={false}
-                vendorName={vendorName}
-              />
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   );
 }
@@ -185,24 +196,24 @@ function MilestoneRow({
   onViewEvidence: (evidence: Evidence) => void;
 }) {
   return (
-    <li className="flex flex-col gap-1.5 rounded-md bg-surface-muted/60 px-3 py-2.5 text-[12.5px] sm:text-[13px]">
-      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
-        <span className="text-text-primary">{m.name}</span>
-        <span className="flex items-center gap-1.5 sm:gap-2">
+    <li className="flex flex-col gap-2.5 rounded-xl border border-border bg-white px-4 py-3.5 shadow-sm transition-colors hover:border-navy-900/20">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <span className="text-[13.5px] font-semibold text-navy-950">{m.name}</span>
+        <span className="flex items-center gap-2">
           <MilestoneStatusBadge status={m.status} />
-          <span className="whitespace-nowrap text-[12px] text-text-secondary">
+          <span className="whitespace-nowrap text-[12px] font-medium text-text-secondary bg-surface-muted px-2 py-1 rounded-md">
             {m.status === "Completed" ? `Selesai ${formatDate(m.completedDate)}` : `Target ${formatDate(m.targetDate)}`}
           </span>
         </span>
       </div>
       {evidence.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <FileText className="h-3 w-3 shrink-0 text-text-secondary" />
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <FileText className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
           {evidence.map((e) => (
             <button
               key={e.id}
               onClick={() => onViewEvidence(e)}
-              className="rounded-full border border-border bg-white px-2.5 py-1 text-[11.5px] font-medium text-navy-900 hover:bg-navy-900/10"
+              className="group flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-[11.5px] font-semibold text-navy-900 hover:bg-navy-50 hover:border-navy-200 transition-colors"
             >
               Lihat {e.type}
             </button>
