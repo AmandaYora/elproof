@@ -180,6 +180,13 @@ Authorization: Bearer <access token>
 persentase yang belum ikut ditampilkan endpoint ini. Panggil endpoint ini untuk menampilkan pilihan
 metode bayar ke pelanggan Anda secara dinamis, bukan hardcode.
 
+Respons endpoint ini **di-cache di sisi ElProof selama 5 menit** (bukan selalu memanggil Tripay
+langsung) — kalau Anda baru saja mengaktifkan/menonaktifkan kanal di dashboard Tripay, perubahan itu
+bisa butuh sampai 5 menit untuk terlihat di sini. Ini bukan bug: kanal jarang berubah, jadi ini
+trade-off yang disengaja demi kecepatan. Kalau Anda butuh kepastian instan atas status aktif suatu
+kanal, jangan andalkan endpoint ini semata — status charge (§5, §7) selalu live, tidak pernah
+di-cache.
+
 ## 7. Mengecek status charge — `GET /external/payments/charges/{orderRef}/status`
 
 ```http

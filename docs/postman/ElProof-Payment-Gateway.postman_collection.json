@@ -78,7 +78,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["external", "payments", "channels"]
             },
-            "description": "Ambil kode kanal (QRIS/BRIVA/dll.) yang sedang aktif secara dinamis — jangan hardcode di sistem Anda, karena bergantung konfigurasi merchant Tripay ElProof yang bisa berubah."
+            "description": "Ambil kode kanal (QRIS/BRIVA/dll.) yang sedang aktif secara dinamis — jangan hardcode di sistem Anda, karena bergantung konfigurasi merchant Tripay ElProof yang bisa berubah. Catatan: respons ini di-cache di sisi ElProof selama 5 menit, jadi perubahan kanal di dashboard Tripay bisa butuh sampai 5 menit untuk terlihat di sini — status charge (endpoint lain) selalu live, tidak pernah di-cache."
           },
           "response": []
         },
