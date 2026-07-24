@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"net/http"
 
+	identitycontracts "elproof/internal/modules/identity/contracts"
+
 	"elproof/internal/modules/staff/application"
 	"elproof/internal/modules/staff/contracts"
 	"elproof/internal/modules/staff/infrastructure"
@@ -18,9 +20,9 @@ type Module struct {
 	handler   *presentation.Handler
 }
 
-func NewModule(db *sql.DB) *Module {
+func NewModule(db *sql.DB, identity identitycontracts.Contracts) *Module {
 	repo := infrastructure.NewMySQLStaffRepository(db)
-	service := application.NewStaffService(repo)
+	service := application.NewStaffService(repo, identity)
 	return &Module{
 		contracts: contracts.New(service),
 		handler:   presentation.NewHandler(service),

@@ -8,6 +8,7 @@ export interface StaffMember {
   title: string;
   initials: string;
   role: StaffRole;
+  username: string;
   email: string;
   phone: string;
   isActive: boolean;

@@ -13,6 +13,7 @@ type CreateOwnerInput struct {
 	Name     string
 	Email    string
 	Phone    string
+	Username string
 }
 
 type CreateOwnerResult struct {
@@ -32,7 +33,7 @@ func New(service *application.StaffService) Contracts {
 }
 
 func (c *impl) CreateOwner(ctx context.Context, input CreateOwnerInput) (CreateOwnerResult, error) {
-	member, err := c.service.CreateOwner(ctx, input.TenantID, input.Name, input.Email, input.Phone)
+	member, err := c.service.CreateOwner(ctx, input.TenantID, input.Name, input.Email, input.Phone, input.Username)
 	if err != nil {
 		return CreateOwnerResult{}, err
 	}

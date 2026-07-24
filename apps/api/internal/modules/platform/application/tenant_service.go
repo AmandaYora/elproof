@@ -139,7 +139,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 	}
 
 	ownerResult, err := s.staff.CreateOwner(ctx, staffcontracts.CreateOwnerInput{
-		TenantID: tenant.ID, Name: input.OwnerName, Email: input.Email, Phone: input.Phone,
+		TenantID: tenant.ID, Name: input.OwnerName, Email: input.Email, Phone: input.Phone, Username: username,
 	})
 	if err != nil {
 		return nil, err

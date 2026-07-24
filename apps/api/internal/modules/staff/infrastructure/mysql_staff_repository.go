@@ -16,12 +16,12 @@ func NewMySQLStaffRepository(db *sql.DB) *MySQLStaffRepository {
 	return &MySQLStaffRepository{db: db}
 }
 
-const staffColumns = `id, tenant_id, name, title, initials, role, email, phone, is_active, created_at, updated_at`
+const staffColumns = `id, tenant_id, name, title, initials, role, username, email, phone, is_active, created_at, updated_at`
 
 func scanStaff(scan func(dest ...interface{}) error) (*domain.StaffMember, error) {
 	var m domain.StaffMember
 	var role string
-	err := scan(&m.ID, &m.TenantID, &m.Name, &m.Title, &m.Initials, &role, &m.Email, &m.Phone, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+	err := scan(&m.ID, &m.TenantID, &m.Name, &m.Title, &m.Initials, &role, &m.Username, &m.Email, &m.Phone, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -100,9 +100,9 @@ func (r *MySQLStaffRepository) FindByID(ctx context.Context, tenantID, id int64)
 
 func (r *MySQLStaffRepository) Create(ctx context.Context, member *domain.StaffMember) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO staff_members (tenant_id, name, title, initials, role, email, phone, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		member.TenantID, member.Name, member.Title, member.Initials, string(member.Role), member.Email, member.Phone, member.IsActive,
+		`INSERT INTO staff_members (tenant_id, name, title, initials, role, username, email, phone, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		member.TenantID, member.Name, member.Title, member.Initials, string(member.Role), member.Username, member.Email, member.Phone, member.IsActive,
 	)
 	if err != nil {
 		return err
@@ -128,5 +128,13 @@ func (r *MySQLStaffRepository) SetActive(ctx context.Context, tenantID, id int64
 		`UPDATE staff_members SET is_active = ? WHERE tenant_id = ? AND id = ?`,
 		isActive, tenantID, id,
 	)
+	return err
+}
+
+// Delete is only ever called by StaffService.Create as a compensating
+// rollback when identity.CreateCredential fails after this row already
+// committed (mirrors the clients module's Create/Delete pair).
+func (r *MySQLStaffRepository) Delete(ctx context.Context, tenantID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM staff_members WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }

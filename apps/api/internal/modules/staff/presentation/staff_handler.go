@@ -28,6 +28,7 @@ type staffResponse struct {
 	Title    string `json:"title"`
 	Initials string `json:"initials"`
 	Role     string `json:"role"`
+	Username string `json:"username"`
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	IsActive bool   `json:"isActive"`
@@ -36,7 +37,7 @@ type staffResponse struct {
 func toStaffResponse(m domain.StaffMember) staffResponse {
 	return staffResponse{
 		ID: m.ID, Name: m.Name, Title: m.Title, Initials: m.Initials,
-		Role: string(m.Role), Email: m.Email, Phone: m.Phone, IsActive: m.IsActive,
+		Role: string(m.Role), Username: m.Username, Email: m.Email, Phone: m.Phone, IsActive: m.IsActive,
 	}
 }
 
@@ -95,11 +96,13 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 }
 
 type staffInputBody struct {
-	Name  string `json:"name"`
-	Title string `json:"title"`
-	Role  string `json:"role"`
-	Email string `json:"email"`
-	Phone string `json:"phone"`
+	Name     string `json:"name"`
+	Title    string `json:"title"`
+	Role     string `json:"role"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64) {
@@ -109,7 +112,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 		return
 	}
 	member, err := h.staff.Create(r.Context(), tenantID, application.StaffInput{
-		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role), Email: body.Email, Phone: body.Phone,
+		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role),
+		Username: body.Username, Password: body.Password, Email: body.Email, Phone: body.Phone,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -150,7 +154,9 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, tenantID, id in
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	member, err := h.staff.Update(r.Context(), tenantID, id, application.StaffInput{
+	claims, _ := middleware.FromContext(r.Context())
+	isSelf := claims != nil && claims.PrincipalID == strconv.FormatInt(id, 10)
+	member, err := h.staff.Update(r.Context(), tenantID, id, isSelf, application.StaffInput{
 		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role), Email: body.Email, Phone: body.Phone,
 	})
 	if err != nil {

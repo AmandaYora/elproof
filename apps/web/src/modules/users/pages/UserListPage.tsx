@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, UserCheck, UserX } from "lucide-react";
+import { Plus, Pencil, UserCheck, UserX, KeyRound } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
+import { Modal } from "@/shared/components/ui/Modal";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -13,12 +14,20 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { UserRoleBadge } from "@/modules/users/components/UserRoleBadge";
 import { UserFormModal } from "@/modules/users/components/UserFormModal";
-import { STAFF_ROLE_OPTIONS, type UserFormValues } from "@/modules/users/schemas/user.schema";
+import { STAFF_ROLE_OPTIONS, type UserFormValues, type UserCreateFormValues } from "@/modules/users/schemas/user.schema";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import type { StaffMember, StaffRole } from "@/modules/users/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 
+interface CredentialReveal {
+  name: string;
+  username: string;
+  password: string;
+}
+
 export default function UserListPage() {
+  const currentStaffId = useAuthStore((s) => s.currentStaffId);
   const users = useStaffStore((s) => s.staffPage);
   const meta = useStaffStore((s) => s.staffPageMeta);
   const fetchStaffPage = useStaffStore((s) => s.fetchStaffPage);
@@ -31,6 +40,7 @@ export default function UserListPage() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<StaffMember | undefined>(undefined);
+  const [credentialReveal, setCredentialReveal] = useState<CredentialReveal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,18 +66,27 @@ export default function UserListPage() {
     setEditingUser(undefined);
   }
 
-  async function handleSubmit(values: UserFormValues) {
+  async function handleCreate(values: UserCreateFormValues) {
     setActionError(null);
     try {
-      if (editingUser) {
-        await updateStaff(editingUser.id, values);
-      } else {
-        await createStaff(values);
-      }
+      const result = await createStaff(values);
+      closeModal();
+      await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
+      setCredentialReveal({ name: result.staff.name, username: result.username, password: result.password });
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menambahkan pengguna"));
+    }
+  }
+
+  async function handleEdit(values: UserFormValues) {
+    if (!editingUser) return;
+    setActionError(null);
+    try {
+      await updateStaff(editingUser.id, values);
       closeModal();
       await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan pengguna"));
+      setActionError(getApiErrorMessage(err, "Gagal menyimpan perubahan pengguna"));
     }
   }
 
@@ -121,35 +140,39 @@ export default function UserListPage() {
             className="sm:hidden"
             items={users}
             keyFor={(user) => user.id}
-            renderItem={(user) => (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <Avatar name={user.name} />
-                    <span className="truncate font-semibold text-text-primary">{user.name}</span>
+            renderItem={(user) => {
+              const isOwner = user.role === "Owner";
+              const isSelf = user.id === currentStaffId;
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Avatar name={user.name} />
+                      <span className="truncate font-semibold text-text-primary">{user.name}</span>
+                    </div>
+                    {user.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
                   </div>
-                  {user.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <CardListField label="Jabatan" value={user.title} />
-                  <CardListField label="Role" value={<UserRoleBadge role={user.role} />} />
-                  <CardListField label="Telepon" value={user.phone} />
-                  <CardListField label="Email" value={user.email} />
-                </div>
-                {user.role === "Owner" ? (
-                  <p className="pt-1 text-[12px] text-text-secondary">Dikelola via Platform Console</p>
-                ) : (
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
-                    {user.isActive ? (
-                      <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
-                    ) : (
-                      <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
-                    )}
+                  <div className="flex flex-col gap-1.5">
+                    <CardListField label="Jabatan" value={user.title} />
+                    <CardListField label="Role" value={<UserRoleBadge role={user.role} />} />
+                    <CardListField label="Telepon" value={user.phone} />
+                    <CardListField label="Email" value={user.email} />
                   </div>
-                )}
-              </>
-            )}
+                  {isOwner && !isSelf ? (
+                    <p className="pt-1 text-[12px] text-text-secondary">Hanya dapat diubah oleh Owner sendiri</p>
+                  ) : (
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
+                      {!isOwner && (user.isActive ? (
+                        <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
+                      ) : (
+                        <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            }}
           />
           <div className="hidden sm:block">
           <Table>
@@ -164,7 +187,10 @@ export default function UserListPage() {
               </TR>
             </THead>
             <TBody>
-              {users.map((user) => (
+              {users.map((user) => {
+                const isOwner = user.role === "Owner";
+                const isSelf = user.id === currentStaffId;
+                return (
                 <TR key={user.id}>
                   <TD>
                     <div className="flex items-center gap-2.5">
@@ -182,21 +208,22 @@ export default function UserListPage() {
                     {user.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
                   </TD>
                   <TD>
-                    {user.role === "Owner" ? (
-                      <span className="text-[12px] text-text-secondary">Dikelola via Platform Console</span>
+                    {isOwner && !isSelf ? (
+                      <span className="text-[12px] text-text-secondary">Hanya dapat diubah oleh Owner sendiri</span>
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
-                        {user.isActive ? (
+                        {!isOwner && (user.isActive ? (
                           <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
                         ) : (
                           <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
-                        )}
+                        ))}
                       </div>
                     )}
                   </TD>
                 </TR>
-              ))}
+                );
+              })}
             </TBody>
           </Table>
           </div>
@@ -209,9 +236,36 @@ export default function UserListPage() {
         key={editingUser?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmit={(values) => void handleSubmit(values)}
+        onSubmitCreate={(values) => void handleCreate(values)}
+        onSubmitEdit={(values) => void handleEdit(values)}
         initialUser={editingUser}
       />
+
+      <Modal
+        open={credentialReveal !== null}
+        onClose={() => setCredentialReveal(null)}
+        title="Pengguna Berhasil Ditambahkan"
+        description={credentialReveal ? `${credentialReveal.name} kini dapat masuk ke WO Console dengan kredensial berikut.` : undefined}
+        size="sm"
+        footer={<Button onClick={() => setCredentialReveal(null)}>Selesai</Button>}
+      >
+        {credentialReveal && (
+          <div className="flex flex-col gap-3 text-[13px]">
+            <div className="flex items-center gap-2 text-text-secondary">
+              <KeyRound className="h-3.5 w-3.5 shrink-0" />
+              Kredensial akun:
+            </div>
+            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
+              <span className="text-text-secondary">Username</span>
+              <span className="font-semibold text-text-primary">{credentialReveal.username}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
+              <span className="text-text-secondary">Password</span>
+              <span className="font-mono font-semibold text-text-primary">{credentialReveal.password}</span>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

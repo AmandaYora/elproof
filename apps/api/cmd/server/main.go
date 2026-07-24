@@ -152,7 +152,7 @@ func serve(cfg config.Config) {
 		log.Fatalf("failed to init payment module: %v", err)
 	}
 
-	staffModule := staff.NewModule(db)
+	staffModule := staff.NewModule(db, identityModule.Contracts())
 	billingModule := billing.NewModule(db)
 	platformModule := platform.NewModule(db, staffModule.Contracts(), identityModule.Contracts(), billingModule.Contracts(), paymentModule.Client())
 	// projects is built before vendors — vendors' "Lihat Project" resolves a

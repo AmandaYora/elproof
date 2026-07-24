@@ -20,6 +20,7 @@ type StaffMember struct {
 	Title     string
 	Initials  string
 	Role      StaffRole
+	Username  string
 	Email     string
 	Phone     string
 	IsActive  bool
