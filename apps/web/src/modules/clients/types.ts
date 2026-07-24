@@ -4,6 +4,7 @@ export interface Client {
   id: string;
   projectId: string;
   role: ClientRole;
+  username: string;
   relationNote: string;
   name: string;
   phone: string;

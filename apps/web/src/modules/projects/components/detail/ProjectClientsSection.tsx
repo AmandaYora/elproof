@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil, RefreshCw, UserCog, Plus } from "lucide-react";
+import { Pencil, RefreshCw, UserCog, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
@@ -44,11 +44,13 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   const createClient = useClientStore((s) => s.createClient);
   const updateContact = useClientStore((s) => s.updateContact);
   const toggleActive = useClientStore((s) => s.toggleActive);
+  const deleteClient = useClientStore((s) => s.deleteClient);
   const resetCredential = useClientStore((s) => s.resetCredential);
   const replaceRepresentative = useClientStore((s) => s.replaceRepresentative);
 
   const [modalTarget, setModalTarget] = useState<ModalTarget | null>(null);
   const [createRole, setCreateRole] = useState<ClientRole | null>(null);
+  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,6 +76,16 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
       setModalTarget(null);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal memperbarui kontak client"));
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setActionError(null);
+    try {
+      await deleteClient(projectId, id);
+      setDeletingClientId(null);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus client"));
     }
   }
 
@@ -194,7 +206,29 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                       Ganti Wedding Representative
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={<Trash2 className="h-3.5 w-3.5" />}
+                    onClick={() => setDeletingClientId(client.id)}
+                  >
+                    Hapus Client
+                  </Button>
                 </div>
+
+                {deletingClientId === client.id && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
+                    <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Yakin ingin menghapus {ROLE_LABEL[role]} ini? Tindakan ini permanen — akun login yang terkait
+                      (jika ada) ikut dinonaktifkan, dan slot {ROLE_LABEL[role]} untuk project ini akan kosong kembali.
+                    </span>
+                    <span className="flex shrink-0 gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => setDeletingClientId(null)}>Batal</Button>
+                      <Button variant="danger" size="sm" onClick={() => void handleDelete(client.id)}>Ya, Hapus</Button>
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -291,6 +325,9 @@ function EditContactModal({
         <Field label="Email" required hint={errors.email}>
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
+        <Field label="Username">
+          <Input value={client.username} disabled />
+        </Field>
       </div>
     </Modal>
   );
@@ -354,6 +391,9 @@ function ReplaceRepresentativeModal({
         </Field>
         <Field label="Email" required hint={errors.email}>
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
+        </Field>
+        <Field label="Username">
+          <Input value={client.username} disabled />
         </Field>
       </div>
     </Modal>

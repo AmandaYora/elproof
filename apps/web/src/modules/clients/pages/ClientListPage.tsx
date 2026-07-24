@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, KeyRound, UserCheck, UserX, Repeat } from "lucide-react";
+import { Pencil, KeyRound, UserCheck, UserX, Repeat, Trash2, AlertTriangle } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Avatar } from "@/shared/components/ui/Avatar";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
@@ -46,6 +46,7 @@ export default function ClientListPage() {
   const fetchClients = useClientStore((s) => s.fetchClients);
   const updateContact = useClientStore((s) => s.updateContact);
   const toggleActive = useClientStore((s) => s.toggleActive);
+  const deleteClient = useClientStore((s) => s.deleteClient);
   const resetCredential = useClientStore((s) => s.resetCredential);
   const replaceRepresentative = useClientStore((s) => s.replaceRepresentative);
 
@@ -91,6 +92,15 @@ export default function ClientListPage() {
       await toggleActive(projectId, clientId);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status client"));
+    }
+  }
+
+  async function handleDelete(projectId: string, clientId: string) {
+    setActionError(null);
+    try {
+      await deleteClient(projectId, clientId);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus client"));
     }
   }
 
@@ -166,6 +176,7 @@ export default function ClientListPage() {
                 onReplace={(id) => setModalTarget({ clientId: id, projectId: project.id, mode: "replace" })}
                 onReset={(id) => setModalTarget({ clientId: id, projectId: project.id, mode: "reset" })}
                 onToggleActive={(id) => void handleToggleActive(project.id, id)}
+                onDelete={(id) => void handleDelete(project.id, id)}
               />
             ))}
           </div>
@@ -182,6 +193,7 @@ export default function ClientListPage() {
           onClose={() => setModalTarget(null)}
           onSubmit={(values) => void handleContactSubmit(values)}
           initialValues={modalTarget.mode === "replace" ? { name: "", phone: "", email: "" } : { name: activeTarget.name, phone: activeTarget.phone, email: activeTarget.email }}
+          username={activeTarget.username}
           title={modalTarget.mode === "replace" ? "Ganti Wedding Representative" : "Ubah Kontak Client"}
           description={
             modalTarget.mode === "replace"
@@ -245,6 +257,7 @@ function ProjectClientGroup({
   onReplace,
   onReset,
   onToggleActive,
+  onDelete,
 }: {
   project: Project;
   clients: Client[];
@@ -252,6 +265,7 @@ function ProjectClientGroup({
   onReplace: (id: string) => void;
   onReset: (id: string) => void;
   onToggleActive: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -266,40 +280,95 @@ function ProjectClientGroup({
       </div>
       <div className="divide-y divide-border-light">
         {clients.map((c) => (
-          <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-            <div className="flex min-w-0 items-center gap-3">
-              <Avatar name={c.name} />
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-text-primary">{c.name}</span>
-                  <ClientRoleBadge role={c.role} />
-                </div>
-                <p className="truncate text-[12.5px] text-text-secondary">{c.phone} · {c.email}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-right">
-                {c.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
-                <p className="mt-1 text-[11.5px] text-text-secondary">
-                  {c.lastCredentialResetAt ? `Reset: ${formatDate(c.lastCredentialResetAt)}` : "Belum pernah direset"}
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <IconActionButton icon={Pencil} label="Ubah Kontak" tone="neutral" onClick={() => onEdit(c.id)} />
-                <IconActionButton icon={KeyRound} label="Reset Credential" tone="info" onClick={() => onReset(c.id)} />
-                {c.isActive ? (
-                  <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => onToggleActive(c.id)} />
-                ) : (
-                  <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => onToggleActive(c.id)} />
-                )}
-                {c.role === "Family Representative" && (
-                  <IconActionButton icon={Repeat} label="Ganti Representative" tone="navy" onClick={() => onReplace(c.id)} />
-                )}
-              </div>
-            </div>
-          </div>
+          <ClientRow
+            key={c.id}
+            client={c}
+            onEdit={() => onEdit(c.id)}
+            onReplace={() => onReplace(c.id)}
+            onReset={() => onReset(c.id)}
+            onToggleActive={() => onToggleActive(c.id)}
+            onDelete={() => onDelete(c.id)}
+          />
         ))}
       </div>
+    </div>
+  );
+}
+
+function ClientRow({
+  client: c,
+  onEdit,
+  onReplace,
+  onReset,
+  onToggleActive,
+  onDelete,
+}: {
+  client: Client;
+  onEdit: () => void;
+  onReplace: () => void;
+  onReset: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  return (
+    <div className="px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={c.name} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-text-primary">{c.name}</span>
+              <ClientRoleBadge role={c.role} />
+            </div>
+            <p className="truncate text-[12.5px] text-text-secondary">{c.phone} · {c.email}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-right">
+            {c.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+            <p className="mt-1 text-[11.5px] text-text-secondary">
+              {c.lastCredentialResetAt ? `Reset: ${formatDate(c.lastCredentialResetAt)}` : "Belum pernah direset"}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <IconActionButton icon={Pencil} label="Ubah Kontak" tone="neutral" onClick={onEdit} />
+            <IconActionButton icon={KeyRound} label="Reset Credential" tone="info" onClick={onReset} />
+            {c.isActive ? (
+              <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={onToggleActive} />
+            ) : (
+              <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={onToggleActive} />
+            )}
+            {c.role === "Family Representative" && (
+              <IconActionButton icon={Repeat} label="Ganti Representative" tone="navy" onClick={onReplace} />
+            )}
+            <IconActionButton icon={Trash2} label="Hapus Client" tone="danger" onClick={() => setConfirmingDelete(true)} />
+          </div>
+        </div>
+      </div>
+
+      {confirmingDelete && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Yakin ingin menghapus {c.name}? Tindakan ini permanen — akun login yang terkait (jika ada) ikut dinonaktifkan.
+          </span>
+          <span className="flex shrink-0 gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)}>Batal</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                onDelete();
+                setConfirmingDelete(false);
+              }}
+            >
+              Ya, Hapus
+            </Button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ interface ClientContactFormModalProps {
   onClose: () => void;
   onSubmit: (values: ClientContactFormValues) => void;
   initialValues: { name: string; phone: string; email: string };
+  username?: string;
   title?: string;
   description?: string;
 }
@@ -18,6 +19,7 @@ export function ClientContactFormModal({
   onClose,
   onSubmit,
   initialValues,
+  username,
   title = "Ubah Kontak Client",
   description = "Perbarui nama dan informasi kontak client.",
 }: ClientContactFormModalProps) {
@@ -68,6 +70,13 @@ export function ClientContactFormModal({
         <Field label="Email" required hint={errors.email}>
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@email.com" />
         </Field>
+        {username !== undefined && (
+          <div className="sm:col-span-2">
+            <Field label="Username">
+              <Input value={username} disabled />
+            </Field>
+          </div>
+        )}
       </div>
     </Modal>
   );

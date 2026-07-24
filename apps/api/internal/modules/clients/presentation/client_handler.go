@@ -26,6 +26,7 @@ type clientResponse struct {
 	ID                    int64   `json:"id"`
 	ProjectID             int64   `json:"projectId"`
 	Role                  string  `json:"role"`
+	Username              string  `json:"username"`
 	RelationNote          string  `json:"relationNote"`
 	Name                  string  `json:"name"`
 	Phone                 string  `json:"phone"`
@@ -41,7 +42,7 @@ func toClientResponse(c domain.Client) clientResponse {
 		lastReset = &s
 	}
 	return clientResponse{
-		ID: c.ID, ProjectID: c.ProjectID, Role: string(c.Role), RelationNote: c.RelationNote,
+		ID: c.ID, ProjectID: c.ProjectID, Role: string(c.Role), Username: c.Username, RelationNote: c.RelationNote,
 		Name: c.Name, Phone: c.Phone, Email: c.Email, IsActive: c.IsActive, LastCredentialResetAt: lastReset,
 	}
 }
@@ -175,6 +176,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(segments) == 1 && r.Method == http.MethodPatch:
 		h.updateContact(w, r, tenantID, id)
+	case len(segments) == 1 && r.Method == http.MethodDelete:
+		h.delete(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
 		h.toggleActive(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "reset-credential" && r.Method == http.MethodPost:
@@ -204,6 +207,14 @@ func (h *Handler) updateContact(w http.ResponseWriter, r *http.Request, tenantID
 		return
 	}
 	response.OK(w, "Kontak client berhasil diperbarui", toClientResponse(*c))
+}
+
+func (h *Handler) delete(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	if err := h.clients.Delete(r.Context(), tenantID, id); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Client berhasil dihapus", nil)
 }
 
 func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

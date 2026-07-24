@@ -1,0 +1,2 @@
+ALTER TABLE clients
+  ADD COLUMN username VARCHAR(100) NOT NULL DEFAULT '' AFTER role;

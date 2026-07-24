@@ -8,6 +8,7 @@ interface RawClient {
   id: number;
   projectId: number;
   role: ClientRole;
+  username: string;
   relationNote: string;
   name: string;
   phone: string;
@@ -21,6 +22,7 @@ function toClient(raw: RawClient): Client {
     id: String(raw.id),
     projectId: String(raw.projectId),
     role: raw.role,
+    username: raw.username,
     relationNote: raw.relationNote,
     name: raw.name,
     phone: raw.phone,
@@ -39,6 +41,7 @@ interface ClientState {
   createClient: (projectId: string, role: ClientRole, values: ClientCreateFormValues) => Promise<void>;
   updateContact: (projectId: string, clientId: string, values: ClientContactFormValues) => Promise<void>;
   toggleActive: (projectId: string, clientId: string) => Promise<void>;
+  deleteClient: (projectId: string, clientId: string) => Promise<void>;
   resetCredential: (projectId: string, clientId: string, password: string) => Promise<void>;
   replaceRepresentative: (projectId: string, clientId: string, values: RepresentativeFormValues) => Promise<void>;
 }
@@ -71,6 +74,7 @@ export const useClientStore = create<ClientState>((set, get) => ({
       name: values.name,
       phone: values.phone,
       email: values.email,
+      username: values.username,
       password: values.password,
     });
     await get().fetchClients(projectId);
@@ -83,6 +87,15 @@ export const useClientStore = create<ClientState>((set, get) => ({
 
   toggleActive: async (projectId, clientId) => {
     await httpClient.post(API.clients.toggleActive(clientId));
+    await get().fetchClients(projectId);
+  },
+
+  // Hard delete — for clearing a client stuck with no working login
+  // credential (e.g. left behind before Create's compensating rollback
+  // existed). Frees up its role slot on the project so a replacement can be
+  // added; every other action in this store is a soft toggle instead.
+  deleteClient: async (projectId, clientId) => {
+    await httpClient.delete(API.clients.item(clientId));
     await get().fetchClients(projectId);
   },
 

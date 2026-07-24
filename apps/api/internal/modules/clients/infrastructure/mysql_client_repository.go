@@ -17,14 +17,14 @@ func NewMySQLClientRepository(db *sql.DB) *MySQLClientRepository {
 	return &MySQLClientRepository{db: db}
 }
 
-const clientColumns = `id, tenant_id, project_id, role, relation_note, name, phone, email, is_active,
+const clientColumns = `id, tenant_id, project_id, role, username, relation_note, name, phone, email, is_active,
 	last_credential_reset_at, created_at, updated_at`
 
 func scanClient(scan func(dest ...interface{}) error) (*domain.Client, error) {
 	var c domain.Client
 	var role string
 	var lastReset sql.NullTime
-	err := scan(&c.ID, &c.TenantID, &c.ProjectID, &role, &c.RelationNote, &c.Name, &c.Phone, &c.Email, &c.IsActive,
+	err := scan(&c.ID, &c.TenantID, &c.ProjectID, &role, &c.Username, &c.RelationNote, &c.Name, &c.Phone, &c.Email, &c.IsActive,
 		&lastReset, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -118,9 +118,9 @@ func (r *MySQLClientRepository) FindByID(ctx context.Context, tenantID, id int64
 
 func (r *MySQLClientRepository) Create(ctx context.Context, c *domain.Client) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO clients (tenant_id, project_id, role, relation_note, name, phone, email, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.TenantID, c.ProjectID, string(c.Role), c.RelationNote, c.Name, c.Phone, c.Email, c.IsActive,
+		`INSERT INTO clients (tenant_id, project_id, role, username, relation_note, name, phone, email, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.TenantID, c.ProjectID, string(c.Role), c.Username, c.RelationNote, c.Name, c.Phone, c.Email, c.IsActive,
 	)
 	if err != nil {
 		return err
@@ -148,5 +148,14 @@ func (r *MySQLClientRepository) SetActive(ctx context.Context, tenantID, id int6
 
 func (r *MySQLClientRepository) SetCredentialResetAt(ctx context.Context, tenantID, id int64, when time.Time) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE clients SET last_credential_reset_at = ? WHERE tenant_id = ? AND id = ?`, when, tenantID, id)
+	return err
+}
+
+// Delete is only ever called by ClientService.Create as a compensating
+// rollback when identity.CreateCredential fails after this row already
+// committed — clients are otherwise never hard-deleted (SetActive is the
+// normal deactivation path).
+func (r *MySQLClientRepository) Delete(ctx context.Context, tenantID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM clients WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }

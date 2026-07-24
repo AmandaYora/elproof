@@ -15,6 +15,7 @@ type Client struct {
 	TenantID              int64
 	ProjectID             int64
 	Role                  ClientRole
+	Username              string
 	RelationNote          string
 	Name                  string
 	Phone                 string
