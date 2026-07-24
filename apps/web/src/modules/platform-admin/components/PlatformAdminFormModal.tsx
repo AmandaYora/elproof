@@ -28,7 +28,7 @@ function toFormState(admin?: PlatformAdmin): FormState {
     role: admin.role,
     email: admin.email,
     phone: admin.phone,
-    username: "",
+    username: admin.username,
     password: "",
     confirmPassword: "",
   };
@@ -126,18 +126,19 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
             <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@elproof.id" />
           </Field>
         </div>
+        <div className="sm:col-span-2">
+          <Field label="Username" required={!isEditing} hint={errors.username}>
+            <Input
+              value={values.username}
+              disabled={isEditing}
+              onChange={(e) => set("username", e.target.value)}
+              placeholder="cth. reza.hakim"
+            />
+          </Field>
+        </div>
 
         {!isEditing && (
           <>
-            <div className="sm:col-span-2">
-              <Field label="Username" required hint={errors.username}>
-                <Input
-                  value={values.username}
-                  onChange={(e) => set("username", e.target.value)}
-                  placeholder="cth. reza.hakim"
-                />
-              </Field>
-            </div>
             <Field label="Password" required hint={errors.password}>
               <div className="relative">
                 <Input

@@ -30,7 +30,7 @@ function toFormState(tenant?: Tenant, defaultPlanId = ""): FormState {
     email: tenant.email,
     phone: tenant.phone,
     city: tenant.city,
-    username: "",
+    username: tenant.username,
     planId: tenant.planId ?? defaultPlanId,
     password: "",
     confirmPassword: "",
@@ -141,16 +141,17 @@ export function TenantFormModal({ open, onClose, initialTenant, plans, onSubmitC
         <Field label="No. HP Owner" required hint={errors.phone}>
           <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" />
         </Field>
+        <Field label="Username" required={!isEditing} hint={errors.username}>
+          <Input
+            value={values.username}
+            disabled={isEditing}
+            onChange={(e) => set("username", e.target.value)}
+            placeholder="cth. budi.rahman"
+          />
+        </Field>
 
         {!isEditing && (
           <>
-            <Field label="Username" required hint={errors.username}>
-              <Input
-                value={values.username}
-                onChange={(e) => set("username", e.target.value)}
-                placeholder="cth. budi.rahman"
-              />
-            </Field>
             <Field label="Paket Langganan" required hint={errors.planId}>
               <Select value={values.planId} onChange={(e) => set("planId", e.target.value)}>
                 {activePlans.map((plan) => (
