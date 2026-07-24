@@ -4,6 +4,7 @@ import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { PlanFormModal } from "@/modules/platform-admin/components/PlanFormModal";
@@ -86,6 +87,39 @@ export default function PlanListPage() {
         {plans.length === 0 ? (
           <EmptyState title="Belum ada paket" description="Tambahkan paket langganan pertama untuk platform ElProof." />
         ) : (
+          <>
+          <CardList
+            className="sm:hidden"
+            items={plans}
+            keyFor={(plan) => plan.id}
+            renderItem={(plan) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-semibold text-text-primary">{plan.name}</span>
+                  {plan.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <CardListField label="Durasi" value={`${plan.durationMonths} bulan`} />
+                  <CardListField label="Harga" value={formatCurrency(plan.price)} />
+                  <CardListField label="Fitur" value={`${plan.features.length} fitur`} />
+                </div>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <IconActionButton icon={Pencil} label="Ubah Paket" tone="neutral" onClick={() => openEditModal(plan)} />
+                  {plan.isActive ? (
+                    <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(plan.id)} />
+                  ) : (
+                    <IconActionButton
+                      icon={CheckCircle2}
+                      label="Aktifkan"
+                      tone="success"
+                      onClick={() => void handleToggleActive(plan.id)}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          />
+          <div className="hidden sm:block">
           <Table>
             <THead>
               <TR>
@@ -128,6 +162,8 @@ export default function PlanListPage() {
               ))}
             </TBody>
           </Table>
+          </div>
+          </>
         )}
       </Card>
 

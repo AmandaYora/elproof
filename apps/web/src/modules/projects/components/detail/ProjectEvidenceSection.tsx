@@ -6,6 +6,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
@@ -159,6 +160,28 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
             </p>
           ) : (
             <>
+            <CardList
+              className="sm:hidden"
+              items={pageItems}
+              keyFor={(item) => item.id}
+              renderItem={(item) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-medium text-text-primary">{item.name}</span>
+                    <Badge tone="neutral">{item.type}</Badge>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <CardListField label="Tanggal Dokumen" value={formatDate(item.documentDate)} />
+                    <CardListField label="Diunggah Oleh" value={staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"} />
+                    <CardListField label="Konteks" value={contextLabel(item)} />
+                  </div>
+                  <div className="pt-1">
+                    <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
+                  </div>
+                </>
+              )}
+            />
+            <div className="hidden sm:block">
             <Table>
               <THead>
                 <TR>
@@ -185,6 +208,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                 ))}
               </TBody>
             </Table>
+            </div>
             <Pagination
               page={page}
               totalPages={totalPages}

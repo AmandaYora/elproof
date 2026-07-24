@@ -8,6 +8,7 @@ import { Select } from "@/shared/components/ui/Input";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
@@ -143,6 +144,38 @@ export default function VendorListPage() {
           <EmptyState title="Tidak ada vendor ditemukan" description="Ubah kata kunci pencarian atau filter kategori." />
         ) : (
           <>
+          <CardList
+            className="sm:hidden"
+            items={vendors}
+            keyFor={(vendor) => vendor.id}
+            renderItem={(vendor) => {
+              const category = categories.find((c) => c.id === vendor.categoryId);
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-semibold text-text-primary">{vendor.name}</span>
+                    <VendorStatusBadge isActive={vendor.isActive} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <CardListField label="Kategori" value={category?.name ?? "-"} />
+                    <CardListField label="PIC" value={vendor.picName} />
+                    <CardListField label="Telepon" value={vendor.phone} />
+                    <CardListField label="Email" value={vendor.email} />
+                  </div>
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <IconActionButton icon={Pencil} label="Ubah Vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
+                    {vendor.isActive ? (
+                      <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
+                    ) : (
+                      <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
+                    )}
+                    <IconActionButton icon={Eye} label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
+                  </div>
+                </>
+              );
+            }}
+          />
+          <div className="hidden sm:block">
           <Table>
             <THead>
               <TR>
@@ -185,6 +218,7 @@ export default function VendorListPage() {
               })}
             </TBody>
           </Table>
+          </div>
           <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
           </>
         )}

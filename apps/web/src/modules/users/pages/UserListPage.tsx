@@ -7,6 +7,7 @@ import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Avatar } from "@/shared/components/ui/Avatar";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
@@ -116,6 +117,41 @@ export default function UserListPage() {
           <EmptyState title="Tidak ada pengguna ditemukan" description="Ubah kata kunci pencarian atau filter role." />
         ) : (
           <>
+          <CardList
+            className="sm:hidden"
+            items={users}
+            keyFor={(user) => user.id}
+            renderItem={(user) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar name={user.name} />
+                    <span className="truncate font-semibold text-text-primary">{user.name}</span>
+                  </div>
+                  {user.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <CardListField label="Jabatan" value={user.title} />
+                  <CardListField label="Role" value={<UserRoleBadge role={user.role} />} />
+                  <CardListField label="Telepon" value={user.phone} />
+                  <CardListField label="Email" value={user.email} />
+                </div>
+                {user.role === "Owner" ? (
+                  <p className="pt-1 text-[12px] text-text-secondary">Dikelola via Platform Console</p>
+                ) : (
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
+                    {user.isActive ? (
+                      <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
+                    ) : (
+                      <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          />
+          <div className="hidden sm:block">
           <Table>
             <THead>
               <TR>
@@ -163,6 +199,7 @@ export default function UserListPage() {
               ))}
             </TBody>
           </Table>
+          </div>
           <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
           </>
         )}

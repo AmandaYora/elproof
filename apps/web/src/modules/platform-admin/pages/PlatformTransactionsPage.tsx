@@ -3,6 +3,7 @@ import { Card } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
@@ -62,6 +63,28 @@ export default function PlatformTransactionsPage() {
           <EmptyState title="Tidak ada transaksi ditemukan" description="Ubah filter status untuk melihat transaksi lainnya." />
         ) : (
           <>
+            <CardList
+              className="sm:hidden"
+              items={transactions}
+              keyFor={(tx) => tx.id}
+              renderItem={(tx) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-semibold text-text-primary">{tenantName(tx.tenantId)}</span>
+                    <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <CardListField label="Tipe" value={TRANSACTION_TYPE_LABEL[tx.type]} />
+                    <CardListField label="Metode" value={tx.paymentMethod} />
+                    <CardListField label="No. Referensi" value={<span className="font-mono">{tx.paymentReference}</span>} />
+                    <CardListField label="Nominal" value={formatCurrency(tx.amount)} />
+                    <CardListField label="Dibuat" value={formatDate(tx.createdAt)} />
+                    <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
+                  </div>
+                </>
+              )}
+            />
+            <div className="hidden sm:block">
             <Table>
               <THead>
                 <TR>
@@ -92,6 +115,7 @@ export default function PlatformTransactionsPage() {
                 ))}
               </TBody>
             </Table>
+            </div>
             <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
           </>
         )}

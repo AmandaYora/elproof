@@ -8,6 +8,7 @@ import { Avatar } from "@/shared/components/ui/Avatar";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
@@ -159,6 +160,57 @@ export default function PlatformUserListPage() {
           <EmptyState title="Tidak ada pengguna ditemukan" description="Ubah kata kunci pencarian atau filter role." />
         ) : (
           <>
+            <CardList
+              className="sm:hidden"
+              items={admins}
+              keyFor={(admin) => admin.id}
+              renderItem={(admin) => {
+                const isSelf = admin.id === currentPlatformAdminId;
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Avatar name={admin.name} />
+                        <span className="truncate font-semibold text-text-primary">{admin.name}</span>
+                      </div>
+                      {admin.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <CardListField label="Jabatan" value={admin.title} />
+                      <CardListField label="Role" value={<PlatformAdminRoleBadge role={admin.role} />} />
+                      <CardListField label="Telepon" value={admin.phone} />
+                      <CardListField label="Email" value={admin.email} />
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(admin)} />
+                      <IconActionButton
+                        icon={KeyRound}
+                        label="Reset Password"
+                        tone="info"
+                        onClick={() => setResetPasswordAdmin(admin)}
+                      />
+                      {admin.isActive ? (
+                        <IconActionButton
+                          icon={UserX}
+                          label={isSelf ? "Tidak dapat menonaktifkan akun sendiri" : "Nonaktifkan"}
+                          tone="danger"
+                          disabled={isSelf}
+                          onClick={() => void handleToggleActive(admin.id)}
+                        />
+                      ) : (
+                        <IconActionButton
+                          icon={UserCheck}
+                          label="Aktifkan"
+                          tone="success"
+                          onClick={() => void handleToggleActive(admin.id)}
+                        />
+                      )}
+                    </div>
+                  </>
+                );
+              }}
+            />
+            <div className="hidden sm:block">
             <Table>
               <THead>
                 <TR>
@@ -222,6 +274,7 @@ export default function PlatformUserListPage() {
                 })}
               </TBody>
             </Table>
+            </div>
             <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
           </>
         )}

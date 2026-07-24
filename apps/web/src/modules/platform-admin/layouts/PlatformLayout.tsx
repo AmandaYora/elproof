@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes } from "lucide-react";
+import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, X } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -27,6 +27,7 @@ export default function PlatformLayout() {
   const platformAdmins = usePlatformAdminStore((s) => s.platformAdmins);
   const fetchPlatformAdmins = usePlatformAdminStore((s) => s.fetchPlatformAdmins);
   const [isLoading, setIsLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     fetchPlatformAdmins().finally(() => setIsLoading(false));
@@ -43,12 +44,33 @@ export default function PlatformLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-64 flex-col bg-navy-950 text-white">
-        <div className="flex flex-col gap-0.5 px-5 py-6">
-          <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
-          <span className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
-            <ShieldCheck className="h-3.5 w-3.5" /> Platform Console
-          </span>
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-navy-950/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 px-5 py-6">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
+            <span className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
+              <ShieldCheck className="h-3.5 w-3.5" /> Platform Console
+            </span>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Tutup menu"
+            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white lg:hidden"
+          >
+            <X className="h-4.5 w-4.5" />
+          </button>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
@@ -56,6 +78,7 @@ export default function PlatformLayout() {
             <NavLink
               key={to}
               to={to}
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
@@ -85,12 +108,19 @@ export default function PlatformLayout() {
         </div>
       </aside>
 
-      <div className="pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-border bg-surface px-6">
-          <span className="text-[13.5px] font-semibold text-text-primary">{admin.role} ElProof</span>
-          <span className="shrink-0 text-[13px] font-medium text-text-secondary">{formatDate(todayISO())}</span>
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-surface px-4 sm:px-6">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Buka menu"
+            className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-surface-muted lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text-primary">{admin.role} ElProof</span>
+          <span className="hidden shrink-0 text-[13px] font-medium text-text-secondary sm:block">{formatDate(todayISO())}</span>
         </header>
-        <main className="mx-auto max-w-[1400px] px-6 py-6">
+        <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
           <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
             <Outlet />
           </Suspense>

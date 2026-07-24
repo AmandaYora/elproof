@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { LayoutDashboard, FolderKanban, Users, Tags, Store, UserCog, Sparkles, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Tags, Store, UserCog, Sparkles, LogOut, X } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -17,51 +17,80 @@ const NAV_ITEMS = [
   { to: ROUTE_PATHS.subscription, label: "Langganan", icon: Sparkles, ownerOnly: true },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const session = useAuthStore((s) => s.session);
   const isOwner = session?.role === "Owner";
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.ownerOnly || isOwner);
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 flex w-64 flex-col bg-navy-950 text-white">
-      <div className="flex flex-col gap-0.5 px-5 py-6">
-        <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
-        <span className="text-[12px] font-medium text-white/55">WO Console</span>
-      </div>
-
-      <nav className="flex flex-1 flex-col gap-1 px-3">
-        {visibleNavItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
-                isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
-              )
-            }
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-navy-950/50 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 px-5 py-6">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
+            <span className="text-[12px] font-medium text-white/55">WO Console</span>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Tutup menu"
+            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white lg:hidden"
           >
-            <Icon className="h-[18px] w-[18px] shrink-0" />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="flex items-center gap-2.5 border-t border-white/10 px-5 py-4">
-        <Avatar name={session?.displayName ?? "?"} size="md" className="bg-white/15 text-white" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-white">{session?.displayName ?? "Tidak diketahui"}</p>
-          <p className="truncate text-[11.5px] text-white/55">{session?.role ?? ""}</p>
+            <X className="h-4.5 w-4.5" />
+          </button>
         </div>
-        <button
-          onClick={() => void logoutAndRedirect(navigate)}
-          aria-label="Keluar"
-          className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
-      </div>
-    </aside>
+
+        <nav className="flex flex-1 flex-col gap-1 px-3">
+          {visibleNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
+                  isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
+                )
+              }
+            >
+              <Icon className="h-[18px] w-[18px] shrink-0" />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-2.5 border-t border-white/10 px-5 py-4">
+          <Avatar name={session?.displayName ?? "?"} size="md" className="bg-white/15 text-white" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold text-white">{session?.displayName ?? "Tidak diketahui"}</p>
+            <p className="truncate text-[11.5px] text-white/55">{session?.role ?? ""}</p>
+          </div>
+          <button
+            onClick={() => void logoutAndRedirect(navigate)}
+            aria-label="Keluar"
+            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

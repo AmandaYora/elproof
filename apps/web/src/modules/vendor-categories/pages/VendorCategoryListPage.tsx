@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
@@ -118,6 +119,34 @@ export default function VendorCategoryListPage() {
           />
         ) : (
           <>
+          <CardList
+            className="sm:hidden"
+            items={categories}
+            keyFor={(category) => category.id}
+            renderItem={(category) => {
+              const categoryVendors = vendors.filter((v) => v.categoryId === category.id);
+              const activeCount = categoryVendors.filter((v) => v.isActive).length;
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-semibold text-text-primary">{category.name}</span>
+                    {category.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                  </div>
+                  {category.description && <p className="text-[12.5px] text-text-secondary">{category.description}</p>}
+                  <CardListField label="Jumlah Vendor" value={`${categoryVendors.length} vendor (${activeCount} aktif)`} />
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <IconActionButton icon={Pencil} label="Ubah Kategori" tone="neutral" onClick={() => openEditModal(category)} />
+                    {category.isActive ? (
+                      <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(category)} />
+                    ) : (
+                      <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(category)} />
+                    )}
+                  </div>
+                </>
+              );
+            }}
+          />
+          <div className="hidden sm:block">
           <Table>
             <THead>
               <TR>
@@ -157,6 +186,7 @@ export default function VendorCategoryListPage() {
               })}
             </TBody>
           </Table>
+          </div>
           <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
           </>
         )}

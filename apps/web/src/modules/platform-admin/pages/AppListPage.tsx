@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { AppFormModal } from "@/modules/platform-admin/components/AppFormModal";
@@ -92,6 +93,38 @@ export default function AppListPage() {
         ) : apps.length === 0 ? (
           <EmptyState title="Belum ada aplikasi" description="Daftarkan aplikasi eksternal pertama untuk mulai membuat charge lewat dompet ElProof." />
         ) : (
+          <>
+          <CardList
+            className="sm:hidden"
+            items={apps}
+            keyFor={(app) => app.appId}
+            renderItem={(app) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-medium text-text-primary">{app.name}</span>
+                  <Badge tone={app.isActive ? "success" : "neutral"}>{app.isActive ? "Aktif" : "Nonaktif"}</Badge>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <CardListField label="App ID" value={<span className="font-mono">{app.appId}</span>} />
+                  <CardListField label="Jenis" value={<Badge tone={app.kind === "internal" ? "navy" : "info"}>{app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}</Badge>} />
+                  <CardListField label="Callback URL" value={app.callbackUrl || "-"} />
+                  <CardListField label="Terdaftar" value={formatDate(app.createdAt)} />
+                </div>
+                {app.kind === "external" && (
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => void handleResetSecret(app.appId)} />
+                    <IconActionButton
+                      icon={app.isActive ? Ban : CheckCircle2}
+                      label={app.isActive ? "Nonaktifkan" : "Aktifkan"}
+                      tone={app.isActive ? "danger" : "success"}
+                      onClick={() => void handleToggleActive(app)}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          />
+          <div className="hidden sm:block">
           <Table>
             <THead>
               <TR>
@@ -140,6 +173,8 @@ export default function AppListPage() {
               ))}
             </TBody>
           </Table>
+          </div>
+          </>
         )}
       </Card>
 

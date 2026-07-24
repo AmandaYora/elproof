@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { IssueImpactBadge } from "@/modules/projects/components/StatusBadges";
@@ -86,6 +87,39 @@ export function ProjectIssuesSection({ projectId }: { projectId: string }) {
             </p>
           ) : (
             <>
+            <CardList
+              className="sm:hidden"
+              items={pageItems}
+              keyFor={(issue) => issue.id}
+              renderItem={(issue) => {
+                const pv = vendorEngagements.find((v) => v.id === issue.projectVendorId);
+                const vendor = pv ? vendors.find((v) => v.id === pv.vendorId) : null;
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-medium text-text-primary">{issue.title}</span>
+                      <IssueImpactBadge impact={issue.impact} />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <CardListField label="Vendor" value={vendor?.name ?? "Vendor tidak diketahui"} />
+                      <CardListField label="Ditemukan" value={formatDate(issue.foundDate)} />
+                      <CardListField label="Target Selesai" value={formatDate(issue.targetResolutionDate)} />
+                      <CardListField label="PIC" value={staff.find((s) => s.id === issue.picStaffId)?.name ?? "-"} />
+                    </div>
+                    <Select
+                      value={issue.status}
+                      onChange={(e) => void handleStatusChange(issue.id, e.target.value as IssueStatus)}
+                      className="h-9 w-full text-[13px]"
+                    >
+                      {ISSUE_STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </Select>
+                  </>
+                );
+              }}
+            />
+            <div className="hidden sm:block">
             <Table>
               <THead>
                 <TR>
@@ -126,6 +160,7 @@ export function ProjectIssuesSection({ projectId }: { projectId: string }) {
                 })}
               </TBody>
             </Table>
+            </div>
             <Pagination
               page={page}
               totalPages={totalPages}

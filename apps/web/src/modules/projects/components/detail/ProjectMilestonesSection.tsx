@@ -4,6 +4,7 @@ import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Select } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { MilestoneRail, MilestoneRailLegend } from "@/shared/components/ui/MilestoneRail";
@@ -88,6 +89,59 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
             </div>
           </div>
 
+          <CardList
+            className="sm:hidden"
+            items={pageItems}
+            keyFor={(m) => m.id}
+            renderItem={(m) => {
+              const overdue = isMilestoneOverdue(m.status, m.targetDate);
+              const cancelled = m.status === "Cancelled";
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className={cn("font-medium text-text-primary", cancelled && "line-through")}>{m.order}. {m.name}</span>
+                    {cancelled ? (
+                      <IconActionButton
+                        icon={CheckCircle2}
+                        label="Aktifkan kembali"
+                        tone="success"
+                        onClick={() => void updateStatus(m.id, "Not Started")}
+                      />
+                    ) : (
+                      <IconActionButton
+                        icon={Ban}
+                        label="Batalkan milestone"
+                        tone="danger"
+                        onClick={() => void updateStatus(m.id, "Cancelled")}
+                      />
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <CardListField
+                      label="Target Tanggal"
+                      value={
+                        <span className={overdue ? "font-semibold text-danger" : undefined}>
+                          {formatDate(m.targetDate)}
+                          {overdue && " · terlambat"}
+                        </span>
+                      }
+                    />
+                    <CardListField label="Tanggal Selesai" value={formatDate(m.completedDate)} />
+                  </div>
+                  <Select
+                    value={m.status}
+                    onChange={(e) => void updateStatus(m.id, e.target.value as MilestoneStatus)}
+                    className="h-9 w-full text-[13px]"
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </Select>
+                </>
+              );
+            }}
+          />
+          <div className="hidden sm:block">
           <Table className="mt-2">
             <THead>
               <TR>
@@ -143,6 +197,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
               })}
             </TBody>
           </Table>
+          </div>
           <Pagination
             page={page}
             totalPages={totalPages}

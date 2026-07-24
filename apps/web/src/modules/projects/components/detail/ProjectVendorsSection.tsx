@@ -349,11 +349,66 @@ function VendorAccordionRow({
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(sortedMilestones);
   const vendorCancelled = pv.engagementStatus === "Cancelled";
 
+  const actionIcons = (
+    <>
+      <span
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditVendor();
+        }}
+        role="button"
+        tabIndex={0}
+        className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-white hover:text-navy-900"
+      >
+        <Pencil className="h-4 w-4" />
+      </span>
+      {!vendorCancelled && (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmingCancel(true);
+          }}
+          role="button"
+          tabIndex={0}
+          title="Batalkan vendor"
+          className="shrink-0 rounded-md p-1.5 text-danger hover:bg-danger-soft"
+        >
+          <Ban className="h-4 w-4" />
+        </span>
+      )}
+    </>
+  );
+
   return (
     <li className={vendorCancelled ? "opacity-60" : undefined}>
+      {/* Mobile: stacked card header — fixed-width columns don't fit one line on small screens */}
       <button
         onClick={onToggle}
-        className="flex w-full flex-wrap items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-surface-muted"
+        className="flex w-full flex-col gap-2.5 px-5 py-3.5 text-left transition-colors hover:bg-surface-muted sm:hidden"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
+            <span className="min-w-0">
+              <span className={cn("block truncate text-[13.5px] font-semibold text-text-primary", vendorCancelled && "line-through")}>
+                {vendorName}
+              </span>
+              <span className="block truncate text-[12px] text-text-secondary">{categoryName} · {pv.scope}</span>
+            </span>
+          </div>
+          <span className="flex shrink-0 items-center gap-1">{actionIcons}</span>
+        </div>
+        <MilestoneRail milestones={milestones} size="sm" />
+        <div className="flex items-center justify-between gap-3">
+          <EngagementStatusBadge status={pv.engagementStatus} />
+          <span className="text-[13px] tabular-nums text-text-primary">{formatCurrency(pv.contractValue)}</span>
+        </div>
+      </button>
+
+      {/* Desktop: single-line row */}
+      <button
+        onClick={onToggle}
+        className="hidden w-full items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-surface-muted sm:flex"
       >
         {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
         <span className="min-w-45 flex-1">
@@ -371,33 +426,7 @@ function VendorAccordionRow({
         <span className="w-32 shrink-0 text-right text-[13px] tabular-nums text-text-primary">
           {formatCurrency(pv.contractValue)}
         </span>
-        <span className="flex shrink-0 items-center gap-1">
-          <span
-            onClick={(e) => {
-              e.stopPropagation();
-              onEditVendor();
-            }}
-            role="button"
-            tabIndex={0}
-            className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-white hover:text-navy-900"
-          >
-            <Pencil className="h-4 w-4" />
-          </span>
-          {!vendorCancelled && (
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmingCancel(true);
-              }}
-              role="button"
-              tabIndex={0}
-              title="Batalkan vendor"
-              className="shrink-0 rounded-md p-1.5 text-danger hover:bg-danger-soft"
-            >
-              <Ban className="h-4 w-4" />
-            </span>
-          )}
-        </span>
+        <span className="flex shrink-0 items-center gap-1">{actionIcons}</span>
       </button>
 
       {confirmingCancel && (
@@ -443,7 +472,7 @@ function VendorAccordionRow({
               Belum ada milestone untuk vendor ini.
             </p>
           ) : (
-            <div className="overflow-hidden rounded-md border border-border bg-white">
+            <div className="overflow-x-auto rounded-md border border-border bg-white">
               <table className="w-full text-left text-[13px]">
                 <thead className="border-b border-border-light">
                   <tr>

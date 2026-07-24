@@ -5,6 +5,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters";
@@ -217,6 +218,27 @@ export default function SubscriptionPage() {
             <EmptyState title="Belum ada riwayat" description="Riwayat transaksi akan muncul di sini setelah langganan pertama dibayar." />
           ) : (
             <>
+              <CardList
+                className="sm:hidden"
+                items={transactions}
+                keyFor={(tx) => tx.id}
+                renderItem={(tx) => (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-semibold text-text-primary">{TRANSACTION_TYPE_LABEL[tx.type]}</span>
+                      <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <CardListField label="Metode" value={tx.paymentMethod} />
+                      <CardListField label="No. Referensi" value={<span className="font-mono">{tx.paymentReference}</span>} />
+                      <CardListField label="Nominal" value={formatCurrency(tx.amount)} />
+                      <CardListField label="Dibuat" value={formatDate(tx.createdAt)} />
+                      <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
+                    </div>
+                  </>
+                )}
+              />
+              <div className="hidden sm:block">
               <Table>
                 <THead>
                   <TR>
@@ -245,6 +267,7 @@ export default function SubscriptionPage() {
                   ))}
                 </TBody>
               </Table>
+              </div>
               <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
             </>
           )}

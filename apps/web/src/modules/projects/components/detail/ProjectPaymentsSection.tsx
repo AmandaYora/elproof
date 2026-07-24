@@ -6,6 +6,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
@@ -77,6 +78,31 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
             </p>
           ) : (
             <>
+            <CardList
+              className="sm:hidden"
+              items={pageItems}
+              keyFor={(payment) => payment.id}
+              renderItem={(payment) => {
+                const pv = vendorEngagements.find((v) => v.id === payment.projectVendorId);
+                const vendor = pv ? vendors.find((v) => v.id === pv.vendorId) : null;
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-medium text-text-primary">{vendor?.name ?? "Vendor tidak diketahui"}</span>
+                      {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <CardListField label="Jenis" value={payment.type} />
+                      <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
+                      <CardListField label="Tanggal" value={formatDate(payment.paymentDate)} />
+                      <CardListField label="Metode" value={payment.method} />
+                      <CardListField label="No. Referensi" value={payment.referenceNumber} />
+                    </div>
+                  </>
+                );
+              }}
+            />
+            <div className="hidden sm:block">
             <Table>
               <THead>
                 <TR>
@@ -109,6 +135,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                 })}
               </TBody>
             </Table>
+            </div>
             <Pagination
               page={page}
               totalPages={totalPages}

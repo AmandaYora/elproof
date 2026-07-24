@@ -7,6 +7,7 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
+import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
@@ -183,6 +184,81 @@ export default function TenantListPage() {
           <EmptyState title="Tidak ada tenant ditemukan" description="Ubah kata kunci pencarian atau filter status." />
         ) : (
           <>
+            <CardList
+              className="sm:hidden"
+              items={tenants}
+              keyFor={(tenant) => tenant.id}
+              renderItem={(tenant) => {
+                const d = daysUntilExpiry(tenant);
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-semibold text-text-primary">{tenant.businessName}</span>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <TenantStatusBadge status={tenant.subscriptionStatus} />
+                        {tenant.isSuspended && <Badge tone="danger">Disuspend</Badge>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <CardListField label="Owner" value={tenant.ownerName} />
+                      <CardListField label="Username" value={`@${tenant.username}`} />
+                      <CardListField label="Telepon" value={tenant.phone} />
+                      <CardListField label="Email" value={tenant.email} />
+                      <CardListField label="Kota" value={tenant.city} />
+                      <CardListField label="Paket" value={planName(tenant.planId)} />
+                      <CardListField
+                        label="Berakhir"
+                        value={
+                          tenant.subscriptionExpiresAt ? (
+                            <>
+                              {formatDate(tenant.subscriptionExpiresAt)}
+                              {d !== null && (
+                                <span className={`ml-1 ${d < 0 ? "text-danger" : "text-text-secondary"}`}>
+                                  ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            "-"
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <IconActionButton icon={Pencil} label="Ubah Tenant" tone="neutral" onClick={() => openEditModal(tenant)} />
+                      <IconActionButton
+                        icon={KeyRound}
+                        label="Reset Password"
+                        tone="info"
+                        onClick={() => setResetPasswordTenant(tenant)}
+                      />
+                      <IconActionButton
+                        icon={Zap}
+                        label="Aktifkan Langganan"
+                        tone="success"
+                        onClick={() => setActivatingTenant(tenant)}
+                      />
+                      {tenant.isSuspended ? (
+                        <IconActionButton
+                          icon={UserCheck}
+                          label="Aktifkan Kembali"
+                          tone="success"
+                          onClick={() => void handleToggleSuspension(tenant.id)}
+                        />
+                      ) : (
+                        <IconActionButton
+                          icon={UserX}
+                          label="Suspend Tenant"
+                          tone="danger"
+                          onClick={() => void handleToggleSuspension(tenant.id)}
+                        />
+                      )}
+                    </div>
+                  </>
+                );
+              }}
+            />
+            <div className="hidden sm:block">
             <Table>
               <THead>
                 <TR>
@@ -269,6 +345,7 @@ export default function TenantListPage() {
                 })}
               </TBody>
             </Table>
+            </div>
             <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
           </>
         )}
