@@ -137,8 +137,9 @@ a real `projects` row to reference)
 | GET | `/projects/{id}` | includes `progress` (computed on read, not stored). Staff: any project in their tenant. **Client** (Fase 6): only their own project — any other `{id}` is 403, checked server-side via `clients.Contracts.ProjectIDForClient`, not just a frontend convention. |
 | PATCH | `/projects/{id}` | |
 | POST | `/projects/{id}/cancel` | soft status change |
-| GET/POST | `/projects/{id}/milestones` | no reorder endpoint — `sortOrder` is only ever set at creation time (auto-increment); the frontend has no reorder UI as a result |
-| PATCH | `/projects/{id}/milestones/{milestoneId}` | body `{status}` only; auto-stamps `completedDate` once when status becomes `Completed` |
+| GET/POST | `/projects/{id}/milestones` | — |
+| PATCH | `/projects/{id}/milestones` | body `{orderedIds}` — full new order of all of the project's milestone IDs; rejected (422) unless it's an exact permutation of the existing set |
+| PATCH | `/projects/{id}/milestones/{milestoneId}` | body `{status, targetDate, completedDate}` — full update, mirrors vendor milestones below; `completedDate` is client-supplied, not server-stamped |
 | GET/POST | `/projects/{id}/vendors` | project-vendor engagements; create/update body requires `eventDate` (frontend fills it from the parent project's own `eventDate` — there's no separate date field in the vendor form) |
 | PATCH | `/projects/{id}/vendors/{projectVendorId}` | full-body update, same shape as create |
 | POST | `/projects/{id}/vendors/{projectVendorId}/cancel` | one-way; "un-cancelling" is just editing `engagementStatus` back via PATCH |

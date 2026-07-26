@@ -224,3 +224,24 @@ func (r *MySQLMilestoneRepository) NextSortOrder(ctx context.Context, projectID 
 	}
 	return int(maxOrder.Int64) + 1, nil
 }
+
+// Reorder rewrites sort_order to match each ID's position in orderedIDs
+// (1-based) — the application layer has already validated orderedIDs is an
+// exact permutation of this project's milestone IDs.
+func (r *MySQLMilestoneRepository) Reorder(ctx context.Context, projectID int64, orderedIDs []int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for i, id := range orderedIDs {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE project_milestones SET sort_order = ? WHERE id = ? AND project_id = ?`,
+			i+1, id, projectID,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

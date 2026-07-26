@@ -13,6 +13,7 @@ import (
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
@@ -114,8 +115,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listMilestones(w, r, claims.tenantID, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodPost:
 		h.createMilestone(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodPatch:
+		h.reorderMilestones(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "milestones" && r.Method == http.MethodPatch:
-		h.updateMilestoneStatus(w, r, claims, projectID, rest[1])
+		h.updateMilestone(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodGet:
 		h.listVendorEngagements(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodPost:
@@ -238,5 +241,6 @@ func writeAppError(w http.ResponseWriter, err error) {
 		response.Error(w, status, appErr.Message, nil)
 		return
 	}
+	logger.Error("unhandled error: %v", err)
 	response.Error(w, status, "Terjadi kesalahan pada server", nil)
 }

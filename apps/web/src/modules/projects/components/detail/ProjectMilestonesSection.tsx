@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Ban, CheckCircle2 } from "lucide-react";
+import { Plus, Ban, CheckCircle2, Pencil, ArrowUp, ArrowDown } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Select } from "@/shared/components/ui/Input";
@@ -10,6 +10,7 @@ import { usePagination } from "@/shared/hooks/usePagination";
 import { MilestoneRail, MilestoneRailLegend } from "@/shared/components/ui/MilestoneRail";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { ProjectMilestoneFormModal } from "@/modules/projects/components/ProjectMilestoneFormModal";
+import { ProjectMilestoneEditModal, type ProjectMilestoneEditFields } from "@/modules/projects/components/detail/ProjectMilestoneEditModal";
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { computeMilestoneStats, isMilestoneOverdue } from "@/modules/projects/lib/dates";
@@ -34,11 +35,19 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const createMilestone = useProjectStore((s) => s.createMilestone);
   const updateMilestoneStatus = useProjectStore((s) => s.updateMilestoneStatus);
+  const updateMilestone = useProjectStore((s) => s.updateMilestone);
+  const reorderMilestones = useProjectStore((s) => s.reorderMilestones);
   const [addOpen, setAddOpen] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const sortedMilestones = sortMilestones(milestones);
   const stats = computeMilestoneStats(milestones);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(sortedMilestones);
+  // Up/down only makes sense within the active (non-cancelled) set — a
+  // cancelled milestone's on-screen position is always forced to the bottom
+  // (see sortMilestones above) regardless of its stored sort order, so
+  // reordering buttons on it (or past it) would be confusing.
+  const activeOrder = sortedMilestones.filter((m) => m.status !== "Cancelled");
 
   useEffect(() => {
     void fetchMilestones(projectId);
@@ -60,6 +69,32 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
       setAddOpen(false);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menambahkan milestone"));
+    }
+  }
+
+  async function handleEditSave(fields: ProjectMilestoneEditFields) {
+    if (!editingMilestone) return;
+    setActionError(null);
+    try {
+      await updateMilestone(projectId, editingMilestone.id, fields);
+      setEditingMilestone(null);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal memperbarui milestone"));
+    }
+  }
+
+  async function handleMove(milestoneId: string, direction: "up" | "down") {
+    setActionError(null);
+    const idx = activeOrder.findIndex((m) => m.id === milestoneId);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= activeOrder.length) return;
+    const reordered = [...activeOrder];
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+    const cancelled = sortedMilestones.filter((m) => m.status === "Cancelled");
+    try {
+      await reorderMilestones(projectId, [...reordered, ...cancelled].map((m) => m.id));
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal mengubah urutan milestone"));
     }
   }
 
@@ -96,25 +131,47 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
             renderItem={(m) => {
               const overdue = isMilestoneOverdue(m.status, m.targetDate);
               const cancelled = m.status === "Cancelled";
+              const activeIdx = activeOrder.findIndex((a) => a.id === m.id);
               return (
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <span className={cn("font-medium text-text-primary", cancelled && "line-through")}>{m.order}. {m.name}</span>
-                    {cancelled ? (
-                      <IconActionButton
-                        icon={CheckCircle2}
-                        label="Aktifkan kembali"
-                        tone="success"
-                        onClick={() => void updateStatus(m.id, "Not Started")}
-                      />
-                    ) : (
-                      <IconActionButton
-                        icon={Ban}
-                        label="Batalkan milestone"
-                        tone="danger"
-                        onClick={() => void updateStatus(m.id, "Cancelled")}
-                      />
-                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {!cancelled && (
+                        <>
+                          <IconActionButton
+                            icon={ArrowUp}
+                            label="Naikkan urutan"
+                            tone="neutral"
+                            disabled={activeIdx <= 0}
+                            onClick={() => void handleMove(m.id, "up")}
+                          />
+                          <IconActionButton
+                            icon={ArrowDown}
+                            label="Turunkan urutan"
+                            tone="neutral"
+                            disabled={activeIdx === -1 || activeIdx >= activeOrder.length - 1}
+                            onClick={() => void handleMove(m.id, "down")}
+                          />
+                        </>
+                      )}
+                      <IconActionButton icon={Pencil} label="Edit milestone" tone="neutral" onClick={() => setEditingMilestone(m)} />
+                      {cancelled ? (
+                        <IconActionButton
+                          icon={CheckCircle2}
+                          label="Aktifkan kembali"
+                          tone="success"
+                          onClick={() => void updateStatus(m.id, "Not Started")}
+                        />
+                      ) : (
+                        <IconActionButton
+                          icon={Ban}
+                          label="Batalkan milestone"
+                          tone="danger"
+                          onClick={() => void updateStatus(m.id, "Cancelled")}
+                        />
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <CardListField
@@ -156,6 +213,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
               {pageItems.map((m) => {
                 const overdue = isMilestoneOverdue(m.status, m.targetDate);
                 const cancelled = m.status === "Cancelled";
+                const activeIdx = activeOrder.findIndex((a) => a.id === m.id);
                 return (
                   <TR key={m.id} className={cancelled ? "opacity-50" : undefined}>
                     <TD className={cn("font-medium", cancelled && "line-through")}>{m.order}. {m.name}</TD>
@@ -176,21 +234,42 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                     </TD>
                     <TD>{formatDate(m.completedDate)}</TD>
                     <TD>
-                      {cancelled ? (
-                        <IconActionButton
-                          icon={CheckCircle2}
-                          label="Aktifkan kembali"
-                          tone="success"
-                          onClick={() => void updateStatus(m.id, "Not Started")}
-                        />
-                      ) : (
-                        <IconActionButton
-                          icon={Ban}
-                          label="Batalkan milestone"
-                          tone="danger"
-                          onClick={() => void updateStatus(m.id, "Cancelled")}
-                        />
-                      )}
+                      <div className="flex items-center gap-1">
+                        {!cancelled && (
+                          <>
+                            <IconActionButton
+                              icon={ArrowUp}
+                              label="Naikkan urutan"
+                              tone="neutral"
+                              disabled={activeIdx <= 0}
+                              onClick={() => void handleMove(m.id, "up")}
+                            />
+                            <IconActionButton
+                              icon={ArrowDown}
+                              label="Turunkan urutan"
+                              tone="neutral"
+                              disabled={activeIdx === -1 || activeIdx >= activeOrder.length - 1}
+                              onClick={() => void handleMove(m.id, "down")}
+                            />
+                          </>
+                        )}
+                        <IconActionButton icon={Pencil} label="Edit milestone" tone="neutral" onClick={() => setEditingMilestone(m)} />
+                        {cancelled ? (
+                          <IconActionButton
+                            icon={CheckCircle2}
+                            label="Aktifkan kembali"
+                            tone="success"
+                            onClick={() => void updateStatus(m.id, "Not Started")}
+                          />
+                        ) : (
+                          <IconActionButton
+                            icon={Ban}
+                            label="Batalkan milestone"
+                            tone="danger"
+                            onClick={() => void updateStatus(m.id, "Cancelled")}
+                          />
+                        )}
+                      </div>
                     </TD>
                   </TR>
                 );
@@ -210,6 +289,16 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
       </Card>
 
       <ProjectMilestoneFormModal open={addOpen} onClose={() => setAddOpen(false)} onSubmit={(values) => void handleAddMilestone(values)} />
+
+      {editingMilestone && (
+        <ProjectMilestoneEditModal
+          key={editingMilestone.id}
+          open
+          onClose={() => setEditingMilestone(null)}
+          milestone={editingMilestone}
+          onSave={(fields) => void handleEditSave(fields)}
+        />
+      )}
     </div>
   );
 }

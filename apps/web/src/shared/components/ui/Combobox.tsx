@@ -98,7 +98,12 @@ export function Combobox({ value, onChange, children, className, disabled, place
       if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
       closeDropdown();
     }
-    function onViewportChange() {
+    function onViewportChange(e: Event) {
+      // Scrolling the dropdown's own options list also fires a (capture-phase)
+      // window scroll event — only a genuine outer/page scroll should close
+      // the panel, since `rect` (its fixed position) is a one-time snapshot
+      // from open time and would otherwise drift from the trigger.
+      if (panelRef.current?.contains(e.target as Node)) return;
       closeDropdown();
     }
 

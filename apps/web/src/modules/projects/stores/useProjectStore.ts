@@ -126,6 +126,12 @@ function toMilestone(raw: RawMilestone): ProjectMilestone {
   return { id: String(raw.id), order: raw.order, name: raw.name, status: raw.status, targetDate: raw.targetDate, completedDate: raw.completedDate };
 }
 
+export interface ProjectMilestoneUpdateFields {
+  status: MilestoneStatus;
+  targetDate: string;
+  completedDate: string;
+}
+
 interface RawProjectVendor {
   id: number;
   vendorId: number;
@@ -369,6 +375,8 @@ interface ProjectState {
   fetchMilestones: (projectId: string) => Promise<void>;
   createMilestone: (projectId: string, values: ProjectMilestoneFormValues) => Promise<void>;
   updateMilestoneStatus: (projectId: string, milestoneId: string, status: MilestoneStatus) => Promise<void>;
+  updateMilestone: (projectId: string, milestoneId: string, fields: ProjectMilestoneUpdateFields) => Promise<void>;
+  reorderMilestones: (projectId: string, orderedIds: string[]) => Promise<void>;
 
   fetchVendorSection: (projectId: string) => Promise<void>;
   createVendorEngagement: (projectId: string, values: ProjectVendorFormValues) => Promise<void>;
@@ -503,7 +511,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   updateMilestoneStatus: async (projectId, milestoneId, status) => {
-    await httpClient.patch(API.projects.milestone(projectId, milestoneId), { status });
+    // The backend endpoint is a full update (mirrors vendor milestones) — the
+    // quick inline status dropdown resends this milestone's current dates
+    // unchanged alongside the new status, rather than needing its own
+    // partial-update endpoint.
+    const existing = get().milestones.find((m) => m.id === milestoneId);
+    await httpClient.patch(API.projects.milestone(projectId, milestoneId), {
+      status,
+      targetDate: existing?.targetDate ?? "",
+      completedDate: existing?.completedDate ?? "",
+    });
+    await get().fetchMilestones(projectId);
+  },
+
+  updateMilestone: async (projectId, milestoneId, fields) => {
+    await httpClient.patch(API.projects.milestone(projectId, milestoneId), {
+      status: fields.status,
+      targetDate: fields.targetDate,
+      completedDate: fields.completedDate,
+    });
+    await get().fetchMilestones(projectId);
+  },
+
+  reorderMilestones: async (projectId, orderedIds) => {
+    await httpClient.patch(API.projects.milestones(projectId), { orderedIds: orderedIds.map(Number) });
     await get().fetchMilestones(projectId);
   },
 

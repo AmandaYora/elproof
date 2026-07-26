@@ -24,6 +24,7 @@ type MilestoneRepository interface {
 	Create(ctx context.Context, m *domain.ProjectMilestone) error
 	Update(ctx context.Context, m *domain.ProjectMilestone) error
 	NextSortOrder(ctx context.Context, projectID int64) (int, error)
+	Reorder(ctx context.Context, projectID int64, orderedIDs []int64) error
 }
 
 type ProjectService struct {
@@ -186,7 +187,18 @@ func (s *ProjectService) CreateMilestone(ctx context.Context, tenantID, projectI
 	return m, nil
 }
 
-func (s *ProjectService) UpdateMilestoneStatus(ctx context.Context, tenantID, projectID, milestoneID int64, actorStaffID int64, status domain.MilestoneStatus, asOf time.Time) (*domain.ProjectMilestone, error) {
+type MilestoneUpdateInput struct {
+	Status        domain.MilestoneStatus
+	TargetDate    time.Time
+	CompletedDate *time.Time
+}
+
+// UpdateMilestone lets the WO managing this project correct its own
+// schedule — Status, TargetDate, and CompletedDate are all set directly from
+// client input (no more server-side auto-stamping of CompletedDate), mirroring
+// VendorEngagementService.UpdateMilestone's shape for the sibling
+// vendor-milestone entity.
+func (s *ProjectService) UpdateMilestone(ctx context.Context, tenantID, projectID, milestoneID int64, actorStaffID int64, input MilestoneUpdateInput) (*domain.ProjectMilestone, error) {
 	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
 		return nil, err
 	}
@@ -197,16 +209,49 @@ func (s *ProjectService) UpdateMilestoneStatus(ctx context.Context, tenantID, pr
 	if m == nil {
 		return nil, apperror.NotFound("Milestone tidak ditemukan")
 	}
-	m.Status = status
-	if status == domain.MilestoneCompleted && m.CompletedDate == nil {
-		m.CompletedDate = &asOf
-	}
+	m.Status = input.Status
+	m.TargetDate = input.TargetDate
+	m.CompletedDate = input.CompletedDate
 	if err := s.milestones.Update(ctx, m); err != nil {
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(m.ID), m.Name,
-		"Status milestone diubah menjadi "+string(status))
+		"Milestone project diperbarui: "+m.Name)
 	return m, nil
+}
+
+// ReorderMilestones rewrites every milestone's SortOrder for this project to
+// match the position of its ID in orderedIDs. orderedIDs must be an exact
+// permutation of the project's existing milestone IDs — rejected otherwise,
+// so a stale/corrupted client payload can't silently drop or duplicate a row.
+func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projectID int64, actorStaffID int64, orderedIDs []int64) error {
+	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
+		return err
+	}
+	existing, err := s.milestones.ListByProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if len(orderedIDs) != len(existing) {
+		return apperror.Validation("Urutan milestone tidak valid", nil)
+	}
+	existingIDs := make(map[int64]bool, len(existing))
+	for _, m := range existing {
+		existingIDs[m.ID] = true
+	}
+	seen := make(map[int64]bool, len(orderedIDs))
+	for _, id := range orderedIDs {
+		if !existingIDs[id] || seen[id] {
+			return apperror.Validation("Urutan milestone tidak valid", nil)
+		}
+		seen[id] = true
+	}
+	if err := s.milestones.Reorder(ctx, projectID, orderedIDs); err != nil {
+		return err
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", "", "",
+		"Urutan milestone diubah")
+	return nil
 }
 
 // --- Progress computation (mirrors mock/selectors.ts computeProjectProgress) ---

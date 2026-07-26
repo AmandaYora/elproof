@@ -213,25 +213,51 @@ func (h *Handler) createMilestone(w http.ResponseWriter, r *http.Request, claims
 	response.Created(w, "Milestone berhasil ditambahkan", toMilestoneResponse(*m))
 }
 
-type milestoneStatusBody struct {
-	Status string `json:"status"`
+type milestoneUpdateBody struct {
+	Status        string `json:"status"`
+	TargetDate    string `json:"targetDate"`
+	CompletedDate string `json:"completedDate"`
 }
 
-func (h *Handler) updateMilestoneStatus(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
+func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID milestone tidak valid", nil)
 		return
 	}
-	var body milestoneStatusBody
+	var body milestoneUpdateBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	m, err := h.projects.UpdateMilestoneStatus(r.Context(), claims.tenantID, projectID, milestoneID, claims.staffID, domain.MilestoneStatus(body.Status), time.Now())
+	targetDate, err := parseDate(body.TargetDate)
+	if err != nil {
+		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"targetDate": {"Gunakan format YYYY-MM-DD"}})
+		return
+	}
+	m, err := h.projects.UpdateMilestone(r.Context(), claims.tenantID, projectID, milestoneID, claims.staffID, application.MilestoneUpdateInput{
+		Status: domain.MilestoneStatus(body.Status), TargetDate: targetDate, CompletedDate: parseOptionalDate(body.CompletedDate),
+	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Status milestone diperbarui", toMilestoneResponse(*m))
+	response.OK(w, "Milestone berhasil diperbarui", toMilestoneResponse(*m))
+}
+
+type milestoneReorderBody struct {
+	OrderedIDs []int64 `json:"orderedIds"`
+}
+
+func (h *Handler) reorderMilestones(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	var body milestoneReorderBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	if err := h.projects.ReorderMilestones(r.Context(), claims.tenantID, projectID, claims.staffID, body.OrderedIDs); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Urutan milestone berhasil diperbarui", nil)
 }

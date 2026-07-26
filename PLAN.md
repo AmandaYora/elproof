@@ -1,186 +1,221 @@
-# PLAN — Plan-less tenant creation + card-based subscription + in-history charge recovery
+# PLAN — Milestone editability/reordering + Combobox scroll-closes bug
 
-Status: **Implemented.** Backend and frontend changes described below have been built,
-build/type-checked, and interactively verified (Playwright). Kept here as the design record.
+Status: **Implemented.** All three items below have been built, build/type-checked, and
+interactively verified (Playwright + direct backend API testing). Kept here as the design record.
 
-## 1. Background
+Covers three verified issues, found and confirmed by direct code inspection this session:
 
-Today, creating a tenant (Platform Console → Tenant → Tambah Tenant) requires picking a
-subscription plan and a password in the same form. `TenantService.Register` immediately records a
-transaction row with `status = unpaid` (label "Menunggu Pembayaran") for that plan — before the
-Owner has done anything and before any real money/gateway charge exists.
+1. A project milestone's Target Date and Completed Date cannot be changed once created (true for
+   every milestone — seeded defaults and manually-created ones alike; there is nothing special
+   about the seeded "Persiapan Acara" row).
+2. There is no way to reorder milestones after creation (same for both project milestones and the
+   separate vendor-milestone entity).
+3. The shared searchable dropdown component (`Select`/`Combobox`, used all over the app) closes
+   itself the instant its own options list is scrolled, making any list too long to fit its
+   `max-h-52` panel partly unreachable.
 
-This creates a permanent data-hygiene bug: if the Platform Console later activates that tenant's
-subscription manually (`ActivateSubscription`), it records a **second**, independent transaction
-row (`status = granted`, method "Aktivasi Manual (Super Admin)") — but never touches or resolves
-the original "unpaid" row, because that row was never tracked in `pending_subscription_charges`
-(only `Pay()` inserts there). The result: **every tenant activated by an admin ends up with two
-permanent transaction rows for one subscription event** — one real, one a "ghost" that will show
-"Menunggu Pembayaran" forever, with no expiry and no way to resolve it.
+Items 1–2 are gaps, not intentional restrictions — the codebase already has a working precedent for
+full milestone editing (vendor milestones' `UpdateMilestone` + `VendorMilestoneEditModal`) that
+project milestones never got. Item 3 is a genuine regression-class bug in shared UI, unrelated to
+milestones — grouped here only because it was found and verified in the same session.
 
-Root cause: the plan (and therefore the placeholder transaction) is chosen too early — at tenant
-creation — instead of at the moment a real subscription event actually happens (Owner pays, or
-admin activates).
+## 1. Editable Target Date / Completed Date
 
-## 2. New mechanism
+### Current behavior (confirmed)
 
-Tenant creation no longer takes a plan. A tenant is created "empty" (`plan_id = NULL`,
-`subscription_status = pending_payment`) and **no transaction row is created at registration at
-all**. The first transaction row a tenant ever gets is the one created by whichever of the two
-real subscription events happens first:
+- `apps/api/internal/modules/projects/application/project_service.go:189` — `UpdateMilestoneStatus`
+  is the only mutation path after creation. It sets `Status` only; `CompletedDate` is auto-stamped
+  with `time.Now()` the first time status becomes `Completed` and can never be supplied or
+  corrected by the client; `TargetDate` is never touched.
+- `apps/api/internal/modules/projects/infrastructure/mysql_project_repository.go:211-217` — the
+  repository's `Update` SQL (`SET name = ?, status = ?, target_date = ?, completed_date = ?`)
+  already has the columns needed — the application layer just never populates new values for
+  `target_date`/`completed_date` before calling it.
+- `apps/web/src/modules/projects/components/detail/ProjectMilestonesSection.tsx:120-129/173-177` —
+  both dates render as plain read-only text; the only interactive controls per row are the Status
+  `<Select>` and a Cancel/Reactivate icon button.
+- Working precedent already in the same module: `vendor_engagement_service.go:174-190`
+  (`UpdateMilestone`) sets `Status`, `TargetDate`, and `CompletedDate` directly from client input,
+  paired with `VendorMilestoneEditModal.tsx` on the frontend (`<Input type="date">` fields, empty
+  string = no completed date, auto-fills `completedDate` to today when status flips to `Completed`
+  if not already set — `VendorMilestoneEditModal.tsx:85-86`).
 
-**Flow A — Owner self-service:**
-1. Superadmin creates the tenant (no plan input).
-2. Tenant exists, unbound to any plan.
-3. Owner logs in to WO Console.
-4. Owner opens Langganan, sees a grid of plan **selection cards** (see §3) and picks one.
-5. Confirm modal → `Pay()` creates a real QRIS charge → Owner pays.
-6. Webhook confirms → plan becomes active. One transaction row (`paid`).
+### Design
 
-**Flow B — Admin manual activation:**
-1. Superadmin creates the tenant (no plan input).
-2. Tenant exists, unbound to any plan.
-3. Superadmin opens the tenant's row in Tenant list → "Aktifkan Langganan".
-4. Picks a plan in the existing `ActivateSubscriptionModal`.
-5. Confirms → `ActivateSubscription` activates synchronously. One transaction row (`granted`).
+Broaden the *existing* `PATCH /api/v1/projects/{id}/milestones/{milestoneId}` endpoint (currently
+`updateMilestoneStatus`) into a full `updateMilestone`, mirroring the vendor-milestone shape as
+closely as project milestones' simpler domain allows (no `PICStaffID`/`Description`/`Notes` fields
+exist on `domain.ProjectMilestone` — out of scope, not part of the verified gap). Do **not** add a
+separate new route for this — same path/method, richer body, same as how vendor milestones already
+work. `Name` editing is deliberately **out of scope**: the verified gap is specifically the two
+dates; renaming was never reported as broken and isn't touched here.
 
-Either way: **exactly one transaction row ever exists for that first subscription event** — never
-two.
+- **Backend**
+  - `apps/api/internal/modules/projects/application/project_service.go`: replace
+    `UpdateMilestoneStatus`'s narrow signature with `UpdateMilestone(ctx, tenantID, projectID,
+    milestoneID, actorStaffID int64, input MilestoneUpdateInput) (*domain.ProjectMilestone, error)`,
+    where `MilestoneUpdateInput{ Status domain.MilestoneStatus; TargetDate time.Time; CompletedDate
+    *time.Time }`. Sets all three fields directly from input — no more server-side auto-stamping of
+    `CompletedDate`; the client (frontend) decides what to send (mirroring
+    `VendorMilestoneEditModal`'s auto-fill-today-but-editable UX instead of a hard server-side
+    stamp).
+  - `apps/api/internal/modules/projects/presentation/project_endpoints.go:216-237`: broaden
+    `milestoneStatusBody` into `milestoneUpdateBody{ Status string; TargetDate string;
+    CompletedDate *string }`, parse both dates (empty/`nil` → no completed date), call the new
+    service method.
+  - No migration needed — `target_date`/`completed_date` columns and the repository `UPDATE`
+    already support this (`000008_create_project_tables.up.sql`).
+- **Frontend**
+  - New `ProjectMilestoneEditModal.tsx` (sibling to `ProjectMilestoneFormModal.tsx`, closely
+    mirroring `VendorMilestoneEditModal.tsx`): shows the milestone name as read-only context, Status
+    `<Select>`, Target Date `<Input type="date">`, Completed Date `<Input type="date">` (clearable),
+    same "auto-fill today when flipped to Completed, still editable" convenience.
+  - `ProjectMilestonesSection.tsx`: add a pencil "Edit" `IconActionButton` per row (both the mobile
+    `CardList` and desktop `Table` renderings) opening the new modal. Keep the existing inline
+    Status `<Select>` as-is for quick status-only changes — it still works fine and isn't part of
+    the verified gap; the new modal is for when dates need correcting too.
+  - `useProjectStore.ts`: rename/replace `updateMilestoneStatus` with `updateMilestone(projectId,
+    milestoneId, fields: MilestoneUpdateFields)` (`{status, targetDate, completedDate}`), PATCH to
+    the same `API.projects.milestone(projectId, milestoneId)` endpoint, mirroring
+    `updateVendorMilestone`'s existing shape exactly.
 
-## 3. Plan selection cards (WO Console → Langganan)
+## 2. Milestone reordering
 
-Confirmed design decisions (asked and answered in conversation):
-- Cards are **always** shown, regardless of tenant state — whether the tenant has no plan yet,
-  already has an active plan, is expiring soon, or expired. This lets an Owner switch to a
-  different plan at any time, not just renew the same one (today's page hard-codes a single
-  pre-assigned plan with no way to change it).
-- The card matching the tenant's current active plan gets a visual marker (e.g. "Paket Aktif
-  Anda" badge).
-- Clicking a card does **not** immediately create a charge. It opens the existing confirm modal
-  (paket, harga, durasi, tombol "Bayar Sekarang") — same guard rail as today, just triggered from
-  a card instead of a single button. Only confirming in that modal calls `Pay()`.
-- The pending-charge guard on `Pay()` (409 if a charge is already pending) and its resolution in
-  `ActivateSubscription` are unaffected by this change — they operate on `pending_subscription_charges`
-  regardless of how the plan was chosen.
+### Current behavior (confirmed)
 
-## 4. Pending-charge recovery moves into Riwayat Transaksi
+- `SortOrder` is set exactly once, at creation, via `NextSortOrder` (MAX+1) —
+  `project_service.go:173`, `mysql_project_repository.go:219-226`.
+- The repository's `Update` SQL does not include `sort_order` in its `SET` clause — structurally
+  impossible to change post-creation via the existing path.
+- No `Reorder`/`Move`/`Swap` method or route exists anywhere in the module. Same true for vendor
+  milestones (separate entity, identical gap, not covered here — out of scope, not requested).
+- No drag-and-drop library is installed (`apps/web/package.json` has neither `@dnd-kit` nor
+  `react-beautiful-dnd` nor similar).
 
-The current standalone "Anda memiliki pembayaran tertunda" banner (added earlier this session,
-above the plan card, populated via `GET /subscriptions/pending-charge` on page load) is **removed
-entirely**.
+### Design decision: up/down buttons, not drag-and-drop
 
-Instead, the transaction row in Riwayat Transaksi whose `status === "pending"` ("Menunggu
-Konfirmasi") gets its own row-level actions: **"Lihat QR"** and **"Batalkan"**. Since `Pay()`
-already guards against more than one pending charge existing for a tenant at a time, there is at
-most one such row, so this is unambiguous — no need to disambiguate which pending row a click
-refers to.
+Recommending simple up/down arrow icon buttons over adding a drag-and-drop dependency:
+- Zero new dependencies (this codebase consistently avoids adding libraries beyond what's already
+  established — Zustand/Zod/Axios/lazy routes, nothing fancier).
+- Drag-and-drop is awkward on touch/mobile, and this app has had a strong mobile-responsiveness
+  focus all session (CardList mobile fallback pattern used everywhere already).
+- Up/down buttons reuse the exact same `IconActionButton` component already used for
+  Cancel/Reactivate on the same rows — no new UI primitive needed.
 
-No new backend endpoints are needed. `GET /subscriptions/pending-charge` and
-`POST /subscriptions/pending-charge/cancel` (added earlier this session) already resolve "the
-tenant's one pending charge" server-side — the row click in Riwayat Transaksi just becomes the new
-UI trigger for the same two calls, replacing the banner's buttons. The QR/Batalkan modal and
-`handleViewPendingCharge`/`handleCancelPendingCharge` handlers already built in `SubscriptionPage.tsx`
-this session are reused as-is; only their trigger location moves.
+Cancelled milestones are visually sorted to the bottom regardless of their stored `sort_order`
+(`sortMilestones`, `ProjectMilestonesSection.tsx:23-30`) — reordering buttons only make sense
+*within* the active (non-cancelled) set, since a cancelled row's on-screen position is fixed
+regardless of what its `sort_order` says. **Design call: disable up/down on cancelled milestones**,
+and have "up"/"down" move a milestone only relative to other non-cancelled milestones, to avoid a
+confusing interaction between the two ordering rules.
 
-Open item to confirm during implementation: whether "Lihat QR" and "Batalkan" render as two
-inline buttons directly on the transaction row (desktop table + mobile CardList), or as a single
-"Kelola" action that opens a small menu — pick whichever fits the existing row's width/density
-better once actually laid out.
+- **Backend**
+  - New endpoint on the *collection* path (not the per-item one, to avoid any route-matching
+    ambiguity with `PATCH /milestones/{milestoneId}`): `PATCH /api/v1/projects/{id}/milestones`
+    (currently only `GET`/`POST` are handled at `len(rest)==1 && rest[0]=="milestones"` in
+    `handler.go:113-116`) — body `{ orderedIds: number[] }`, the full new order of **all** of that
+    project's milestone IDs (simplest to reason about: rewrite `sort_order` to array position,
+    rather than a "swap two items" delta that has to handle edge cases).
+  - `project_service.go`: new `ReorderMilestones(ctx, tenantID, projectID int64, actorStaffID
+    int64, orderedIDs []int64) error` — loads the project's current milestones, validates
+    `orderedIDs` is an exact permutation of the existing milestone ID set (same length, no
+    missing/extra/duplicate IDs — reject with a validation error otherwise so a stale/corrupted
+    client payload can't silently drop or duplicate a row), then persists.
+  - New repository method `ReorderMilestones(ctx, projectID int64, orderedIDs []int64) error` —
+    inside one transaction, `UPDATE project_milestones SET sort_order = ? WHERE id = ? AND
+    project_id = ?` per position (small per-project milestone counts, no need for a fancier
+    single-statement `CASE` update).
+  - Record one activity log entry ("Urutan milestone diubah") per reorder call, matching the
+    existing `s.activity.Record(...)` convention used by every other milestone mutation.
+- **Frontend**
+  - `useProjectStore.ts`: new `reorderMilestones(projectId, orderedIds: string[])` — PATCH to
+    `API.projects.milestones(projectId)`, then refetch (same pattern as every other mutation here).
+  - `ProjectMilestonesSection.tsx`: add "Naik"/"Turun" `IconActionButton`s per non-cancelled row
+    (both CardList and Table renderings), disabled at the first/last position *within the
+    non-cancelled subset*. Clicking swaps that milestone with its non-cancelled neighbor in the
+    array, then calls `reorderMilestones` with the resulting full ID order (cancelled IDs kept in
+    their existing relative positions in the payload — their absolute `sort_order` values don't
+    matter for display, only non-cancelled ones do, but the payload must still include every ID per
+    the backend's exact-permutation validation above).
 
-## 5. Concrete file-level changes
+## 3. Testing plan (once implemented)
 
-### Backend
+Same pattern as every other feature this session — build/type-check, then a temporary
+`DevPreview.tsx` + interactive Playwright pass:
 
-- **`apps/api/internal/modules/platform/application/tenant_service.go`**
-  - `RegisterTenantInput`: remove `PlanID int64`.
-  - `Register`: remove the `s.billing.GetPlan(ctx, input.PlanID)` call and the
-    `s.billing.RecordTransaction(...)` call that records the `unpaid` placeholder (lines ~116,
-    162-167 as of this writing). Tenant is created with `PlanID: nil` and
-    `SubscriptionStatus: domain.StatusPendingPayment` only.
-  - No change needed to `ActivateSubscription`, `Pay`, `txTypeFor`, `computeNewExpiry`,
-    `GetPendingCharge`, `CancelPendingCharge` — all already tolerate a tenant with no plan
-    (`txTypeFor` branches on `SubscriptionStatus`, not `PlanID`; `tenant.PlanID` is already
-    `*int64`, nullable at the domain and DB level).
-- **`apps/api/internal/modules/platform/presentation/tenant_handler.go`**
-  - `registerTenantBody`: remove `PlanID int64 \`json:"planId"\`` and its pass-through in
-    `register()`.
-- **Database**: no migration required — `tenants.plan_id` has been `NULL`-able since
-  `000005_create_platform_tables.up.sql`. Nothing else changes shape.
-- **`docs/API_CONTRACT.md`**: update the `POST /tenants` request body row to drop `planId`.
+1. Edit modal: open it on an existing milestone, change Target Date and Completed Date (including
+   clearing Completed Date back to empty), save, confirm the table/cardlist reflects the new
+   values and confirm status-flip-to-Completed still auto-fills today's date but stays editable.
+2. Confirm the existing inline Status dropdown still works unchanged.
+3. Reorder: click "Naik"/"Turun" on a middle milestone, confirm it swaps position with its
+   neighbor and persists after a refetch/reload; confirm the buttons are disabled at the top/bottom
+   of the non-cancelled subset; confirm a cancelled milestone has no up/down buttons and stays
+   pinned at the bottom regardless of the active milestones being reordered around it.
+4. Backend: directly exercise `PATCH .../milestones` with a payload that omits/duplicates an ID and
+   confirm it's rejected with a clear validation error rather than silently corrupting order.
 
-### Frontend — Platform Console (tenant creation)
+## 4. Explicitly out of scope (milestones)
 
-- **`apps/web/src/modules/platform-admin/schemas/tenant.schema.ts`**: remove `planId` from
-  `tenantCreateSchema`.
-- **`apps/web/src/modules/platform-admin/components/TenantFormModal.tsx`**: remove the "Paket
-  Langganan" `Field`/`Select` block (create-mode only); remove the now-unused `plans`/`activePlans`
-  plumbing from this component (`FormState.planId`, `toFormState`'s `defaultPlanId` param, the
-  backfill `useEffect`). This component no longer needs a `plans` prop at all.
-- **`apps/web/src/modules/platform-admin/pages/TenantListPage.tsx`**:
-  - Stop passing `plans` to `<TenantFormModal>` (still needed elsewhere on this page — table's
-    `planName()` column and `<ActivateSubscriptionModal>` — so `fetchPlans`/`useSubscriptionPlanStore`
-    stay).
-  - Update the post-create `credentialReveal` success message (currently "Tagihan paket {X} sebesar
-    {Y} telah diterbitkan dan menunggu pembayaran") — it must no longer reference a plan/tagihan
-    that doesn't exist yet. Replace with something like: "Owner dapat login dan memilih paket
-    langganannya sendiri, atau tunggu Anda mengaktifkan langganannya dari sini."
-- **`apps/web/src/modules/platform-admin/stores/usePlatformAdminStore.ts`**: `registerTenant`
-  currently does `httpClient.post(API.platform.tenants, { ...values, planId: Number(values.planId) })`
-  — simplify to `httpClient.post(API.platform.tenants, values)` since `values` no longer has a
-  `planId`.
+- Milestone `Name` editing (not part of the verified gap).
+- Vendor-milestone reordering (same gap exists there but wasn't part of what was verified/requested
+  this round).
+- Any drag-and-drop interaction.
 
-### Frontend — WO Console (Owner subscription page)
+## 5. Bug fix: searchable dropdown (`Combobox`/`Select`) closes when scrolling its own list
 
-- **`apps/web/src/modules/subscription/pages/SubscriptionPage.tsx`** (the big one):
-  - Replace the single plan `<Card>` (name/price/features of `tenant.planId`'s plan, one CTA
-    button) with a grid of plan cards — one per `plans.filter(p => p.isActive)` — each showing
-    name, price, duration, features, and its own "Pilih Paket ini" (or similar) action. Mark the
-    card matching `tenant?.planId` as the active one.
-  - Selecting a card opens the existing confirm `<Modal>` (reuse as-is, just change what sets
-    `confirmOpen`/which plan it's confirming — today `plan` is derived from `tenant?.planId` only;
-    it needs a piece of state for "the plan the Owner just clicked", independent of
-    `tenant.planId`, since a plan-less tenant has no `tenant.planId` to derive from and an
-    existing-plan tenant might click a *different* card than their current one).
-  - Remove the `pendingCharge`/`confirmingCancel`/`isCancelling` banner block (§4) and its
-    `isPendingChargeDegraded` handling — this state/logic moves to the transaction table instead.
-  - In the Riwayat Transaksi `<Table>`/`<CardList>` rendering, add the row-level "Lihat QR" /
-    "Batalkan" actions for the row where `tx.status === "pending"`, wired to the same
-    `handleViewPendingCharge`/`handleCancelPendingCharge` (adjusted to take the specific
-    transaction rather than reading from a separately-fetched `pendingCharge` state — or keep
-    `fetchPendingCharge`/`pendingCharge` as the data source but move *where* it's rendered from
-    the banner into this row; either is fine, pick whichever keeps the diff smaller once in the
-    code).
-  - The degraded-fallback handling added earlier this session (backend `GetPendingCharge`
-    returning a partial `ChargeResult` when the live gateway check fails, and the frontend hiding
-    "Lihat QR" / the bogus expiry in that case) still applies — it just needs to render inside the
-    transaction row instead of the banner.
+### Current behavior (confirmed)
 
-## 6. Testing plan (once implemented)
+- `apps/web/src/shared/components/ui/Combobox.tsx:92-113` — while the dropdown is `open`, a
+  capturing (`useCapture: true`) listener is attached: `window.addEventListener("scroll",
+  onViewportChange, true)` (line 106). `onViewportChange` (lines 101-103) unconditionally calls
+  `closeDropdown()` for **any** scroll event in the document, with no check of `e.target`.
+- Because the capture phase dispatches top-down for every scroll event regardless of where it
+  originates, scrolling the dropdown's own options list (rendered inside a `createPortal` panel,
+  `panelRef`) also fires this handler — closing the dropdown instead of letting the list scroll.
+- Confirmed this is unintended: the options `<ul>` (line 181) is explicitly
+  `max-h-52 overflow-y-auto`, i.e. built to scroll internally once there are enough options to
+  overflow that height. The close-on-any-scroll listener directly defeats that.
+- The listener's real purpose (confirmed from `openDropdown`, lines 72-79) is to close the panel if
+  the *page* scrolls, since `rect` — the portal's `position: fixed` coordinates — is computed once
+  at open time from `triggerRef.getBoundingClientRect()` and never recalculated afterward. If the
+  page scrolls without closing the dropdown, the fixed panel would visually drift away from its
+  trigger button. This outer-scroll-closes behavior is correct and should be preserved — only the
+  internal-list case needs excluding.
+- Only one component has this pattern (confirmed via a repo-wide grep for
+  `addEventListener("scroll"`) — the fix is isolated to this single file, and since `Select` is a
+  shared component, fixing it here fixes every screen that uses it at once (vendor/PIC pickers in
+  `ProjectVendorFormModal.tsx`, category/role filters in `VendorListPage.tsx`/`ClientListPage.tsx`,
+  and form modals across `platform-admin`/`projects`/`users`).
 
-Mirror this session's established pattern — build/type-check, then interactive Playwright
-verification via a temporary `DevPreview.tsx` (mocked stores, no real backend needed for the
-frontend-only pieces; a local `npm run dev:api` + local MySQL for the backend pieces), covering:
+### Fix
 
-1. Register a tenant with no plan input → confirm no transaction row is created and
-   `tenant.planId` is `null`.
-2. WO Console Langganan page for that plan-less tenant → confirm the card grid renders, no card is
-   marked "active", clicking a card opens the confirm modal with that card's plan/price/duration.
-3. Confirm → QRIS charge created → transaction row appears as `pending` with row-level "Lihat QR"
-   / "Batalkan" actions, no standalone banner.
-4. "Lihat QR" reopens the same QR modal used today; "Batalkan" cancels it (existing backend
-   behavior, already covered by prior tests this session — just re-verify the new trigger wiring).
-5. Platform Console "Aktifkan Langganan" on a plan-less tenant → confirm it still works exactly as
-   today (plan picker already lives in that modal) and produces exactly one `granted` row.
-6. A tenant that already has an active plan → card grid still shows all plans, current plan
-   marked, picking a *different* plan card still works (upgrade/switch path), picking the same
-   plan renews as today.
-7. Full regression pass on existing subscription/transaction features already built this session
-   (guards on `Pay`/`ActivateSubscriptionModal`, `cancelled` status label/tone, degraded-charge
-   fallback) to confirm none of them regressed from moving the banner into the table.
+Minimal, surgical change to `onViewportChange` — ignore scroll events whose target is inside the
+dropdown's own panel, so only genuine outer/page scroll still closes it:
 
-## 7. Explicitly out of scope for this change
+```tsx
+function onViewportChange(e: Event) {
+  if (panelRef.current?.contains(e.target as Node)) return;
+  closeDropdown();
+}
+```
 
-- No change to `ActivateSubscriptionModal`'s own plan picker — it already lets admin choose a plan
-  independent of what the tenant currently has.
-- No change to the payment gateway integration, webhook handling, or reconciliation sweep.
-- No change to billing/plan CRUD in Platform Console.
+No other change needed:
+- The same handler is also used for the `resize` listener (line 107); a `resize` event's target is
+  always `window`, never inside `panelRef`, so the new guard is a no-op there — resize-closes
+  behavior is unaffected.
+- No CSS/markup change — `max-h-52 overflow-y-auto` on the `<ul>` already does the right thing once
+  the listener stops fighting it.
+- No change needed anywhere else — this is a one-component, one-function fix.
+
+### Testing plan (once implemented)
+
+1. Open a `Select` with enough options to overflow `max-h-52` (e.g. a plan/category picker seeded
+   with many entries, or temporarily widen a `DevPreview.tsx` mock's option list) — confirm
+   scrolling the options list scrolls it and does not close the dropdown.
+2. Confirm scrolling the *page* behind an open dropdown still closes it (regression check for the
+   preserved outer-scroll-closes behavior).
+3. Confirm click-outside-closes and `Escape`-closes still work unchanged (lines 96-100, 133-136 —
+   untouched by this fix).
+4. Spot-check on at least one real usage site end-to-end (e.g. the vendor picker in
+   `ProjectVendorFormModal.tsx`) rather than only a synthetic test, since this is a shared component
+   used across many screens.
