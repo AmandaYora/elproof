@@ -207,7 +207,7 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
   },
 
   registerTenant: async (values) => {
-    const res = await httpClient.post(API.platform.tenants, { ...values, planId: Number(values.planId) });
+    const res = await httpClient.post(API.platform.tenants, values);
     const { tenant, username } = res.data.data as { tenant: RawTenant; username: string };
     await Promise.all([get().fetchTenants(), get().fetchTransactions()]);
     return { tenant: toTenant(tenant), username, password: values.password };

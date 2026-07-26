@@ -95,7 +95,6 @@ type RegisterTenantInput struct {
 	Email        string
 	Phone        string
 	City         string
-	PlanID       int64
 	Password     string
 }
 
@@ -105,21 +104,21 @@ type RegisterTenantResult struct {
 }
 
 // Register orchestrates three modules in one flow: creates the tenant row
-// (platform), creates the Owner staff row (staff), creates the Owner's login
-// credential (identity), and records an initial "unpaid" transaction
-// (billing) — see ADR-0008. Each module still only writes its own tables.
+// (platform), creates the Owner staff row (staff), and creates the Owner's
+// login credential (identity) — see ADR-0008. Each module still only writes
+// its own tables. The tenant starts unbound to any plan (PlanID nil,
+// StatusPendingPayment) — no transaction is recorded here, since none exists
+// yet: the Owner hasn't chosen a plan or paid, and the Platform Console
+// hasn't manually activated one either. The first transaction row this
+// tenant ever gets is whichever real subscription event happens first (Pay
+// or ActivateSubscription), so there is never a placeholder row left
+// dangling forever if the tenant is instead activated manually.
 func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput) (*RegisterTenantResult, error) {
 	if err := validator.Username(input.Username); err != nil {
 		return nil, err
 	}
 
-	plan, err := s.billing.GetPlan(ctx, input.PlanID)
-	if err != nil {
-		return nil, err
-	}
-
 	username := input.Username
-	planID := input.PlanID
 
 	tenant := &domain.Tenant{
 		BusinessName:       input.BusinessName,
@@ -129,7 +128,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		Phone:              input.Phone,
 		City:               input.City,
 		JoinedAt:           time.Now(),
-		PlanID:             &planID,
+		PlanID:             nil,
 		SubscriptionStatus: domain.StatusPendingPayment,
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
@@ -155,13 +154,6 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		Password:      input.Password,
 		Role:          "Owner",
 		DisplayName:   input.OwnerName,
-	}); err != nil {
-		return nil, err
-	}
-
-	if err := s.billing.RecordTransaction(ctx, billingcontracts.RecordTransactionInput{
-		TenantID: tenant.ID, Type: billingcontracts.TransactionNew, Amount: plan.Price,
-		PaymentMethod: "-", PaymentReference: generatePaymentReference(), Status: billingcontracts.StatusUnpaid,
 	}); err != nil {
 		return nil, err
 	}

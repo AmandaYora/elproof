@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
-import { Input, Select, Field } from "@/shared/components/ui/Input";
+import { Input, Field } from "@/shared/components/ui/Input";
 import {
   tenantSchema,
   tenantCreateSchema,
@@ -10,19 +10,16 @@ import {
   type TenantCreateFormValues,
 } from "@/modules/platform-admin/schemas/tenant.schema";
 import type { Tenant } from "@/modules/platform-admin/data/types";
-import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
-import { formatCurrency } from "@/shared/lib/formatters";
 
 interface FormState extends TenantFormValues {
   username: string;
-  planId: string;
   password: string;
   confirmPassword: string;
 }
 
-function toFormState(tenant?: Tenant, defaultPlanId = ""): FormState {
+function toFormState(tenant?: Tenant): FormState {
   if (!tenant) {
-    return { businessName: "", ownerName: "", email: "", phone: "", city: "", username: "", planId: defaultPlanId, password: "", confirmPassword: "" };
+    return { businessName: "", ownerName: "", email: "", phone: "", city: "", username: "", password: "", confirmPassword: "" };
   }
   return {
     businessName: tenant.businessName,
@@ -31,7 +28,6 @@ function toFormState(tenant?: Tenant, defaultPlanId = ""): FormState {
     phone: tenant.phone,
     city: tenant.city,
     username: tenant.username,
-    planId: tenant.planId ?? defaultPlanId,
     password: "",
     confirmPassword: "",
   };
@@ -41,31 +37,19 @@ interface TenantFormModalProps {
   open: boolean;
   onClose: () => void;
   initialTenant?: Tenant;
-  plans: SubscriptionPlan[];
   onSubmitCreate: (values: TenantCreateFormValues) => void;
   onSubmitEdit: (values: TenantFormValues) => void;
 }
 
-export function TenantFormModal({ open, onClose, initialTenant, plans, onSubmitCreate, onSubmitEdit }: TenantFormModalProps) {
+export function TenantFormModal({ open, onClose, initialTenant, onSubmitCreate, onSubmitEdit }: TenantFormModalProps) {
   const isEditing = Boolean(initialTenant);
-  const activePlans = plans.filter((p) => p.isActive);
-  const [values, setValues] = useState<FormState>(() => toFormState(initialTenant, activePlans[0]?.id ?? ""));
+  const [values, setValues] = useState<FormState>(() => toFormState(initialTenant));
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [showPassword, setShowPassword] = useState(false);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
-
-  // Plans load asynchronously (Fase 2) — this modal is mounted once and kept
-  // alive while closed, so its initial `useState` can capture an empty plan
-  // list before the fetch resolves. Backfill the default once real plans
-  // arrive, without clobbering a value the user already picked.
-  useEffect(() => {
-    if (!isEditing && !values.planId && activePlans.length > 0) {
-      setValues((prev) => ({ ...prev, planId: activePlans[0].id }));
-    }
-  }, [activePlans.length, isEditing]);
 
   function handleSubmit() {
     if (isEditing) {
@@ -97,7 +81,7 @@ export function TenantFormModal({ open, onClose, initialTenant, plans, onSubmitC
   }
 
   function handleClose() {
-    setValues(toFormState(initialTenant, activePlans[0]?.id ?? ""));
+    setValues(toFormState(initialTenant));
     setErrors({});
     onClose();
   }
@@ -152,15 +136,6 @@ export function TenantFormModal({ open, onClose, initialTenant, plans, onSubmitC
 
         {!isEditing && (
           <>
-            <Field label="Paket Langganan" required hint={errors.planId}>
-              <Select value={values.planId} onChange={(e) => set("planId", e.target.value)}>
-                {activePlans.map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.name} — {formatCurrency(plan.price)} / {plan.durationMonths} bulan
-                  </option>
-                ))}
-              </Select>
-            </Field>
             <Field label="Password Owner" required hint={errors.password}>
               <div className="relative">
                 <Input

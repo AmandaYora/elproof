@@ -22,7 +22,7 @@ import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanSto
 import type { TenantCreateFormValues, TenantFormValues, ResetTenantPasswordFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
 import type { ActivateSubscriptionFormValues } from "@/modules/platform-admin/schemas/activate-subscription.schema";
 import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 
 const STATUS_FILTERS: TenantSubscriptionStatus[] = ["active", "expiring_soon", "expired", "pending_payment"];
@@ -359,7 +359,6 @@ export default function TenantListPage() {
         open={modalOpen}
         onClose={closeModal}
         initialTenant={editingTenant}
-        plans={plans}
         onSubmitCreate={handleRegister}
         onSubmitEdit={handleEditSubmit}
       />
@@ -412,9 +411,8 @@ export default function TenantListPage() {
             </div>
             {credentialReveal.kind === "create" ? (
               <p className="text-[12px] text-text-secondary">
-                Kredensial ini juga otomatis dikirim ke email owner. Tagihan paket {planName(credentialReveal.tenant.planId)} sebesar{" "}
-                {formatCurrency(plans.find((p) => p.id === credentialReveal.tenant.planId)?.price ?? 0)} telah diterbitkan dan menunggu
-                pembayaran.
+                Kredensial ini juga otomatis dikirim ke email owner. Owner dapat login dan memilih paket langganannya sendiri, atau tunggu
+                Anda mengaktifkan langganannya dari sini.
               </p>
             ) : (
               <p className="text-[12px] text-text-secondary">Kredensial baru ini juga otomatis dikirim ke email owner.</p>

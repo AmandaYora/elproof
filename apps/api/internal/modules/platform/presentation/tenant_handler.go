@@ -130,7 +130,6 @@ type registerTenantBody struct {
 	Email        string `json:"email"`
 	Phone        string `json:"phone"`
 	City         string `json:"city"`
-	PlanID       int64  `json:"planId"`
 	Password     string `json:"password"`
 }
 
@@ -142,7 +141,7 @@ func (h *TenantHandler) register(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.tenants.Register(r.Context(), application.RegisterTenantInput{
 		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Username: body.Username, Email: body.Email,
-		Phone: body.Phone, City: body.City, PlanID: body.PlanID, Password: body.Password,
+		Phone: body.Phone, City: body.City, Password: body.Password,
 	})
 	if err != nil {
 		writeAppError(w, err)

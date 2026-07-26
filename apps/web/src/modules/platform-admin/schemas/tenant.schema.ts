@@ -14,7 +14,6 @@ export type TenantFormValues = z.infer<typeof tenantSchema>;
 export const tenantCreateSchema = tenantSchema
   .extend({
     username: usernameSchema,
-    planId: z.string().min(1, "Pilih paket langganan"),
     password: z.string().min(8, "Password minimal 8 karakter"),
     confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
   })

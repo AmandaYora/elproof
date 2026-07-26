@@ -8,7 +8,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { formatCurrency, formatDate, formatDateTime, daysBetween } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { usePlatformAdminStore, type PaymentCharge } from "@/modules/platform-admin/stores/usePlatformAdminStore";
@@ -38,16 +38,22 @@ export default function SubscriptionPage() {
   const fetchPendingCharge = usePlatformAdminStore((s) => s.fetchPendingCharge);
   const cancelPendingCharge = usePlatformAdminStore((s) => s.cancelPendingCharge);
 
+  // The plan the Owner just clicked a card for — independent of
+  // tenant.planId, since a tenant may have no plan yet (never subscribed) or
+  // may click a *different* card than the one they currently have (upgrade/
+  // switch), not just renew.
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [activeCharge, setActiveCharge] = useState<PaymentCharge | null>(null);
   const [chargeOutcome, setChargeOutcome] = useState<"paid" | "expired" | null>(null);
-  // A pending charge the Owner already has (e.g. after accidentally closing
-  // its QR modal in an earlier visit) — separate from activeCharge, which
-  // only holds a charge while its modal is actually open. Lets it be
-  // re-opened via a persistent banner instead of being lost until it expires.
+  // The Owner's one pending self-service charge, if any — backs the "Lihat
+  // QR" row action in Riwayat Transaksi (for its live QR/pay code/checkout
+  // URL, which the transaction row itself doesn't carry) and gates the plan
+  // cards' subscribe buttons. Not rendered as its own banner — the pending
+  // transaction row already shows amount/date/status.
   const [pendingCharge, setPendingCharge] = useState<PaymentCharge | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -65,7 +71,8 @@ export default function SubscriptionPage() {
     void fetchTransactionPage(page, "");
   }, [isOwner, fetchTransactionPage, page]);
 
-  const plan = plans.find((p) => p.id === tenant?.planId);
+  const activePlans = plans.filter((p) => p.isActive);
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId);
   const isActive = tenant?.subscriptionStatus === "active" || tenant?.subscriptionStatus === "expiring_soon";
   // A pending charge whose live gateway status couldn't be fetched degrades
   // to just orderRef + amount (see GetPendingCharge on the backend) — channel
@@ -115,12 +122,18 @@ export default function SubscriptionPage() {
     }, POLL_INTERVAL_MS);
   }
 
+  function handleSelectPlan(planId: string) {
+    setActionError(null);
+    setSelectedPlanId(planId);
+    setConfirmOpen(true);
+  }
+
   async function handleConfirmSubscribe() {
-    if (!plan) return;
+    if (!selectedPlan) return;
     setActionError(null);
     setIsSubmitting(true);
     try {
-      const charge = await paySubscription(plan.id);
+      const charge = await paySubscription(selectedPlan.id);
       setConfirmOpen(false);
       setActiveCharge(charge);
       setPendingCharge(charge);
@@ -140,12 +153,13 @@ export default function SubscriptionPage() {
     void fetchTransactionPage(page, "");
     // Re-check rather than assume: the charge may have just resolved (paid
     // or expired) while its modal was open, in which case there's nothing
-    // pending anymore and the banner should disappear too.
+    // pending anymore and the row action should disappear too.
     void fetchPendingCharge().then(setPendingCharge).catch(() => {});
   }
 
-  // Re-opens the same QR modal for a charge the Owner already has pending —
-  // e.g. from the banner below, after closing it in an earlier visit.
+  // Re-opens the QR modal for the Owner's one pending charge — triggered
+  // from its "Lihat QR" row action in Riwayat Transaksi (e.g. after
+  // accidentally closing the modal in an earlier visit).
   function handleViewPendingCharge() {
     if (!pendingCharge) return;
     setActionError(null);
@@ -188,6 +202,43 @@ export default function SubscriptionPage() {
     );
   }
 
+  // Shared row-level actions for the one "Menunggu Konfirmasi" (pending)
+  // transaction row, if any — reused by both the mobile CardList and desktop
+  // Table renderings below.
+  function pendingRowActions(tx: (typeof transactions)[number]) {
+    if (tx.status !== "pending") return null;
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {!isPendingChargeDegraded && (
+            <Button size="sm" onClick={handleViewPendingCharge}>
+              Lihat QR
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(true)} disabled={isCancelling}>
+            Batalkan
+          </Button>
+        </div>
+        {confirmingCancel && (
+          <div className="max-w-[240px] rounded-md border border-danger/30 bg-danger-soft px-3 py-2">
+            <p className="flex items-start gap-1.5 text-[12px] font-medium text-danger">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Yakin ingin membatalkan tagihan ini?
+            </p>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(false)} disabled={isCancelling}>
+                Batal
+              </Button>
+              <Button size="sm" variant="danger" onClick={() => void handleCancelPendingCharge()} disabled={isCancelling}>
+                {isCancelling ? "Memproses..." : "Ya, Batalkan"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -201,105 +252,83 @@ export default function SubscriptionPage() {
         </p>
       )}
 
-      {pendingCharge && (
-        <div className="max-w-md rounded-lg border border-warning/30 bg-warning-soft p-4">
-          <div className="flex items-start gap-3">
-            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[13.5px] font-semibold text-warning-strong">Anda memiliki pembayaran tertunda</p>
-              <p className="mt-0.5 text-[12.5px] text-text-secondary">
-                {formatCurrency(pendingCharge.amount)}
-                {!isPendingChargeDegraded && <> · kedaluwarsa {formatDateTime(pendingCharge.expiresAt)}</>}
-                {isPendingChargeDegraded && " · Detail pembayaran tidak dapat dimuat saat ini"}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {!isPendingChargeDegraded && <Button size="sm" onClick={handleViewPendingCharge}>Lihat QR Pembayaran</Button>}
-                <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(true)} disabled={isCancelling}>
-                  Batalkan
-                </Button>
-              </div>
-
-              {confirmingCancel && (
-                <div className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5">
-                  <p className="flex items-start gap-1.5 text-[12.5px] font-medium text-danger">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    Yakin ingin membatalkan tagihan ini? Anda bisa langsung membuat tagihan baru setelahnya.
-                  </p>
-                  <div className="mt-2 flex justify-end gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(false)} disabled={isCancelling}>
-                      Batal
-                    </Button>
-                    <Button size="sm" variant="danger" onClick={() => void handleCancelPendingCharge()} disabled={isCancelling}>
-                      {isCancelling ? "Memproses..." : "Ya, Batalkan"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[15px] font-bold text-text-primary">Pilih Paket Langganan</h2>
+          {isHealthy && <Badge tone="success">Aktif</Badge>}
+          {isExpiringSoon && <Badge tone="warning">Segera Berakhir</Badge>}
+          {isExpired && <Badge tone="danger">Berakhir</Badge>}
+          {tenant?.subscriptionStatus === "pending_payment" && <Badge tone="neutral">Belum Berlangganan</Badge>}
         </div>
-      )}
 
-      <Card className="max-w-md">
-        <CardContent className="flex flex-col gap-5 py-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-900 text-[15px] font-bold text-white">
-                EP
-              </span>
-              <div>
-                <p className="text-[15px] font-bold text-text-primary">Langganan {APP_NAME}</p>
-                <p className="text-[12.5px] text-text-secondary">{plan?.name ?? "Paket tidak ditemukan"}</p>
-              </div>
-            </div>
-            {isHealthy && <Badge tone="success">Aktif</Badge>}
-            {isExpiringSoon && <Badge tone="warning">Segera Berakhir</Badge>}
-            {isExpired && <Badge tone="danger">Berakhir</Badge>}
-            {tenant?.subscriptionStatus === "pending_payment" && <Badge tone="neutral">Belum Aktif</Badge>}
-          </div>
-
-          <div className="flex items-end gap-1.5 border-t border-border-light pt-4">
-            <span className="text-[28px] font-bold leading-none tabular-nums text-navy-900">
-              {formatCurrency(plan?.price ?? 0)}
-            </span>
-            <span className="pb-0.5 text-[13px] text-text-secondary">/ {plan?.durationMonths ?? 0} bulan</span>
-          </div>
-
-          {isActive && tenant?.subscriptionExpiresAt && (
-            <p className="flex items-center gap-1.5 text-[12.5px] text-text-secondary">
-              <Clock className="h-3.5 w-3.5 shrink-0" />
-              {isExpired ? "Berakhir pada" : "Berlaku hingga"} {formatDate(tenant.subscriptionExpiresAt)}
-              {isExpiringSoon && daysLeft !== null && daysLeft <= RENEWAL_WARNING_DAYS && (
-                <span className="font-semibold text-warning"> · H-{daysLeft}</span>
-              )}
-            </p>
-          )}
-
-          <ul className="flex flex-col gap-2 border-t border-border-light pt-4">
-            {(plan?.features ?? []).map((feature) => (
-              <li key={feature} className="flex items-start gap-2 text-[13px] text-text-primary">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                {feature}
-              </li>
-            ))}
-          </ul>
-
-          {pendingCharge ? (
-            <p className="rounded-md bg-surface-muted px-3.5 py-2.5 text-[12.5px] text-text-secondary">
-              Selesaikan atau batalkan pembayaran tertunda di atas terlebih dahulu sebelum membuat tagihan baru.
-            </p>
-          ) : (
-            <Button className="w-full" onClick={() => setConfirmOpen(true)}>
-              {isActive ? "Perpanjang Langganan" : "Berlangganan Sekarang"}
-            </Button>
-          )}
-
-          <p className="flex items-center gap-1.5 text-[11.5px] text-text-secondary">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            Pembayaran diproses otomatis oleh sistem pembayaran — langganan aktif segera setelah pembayaran diterima.
+        {isActive && tenant?.subscriptionExpiresAt && (
+          <p className="flex items-center gap-1.5 text-[12.5px] text-text-secondary">
+            <Clock className="h-3.5 w-3.5 shrink-0" />
+            {isExpired ? "Berakhir pada" : "Berlaku hingga"} {formatDate(tenant.subscriptionExpiresAt)}
+            {isExpiringSoon && daysLeft !== null && daysLeft <= RENEWAL_WARNING_DAYS && (
+              <span className="font-semibold text-warning"> · H-{daysLeft}</span>
+            )}
           </p>
-        </CardContent>
-      </Card>
+        )}
+
+        {activePlans.length === 0 ? (
+          <Card className="max-w-md">
+            <CardContent className="py-5">
+              <EmptyState title="Belum ada paket tersedia" description="Hubungi ElProof untuk informasi paket langganan." />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {activePlans.map((p) => {
+              const isCurrentPlan = p.id === tenant?.planId;
+              return (
+                <Card key={p.id} className={isCurrentPlan ? "border-navy-900 ring-1 ring-navy-900" : ""}>
+                  <CardContent className="flex flex-col gap-4 py-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-900 text-[15px] font-bold text-white">
+                          EP
+                        </span>
+                        <p className="text-[15px] font-bold text-text-primary">{p.name}</p>
+                      </div>
+                      {isCurrentPlan && <Badge tone="success">Paket Aktif Anda</Badge>}
+                    </div>
+
+                    <div className="flex items-end gap-1.5 border-t border-border-light pt-4">
+                      <span className="text-[24px] font-bold leading-none tabular-nums text-navy-900">{formatCurrency(p.price)}</span>
+                      <span className="pb-0.5 text-[12.5px] text-text-secondary">/ {p.durationMonths} bulan</span>
+                    </div>
+
+                    <ul className="flex flex-col gap-2 border-t border-border-light pt-4">
+                      {p.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-2 text-[13px] text-text-primary">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {pendingCharge ? (
+                      <p className="rounded-md bg-surface-muted px-3.5 py-2.5 text-[12px] text-text-secondary">
+                        Selesaikan atau batalkan pembayaran tertunda di Riwayat Transaksi di bawah sebelum membuat tagihan baru.
+                      </p>
+                    ) : (
+                      <Button className="w-full" onClick={() => handleSelectPlan(p.id)}>
+                        {isCurrentPlan ? "Perpanjang Paket Ini" : "Pilih Paket Ini"}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="flex items-center gap-1.5 text-[11.5px] text-text-secondary">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+          Pembayaran diproses otomatis oleh sistem pembayaran — langganan aktif segera setelah pembayaran diterima.
+        </p>
+      </div>
 
       <Card>
         <CardHeader title="Riwayat Transaksi" subtitle="Riwayat pembayaran langganan aplikasi ElProof, diproses otomatis oleh sistem pembayaran." />
@@ -325,6 +354,7 @@ export default function SubscriptionPage() {
                       <CardListField label="Dibuat" value={formatDate(tx.createdAt)} />
                       <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
                     </div>
+                    {pendingRowActions(tx)}
                   </>
                 )}
               />
@@ -339,6 +369,7 @@ export default function SubscriptionPage() {
                     <TH>Dibuat</TH>
                     <TH>Status</TH>
                     <TH>Dibayar</TH>
+                    <TH>Aksi</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -353,6 +384,7 @@ export default function SubscriptionPage() {
                         <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
                       </TD>
                       <TD>{tx.paidAt ? formatDate(tx.paidAt) : "-"}</TD>
+                      <TD>{pendingRowActions(tx) ?? "-"}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -367,7 +399,7 @@ export default function SubscriptionPage() {
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        title={isActive ? "Perpanjang Langganan" : "Berlangganan ElProof"}
+        title={selectedPlan && selectedPlan.id === tenant?.planId ? "Perpanjang Langganan" : "Berlangganan ElProof"}
         description="Anda akan diarahkan ke halaman pembayaran untuk menyelesaikan transaksi."
         size="sm"
         footer={
@@ -385,16 +417,16 @@ export default function SubscriptionPage() {
           <div className="flex items-center justify-between">
             <span className="text-text-secondary">Paket</span>
             <span className="font-semibold text-text-primary">
-              Langganan {APP_NAME} — {plan?.name ?? "-"}
+              Langganan {APP_NAME} — {selectedPlan?.name ?? "-"}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-text-secondary">Biaya</span>
-            <span className="font-semibold text-text-primary">{formatCurrency(plan?.price ?? 0)}</span>
+            <span className="font-semibold text-text-primary">{formatCurrency(selectedPlan?.price ?? 0)}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-text-secondary">Masa Aktif</span>
-            <span className="font-semibold text-text-primary">{plan?.durationMonths ?? 0} bulan</span>
+            <span className="font-semibold text-text-primary">{selectedPlan?.durationMonths ?? 0} bulan</span>
           </div>
         </div>
       </Modal>

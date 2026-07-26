@@ -55,7 +55,7 @@ is unaffected, this is additive.
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/tenants` | **paginated** (Fase 7); `?search=` matches business/owner name + email; `?status=` filters `subscriptionStatus` |
-| POST | `/tenants` | orchestrates `staff.CreateOwner` + `identity.CreateCredential` + `billing.RecordTransaction` (status `unpaid`) — see ADR-0008 |
+| POST | `/tenants` | orchestrates `staff.CreateOwner` + `identity.CreateCredential` — see ADR-0008. No `planId` in the body and no transaction recorded: the tenant starts unbound to any plan (`planId: null`, `subscriptionStatus: pending_payment`); the first transaction row it ever gets comes from whichever real subscription event happens first — the Owner's own `/subscriptions/pay` or the Platform Console's `/activate-subscription` below — never a placeholder created here |
 | GET | `/tenants/{id}` | |
 | PATCH | `/tenants/{id}` | |
 | POST | `/tenants/{id}/toggle-suspension` | single toggle (flips current state), not separate suspend/reactivate |
