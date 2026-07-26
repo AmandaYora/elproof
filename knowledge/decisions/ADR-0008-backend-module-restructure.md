@@ -9,7 +9,8 @@ Accepted
 to any ElProof domain concept and was never adapted.
 
 ## Decision
-Backend modules are renamed/created to match the frontend-to-backend module map in PLAN.md §3:
+Backend modules are renamed/created to match the frontend-to-backend module map (see
+`knowledge/MODULE_MAP.md`'s "Frontend module ↔ backend module" table):
 
 | Module | Owns | Replaces/derived from |
 |---|---|---|

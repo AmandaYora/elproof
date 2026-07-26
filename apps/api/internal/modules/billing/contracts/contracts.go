@@ -15,11 +15,12 @@ const (
 	TransactionNew     TransactionType = "new"
 	TransactionRenewal TransactionType = "renewal"
 
-	StatusUnpaid  TransactionStatus = "unpaid"
-	StatusPending TransactionStatus = "pending"
-	StatusPaid    TransactionStatus = "paid"
-	StatusExpired TransactionStatus = "expired"
-	StatusGranted TransactionStatus = "granted"
+	StatusUnpaid    TransactionStatus = "unpaid"
+	StatusPending   TransactionStatus = "pending"
+	StatusPaid      TransactionStatus = "paid"
+	StatusExpired   TransactionStatus = "expired"
+	StatusGranted   TransactionStatus = "granted"
+	StatusCancelled TransactionStatus = "cancelled"
 )
 
 type Plan struct {

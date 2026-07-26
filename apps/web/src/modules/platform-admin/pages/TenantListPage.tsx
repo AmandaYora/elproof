@@ -50,6 +50,7 @@ export default function TenantListPage() {
   const [editingTenant, setEditingTenant] = useState<Tenant | undefined>(undefined);
   const [resetPasswordTenant, setResetPasswordTenant] = useState<Tenant | undefined>(undefined);
   const [activatingTenant, setActivatingTenant] = useState<Tenant | undefined>(undefined);
+  const [isActivating, setIsActivating] = useState(false);
   const [credentialReveal, setCredentialReveal] = useState<CredentialReveal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -127,12 +128,14 @@ export default function TenantListPage() {
   async function handleActivateSubmit(values: ActivateSubscriptionFormValues) {
     if (!activatingTenant) return;
     setActionError(null);
+    setIsActivating(true);
     try {
       await activateTenantSubscription(activatingTenant.id, values.planId);
       await refetch();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengaktifkan langganan tenant"));
     }
+    setIsActivating(false);
     setActivatingTenant(undefined);
   }
 
@@ -375,6 +378,7 @@ export default function TenantListPage() {
         onClose={() => setActivatingTenant(undefined)}
         tenant={activatingTenant}
         plans={plans}
+        isSubmitting={isActivating}
         onSubmit={handleActivateSubmit}
       />
 

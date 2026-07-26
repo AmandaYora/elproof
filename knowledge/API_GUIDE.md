@@ -34,8 +34,8 @@ Domain errors (not found, forbidden, conflict) map to standard HTTP status with 
 
 ## Full endpoint list
 
-See [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md) — kept in sync per phase as `PLAN.md` phases
-land, not written all at once.
+See [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md) — kept in sync with the implemented backend
+as each module lands.
 
 ## External-facing integration guide (Fase 10)
 

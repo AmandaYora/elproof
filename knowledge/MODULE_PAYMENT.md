@@ -3,10 +3,10 @@
 > **Note on this document's history:** this spec is referenced by section number (`§3`, `§7.5`,
 > etc.) from dozens of code comments across `apps/api/internal/modules/payment/**` and
 > `apps/api/internal/modules/identity/**`, written while Fase 9 was implemented — but the file
-> itself was never actually saved to the repo until now (reconstructed from those comments plus
-> `PLAN.md`'s Fase 9/10 sections and the code's own final shape, which is the ground truth
-> wherever a comment and the code could conceivably have drifted). Section numbers below were
-> chosen to match what the existing comments already cite, not renumbered for a cleaner read.
+> itself was never actually saved to the repo until now (reconstructed from those comments and the
+> code's own final shape, which is the ground truth wherever a comment and the code could
+> conceivably have drifted). Section numbers below were chosen to match what the existing comments
+> already cite, not renumbered for a cleaner read.
 
 ## 1. Why this module exists
 
@@ -274,9 +274,9 @@ as before (validation field-errors or `null`); only these external-facing handle
 
 - **Fase 9 (internal mode)** — everything in §1–§6 except the `kind=external` branch of §6 step 5;
   exactly one App (`platform-billing`), called in-process. Webhook confirmation from a real Tripay
-  sandbox/production account is the one checkpoint that needs real external credentials to verify
-  (see `PLAN.md` Fase 9 notes) — everything reachable without them (charge creation attempting and
-  failing honestly against dummy credentials, encrypted-at-rest storage, config CRUD) is verified.
+  sandbox/production account is the one checkpoint that needs real external credentials to verify —
+  everything reachable without them (charge creation attempting and failing honestly against dummy
+  credentials, encrypted-at-rest storage, config CRUD) is verified.
 - **Fase 10 (external mode)** — §7 in full, plus the `kind=external` relay branch of §6 step 5, plus
   Platform Console's "Manajemen Aplikasi" page (list Apps, register a new external App, reset its
   secret, toggle active/inactive — internal Apps can never be toggled off through this page, since

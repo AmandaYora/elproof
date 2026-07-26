@@ -56,8 +56,10 @@ for a caller's own use but never inspected, since the same gateway wallet serves
 tenant-scoped billing and external Apps that have no concept of an ElProof tenant at all. See
 `MODULE_PAYMENT.md` §2.2.
 
-## Full readiness audit & phased build plan
+## Current status
 
-The as-was state of the frontend (before backend integration began) and the phase-by-phase plan to
-build `apps/api` and wire it up is tracked in `PLAN.md` at the repo root — treat it as a living
-checklist, not a one-time document.
+`apps/api` is fully built and live in production (see [PROJECT_BRIEF.md](PROJECT_BRIEF.md)'s
+"Current state") — all eight modules listed in [MODULE_MAP.md](MODULE_MAP.md) are implemented, not
+in progress. The phase-by-phase build log that tracked this work while it was underway has since
+been removed now that it's done; `MODULE_MAP.md`, `docs/API_CONTRACT.md`, `docs/DB_SCHEMA.md`, and
+`knowledge/decisions/` are the current source of truth for what exists and why.

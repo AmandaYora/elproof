@@ -21,6 +21,7 @@ export const TRANSACTION_STATUS_TONE: Record<SubscriptionTransactionStatus, Badg
   paid: "success",
   expired: "danger",
   granted: "navy",
+  cancelled: "neutral",
 };
 
 export const TRANSACTION_STATUS_LABEL: Record<SubscriptionTransactionStatus, string> = {
@@ -29,6 +30,7 @@ export const TRANSACTION_STATUS_LABEL: Record<SubscriptionTransactionStatus, str
   paid: "Berhasil",
   expired: "Kedaluwarsa",
   granted: "Diaktifkan Admin",
+  cancelled: "Dibatalkan",
 };
 
 export const TRANSACTION_TYPE_LABEL = {

@@ -133,6 +133,8 @@ interface PlatformAdminState {
   // the created charge (Fase 9) — the subscription activates later, once
   // the gateway's webhook confirms payment, not synchronously here.
   paySubscription: (planId: string) => Promise<PaymentCharge>;
+  fetchPendingCharge: () => Promise<PaymentCharge | null>;
+  cancelPendingCharge: () => Promise<void>;
 
   registerPlatformAdmin: (values: PlatformAdminCreateFormValues) => Promise<RegisterPlatformAdminResult>;
   updatePlatformAdmin: (id: string, values: PlatformAdminFormValues) => Promise<void>;
@@ -235,6 +237,19 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
   paySubscription: async (planId) => {
     const res = await httpClient.post(API.platform.subscriptionsPay, { planId: Number(planId) });
     return res.data.data as PaymentCharge;
+  },
+
+  // Lets the Owner re-view a still-pending charge (e.g. after accidentally
+  // closing its QR modal) — `data` is null when there's nothing pending,
+  // which is the common case, not an error.
+  fetchPendingCharge: async () => {
+    const res = await httpClient.get(API.platform.subscriptionsPendingCharge);
+    return (res.data.data as PaymentCharge | null) ?? null;
+  },
+
+  cancelPendingCharge: async () => {
+    await httpClient.post(API.platform.subscriptionsCancelPendingCharge);
+    await get().fetchTransactionPage(1, "");
   },
 
   registerPlatformAdmin: async (values) => {

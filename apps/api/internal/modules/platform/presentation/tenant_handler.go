@@ -324,6 +324,49 @@ func (h *TenantHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, "Tagihan pembayaran dibuat, selesaikan lewat QRIS di bawah", toChargeResponse(*charge))
 }
 
+func (h *TenantHandler) PendingCharge(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.FromContext(r.Context())
+	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
+		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengelola langganan", nil)
+		return
+	}
+	tenantID, err := application.ParseTenantID(claims.TenantID)
+	if err != nil {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return
+	}
+
+	charge, err := h.tenants.GetPendingCharge(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if charge == nil {
+		response.OK(w, "ok", nil)
+		return
+	}
+	response.OK(w, "ok", toChargeResponse(*charge))
+}
+
+func (h *TenantHandler) CancelPendingCharge(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.FromContext(r.Context())
+	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
+		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengelola langganan", nil)
+		return
+	}
+	tenantID, err := application.ParseTenantID(claims.TenantID)
+	if err != nil {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return
+	}
+
+	if err := h.tenants.CancelPendingCharge(r.Context(), tenantID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Tagihan pembayaran dibatalkan", nil)
+}
+
 func requirePlatformAdmin(w http.ResponseWriter, r *http.Request) bool {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "platform_admin" {

@@ -10,5 +10,5 @@ Quick summary: `apps/web` (React 19 SPA) talks to `apps/api` (Go modular monolit
 `identity`, `platform`, `billing`, `staff`, `clients`, `vendors`, `projects`, `payment`) over
 `/api/v1`, one JWT scheme for four principal types (staff/client/platform_admin, plus `app` for
 Fase 10's external payment-gateway consumers — see ADR-0005's update), one MySQL database on the
-host, one Docker app container. See `PLAN.md` for the phased build/integration plan and
-`knowledge/decisions/` (ADR-0004 through ADR-0011) for the specific decisions behind this shape.
+host, one Docker app container. See `knowledge/decisions/` (ADR-0004 through ADR-0011) for the
+specific decisions behind this shape.

@@ -23,6 +23,15 @@ const (
 	// StatusGranted is a manually-activated transaction (Platform Console
 	// bypassing payment) — deliberately excluded from paid-revenue reporting.
 	StatusGranted TransactionStatus = "granted"
+	// StatusCancelled is a self-service charge the Owner explicitly gave up
+	// on via "Batalkan" — distinct from StatusExpired (which means the
+	// charge timed out on its own without anyone acting). Tripay itself has
+	// no cancel/void API, so this is bookkeeping on our side only: the
+	// underlying charge is still technically payable at the gateway until
+	// its own expiry, but its pendingCharges tracking row is deleted when
+	// cancelled, so a late webhook/reconciliation result for it is silently
+	// ignored (idempotent no-op) rather than resurrecting the subscription.
+	StatusCancelled TransactionStatus = "cancelled"
 )
 
 type Transaction struct {

@@ -39,6 +39,31 @@ func (r *MySQLPendingChargeRepository) FindByOrderRef(ctx context.Context, order
 	return &p, nil
 }
 
+// FindByTenant backs ActivateSubscription's cleanup of any still-open
+// self-service charge(s) — Create has no uniqueness guard against a tenant
+// having more than one in flight, so this returns every match rather than
+// assuming at most one.
+func (r *MySQLPendingChargeRepository) FindByTenant(ctx context.Context, tenantID int64) ([]domain.PendingCharge, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT order_ref, tenant_id, plan_id FROM pending_subscription_charges WHERE tenant_id = ?`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.PendingCharge
+	for rows.Next() {
+		var p domain.PendingCharge
+		if err := rows.Scan(&p.OrderRef, &p.TenantID, &p.PlanID); err != nil {
+			return nil, err
+		}
+		list = append(list, p)
+	}
+	return list, rows.Err()
+}
+
 func (r *MySQLPendingChargeRepository) Delete(ctx context.Context, orderRef string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM pending_subscription_charges WHERE order_ref = ?`, orderRef)
 	return err

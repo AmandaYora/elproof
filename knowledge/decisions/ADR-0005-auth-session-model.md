@@ -6,9 +6,9 @@ Accepted
 ## Context
 The frontend mock has three distinct principal types — WO staff (Owner/Admin/Staff), client
 (customer portal user), and platform admin (Super Admin/Support) — currently modeled as three
-separate hardcoded credential lists with no token, no session, and no expiry (see PLAN.md §2.3).
-A real backend needs one coherent session mechanism serving all three without merging their very
-different authorization rules.
+separate hardcoded credential lists with no token, no session, and no expiry. A real backend needs
+one coherent session mechanism serving all three without merging their very different authorization
+rules.
 
 ## Decision
 - A single `identity` module owns authentication for **all** principal types. It does not own their
@@ -26,10 +26,9 @@ different authorization rules.
   into the request context — this is treated as a technical utility (crypto verification), not
   domain logic, so it lives in `shared/`, not inside `identity`. Issuing tokens (business rules:
   password check, lockout, rotation) stays inside `identity`.
-- Passwords are bcrypt-hashed at rest; the plaintext demo arrays in the frontend
-  (`shared/constants/demo-accounts.ts`) are retired in favor of seeded, hashed credentials once this
-  module is live (tracked as a Fase 7 cleanup item in PLAN.md, so login keeps working in the interim
-  via the same demo usernames/passwords, just checked server-side).
+- Passwords are bcrypt-hashed at rest; the plaintext demo arrays the frontend originally used
+  (`shared/constants/demo-accounts.ts`) have been retired in favor of real, seeded, hashed
+  credentials now that this module is live.
 
 ## Consequences
 - Any module that needs "who is this staff member" beyond the JWT claims (e.g. their display name,
@@ -61,3 +60,19 @@ described:
   implicit in `payment`'s own docs.
 - `shared/middleware`'s verification side is unaffected — `Claims.PrincipalType` was always a plain
   string, so no schema change was needed there to accept `"app"` alongside the original three.
+
+## Update — regular Admin/Staff `staff` principals didn't actually have a `credentials` row
+
+This ADR describes `identity` as owning authentication for "all principal types," but until this
+was found and fixed, that was only true in principle for `staff`: `staff.NewModule` never took an
+`identity.Contracts` dependency at all, and `StaffService.Create` (the "Tambah Pengguna" flow) only
+ever wrote the `staff_members` row — no `identity.CreateCredential` call. Only the tenant **Owner**
+(provisioned separately by `platform`'s tenant-registration orchestration, which does call
+`identity.CreateCredential`) could actually log in; every Admin/Staff account created afterward from
+WO Console had no working credential at all.
+
+Fixed by wiring `staff` to `identity.Contracts` (same plain one-way shape as `payment`→`identity`
+above — see `MODULE_MAP.md`) and having `Create` provision a real credential the same way
+`clients.Create` already did, including the same compensating rollback if credential creation fails
+after the `staff_members` row committed. See `docs/API_CONTRACT.md`'s `staff` section for the
+updated request/response shape.

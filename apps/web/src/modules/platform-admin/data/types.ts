@@ -17,7 +17,7 @@ export interface Tenant {
 }
 
 export type SubscriptionTransactionType = "new" | "renewal";
-export type SubscriptionTransactionStatus = "unpaid" | "pending" | "paid" | "expired" | "granted";
+export type SubscriptionTransactionStatus = "unpaid" | "pending" | "paid" | "expired" | "granted" | "cancelled";
 
 export interface SubscriptionTransaction {
   id: string;

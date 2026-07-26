@@ -11,8 +11,8 @@ frontend's own module folders under `apps/web/src/modules/<name>`.
 | `payment` | One payment-gateway merchant wallet (Tripay), wrapped for many consumers ("Apps") — gateway config, App registry, webhook dispatch. Owns no business ledger of its own — see `MODULE_PAYMENT.md`. Fase 9: internal mode (`platform` as the one App internal). Fase 10 (implemented): external Apps over HTTP — `/auth/app/token` + `/external/payments/*`, Platform Console's "Manajemen Aplikasi" page. | `payment_gateway_config`, `payment_apps`, `payment_charge_dispatch`, `payment_webhook_events` | `identity` (mint bearer tokens for external Apps — one-way, same shape as `vendors -> projects` below) |
 | `platform` | Tenant lifecycle (register/suspend/activate/pay), Platform Console's own admin accounts | `tenants`, `platform_admins`, `pending_subscription_charges` | `staff` (create Owner on tenant registration), `identity` (create credentials), `billing` (read plan, record/update transaction), `payment` (create charge; also registers itself as `payment`'s webhook consumer for `platform-billing`, Fase 9), `vendors` (seed a new tenant's default vendor categories on registration) |
 | `billing` | Subscription plan catalog + subscription transaction ledger — single source of truth shared by both consoles | `subscription_plans`, `subscription_transactions` | none |
-| `staff` | WO internal users (Owner/Admin/Staff), tenant-scoped | `staff_members` | none |
-| `clients` | Client contacts per project, tenant-scoped | `clients` | `projects` (validate `project_id` exists) |
+| `staff` | WO internal users (Owner/Admin/Staff), tenant-scoped | `staff_members` | `identity` (create credentials for Admin/Staff created via "Tambah Pengguna"; the Owner's own credential is created separately by `platform`'s tenant-registration orchestration, see below) |
+| `clients` | Client contacts per project, tenant-scoped | `clients` | `projects` (validate `project_id` exists), `identity` (create/reset credentials) |
 | `vendors` | Vendor directory + categories, tenant-scoped | `vendors`, `vendor_categories` | `projects` (resolve a vendor's cross-project engagement history for "Lihat Project" — `project_vendors` is owned by `projects`, not `vendors`) |
 | `projects` | The core WO object: projects, milestones, vendor engagements, vendor milestones, payments, issues, evidence, activity log | `projects`, `project_milestones`, `project_vendors`, `vendor_milestones`, `vendor_payments`, `vendor_issues`, `evidence`, `activity_log` | `clients` (Fase 6: resolve which single project a `client` principal may read, for `/projects/{id}/...`'s client-portal read scoping). Vendor/category/staff *display names* are **not** resolved backend-side — the frontend resolves those from its own already-fetched `vendors`/`staff` stores. |
 
@@ -66,6 +66,15 @@ two-phase cases above: `TenantService.SetVendors` / `platform.Module.SetVendors`
 `payment`, so `main.go` simply builds `identityModule` before `paymentModule` (already the existing
 order). `payment` still depends on nothing else, and no other App internal's webhook-dispatch
 bridging (see above) changes because of this.
+
+**`staff` → `identity`, same plain one-way shape:** originally `staff.NewModule` took only `db` —
+regular Admin/Staff accounts created via "Tambah Pengguna" had no login credential at all, only the
+tenant Owner did (provisioned separately by `platform`'s tenant-registration orchestration). Fixed
+by giving `staff.NewModule` an `identity.Contracts` constructor argument too, so `Create` can
+provision a real credential for Admin/Staff the same way `clients.Create` already does — including
+the same compensating rollback (delete the just-inserted `staff_members` row) if
+`identity.CreateCredential` fails after it. `identity` never needs anything back from `staff`, so
+`main.go` just builds `identityModule` before `staffModule` (already the existing order).
 
 ## Frontend module ↔ backend module
 

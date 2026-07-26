@@ -3,8 +3,8 @@
 > Frontend conventions specific to this project.
 
 Base rules: `.claude/rules/frontend-react.md`. This file adds ElProof-specific state-management
-convention, since it's the single biggest structural gap found in the pre-integration audit
-(`PLAN.md` §2.1).
+convention, since it's the single biggest structural gap found in the pre-integration frontend
+audit (see ADR-0009).
 
 ## State management: Zustand only, one store per module (ADR-0009)
 
@@ -34,8 +34,7 @@ of resetting to seed data on every mount (the bug found throughout the pre-integ
 
 `shared/stores/useAuthStore.ts` holds the current session: access token, principal type, tenant ID,
 role, display name — populated from `identity` module's login response, not from a hardcoded
-default. A logged-out state is a real, distinct state (no default-valid staff ID) — see PLAN.md
-Fase 1/7.
+default. A logged-out state is a real, distinct state (no default-valid staff ID).
 
 ## HTTP
 

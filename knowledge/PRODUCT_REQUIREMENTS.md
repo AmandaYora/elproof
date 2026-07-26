@@ -13,10 +13,14 @@ surface actually does, at the feature level, as already implemented in the front
   or `Cancelled`), 7 tabs per project: vendor engagements, milestones, client contacts, payments,
   issues, evidence documents, activity log.
 - **Clients**: contacts per project (Bride/Groom/Family Representative), contact edit, credential
-  reset, active/inactive toggle.
+  reset, active/inactive toggle, and a self-service permanent delete for a client left without a
+  working login credential (frees up its role slot on the project — deactivating alone doesn't).
 - **Vendor Categories** / **Vendors**: reference data + vendor directory with project history.
-- **Pengguna** (Users): WO's own internal staff (Admin/Staff only — Owner is managed via Platform
-  Console, see below).
+- **Pengguna** (Users): create/edit Admin and Staff accounts, each provisioned with a real login
+  credential (username + password) the same way Clients are. The Owner row is seeded once by
+  Platform Console at tenant registration, but the Owner can edit their own name/title/contact
+  details here afterward — no other staff member (even Admin) can touch the Owner's row, and
+  nobody can reassign the Owner's role or username from this page.
 - **Langganan** (Subscription): Owner-only. Shows the tenant's current plan, features, expiry, and
   transaction history; "Bayar Sekarang" creates a real QRIS charge through Tripay (`payment` module,
   Fase 9) and polls the transaction status until the gateway confirms it — see

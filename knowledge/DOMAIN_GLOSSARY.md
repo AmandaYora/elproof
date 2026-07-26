@@ -5,7 +5,7 @@
 | Term | Meaning |
 |---|---|
 | **Tenant** | One WO (Wedding Organizer) business subscribed to ElProof. Owns its own staff, clients, vendors, and projects — never shares data with another tenant. |
-| **Owner** | The tenant-side role created by the Platform Console at tenant registration time. Exactly one per tenant conceptually; only the Owner can access `Langganan` (subscription management) in the WO Console. Distinct from `platform_admin`. |
+| **Owner** | The tenant-side role created by the Platform Console at tenant registration time. Exactly one per tenant conceptually; only the Owner can access `Langganan` (subscription management) in the WO Console. The Owner can edit their own name/title/contact details from `Pengguna` afterward — no other staff member (even Admin) can edit the Owner's row, and the Owner's role/username can't be reassigned from there. Distinct from `platform_admin`. |
 | **WO Console** | The tenant-facing app surface (`/dashboard`, `/projects`, `/clients`, `/vendors`, `/vendor-categories`, `/pengguna`, `/langganan`). |
 | **Platform Console** | ElProof's own internal admin surface (`/platform/*`), used by ElProof staff (`platform_admin`), never by tenants. |
 | **Client Portal** | Read-only surface (`/portal/*`) for a wedding's bride/groom/family to track their own project. |

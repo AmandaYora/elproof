@@ -123,6 +123,7 @@ submit semantics.
 | title | VARCHAR(100) | |
 | initials | VARCHAR(4) | computed at create time, stored for display |
 | role | ENUM('Owner','Admin','Staff') | Owner rows only insertable via `platform` module's tenant-registration orchestration |
+| username | VARCHAR(100) NOT NULL DEFAULT '' | mirrors `credentials.username` (added migration `000013`) — every row now gets a real login credential via `identity.CreateCredential` at create time (Owner rows too, via `platform`'s registration flow) |
 | email | VARCHAR(150) | |
 | phone | VARCHAR(30) | |
 | is_active | BOOLEAN DEFAULT TRUE | |
@@ -130,7 +131,7 @@ submit semantics.
 
 ---
 
-## Module `clients` — **implemented, Fase 4** (bundled with `projects`, see PLAN.md Fase 3 scope note —
+## Module `clients` — **implemented, Fase 4** (bundled with `projects` since
 `clients.project_id` needs a real `projects` row to reference)
 
 ### `clients`
@@ -140,6 +141,7 @@ submit semantics.
 | tenant_id | BIGINT UNSIGNED NOT NULL | |
 | project_id | BIGINT UNSIGNED | `FK*` → `projects.projects.id` |
 | role | ENUM('Bride','Groom','Family Representative') | |
+| username | VARCHAR(100) NOT NULL DEFAULT '' | mirrors `credentials.username` (added migration `000012`) |
 | relation_note | VARCHAR(255) NULL | |
 | name | VARCHAR(150) | |
 | phone | VARCHAR(30) | |
@@ -151,6 +153,15 @@ submit semantics.
 *(§6.3 resolved: "replace representative" (`POST /clients/{id}/replace-representative`) overwrites
 this row with no history table — a deliberate choice carried over from the frontend mock's existing
 behavior, not an oversight. Revisit only if a real need for an audit trail shows up in practice.)*
+
+**Create is not (and cannot be) wrapped in a single DB transaction with `identity.CreateCredential`**
+(separate modules own separate tables — no cross-module transaction, per the modular-monolith
+rule). If credential creation fails after the `clients` row already committed (e.g. the username —
+unique *platform-wide*, not per-tenant — collides with any other principal), `ClientService.Create`
+compensates by deleting the row it just inserted, rather than leaving a client with no working
+login. `DELETE /clients/{id}` (self-service, see API_CONTRACT.md) exists specifically to clear out
+any client that predates this fix and is still stuck that way — deactivating alone doesn't free up
+its role slot on the project, since the role lookup doesn't filter on `is_active`.
 
 ---
 

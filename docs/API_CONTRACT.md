@@ -60,9 +60,11 @@ is unaffected, this is additive.
 | PATCH | `/tenants/{id}` | |
 | POST | `/tenants/{id}/toggle-suspension` | single toggle (flips current state), not separate suspend/reactivate |
 | POST | `/tenants/{id}/reset-credential` | body `{password}`, resets the Owner's login via `identity.ResetPasswordByUsername` |
-| POST | `/tenants/{id}/activate-subscription` | body `{planId}` → `billing.RecordTransaction` status `granted`, bypasses payment |
+| POST | `/tenants/{id}/activate-subscription` | body `{planId}` → `billing.RecordTransaction` status `granted`, bypasses payment. End state (`subscriptionStatus`/`subscriptionExpiresAt`) is computed by the exact same `UpdateSubscription` call as a real payment confirmation — granted and paid subscriptions are indistinguishable afterward except in the transaction ledger. Also resolves (expires + untracks) any self-service charge still pending for this tenant first, so a late webhook/reconciliation-sweep result for that old charge can't double-extend the expiry this call just set |
 | GET | `/tenants/me` | **staff Owner self-service** (not platform_admin) — own tenant's plan/status/expiry, powers WO Console's `Langganan` |
-| POST | `/subscriptions/pay` | **staff Owner self-service** — body `{planId}`. **Changed Fase 9:** no longer activates synchronously — creates a real charge via `payment.Client.CreateCharge` (QRIS), records a `pending` transaction, and returns the charge (`{orderRef, providerRef, channel, qrImageUrl, payCode, checkoutUrl, amount, feeAmount, expiresAt, status}`). The subscription only activates once `/webhooks/payment` confirms it — see `payment` module below and PLAN.md Fase 9 notes. |
+| POST | `/subscriptions/pay` | **staff Owner self-service** — body `{planId}`. **Changed Fase 9:** no longer activates synchronously — creates a real charge via `payment.Client.CreateCharge` (QRIS), records a `pending` transaction, and returns the charge (`{orderRef, providerRef, channel, qrImageUrl, payCode, checkoutUrl, amount, feeAmount, expiresAt, status}`). The subscription only activates once `/webhooks/payment` confirms it — see `payment` module below. Rejects (409) if this tenant already has a pending charge — see `GET`/`cancel` below for how the Owner resolves that instead of getting stuck |
+| GET | `/subscriptions/pending-charge` | **staff Owner self-service** — returns `data: null` if nothing is pending, otherwise the same `{orderRef, providerRef, channel, qrImageUrl, payCode, checkoutUrl, amount, feeAmount, expiresAt, status}` shape as `Pay`, re-fetched live from the gateway via `payment.Client.CheckStatusForApp` (never cached — these fields were never persisted after `Pay`'s one-time response). Lets the Owner re-view a still-pending charge (e.g. after accidentally closing its QR modal) instead of losing access to it until it expires |
+| POST | `/subscriptions/pending-charge/cancel` | **staff Owner self-service** — 404 if nothing is pending. Marks the pending transaction `cancelled` (distinct from `expired` — this was a deliberate give-up, not a timeout) and stops tracking it, freeing `Pay` to start a fresh charge immediately. Bookkeeping only: Tripay has no cancel/void API, so the old charge is still technically payable at the gateway until its own expiry — if the Owner somehow still completes it, the late webhook/reconciliation result finds no tracking row and is silently ignored rather than reactivating the subscription |
 | GET | `/platform-admins` | **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role |
 | POST | `/platform-admins` | orchestrates `identity.CreateCredential` |
 | PATCH | `/platform-admins/{id}` | |
@@ -93,21 +95,23 @@ internally. See ADR-0008.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/staff` | tenant-scoped; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role |
-| POST | `/staff` | rejects `role=Owner` (422) |
-| PATCH | `/staff/{id}` | rejects changing role to/from `Owner` (403) |
-| POST | `/staff/{id}/toggle-active` | rejects deactivating the Owner row (403) |
+| GET | `/staff` | tenant-scoped; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role; response includes `username` |
+| POST | `/staff` | body `{name, title, role, username, password, email, phone}` — rejects `role=Owner` (422); provisions a real login credential via `identity.CreateCredential` in the same call (mirrors `clients`' `POST /clients`), rolling back (deleting) the just-inserted row if that fails, e.g. username already taken by *any* principal on the platform (usernames aren't tenant-scoped) |
+| PATCH | `/staff/{id}` | body `{name, title, role, email, phone}` — no `username` (immutable after creation). Rejects assigning `role=Owner` to a non-Owner row (403). For a row that's already `role=Owner`: rejected (403) unless the caller's own JWT principal id equals `{id}` — i.e. the Owner may edit their own name/title/contact details, but no other staff member (even Admin) may touch the Owner's row; even the Owner can't change their own role away from `Owner` this way |
+| POST | `/staff/{id}/toggle-active` | rejects deactivating the Owner row (403), regardless of caller |
 
-## `clients` — **implemented, Fase 4** (bundled with `projects` — see PLAN.md Fase 3 scope note)
+## `clients` — **implemented, Fase 4** (bundled with `projects`, since `clients.project_id` needs
+a real `projects` row to reference)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/clients` | tenant-scoped; `?projectId=` filters to one project (unpaginated — small, bounded per-project list). Omit `projectId` to list every client for the tenant instead (added Fase 5, powers `GlobalSearch` via `?all=true`) — this tenant-wide mode is **paginated** (Fase 7), `?search=` matches name + email |
-| POST | `/clients` | body `{projectId, role, relationNote, name, phone, email, password}` — validates `projectId` via `projects.Contracts.ProjectExists`, provisions a real login credential in the same call |
-| PATCH | `/clients/{id}` | contact edit (`{name, phone, email}`) |
+| GET | `/clients` | tenant-scoped; `?projectId=` filters to one project (unpaginated — small, bounded per-project list). Omit `projectId` to list every client for the tenant instead (added Fase 5, powers `GlobalSearch` via `?all=true`) — this tenant-wide mode is **paginated** (Fase 7), `?search=` matches name + email; response includes `username` |
+| POST | `/clients` | body `{projectId, role, relationNote, name, phone, email, username, password}` — validates `projectId` via `projects.Contracts.ProjectExists`, provisions a real login credential in the same call; if `identity.CreateCredential` fails (e.g. username already taken by *any* principal on the platform — usernames aren't tenant-scoped), the just-inserted `clients` row is rolled back (deleted) rather than left orphaned with no working credential |
+| PATCH | `/clients/{id}` | contact edit (`{name, phone, email}`) — no `username` (immutable after creation) |
 | POST | `/clients/{id}/toggle-active` | |
-| POST | `/clients/{id}/reset-credential` | body `{password}` — sets a new password and stamps `lastCredentialResetAt` |
+| POST | `/clients/{id}/reset-credential` | body `{password}` — sets a new password and stamps `lastCredentialResetAt`. Fails with `404`/"Kredensial tidak ditemukan" for a client left behind by a pre-rollback-fix `Create` failure (no `identity` row ever existed) — use `DELETE` below to clear those out, not this endpoint |
 | POST | `/clients/{id}/replace-representative` | body `{name, phone, email, relationNote}`; only valid when `role=Family Representative`; overwrites the same row, no history kept (§6.3) |
+| DELETE | `/clients/{id}` | hard delete — the one permanent-delete endpoint in this module (every other mutation elsewhere is a soft toggle). Best-effort deactivates the client's `identity` credential first (harmless no-op if none exists); exists specifically so an operator can self-service clear a client stuck with no working credential, since deactivating alone doesn't free up that client's role slot on the project (the role lookup doesn't filter on `is_active`) |
 
 ## `vendors` (tenant-scoped) — **implemented, Fase 3**
 

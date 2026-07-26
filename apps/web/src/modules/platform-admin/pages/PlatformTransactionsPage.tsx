@@ -11,7 +11,7 @@ import type { SubscriptionTransactionStatus } from "@/modules/platform-admin/dat
 import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LABEL } from "@/modules/platform-admin/lib/status";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
-const STATUS_FILTERS: SubscriptionTransactionStatus[] = ["unpaid", "pending", "paid", "expired", "granted"];
+const STATUS_FILTERS: SubscriptionTransactionStatus[] = ["unpaid", "pending", "paid", "expired", "granted", "cancelled"];
 
 export default function PlatformTransactionsPage() {
   const tenants = usePlatformAdminStore((s) => s.tenants);

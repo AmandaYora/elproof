@@ -34,6 +34,6 @@ a Payment Gateway as a Service API other SaaS products can integrate against —
 [MODULE_PAYMENT.md](MODULE_PAYMENT.md)); the mock-data era this brief originally described is gone
 — `apps/web/src/mock/` was deleted once every real feature had a backend to call. A public
 marketing site also exists at `/homepage/*` for FAQ/Terms/Privacy/Refund/Contact pages, separate
-from the three consoles above. See [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) and
-`PLAN.md` at the repo root (a living phase-by-phase log, not a one-time plan) for the full history
-and current status of each capability.
+from the three consoles above. See [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) for the
+full architecture, [MODULE_MAP.md](MODULE_MAP.md) for module ownership, and `decisions/` for the
+specific decisions behind this shape.

@@ -35,6 +35,8 @@ export const API = {
     tenantResetCredential: (id: string) => `/api/v1/tenants/${id}/reset-credential`,
     tenantActivateSubscription: (id: string) => `/api/v1/tenants/${id}/activate-subscription`,
     subscriptionsPay: "/api/v1/subscriptions/pay",
+    subscriptionsPendingCharge: "/api/v1/subscriptions/pending-charge",
+    subscriptionsCancelPendingCharge: "/api/v1/subscriptions/pending-charge/cancel",
     platformAdmins: "/api/v1/platform-admins",
     platformAdmin: (id: string) => `/api/v1/platform-admins/${id}`,
     platformAdminToggleActive: (id: string) => `/api/v1/platform-admins/${id}/toggle-active`,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -8,7 +8,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, formatDateTime, daysBetween } from "@/shared/lib/formatters";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { usePlatformAdminStore, type PaymentCharge } from "@/modules/platform-admin/stores/usePlatformAdminStore";
@@ -35,6 +35,8 @@ export default function SubscriptionPage() {
   const meta = usePlatformAdminStore((s) => s.transactionPageMeta);
   const fetchTransactionPage = usePlatformAdminStore((s) => s.fetchTransactionPage);
   const paySubscription = usePlatformAdminStore((s) => s.paySubscription);
+  const fetchPendingCharge = usePlatformAdminStore((s) => s.fetchPendingCharge);
+  const cancelPendingCharge = usePlatformAdminStore((s) => s.cancelPendingCharge);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,13 +44,21 @@ export default function SubscriptionPage() {
   const [page, setPage] = useState(1);
   const [activeCharge, setActiveCharge] = useState<PaymentCharge | null>(null);
   const [chargeOutcome, setChargeOutcome] = useState<"paid" | "expired" | null>(null);
+  // A pending charge the Owner already has (e.g. after accidentally closing
+  // its QR modal in an earlier visit) — separate from activeCharge, which
+  // only holds a charge while its modal is actually open. Lets it be
+  // re-opened via a persistent banner instead of being lost until it expires.
+  const [pendingCharge, setPendingCharge] = useState<PaymentCharge | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!isOwner) return;
     void fetchPlans();
     void fetchMyTenant();
-  }, [isOwner, fetchPlans, fetchMyTenant]);
+    void fetchPendingCharge().then(setPendingCharge);
+  }, [isOwner, fetchPlans, fetchMyTenant, fetchPendingCharge]);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -107,6 +117,7 @@ export default function SubscriptionPage() {
       const charge = await paySubscription(plan.id);
       setConfirmOpen(false);
       setActiveCharge(charge);
+      setPendingCharge(charge);
       setChargeOutcome(null);
       startPolling(charge.orderRef);
     } catch (err) {
@@ -121,6 +132,34 @@ export default function SubscriptionPage() {
     setActiveCharge(null);
     setChargeOutcome(null);
     void fetchTransactionPage(page, "");
+    // Re-check rather than assume: the charge may have just resolved (paid
+    // or expired) while its modal was open, in which case there's nothing
+    // pending anymore and the banner should disappear too.
+    void fetchPendingCharge().then(setPendingCharge);
+  }
+
+  // Re-opens the same QR modal for a charge the Owner already has pending —
+  // e.g. from the banner below, after closing it in an earlier visit.
+  function handleViewPendingCharge() {
+    if (!pendingCharge) return;
+    setActionError(null);
+    setActiveCharge(pendingCharge);
+    setChargeOutcome(null);
+    startPolling(pendingCharge.orderRef);
+  }
+
+  async function handleCancelPendingCharge() {
+    setActionError(null);
+    setIsCancelling(true);
+    try {
+      await cancelPendingCharge();
+      setPendingCharge(null);
+      setConfirmingCancel(false);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal membatalkan tagihan"));
+    } finally {
+      setIsCancelling(false);
+    }
   }
 
   if (!isOwner) {
@@ -154,6 +193,43 @@ export default function SubscriptionPage() {
         <p className="max-w-md rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
           {actionError}
         </p>
+      )}
+
+      {pendingCharge && (
+        <div className="max-w-md rounded-lg border border-warning/30 bg-warning-soft p-4">
+          <div className="flex items-start gap-3">
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-semibold text-warning-strong">Anda memiliki pembayaran tertunda</p>
+              <p className="mt-0.5 text-[12.5px] text-text-secondary">
+                {formatCurrency(pendingCharge.amount)} · kedaluwarsa {formatDateTime(pendingCharge.expiresAt)}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={handleViewPendingCharge}>Lihat QR Pembayaran</Button>
+                <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(true)} disabled={isCancelling}>
+                  Batalkan
+                </Button>
+              </div>
+
+              {confirmingCancel && (
+                <div className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5">
+                  <p className="flex items-start gap-1.5 text-[12.5px] font-medium text-danger">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Yakin ingin membatalkan tagihan ini? Anda bisa langsung membuat tagihan baru setelahnya.
+                  </p>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(false)} disabled={isCancelling}>
+                      Batal
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => void handleCancelPendingCharge()} disabled={isCancelling}>
+                      {isCancelling ? "Memproses..." : "Ya, Batalkan"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <Card className="max-w-md">
@@ -200,9 +276,15 @@ export default function SubscriptionPage() {
             ))}
           </ul>
 
-          <Button className="w-full" onClick={() => setConfirmOpen(true)}>
-            {isActive ? "Perpanjang Langganan" : "Berlangganan Sekarang"}
-          </Button>
+          {pendingCharge ? (
+            <p className="rounded-md bg-surface-muted px-3.5 py-2.5 text-[12.5px] text-text-secondary">
+              Selesaikan atau batalkan pembayaran tertunda di atas terlebih dahulu sebelum membuat tagihan baru.
+            </p>
+          ) : (
+            <Button className="w-full" onClick={() => setConfirmOpen(true)}>
+              {isActive ? "Perpanjang Langganan" : "Berlangganan Sekarang"}
+            </Button>
+          )}
 
           <p className="flex items-center gap-1.5 text-[11.5px] text-text-secondary">
             <ShieldCheck className="h-3.5 w-3.5 shrink-0" />

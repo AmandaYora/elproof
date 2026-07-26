@@ -69,6 +69,15 @@ type Client interface {
 	CreateChannelCharge(ctx context.Context, appID, contextID, orderRef string, amount int64, channel string, opts ChargeOptions) (*ChargeResult, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
 	CheckStatus(ctx context.Context, providerRef string) (*ChargeResult, error)
+	// CheckStatusForApp resolves orderRef to its providerRef via this App's
+	// own charge dispatch (scoped to appID, 404 if it belongs to someone
+	// else) before checking the gateway — lets a caller re-fetch a charge's
+	// live display fields (QR image, pay code, checkout URL) using only the
+	// orderRef it already has, without needing to separately track/store
+	// providerRef itself. Already used by the external `/payments/.../status`
+	// route; `platform` reuses it to let an Owner re-view a still-pending
+	// self-service charge after closing its QR modal.
+	CheckStatusForApp(ctx context.Context, appID, orderRef string) (*ChargeResult, error)
 }
 
 // WebhookConsumer is implemented by every App internal that registers with

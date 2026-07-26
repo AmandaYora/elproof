@@ -25,7 +25,7 @@ shortcut, not a design to preserve.
 
 ## Consequences
 - All the `TODAY`-based helper functions in `mock/selectors.ts` and
-  `modules/platform-admin/lib/trend.ts` become dead code once their corresponding backend endpoint
-  ships (tracked per-module in PLAN.md Fase 4/5), not something to keep "just in case".
+  `modules/platform-admin/lib/trend.ts` became dead code once their corresponding backend endpoint
+  shipped, and were removed rather than kept "just in case".
 - Server and any local dev environment must have correct system clock/timezone; no reliance on
   browser time.

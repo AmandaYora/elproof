@@ -10,5 +10,5 @@ Full detail — users, per-surface feature list, explicit out-of-scope items —
 [`knowledge/PROJECT_BRIEF.md`](../knowledge/PROJECT_BRIEF.md) and
 [`knowledge/PRODUCT_REQUIREMENTS.md`](../knowledge/PRODUCT_REQUIREMENTS.md) (not duplicated here).
 
-The phased plan to build the backend and integrate it with the existing frontend is tracked in
-[`PLAN.md`](../PLAN.md) at the repo root.
+The backend is fully built and live in production — see `knowledge/PROJECT_BRIEF.md`'s "Current
+state" and `knowledge/MODULE_MAP.md` for what exists today.

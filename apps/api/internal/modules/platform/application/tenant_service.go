@@ -32,6 +32,7 @@ type TenantRepository interface {
 type PendingChargeRepository interface {
 	Create(ctx context.Context, orderRef string, tenantID, planID int64) error
 	FindByOrderRef(ctx context.Context, orderRef string) (*domain.PendingCharge, error)
+	FindByTenant(ctx context.Context, tenantID int64) ([]domain.PendingCharge, error)
 	Delete(ctx context.Context, orderRef string) error
 }
 
@@ -230,6 +231,17 @@ func (s *TenantService) ResetCredential(ctx context.Context, id int64, newPasswo
 // counts as real revenue. See ADR (subscription bypass) and docs/DB_SCHEMA.md.
 // Unlike Pay, this never touches the payment gateway at all — it activates
 // synchronously, in this same call, exactly as before Fase 9.
+//
+// If the Owner's own self-service "Bayar Sekarang" charge is still pending
+// for this tenant, it's resolved here first: expired in the transaction
+// ledger and cleared from pendingCharges tracking. Without this, that row
+// stayed stuck at "Menunggu Pembayaran" until the payment module's
+// reconciliation sweep eventually caught up with the gateway (its own
+// natural charge expiry, potentially hours later) — and if the Owner
+// actually completed that old payment in the meantime, the late webhook
+// would still fire ApplyWebhookEvent and call UpdateSubscription a second
+// time, silently double-extending the expiry this call is about to set
+// (computeNewExpiry stacks on top of whatever expiry is already there).
 func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64, planID int64) (*domain.Tenant, error) {
 	tenant, err := s.Get(ctx, tenantID)
 	if err != nil {
@@ -239,6 +251,20 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 	if err != nil {
 		return nil, err
 	}
+
+	pending, err := s.pendingCharges.FindByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range pending {
+		if err := s.billing.UpdateTransactionStatus(ctx, p.OrderRef, billingcontracts.StatusExpired); err != nil {
+			return nil, err
+		}
+		if err := s.pendingCharges.Delete(ctx, p.OrderRef); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.billing.RecordTransaction(ctx, billingcontracts.RecordTransactionInput{
 		TenantID: tenantID, Type: txTypeFor(tenant), Amount: plan.Price,
 		PaymentMethod: "Aktivasi Manual (Super Admin)", PaymentReference: generateGrantReference(),
@@ -258,6 +284,15 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 // here. Activation only happens once the gateway's webhook confirms payment
 // (see ApplyWebhookEvent below) — this function only ever gets the charge
 // started.
+//
+// Guard: rejects a second charge while one is already pending for this
+// tenant (409), instead of silently starting a second, independent charge —
+// this is real money moved at an external gateway (unlike ActivateSubscription,
+// an internal admin action), so the guard lives here in the backend rather
+// than relying only on the frontend disabling its button while a request is
+// in flight. If both charges were ever paid, the tenant would be billed
+// twice and the subscription would be double-extended (computeNewExpiry
+// stacks on top of whatever expiry is already there).
 func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64) (*paymentcontracts.ChargeResult, error) {
 	tenant, err := s.Get(ctx, tenantID)
 	if err != nil {
@@ -266,6 +301,14 @@ func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64) (
 	plan, err := s.billing.GetPlan(ctx, planID)
 	if err != nil {
 		return nil, err
+	}
+
+	existing, err := s.pendingCharges.FindByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(existing) > 0 {
+		return nil, apperror.Conflict("Anda masih memiliki tagihan yang belum diselesaikan. Selesaikan atau tunggu tagihan tersebut kedaluwarsa sebelum membuat tagihan baru.")
 	}
 
 	orderRef := generatePaymentReference()
@@ -285,6 +328,53 @@ func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64) (
 	}
 
 	return charge, nil
+}
+
+// GetPendingCharge lets the Owner re-view a still-pending self-service
+// charge after closing its QR modal (accidentally or otherwise) — instead of
+// the charge's display fields (QR image, pay code, checkout URL) being lost
+// forever, since they were never persisted anywhere beyond Pay's one-time
+// response. Re-fetches them live from the gateway via CheckStatusForApp
+// rather than caching a copy that could go stale. Returns nil (not an error)
+// when there's nothing pending — this is a normal, common state.
+func (s *TenantService) GetPendingCharge(ctx context.Context, tenantID int64) (*paymentcontracts.ChargeResult, error) {
+	pending, err := s.pendingCharges.FindByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	return s.payment.CheckStatusForApp(ctx, paymentcontracts.InternalAppBilling, pending[0].OrderRef)
+}
+
+// CancelPendingCharge is the Owner's "Batalkan" action — gives up on a
+// pending self-service charge without waiting for it to expire on its own,
+// freeing Pay() to start a fresh one immediately. Tripay has no cancel/void
+// API, so this is bookkeeping on our side only: the transaction is marked
+// StatusCancelled (distinct from StatusExpired, which means it timed out
+// unattended) and its pendingCharges tracking row is deleted. If the Owner
+// somehow still completes payment on the cancelled QR afterward, the late
+// webhook/reconciliation result finds no tracking row for that order_ref and
+// is silently ignored (see ApplyWebhookEvent's nil-pending branch) rather
+// than resurrecting a subscription the Owner explicitly walked away from.
+func (s *TenantService) CancelPendingCharge(ctx context.Context, tenantID int64) error {
+	pending, err := s.pendingCharges.FindByTenant(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		return apperror.NotFound("Tidak ada tagihan yang menggantung untuk dibatalkan")
+	}
+	for _, p := range pending {
+		if err := s.billing.UpdateTransactionStatus(ctx, p.OrderRef, billingcontracts.StatusCancelled); err != nil {
+			return err
+		}
+		if err := s.pendingCharges.Delete(ctx, p.OrderRef); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ApplyWebhookEvent is `platform`'s implementation of

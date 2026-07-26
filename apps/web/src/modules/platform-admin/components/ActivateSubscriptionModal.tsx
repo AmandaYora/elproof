@@ -16,10 +16,11 @@ interface ActivateSubscriptionModalProps {
   onClose: () => void;
   tenant?: Tenant;
   plans: SubscriptionPlan[];
+  isSubmitting?: boolean;
   onSubmit: (values: ActivateSubscriptionFormValues) => void;
 }
 
-export function ActivateSubscriptionModal({ open, onClose, tenant, plans, onSubmit }: ActivateSubscriptionModalProps) {
+export function ActivateSubscriptionModal({ open, onClose, tenant, plans, isSubmitting = false, onSubmit }: ActivateSubscriptionModalProps) {
   const activePlans = plans.filter((p) => p.isActive);
   const [values, setValues] = useState<ActivateSubscriptionFormValues>({ planId: tenant?.planId ?? activePlans[0]?.id ?? "" });
   const [errors, setErrors] = useState<Partial<Record<keyof ActivateSubscriptionFormValues, string>>>({});
@@ -47,6 +48,7 @@ export function ActivateSubscriptionModal({ open, onClose, tenant, plans, onSubm
   }
 
   function handleClose() {
+    if (isSubmitting) return;
     setValues({ planId: tenant?.planId ?? activePlans[0]?.id ?? "" });
     setErrors({});
     onClose();
@@ -61,10 +63,12 @@ export function ActivateSubscriptionModal({ open, onClose, tenant, plans, onSubm
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
+          <Button variant="secondary" onClick={handleClose} disabled={isSubmitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>Aktifkan Langganan</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? "Memproses..." : "Aktifkan Langganan"}
+          </Button>
         </>
       }
     >
