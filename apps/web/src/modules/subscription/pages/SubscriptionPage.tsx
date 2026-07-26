@@ -57,7 +57,7 @@ export default function SubscriptionPage() {
     if (!isOwner) return;
     void fetchPlans();
     void fetchMyTenant();
-    void fetchPendingCharge().then(setPendingCharge);
+    void fetchPendingCharge().then(setPendingCharge).catch(() => {});
   }, [isOwner, fetchPlans, fetchMyTenant, fetchPendingCharge]);
 
   useEffect(() => {
@@ -67,6 +67,12 @@ export default function SubscriptionPage() {
 
   const plan = plans.find((p) => p.id === tenant?.planId);
   const isActive = tenant?.subscriptionStatus === "active" || tenant?.subscriptionStatus === "expiring_soon";
+  // A pending charge whose live gateway status couldn't be fetched degrades
+  // to just orderRef + amount (see GetPendingCharge on the backend) — channel
+  // is only ever set by a real gateway response, so its absence is the
+  // signal to hide QR-specific UI (there's nothing to show) while still
+  // allowing "Batalkan".
+  const isPendingChargeDegraded = pendingCharge !== null && !pendingCharge.channel;
 
   const daysLeft = isActive && tenant?.subscriptionExpiresAt ? daysBetween(today(), tenant.subscriptionExpiresAt) : null;
   const isExpired = tenant?.subscriptionStatus === "expired";
@@ -135,7 +141,7 @@ export default function SubscriptionPage() {
     // Re-check rather than assume: the charge may have just resolved (paid
     // or expired) while its modal was open, in which case there's nothing
     // pending anymore and the banner should disappear too.
-    void fetchPendingCharge().then(setPendingCharge);
+    void fetchPendingCharge().then(setPendingCharge).catch(() => {});
   }
 
   // Re-opens the same QR modal for a charge the Owner already has pending —
@@ -202,10 +208,12 @@ export default function SubscriptionPage() {
             <div className="min-w-0 flex-1">
               <p className="text-[13.5px] font-semibold text-warning-strong">Anda memiliki pembayaran tertunda</p>
               <p className="mt-0.5 text-[12.5px] text-text-secondary">
-                {formatCurrency(pendingCharge.amount)} · kedaluwarsa {formatDateTime(pendingCharge.expiresAt)}
+                {formatCurrency(pendingCharge.amount)}
+                {!isPendingChargeDegraded && <> · kedaluwarsa {formatDateTime(pendingCharge.expiresAt)}</>}
+                {isPendingChargeDegraded && " · Detail pembayaran tidak dapat dimuat saat ini"}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={handleViewPendingCharge}>Lihat QR Pembayaran</Button>
+                {!isPendingChargeDegraded && <Button size="sm" onClick={handleViewPendingCharge}>Lihat QR Pembayaran</Button>}
                 <Button size="sm" variant="secondary" onClick={() => setConfirmingCancel(true)} disabled={isCancelling}>
                   Batalkan
                 </Button>

@@ -12,6 +12,7 @@ import (
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/validator"
 )
@@ -345,7 +346,28 @@ func (s *TenantService) GetPendingCharge(ctx context.Context, tenantID int64) (*
 	if len(pending) == 0 {
 		return nil, nil
 	}
-	return s.payment.CheckStatusForApp(ctx, paymentcontracts.InternalAppBilling, pending[0].OrderRef)
+	p := pending[0]
+	charge, err := s.payment.CheckStatusForApp(ctx, paymentcontracts.InternalAppBilling, p.OrderRef)
+	if err != nil {
+		// The live gateway call can fail for reasons that have nothing to do
+		// with whether the charge is still genuinely pending (a rotated API
+		// key, a Tripay outage, a transient network error) — letting that
+		// failure bubble up as an opaque error here would silently hide the
+		// pending-charge banner (the frontend fetch has no visible failure
+		// state) and strand the Owner exactly like the bug this endpoint
+		// exists to fix: unable to see or cancel their pending charge. Log
+		// for diagnosis and fall back to what we already know locally — no
+		// QR/pay code/checkout URL (only the gateway has those), but enough
+		// for the Owner to see it's pending and use "Batalkan".
+		logger.Error("gagal memuat status live charge %s dari gateway: %v", p.OrderRef, err)
+		plan, planErr := s.billing.GetPlan(ctx, p.PlanID)
+		amount := int64(0)
+		if planErr == nil && plan != nil {
+			amount = plan.Price
+		}
+		return &paymentcontracts.ChargeResult{OrderRef: p.OrderRef, Amount: amount, Status: "pending"}, nil
+	}
+	return charge, nil
 }
 
 // CancelPendingCharge is the Owner's "Batalkan" action — gives up on a

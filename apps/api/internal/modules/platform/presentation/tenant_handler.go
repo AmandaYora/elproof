@@ -11,6 +11,7 @@ import (
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/response"
@@ -386,5 +387,6 @@ func writeAppError(w http.ResponseWriter, err error) {
 		response.Error(w, status, appErr.Message, nil)
 		return
 	}
+	logger.Error("unhandled error: %v", err)
 	response.Error(w, status, "Terjadi kesalahan pada server", nil)
 }
