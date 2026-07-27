@@ -101,7 +101,7 @@ export default function LoginPage() {
               <Input
                 value={values.username}
                 onChange={(e) => set("username", e.target.value)}
-                placeholder="Masukkan nama pengguna Anda"
+                placeholder="Masukkan nama pengguna atau email Anda"
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               />
             </Field>

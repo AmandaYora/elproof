@@ -20,6 +20,7 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 | principal_type | ENUM('staff','client','platform_admin') | |
 | principal_id | VARCHAR(64) | `FK*` → `staff.staff_members.id` / `clients.clients.id` / `platform.platform_admins.id` depending on `principal_type` |
 | username | VARCHAR(100) UNIQUE | |
+| email | VARCHAR(150) NULL | denormalized copy of the owning module's email (`staff_members`/`clients`/`platform_admins`), written at `CreateCredential` time — lets `Login` resolve either identifier without a cross-module join (migration `000015`). **Not** unique — unlike `username`, no owning module enforces that; `Login` tries every matching row's password rather than assuming the first is the right account. |
 | password_hash | VARCHAR(255) | bcrypt |
 | role | VARCHAR(50) | e.g. `Owner`/`Admin`/`Staff`, `Super Admin`/`Support` — denormalized for JWT claim convenience |
 | display_name | VARCHAR(150) | denormalized for immediate post-login UI display (see ADR-0005) |

@@ -76,6 +76,7 @@ func (s *PlatformAdminService) Register(ctx context.Context, input RegisterPlatf
 		PrincipalType: identitycontracts.PrincipalPlatformAdmin,
 		PrincipalID:   formatID(admin.ID),
 		Username:      username,
+		Email:         input.Email,
 		Password:      input.Password,
 		Role:          string(input.Role),
 		DisplayName:   input.Name,

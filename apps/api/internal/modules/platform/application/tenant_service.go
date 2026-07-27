@@ -151,6 +151,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		PrincipalType: identitycontracts.PrincipalStaff,
 		PrincipalID:   ownerResult.StaffID,
 		Username:      username,
+		Email:         input.Email,
 		Password:      input.Password,
 		Role:          "Owner",
 		DisplayName:   input.OwnerName,

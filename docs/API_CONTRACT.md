@@ -22,7 +22,7 @@ instead of a filter being applied only to one already-paginated page.
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/auth/login` | body `{username, password}` → `{accessToken, refreshToken, principalType, principalId, tenantId, role, displayName}` |
+| POST | `/auth/login` | body `{username, password}` — `username` accepts either a real username or an email; tried as username first, then as email (against every credential sharing that email, since email isn't unique the way username is — see ADR-0005) → `{accessToken, refreshToken, principalType, principalId, tenantId, role, displayName}` |
 | POST | `/auth/refresh` | body `{refreshToken}` → new `{accessToken, refreshToken}`, rotates old refresh token |
 | POST | `/auth/logout` | revokes the refresh token; requires auth header |
 

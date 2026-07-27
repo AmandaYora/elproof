@@ -18,7 +18,8 @@ rules.
   principal_id (varchar — primitive reference, no FK), username, password_hash (bcrypt),
   role, display_name`. `principal_id`/`tenant_id` are stored as plain values, never as SQL foreign
   keys, per the modular-monolith no-cross-module-FK rule — `identity` does not know the internal
-  schema of `staff`/`clients`/`platform`.
+  schema of `staff`/`clients`/`platform`. (See "Update — email login" below: `email` was added to
+  this row shape later.)
 - Auth is JWT access + refresh: access token (short-lived, e.g. 15–30 min) carries
   `{principal_type, principal_id, tenant_id, role}` claims; refresh token is opaque, stored hashed
   in `refresh_tokens`, rotated on use, revocable on logout.
@@ -76,3 +77,21 @@ above — see `MODULE_MAP.md`) and having `Create` provision a real credential t
 `clients.Create` already did, including the same compensating rollback if credential creation fails
 after the `staff_members` row committed. See `docs/API_CONTRACT.md`'s `staff` section for the
 updated request/response shape.
+
+## Update — email login (`credentials.email`, denormalized)
+
+Login originally accepted only `username` (see the original Decision above). `credentials` gained
+an `email VARCHAR(150) NULL` column (migration `000015`), populated at `CreateCredential` time by
+every caller (mirrors how `username` itself was always denormalized here) and backfilled once for
+accounts that existed before the column did — see the migration's own comment for why that one-time
+backfill query is schema/data tooling, not an ongoing violation of the no-cross-module-join rule.
+
+`Login`'s `username` request field now doubles as "username or email": tried as username first
+(unambiguous, unique); if that doesn't resolve to a matching active credential whose password
+checks out, tried again as an email. Unlike `username`, no owning module enforces `email`
+uniqueness, so more than one credential can share an email — `FindAllByEmail` returns every match
+and each candidate's password is tried in turn, rather than assuming the first row found is the
+intended account. The JSON field name (`username`) and the generic "Username/email atau password
+salah" error message were kept exactly this ambiguous on purpose — same reasoning as usernames
+never being tenant-scoped: never reveal *which* identifier (or which of several matching accounts)
+actually existed.

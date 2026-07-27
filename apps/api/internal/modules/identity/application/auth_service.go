@@ -13,6 +13,9 @@ import (
 
 type CredentialRepository interface {
 	FindByUsername(ctx context.Context, username string) (*domain.Credential, error)
+	// FindAllByEmail backs Login's email fallback — see AuthService.Login for
+	// why this returns every match instead of one.
+	FindAllByEmail(ctx context.Context, email string) ([]*domain.Credential, error)
 	FindByID(ctx context.Context, id int64) (*domain.Credential, error)
 	FindByPrincipal(ctx context.Context, principalType domain.PrincipalType, principalID string) (*domain.Credential, error)
 	Create(ctx context.Context, cred *domain.Credential) error
@@ -83,18 +86,35 @@ type Session struct {
 	DisplayName   string
 }
 
-func (s *AuthService) Login(ctx context.Context, username, password string) (*Session, error) {
-	cred, err := s.credentials.FindByUsername(ctx, username)
+// Login accepts either a username or an email as identifier. Username is
+// tried first (it's the unique, unambiguous case); if that doesn't resolve to
+// a matching, active credential whose password checks out, identifier is
+// tried again as an email. Unlike username, email isn't guaranteed unique
+// across principal types/tenants (no owning module enforces it — see
+// domain.Credential's doc comment), so FindAllByEmail can return more than
+// one candidate; each is tried in turn rather than assuming the first match
+// is the intended account — the correct one is whichever candidate's
+// password actually matches.
+func (s *AuthService) Login(ctx context.Context, identifier, password string) (*Session, error) {
+	cred, err := s.credentials.FindByUsername(ctx, identifier)
 	if err != nil {
 		return nil, err
 	}
-	if cred == nil || !cred.IsActive {
-		return nil, apperror.Unauthorized("Username atau password salah")
+	if cred != nil && cred.IsActive && s.hasher.Compare(cred.PasswordHash, password) == nil {
+		return s.issueSession(ctx, cred)
 	}
-	if err := s.hasher.Compare(cred.PasswordHash, password); err != nil {
-		return nil, apperror.Unauthorized("Username atau password salah")
+
+	candidates, err := s.credentials.FindAllByEmail(ctx, identifier)
+	if err != nil {
+		return nil, err
 	}
-	return s.issueSession(ctx, cred)
+	for _, c := range candidates {
+		if c.IsActive && s.hasher.Compare(c.PasswordHash, password) == nil {
+			return s.issueSession(ctx, c)
+		}
+	}
+
+	return nil, apperror.Unauthorized("Username/email atau password salah")
 }
 
 func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*Session, error) {

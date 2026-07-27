@@ -108,7 +108,7 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 	// since that also resolves through identity by principal.
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalClient, PrincipalID: formatID(c.ID),
-		Username: input.Username, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
+		Username: input.Username, Email: input.Email, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
 	}); err != nil {
 		if delErr := s.repo.Delete(ctx, tenantID, c.ID); delErr != nil {
 			logger.Error("failed to roll back orphaned client %d after credential creation failed: %v", c.ID, delErr)

@@ -69,7 +69,7 @@ func Run(ctx context.Context, db *sql.DB) error {
 	}
 	if err := identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		PrincipalType: identitycontracts.PrincipalPlatformAdmin, PrincipalID: formatID(admin.ID),
-		Username: admin.Username, Password: "superadmin", Role: string(admin.Role), DisplayName: admin.Name,
+		Username: admin.Username, Email: admin.Email, Password: "superadmin", Role: string(admin.Role), DisplayName: admin.Name,
 	}); err != nil {
 		return err
 	}

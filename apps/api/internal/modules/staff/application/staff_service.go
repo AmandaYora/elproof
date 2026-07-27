@@ -112,7 +112,7 @@ func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffIn
 	}
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalStaff, PrincipalID: strconv.FormatInt(member.ID, 10),
-		Username: input.Username, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
+		Username: input.Username, Email: input.Email, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
 	}); err != nil {
 		if delErr := s.repo.Delete(ctx, tenantID, member.ID); delErr != nil {
 			logger.Error("failed to roll back orphaned staff member %d after credential creation failed: %v", member.ID, delErr)

@@ -26,6 +26,7 @@ type CreateCredentialInput struct {
 	PrincipalType PrincipalType
 	PrincipalID   string
 	Username      string
+	Email         string
 	Password      string
 	Role          string
 	DisplayName   string
@@ -63,6 +64,7 @@ func (c *impl) CreateCredential(ctx context.Context, input CreateCredentialInput
 		PrincipalType: domain.PrincipalType(input.PrincipalType),
 		PrincipalID:   input.PrincipalID,
 		Username:      input.Username,
+		Email:         input.Email,
 		Password:      input.Password,
 		Role:          input.Role,
 		DisplayName:   input.DisplayName,

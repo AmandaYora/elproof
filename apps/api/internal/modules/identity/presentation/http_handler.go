@@ -55,8 +55,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Username == "" || req.Password == "" {
-		response.Error(w, http.StatusUnprocessableEntity, "Username dan password wajib diisi", map[string][]string{
-			"username": {"Username wajib diisi"},
+		response.Error(w, http.StatusUnprocessableEntity, "Username/email dan password wajib diisi", map[string][]string{
+			"username": {"Username atau email wajib diisi"},
 			"password": {"Password wajib diisi"},
 		})
 		return
