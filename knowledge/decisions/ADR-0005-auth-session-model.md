@@ -88,10 +88,28 @@ backfill query is schema/data tooling, not an ongoing violation of the no-cross-
 
 `Login`'s `username` request field now doubles as "username or email": tried as username first
 (unambiguous, unique); if that doesn't resolve to a matching active credential whose password
-checks out, tried again as an email. Unlike `username`, no owning module enforces `email`
-uniqueness, so more than one credential can share an email — `FindAllByEmail` returns every match
-and each candidate's password is tried in turn, rather than assuming the first row found is the
-intended account. The JSON field name (`username`) and the generic "Username/email atau password
-salah" error message were kept exactly this ambiguous on purpose — same reasoning as usernames
-never being tenant-scoped: never reveal *which* identifier (or which of several matching accounts)
-actually existed.
+checks out, tried again as an email. The JSON field name (`username`) and the generic
+"Username/email atau password salah" error message were kept exactly this ambiguous on purpose —
+same reasoning as usernames never being tenant-scoped: never reveal *which* identifier actually
+existed.
+
+### Update — email uniqueness (migration `000016`)
+
+Shortly after shipping the above, a real production account was found with the same email shared
+across three credentials (one deactivated+orphaned leftover from a client hard-delete, two genuinely
+active accounts) — harmless for username (never happened, since username was always unique) but a
+real problem for email once it can resolve a login: which of several matching accounts should
+"win" is not something the system should ever have to guess. `CreateCredential` now rejects a
+duplicate email up front (`apperror.Conflict`, mirrors the existing username check exactly), and
+`credentials.email` itself gained a `UNIQUE KEY` (MySQL treats multiple `NULL`s as non-conflicting,
+so accounts still missing a backfilled email aren't affected). `Login`'s `FindAllByEmail` +
+try-every-candidate loop is kept as defensive code rather than simplified to "expect exactly one
+row" — it's now effectively always ≤1 result, but there's no cost to leaving the safer, more
+general implementation in place.
+
+The three duplicate production accounts themselves were resolved by hand before this constraint
+was added (one hard-deleted for being genuinely orphaned test data, one hard-deleted as unwanted
+test data per the account owner, one kept as the sole holder of that email) — this migration adds
+no automatic dedup logic of its own; if this ever recurs, it must be resolved the same
+way (by hand) before the migration can apply, since a `UNIQUE KEY` cannot be added over existing
+duplicates.

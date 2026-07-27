@@ -41,6 +41,21 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		return apperror.Conflict("Username sudah digunakan")
 	}
 
+	// Login can resolve either identifier now (see AuthService.Login), so an
+	// email shared by two accounts would make login-by-email ambiguous by
+	// construction -- reject it up front the same way a taken username
+	// already is, rather than only catching it via the DB's unique
+	// constraint (migration 000016).
+	if input.Email != "" {
+		existingByEmail, err := s.credentials.FindAllByEmail(ctx, input.Email)
+		if err != nil {
+			return err
+		}
+		if len(existingByEmail) > 0 {
+			return apperror.Conflict("Email sudah digunakan akun lain")
+		}
+	}
+
 	hash, err := s.hasher.Hash(input.Password)
 	if err != nil {
 		return apperror.Internal("Gagal memproses password")

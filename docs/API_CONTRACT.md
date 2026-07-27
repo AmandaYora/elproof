@@ -96,7 +96,7 @@ internally. See ADR-0008.
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/staff` | tenant-scoped; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role; response includes `username` |
-| POST | `/staff` | body `{name, title, role, username, password, email, phone}` — rejects `role=Owner` (422); provisions a real login credential via `identity.CreateCredential` in the same call (mirrors `clients`' `POST /clients`), rolling back (deleting) the just-inserted row if that fails, e.g. username already taken by *any* principal on the platform (usernames aren't tenant-scoped) |
+| POST | `/staff` | body `{name, title, role, username, password, email, phone}` — rejects `role=Owner` (422); provisions a real login credential via `identity.CreateCredential` in the same call (mirrors `clients`' `POST /clients`), rolling back (deleting) the just-inserted row if that fails, e.g. username or email already taken by *any* principal on the platform (neither is tenant-scoped) |
 | PATCH | `/staff/{id}` | body `{name, title, role, email, phone}` — no `username` (immutable after creation). Rejects assigning `role=Owner` to a non-Owner row (403). For a row that's already `role=Owner`: rejected (403) unless the caller's own JWT principal id equals `{id}` — i.e. the Owner may edit their own name/title/contact details, but no other staff member (even Admin) may touch the Owner's row; even the Owner can't change their own role away from `Owner` this way |
 | POST | `/staff/{id}/toggle-active` | rejects deactivating the Owner row (403), regardless of caller |
 
@@ -106,7 +106,7 @@ a real `projects` row to reference)
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/clients` | tenant-scoped; `?projectId=` filters to one project (unpaginated — small, bounded per-project list). Omit `projectId` to list every client for the tenant instead (added Fase 5, powers `GlobalSearch` via `?all=true`) — this tenant-wide mode is **paginated** (Fase 7), `?search=` matches name + email; response includes `username` |
-| POST | `/clients` | body `{projectId, role, relationNote, name, phone, email, username, password}` — validates `projectId` via `projects.Contracts.ProjectExists`, provisions a real login credential in the same call; if `identity.CreateCredential` fails (e.g. username already taken by *any* principal on the platform — usernames aren't tenant-scoped), the just-inserted `clients` row is rolled back (deleted) rather than left orphaned with no working credential |
+| POST | `/clients` | body `{projectId, role, relationNote, name, phone, email, username, password}` — validates `projectId` via `projects.Contracts.ProjectExists`, provisions a real login credential in the same call; if `identity.CreateCredential` fails (e.g. username or email already taken by *any* principal on the platform — neither is tenant-scoped), the just-inserted `clients` row is rolled back (deleted) rather than left orphaned with no working credential |
 | PATCH | `/clients/{id}` | contact edit (`{name, phone, email}`) — no `username` (immutable after creation) |
 | POST | `/clients/{id}/toggle-active` | |
 | POST | `/clients/{id}/reset-credential` | body `{password}` — sets a new password and stamps `lastCredentialResetAt`. Fails with `404`/"Kredensial tidak ditemukan" for a client left behind by a pre-rollback-fix `Create` failure (no `identity` row ever existed) — use `DELETE` below to clear those out, not this endpoint |
