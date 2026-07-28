@@ -54,3 +54,22 @@ compress before/after the base64 HTTP transfer; storage always holds the already
   though the `evidence` table remains the source of truth for what a file *means* (name, type,
   uploader), matching the "module owns its own domain data" rule; the bucket only ever answers
   "what bytes does this key point to."
+
+## Revision: second consumer — tenant logos (`platform` module, ADR-0012)
+
+This ADR was originally scoped entirely to `projects`/evidence. Tenant branding (ADR-0012) reuses
+the exact same `internal/shared/storage` utility for logo upload/download — confirming the utility
+really is generic (not `projects`-specific) rather than something that needed duplicating:
+
+- `platform/application` declares its own local `ObjectStorage` interface (identical shape to
+  `projects/application`'s) and receives `*storage.Client` directly as a `platform.NewModule`
+  constructor argument — a module can't import another module's `application` package to reuse its
+  interface type, so this small duplication is intentional, not an oversight (same reasoning as any
+  other contracts-only module boundary).
+- **Different key shape, no `projectId`:** a logo isn't scoped to a project, so `BuildKey` is called
+  as `BuildKey(tenantId, "0", "branding", filename)` — `"0"`/`"branding"` standing in for the
+  project-scoped fields `BuildKey`'s signature still expects. `BuildKey` itself is unchanged.
+- **Smaller size cap:** 2 MB decoded (vs. evidence's 15 MB) — a logo is a small header/sidebar
+  image, not a document.
+- Same byte-proxy download shape (`storage.Open` → `io.Copy`), same base64-JSON upload shape
+  (ADR-0010) — no new transfer-encoding decision needed.

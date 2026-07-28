@@ -44,6 +44,40 @@ interceptor normalizing the `{success, message, data}` / `{success:false, messag
 so module stores can just read `response.data.data` (or handle the error object) without
 re-implementing envelope parsing per store.
 
+## Theme / tenant branding (ADR-0012)
+
+`apps/web/src/theme/`:
+- `theme.css` — the app's default look (`--brand-navy-950/900/800` + `--color-primary-soft`, plus
+  fixed semantic colors that never vary per tenant: success/warning/danger/info, background, text,
+  border).
+- `brandPresets.ts` — the 20 fixed presets (keys MUST match `apps/api`'s
+  `domain.AllowedBrandColorPresets` exactly; hex values live only here, never on the backend).
+  `applyBrandColorPreset(key)` overrides the 4 variables above on `document.documentElement`;
+  `resetBrandColorPreset()` removes the overrides (reverting to `theme.css`'s own defaults, which
+  are identical to the `navy` preset by design).
+- `tabIdentity.ts` — `applyTabIdentity(businessName, logoUrl, consoleLabel?)` sets the browser tab
+  title and a lazily-created `<link rel="icon">` (reusing the same logo object URL already fetched
+  for the header, no separate favicon upload); `resetTabIdentity()` reverts both.
+
+`shared/stores/useTenantBrandingStore.ts` follows the module-store convention above but isn't tied
+to one domain module — `hydrate(consoleLabel?)` fetches `GET /tenants/me/branding` (+ the logo
+blob, `GET /tenants/me/logo`, as an object URL) and calls the `apply*` functions above;
+`reset()` calls the `reset*` functions and revokes the logo object URL. A module-level generation
+token guards `hydrate()` against a stale response winning a race against a newer call (React
+StrictMode's double-invoked mount effect, or a fast logout→login-as-a-different-tenant sequence) —
+only the *latest* call's result is ever applied, and `reset()` invalidates any `hydrate()` still in
+flight.
+
+- **Called from**: `AppLayout.tsx` (`hydrate("WO Console")`) and `ClientPortalLayout.tsx`
+  (`hydrate("Portal Klien")`) on mount — never from `PlatformLayout.tsx` (superadmin's own
+  backoffice stays unbranded) or the login page (no tenant known pre-auth).
+  `reset()` is called from both places a session actually ends: `shared/lib/auth-actions.ts`'s
+  `logoutAndRedirect` and `http-client.ts`'s silent logout-on-refresh-failure.
+- **`Button`'s `"neutral"` variant** (`bg-slate-800`, deliberately not tied to `--brand-navy-*`)
+  exists specifically so `LoginPage` can render a primary-looking button without showing *anyone's*
+  brand color, not even ElProof's own — every other `<Button>` call site still uses the default
+  `primary` variant (brand-tied).
+
 ## Routing
 
 Route guards (`RequireAuth` wrapper components, one per principal type/role combination) wrap the

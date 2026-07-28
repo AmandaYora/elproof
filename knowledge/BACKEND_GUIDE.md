@@ -56,6 +56,12 @@ whatever `Origin` sent the request, since `npm run dev:web` (Vite) and `npm run 
 different ports locally. It is a no-op in production, where one Docker app container serves both
 under the same origin.
 
+Its `Access-Control-Allow-Methods` list is a manually-maintained allow-list, not derived from the
+routes actually registered — `PUT /tenants/{id}/logo` (tenant branding, `MODULE_PLATFORM.md` §6)
+was the first endpoint in this codebase to use `PUT`, and briefly broke in dev (silently
+CORS-blocked, not caught by `go build`/`tsc`) until `PUT` was added to the list. Any *next* new HTTP
+method introduced here will hit the same wall until this list is made method-agnostic instead.
+
 ## What NOT to do (anti-overengineering, project-specific)
 
 No microservices, no message queue, no Redis/Memcache, no GORM/auto-migrate, no cross-module SQL

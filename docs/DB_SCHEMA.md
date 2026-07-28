@@ -57,6 +57,8 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 | subscription_expires_at | DATE NULL | |
 | is_suspended | BOOLEAN DEFAULT FALSE | |
 | last_credential_reset_at | DATE NULL | |
+| brand_color_preset | VARCHAR(20) NOT NULL DEFAULT 'navy' | one of 20 fixed keys (see `MODULE_PLATFORM.md` §6) — never free-form hex |
+| logo_storage_path | VARCHAR(500) NULL | object storage key (same `shared/storage` utility as `evidence.storage_path`, ADR-0006) — `NULL` means no logo configured yet |
 | created_at, updated_at | TIMESTAMP | |
 
 ### `platform_admins`

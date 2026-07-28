@@ -7,6 +7,7 @@ Routing for the project knowledge base. Read the file relevant to your task befo
 - [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) — apps, modules, data flow
 - [MODULE_MAP.md](MODULE_MAP.md) — each module's responsibility + public contract
 - [MODULE_PAYMENT.md](MODULE_PAYMENT.md) — the `payment` module: one merchant wallet, many consumers (internal + external Apps)
+- [MODULE_PLATFORM.md](MODULE_PLATFORM.md) — the `platform` module: tenant lifecycle, branding (logo + color presets), ElProof's own admins
 - [DOMAIN_GLOSSARY.md](DOMAIN_GLOSSARY.md) — shared terminology
 - [API_GUIDE.md](API_GUIDE.md) — API conventions for this project
 - [DATABASE_GUIDE.md](DATABASE_GUIDE.md) — table ownership, relations as IDs

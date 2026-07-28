@@ -9,6 +9,14 @@ was set up) — it reuses the exact same `useTenantBrandingStore`/`ClientPortalL
 covered by the frontend build, so risk is low, but this is a gap versus a full end-to-end check.
 Kept here as the design record — see §9 for what changed vs. the original design.
 
+**Permanent documentation now lives in the knowledge base** (this file remains the session's
+narrative working record, not the source of truth going forward): `knowledge/decisions/
+ADR-0012-tenant-branding.md` (the architectural decision + rationale), `knowledge/
+MODULE_PLATFORM.md` §6 (the `platform` module deep-dive, branding section), `docs/DB_SCHEMA.md`/
+`docs/API_CONTRACT.md` (columns/endpoints), `knowledge/FRONTEND_GUIDE.md` ("Theme / tenant
+branding" section), and `knowledge/decisions/ADR-0006-file-storage-strategy.md`'s revision (logo
+storage as a second consumer of the shared object-storage utility).
+
 ## 0. Goal
 
 Today every tenant sees identical "ElProof" branding: a hardcoded `APP_NAME` text string
