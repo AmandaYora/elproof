@@ -18,14 +18,14 @@ func NewMySQLProjectRepository(db *sql.DB) *MySQLProjectRepository {
 }
 
 const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, prep_start_date,
-	package_name, contract_value, status, pic_staff_id, description, created_at, updated_at`
+	package_name, contract_value, status, pic_staff_id, description, is_archived, created_at, updated_at`
 
 func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) {
 	var p domain.Project
 	var status string
 	var description sql.NullString
 	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &p.PrepStartDate,
-		&p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &description, &p.CreatedAt, &p.UpdatedAt)
+		&p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -56,11 +56,13 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64) ([]do
 }
 
 // ListPaginated backs the real `GET /projects` list page — List above stays
-// as-is for dashboard/global-search consumers that need the full roster.
-func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, status string) ([]domain.Project, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM projects WHERE tenant_id = ?`
-	listQuery := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ?`
-	args := []interface{}{tenantID}
+// as-is for dashboard/global-search consumers that need the full roster
+// (including archived projects; this method's showArchived split doesn't
+// apply there — see ProjectService.ListPaginated's doc comment).
+func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
+	countQuery := `SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = ?`
+	listQuery := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ? AND is_archived = ?`
+	args := []interface{}{tenantID, showArchived}
 	var conditions []string
 	if search != "" {
 		conditions = append(conditions, `(name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ? OR venue LIKE ?)`)
@@ -137,6 +139,57 @@ func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) 
 func (r *MySQLProjectRepository) SetStatus(ctx context.Context, tenantID, id int64, status domain.ProjectStatus) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE projects SET status = ? WHERE tenant_id = ? AND id = ?`, string(status), tenantID, id)
 	return err
+}
+
+func (r *MySQLProjectRepository) SetArchived(ctx context.Context, tenantID, id int64, archived bool) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE projects SET is_archived = ? WHERE tenant_id = ? AND id = ?`, archived, tenantID, id)
+	return err
+}
+
+// DeleteCascade permanently removes a project and every row across this
+// module's 7 sub-entity tables that references it, in one transaction —
+// see ADR-0013. Deletion order matters: vendor_payments references evidence
+// (invoice_evidence_id/proof_evidence_id), so it must go first; everything
+// that references project_vendors must go before project_vendors itself;
+// everything goes before the projects row. Evidence's object-storage files
+// are NOT touched here — the caller (ProjectService.Delete) deletes those
+// only after this transaction commits, so a storage failure never leaves a
+// dangling DB reference (see its own doc comment).
+func (r *MySQLProjectRepository) DeleteCascade(ctx context.Context, tenantID, id int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM activity_log WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_payments WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_issues WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE vm FROM vendor_milestones vm INNER JOIN project_vendors pv ON vm.project_vendor_id = pv.id WHERE pv.project_id = ?`,
+		id,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM evidence WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM project_vendors WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM project_milestones WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE tenant_id = ? AND id = ?`, tenantID, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // --- Project milestones ---

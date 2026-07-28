@@ -14,6 +14,7 @@ import (
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/logger"
 )
 
 // maxDecodedSize is the base64-decoded size cap enforced before any
@@ -33,6 +34,7 @@ type EvidenceRepository interface {
 type ObjectStorage interface {
 	Save(ctx context.Context, key string, data []byte, contentType string) (string, error)
 	Open(ctx context.Context, key string) (io.ReadCloser, error)
+	Delete(ctx context.Context, key string) error
 }
 
 type EvidenceService struct {
@@ -48,6 +50,20 @@ func NewEvidenceService(repo EvidenceRepository, storage ObjectStorage, buildKey
 
 func (s *EvidenceService) List(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
 	return s.repo.ListByProject(ctx, projectID)
+}
+
+// DeleteStorageObjects best-effort deletes each evidence's file from object
+// storage — used only by ProjectService.Delete (hard delete, ADR-0013),
+// always called AFTER that project's DB rows are already gone. A failure
+// here is logged, never returned/blocking: the worst case is an orphaned S3
+// object, which is strictly safer than the reverse (a DB row surviving with
+// a reference to a file that no longer exists).
+func (s *EvidenceService) DeleteStorageObjects(ctx context.Context, evidences []domain.Evidence) {
+	for _, e := range evidences {
+		if err := s.storage.Delete(ctx, e.StoragePath); err != nil {
+			logger.Error("failed to delete storage object %q for evidence %d: %v", e.StoragePath, e.ID, err)
+		}
+	}
 }
 
 type UploadEvidenceInput struct {

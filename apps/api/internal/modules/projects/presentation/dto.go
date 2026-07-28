@@ -29,6 +29,7 @@ type projectResponse struct {
 	Status        string            `json:"status"`
 	PICStaffID    int64             `json:"picStaffId"`
 	Description   string            `json:"description"`
+	IsArchived    bool              `json:"isArchived"`
 	Progress      *progressResponse `json:"progress,omitempty"`
 }
 
@@ -37,7 +38,7 @@ func toProjectResponse(p domain.Project) projectResponse {
 		ID: p.ID, Name: p.Name, BrideName: p.BrideName, GroomName: p.GroomName,
 		EventDate: p.EventDate.Format(dateLayout), Venue: p.Venue, PrepStartDate: p.PrepStartDate.Format(dateLayout),
 		PackageName: p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
-		PICStaffID: p.PICStaffID, Description: p.Description,
+		PICStaffID: p.PICStaffID, Description: p.Description, IsArchived: p.IsArchived,
 	}
 }
 

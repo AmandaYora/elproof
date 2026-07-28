@@ -34,7 +34,8 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, tenantID 
 	params := pagination.FromRequest(r)
 	search := r.URL.Query().Get("search")
 	status := r.URL.Query().Get("status")
-	projects, total, err := h.projects.ListPaginated(r.Context(), tenantID, params, search, status)
+	showArchived := r.URL.Query().Get("archived") == "true"
+	projects, total, err := h.projects.ListPaginated(r.Context(), tenantID, params, search, status, showArchived)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -172,6 +173,41 @@ func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims s
 		return
 	}
 	response.OK(w, "Project dibatalkan", toProjectResponse(*p))
+}
+
+// toggleArchiveProject is a single toggle (flips the current is_archived
+// state), same convention as vendors'/staff's toggle-active — no body, no
+// separate archive/unarchive endpoints. See ADR-0013.
+func (h *Handler) toggleArchiveProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	current, err := h.projects.Get(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	p, err := h.projects.SetArchived(r.Context(), claims.tenantID, projectID, claims.staffID, !current.IsArchived)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Status arsip project diperbarui", toProjectResponse(*p))
+}
+
+// deleteProject is the hard-delete endpoint (ADR-0013) — Owner-only, checked
+// inline here since this module has no other role-gating to build on (same
+// idiom as platform's tenant_handler.go Owner-only checks). The
+// archived-or-cancelled precondition is enforced in ProjectService.Delete
+// itself, not just here, so it can never be bypassed by a differently-shaped
+// request.
+func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	if claims.role != "Owner" {
+		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat menghapus project secara permanen", nil)
+		return
+	}
+	if err := h.projects.Delete(r.Context(), claims.tenantID, projectID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Project berhasil dihapus permanen", nil)
 }
 
 // --- Project milestones ---

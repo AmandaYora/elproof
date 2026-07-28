@@ -18,6 +18,10 @@ type Contracts interface {
 	// (or belongs to a different tenant) — callers should treat any error
 	// here as "deny access", never as "allow".
 	ProjectIDForClient(ctx context.Context, tenantID, clientID int64) (int64, error)
+	// DeleteAllForProject best-effort deletes every client tied to a project
+	// — called by `projects` (ADR-0013's hard delete) via the ClientCleaner
+	// bridge, never awaited to block the project delete itself.
+	DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error
 }
 
 type impl struct {
@@ -37,4 +41,8 @@ func (c *impl) ProjectIDForClient(ctx context.Context, tenantID, clientID int64)
 		return 0, apperror.Forbidden("Akun client ini sudah dinonaktifkan")
 	}
 	return client.ProjectID, nil
+}
+
+func (c *impl) DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error {
+	return c.clients.DeleteAllForProject(ctx, tenantID, projectID)
 }

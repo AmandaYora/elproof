@@ -14,7 +14,7 @@ frontend's own module folders under `apps/web/src/modules/<name>`.
 | `staff` | WO internal users (Owner/Admin/Staff), tenant-scoped | `staff_members` | `identity` (create credentials for Admin/Staff created via "Tambah Pengguna"; the Owner's own credential is created separately by `platform`'s tenant-registration orchestration, see below) |
 | `clients` | Client contacts per project, tenant-scoped | `clients` | `projects` (validate `project_id` exists), `identity` (create/reset credentials) |
 | `vendors` | Vendor directory + categories, tenant-scoped | `vendors`, `vendor_categories` | `projects` (resolve a vendor's cross-project engagement history for "Lihat Project" — `project_vendors` is owned by `projects`, not `vendors`) |
-| `projects` | The core WO object: projects, milestones, vendor engagements, vendor milestones, payments, issues, evidence, activity log | `projects`, `project_milestones`, `project_vendors`, `vendor_milestones`, `vendor_payments`, `vendor_issues`, `evidence`, `activity_log` | `clients` (Fase 6: resolve which single project a `client` principal may read, for `/projects/{id}/...`'s client-portal read scoping). Vendor/category/staff *display names* are **not** resolved backend-side — the frontend resolves those from its own already-fetched `vendors`/`staff` stores. |
+| `projects` | The core WO object: projects, milestones, vendor engagements, vendor milestones, payments, issues, evidence, activity log. Also owns project archive (reversible) and hard delete (guarded, ADR-0013) | `projects`, `project_milestones`, `project_vendors`, `vendor_milestones`, `vendor_payments`, `vendor_issues`, `evidence`, `activity_log` | `clients` (Fase 6: resolve which single project a `client` principal may read, for `/projects/{id}/...`'s client-portal read scoping; ADR-0013: best-effort delete every client tied to a project being hard-deleted). Vendor/category/staff *display names* are **not** resolved backend-side — the frontend resolves those from its own already-fetched `vendors`/`staff` stores. |
 
 `dashboard` and `client-portal` (frontend-only concepts) are **not** separate backend modules —
 they are read/composition endpoints living alongside the module(s) whose data they aggregate (WO
@@ -31,6 +31,14 @@ declares its own tiny local interface (`ClientAccessResolver`) shaped to match o
 which already imports both) builds both modules, then bridges them with a setter
 (`projectsModule.SetClientAccessResolver(clientsModule.Contracts())`). Reach for this pattern again
 if another pair of modules ever needs a real two-way relationship.
+
+**Same bridge, a second interface (ADR-0013):** hard-deleting a project needs to best-effort clean
+up every client tied to it — another `projects`-needs-something-from-`clients` case, same
+underlying cycle. Rather than overloading `ClientAccessResolver` (a read-access-control concern) with
+an unrelated delete-cleanup method, `projects/application` declares its own second local interface,
+`ClientCleaner`, bridged the same way (`projectsModule.SetClientCleaner(clientsModule.Contracts())`,
+right after the existing `SetClientAccessResolver` call) — `clientsModule.Contracts()` is the same
+concrete object satisfying both interfaces structurally, so no extra wiring object is needed.
 
 **Same pattern reused for `payment`'s webhook dispatch (Fase 9):** `payment` needs to call back into
 whichever App internal owns a confirmed charge (`platform`, so far) without ever importing that

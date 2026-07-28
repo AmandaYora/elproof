@@ -29,6 +29,7 @@ type Project struct {
 	Status         ProjectStatus
 	PICStaffID     int64
 	Description    string
+	IsArchived     bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

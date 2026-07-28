@@ -15,8 +15,9 @@ import (
 )
 
 type Module struct {
-	handler   *presentation.Handler
-	contracts contracts.Contracts
+	handler        *presentation.Handler
+	contracts      contracts.Contracts
+	projectService *application.ProjectService
 }
 
 func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
@@ -31,18 +32,19 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 	dashboardRepo := infrastructure.NewMySQLDashboardRepository(db)
 
 	activityService := application.NewActivityService(activityRepo)
-	projectService := application.NewProjectService(projectRepo, milestoneRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, activityService)
+	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
+	projectService := application.NewProjectService(projectRepo, milestoneRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, evidenceService, activityService)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
 	paymentService := application.NewPaymentService(paymentRepo, activityService)
 	issueService := application.NewIssueService(issueRepo, activityService)
-	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo)
 
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, issueService, evidenceService, activityService, dashboardService)
 
 	return &Module{
-		handler:   handler,
-		contracts: contracts.New(projectService, vendorEngagementService),
+		handler:        handler,
+		contracts:      contracts.New(projectService, vendorEngagementService),
+		projectService: projectService,
 	}
 }
 
@@ -58,6 +60,13 @@ func (m *Module) Contracts() contracts.Contracts {
 // with a direct constructor dependency both ways).
 func (m *Module) SetClientAccessResolver(resolver presentation.ClientAccessResolver) {
 	m.handler.SetClientAccessResolver(resolver)
+}
+
+// SetClientCleaner completes the same two-phase wiring as
+// SetClientAccessResolver above, for ProjectService.Delete's (ADR-0013)
+// best-effort client cleanup — see application.ClientCleaner's doc comment.
+func (m *Module) SetClientCleaner(cleaner application.ClientCleaner) {
+	m.projectService.SetClientCleaner(cleaner)
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {

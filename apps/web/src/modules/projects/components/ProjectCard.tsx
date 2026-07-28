@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { MapPin } from "lucide-react";
 import { Avatar } from "@/shared/components/ui/Avatar";
+import { Badge } from "@/shared/components/ui/Badge";
 import { ProgressMeter } from "@/shared/components/ui/ProgressMeter";
 import { ProjectStatusBadge, ConditionBadge } from "@/modules/projects/components/StatusBadges";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
@@ -30,7 +31,10 @@ export function ProjectCard({ project }: { project: Project }) {
       className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-5 transition-all hover:border-navy-900/30 hover:shadow-md"
     >
       <div className="flex items-center justify-between gap-2">
-        <ProjectStatusBadge status={project.status} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ProjectStatusBadge status={project.status} />
+          {project.isArchived && <Badge tone="neutral">Diarsipkan</Badge>}
+        </div>
         {isOpenProject ? (
           <span className="rounded-full bg-navy-900/10 px-2.5 py-1 text-[11px] font-bold tabular-nums text-navy-900">
             {d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`}

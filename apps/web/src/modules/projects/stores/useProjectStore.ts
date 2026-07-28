@@ -63,6 +63,7 @@ export interface RawProject {
   status: Project["status"];
   picStaffId: number;
   description: string;
+  isArchived: boolean;
   progress?: RawProgress;
 }
 
@@ -93,6 +94,7 @@ export function toProject(raw: RawProject): Project {
     status: raw.status,
     picStaffId: String(raw.picStaffId),
     description: raw.description,
+    isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,
   };
 }
@@ -364,10 +366,17 @@ interface ProjectState {
   // Backs ProjectListPage's table — real server-side pagination + search/
   // status filtering, separate from the `projects` full-roster cache above
   // (which the dashboard, global search, and client grouping still rely on).
-  fetchProjectPage: (page: number, search: string, status: string) => Promise<void>;
+  // showArchived splits active/archived into two disjoint views, never
+  // merged (see ADR-0013) — omit or pass false for the normal active view.
+  fetchProjectPage: (page: number, search: string, status: string, showArchived?: boolean) => Promise<void>;
   createProject: (values: ProjectFormValues) => Promise<Project>;
   updateProject: (id: string, values: ProjectFormValues) => Promise<Project>;
   cancelProject: (id: string) => Promise<void>;
+  toggleArchiveProject: (id: string) => Promise<void>;
+  // Hard delete (ADR-0013) — Owner-only and requires the project already be
+  // archived or cancelled, both enforced server-side, not just by the UI
+  // hiding the button.
+  deleteProject: (id: string) => Promise<void>;
 
   fetchProjectDetail: (projectId: string) => Promise<void>;
   fetchMyProject: () => Promise<string>;
@@ -439,9 +448,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ projects: withProgress });
   },
 
-  fetchProjectPage: async (page, search, status) => {
+  fetchProjectPage: async (page, search, status, showArchived = false) => {
     const res = await httpClient.get(API.projects.base, {
-      params: { page, search: search || undefined, status: status || undefined },
+      params: { page, search: search || undefined, status: status || undefined, archived: showArchived || undefined },
     });
     const list = (res.data.data as RawProject[]).map(toProject);
     // Same per-row progress enrichment as fetchProjects, bounded to just this
@@ -482,6 +491,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => ({
       projects: state.projects.map((p) => (p.id === id ? project : p)),
       currentProject: state.currentProject?.id === id ? { ...project, progress: state.currentProject.progress } : state.currentProject,
+    }));
+  },
+
+  toggleArchiveProject: async (id) => {
+    const res = await httpClient.post(API.projects.toggleArchive(id));
+    const project = toProject(res.data.data as RawProject);
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? project : p)),
+      currentProject: state.currentProject?.id === id ? { ...project, progress: state.currentProject.progress } : state.currentProject,
+    }));
+  },
+
+  deleteProject: async (id) => {
+    await httpClient.delete(API.projects.item(id));
+    set((state) => ({
+      projects: state.projects.filter((p) => p.id !== id),
+      currentProject: state.currentProject?.id === id ? null : state.currentProject,
     }));
   },
 

@@ -160,6 +160,30 @@ func (s *ClientService) Delete(ctx context.Context, tenantID, id int64) error {
 	return s.repo.Delete(ctx, tenantID, id)
 }
 
+// DeleteAllForProject best-effort deletes every client tied to a project —
+// called only by `projects`' hard-delete flow (ADR-0013) via the
+// ClientCleaner bridge (see projects.module.go's two-phase wiring). Continues
+// past an individual client's failure (logged) rather than aborting, same
+// best-effort spirit as Delete's own credential-deactivation step — the
+// whole point is clearing out a project being permanently removed, not
+// preserving partial state if one row is awkward.
+func (s *ClientService) DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error {
+	list, err := s.repo.ListByProject(ctx, tenantID, projectID)
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, c := range list {
+		if err := s.Delete(ctx, tenantID, c.ID); err != nil {
+			logger.Error("failed to delete client %d while cleaning up deleted project %d: %v", c.ID, projectID, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
 func (s *ClientService) SetActive(ctx context.Context, tenantID, id int64, isActive bool) (*domain.Client, error) {
 	c, err := s.Get(ctx, tenantID, id)
 	if err != nil {

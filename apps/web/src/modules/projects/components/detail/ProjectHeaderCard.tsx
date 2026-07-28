@@ -1,18 +1,23 @@
 import { useEffect, useState } from "react";
-import { Pencil, AlertTriangle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Pencil, AlertTriangle, Archive, ArchiveRestore } from "lucide-react";
 import { Card, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
+import { Badge } from "@/shared/components/ui/Badge";
 import { ProgressMeter } from "@/shared/components/ui/ProgressMeter";
 import { ProjectStatusBadge, ConditionBadge } from "@/modules/projects/components/StatusBadges";
 import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 export function ProjectHeaderCard({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
   const project = useProjectStore((s) => s.currentProject);
   const milestones = useProjectStore((s) => s.milestones);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
@@ -20,11 +25,16 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const updateProject = useProjectStore((s) => s.updateProject);
   const cancelProject = useProjectStore((s) => s.cancelProject);
+  const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
+  const deleteProject = useProjectStore((s) => s.deleteProject);
   const staff = useStaffStore((s) => s.staff);
   const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
 
   const [editOpen, setEditOpen] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,6 +75,27 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     }
   }
 
+  async function handleToggleArchive() {
+    setActionError(null);
+    try {
+      await toggleArchiveProject(projectId);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal mengubah status arsip project"));
+    }
+  }
+
+  async function handleDeleteProject() {
+    setActionError(null);
+    setIsDeleting(true);
+    try {
+      await deleteProject(projectId);
+      navigate(ROUTE_PATHS.projects);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus project secara permanen"));
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-5 py-5">
@@ -73,18 +104,32 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-text-primary">{project.name}</h1>
               <ProjectStatusBadge status={project.status} />
+              {project.isArchived && <Badge tone="neutral">Diarsipkan</Badge>}
             </div>
             <p className="mt-1 text-[13px] text-text-secondary">
               {project.brideName} &amp; {project.groomName} · {project.venue}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
               Ubah Project
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={project.isArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+              onClick={() => void handleToggleArchive()}
+            >
+              {project.isArchived ? "Pulihkan dari Arsip" : "Arsipkan"}
             </Button>
             {isOpenProject && (
               <Button variant="danger" size="sm" onClick={() => setConfirmingCancel(true)}>
                 Batalkan Project
+              </Button>
+            )}
+            {isOwner && (project.isArchived || project.status === "Cancelled") && (
+              <Button variant="danger" size="sm" onClick={() => setConfirmingDelete(true)}>
+                Hapus Permanen
               </Button>
             )}
           </div>
@@ -102,6 +147,21 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             <span className="flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => setConfirmingCancel(false)}>Batal</Button>
               <Button variant="danger" size="sm" onClick={() => void handleCancelProject()}>Ya, Batalkan</Button>
+            </span>
+          </div>
+        )}
+
+        {confirmingDelete && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
+            <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
+              <AlertTriangle className="h-4 w-4" /> Yakin ingin menghapus project ini secara permanen? Tindakan ini permanen — seluruh
+              milestone, vendor, pembayaran, kendala, dan evidence akan ikut terhapus dan tidak dapat dipulihkan.
+            </span>
+            <span className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)} disabled={isDeleting}>Batal</Button>
+              <Button variant="danger" size="sm" onClick={() => void handleDeleteProject()} disabled={isDeleting}>
+                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+              </Button>
             </span>
           </div>
         )}

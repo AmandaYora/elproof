@@ -75,6 +75,7 @@ export interface Project {
   status: ProjectStatus;
   picStaffId: string;
   description: string;
+  isArchived: boolean;
   progress?: ProjectProgress;
 }
 

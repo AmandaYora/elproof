@@ -170,6 +170,10 @@ func serve(cfg config.Config) {
 	// scoping) but clients.NewModule already needs projects.Contracts() to
 	// exist first, so this can't be a constructor argument either direction.
 	projectsModule.SetClientAccessResolver(clientsModule.Contracts())
+	// Same bridge, second interface (ADR-0013's hard-delete client cleanup) —
+	// clientsModule.Contracts() satisfies both ClientAccessResolver and
+	// ClientCleaner, so this is the same object as the call above.
+	projectsModule.SetClientCleaner(clientsModule.Contracts())
 	// Same bridging pattern: payment can't import platform (or any other App
 	// internal) to know its webhook consumer, so main.go registers it here,
 	// after both modules are built — see payment.module.go's Dispatcher doc.

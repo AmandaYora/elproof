@@ -213,6 +213,7 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | status | ENUM('Draft','Preparation','Ready','Completed','Cancelled') | |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
 | description | TEXT NULL | |
+| is_archived | BOOLEAN NOT NULL DEFAULT FALSE | orthogonal to `status` — see ADR-0013 |
 | created_at, updated_at | TIMESTAMP | |
 
 ### `project_milestones`

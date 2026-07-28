@@ -20,24 +20,25 @@ export default function ProjectListPage() {
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("Semua");
+  const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     setPage(1);
-  }, [query, statusFilter]);
+  }, [query, statusFilter, showArchived]);
 
   useEffect(() => {
-    void fetchProjectPage(page, query, statusFilter === "Semua" ? "" : statusFilter);
-  }, [fetchProjectPage, page, query, statusFilter]);
+    void fetchProjectPage(page, query, statusFilter === "Semua" ? "" : statusFilter, showArchived);
+  }, [fetchProjectPage, page, query, statusFilter, showArchived]);
 
   async function handleCreate(values: ProjectFormValues) {
     setActionError(null);
     try {
       await createProject(values);
       setModalOpen(false);
-      await fetchProjectPage(page, query, statusFilter === "Semua" ? "" : statusFilter);
+      await fetchProjectPage(page, query, statusFilter === "Semua" ? "" : statusFilter, showArchived);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal membuat project"));
     }
@@ -72,11 +73,18 @@ export default function ProjectListPage() {
             <option key={s} value={s}>{s}</option>
           ))}
         </Select>
+        <label className="flex items-center gap-2 rounded-md border border-border px-3 text-[13px] text-text-secondary">
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+          Tampilkan yang diarsipkan
+        </label>
       </div>
 
       {projects.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface">
-          <EmptyState title="Tidak ada project ditemukan" description="Ubah kata kunci pencarian atau filter status." />
+          <EmptyState
+            title={showArchived ? "Tidak ada project yang diarsipkan" : "Tidak ada project ditemukan"}
+            description="Ubah kata kunci pencarian atau filter status."
+          />
         </div>
       ) : (
         <>

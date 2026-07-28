@@ -27,7 +27,12 @@ owning module's contract function when the display layer needs the related data.
   NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` where mutation history matters.
 - Soft state over hard delete: the frontend consistently uses `is_active`/status-toggle rather than
   deleting rows (vendors, clients, staff, plans all "deactivate" instead of delete) — mirror this
-  server-side; don't introduce hard deletes the frontend never asks for.
+  server-side; don't introduce hard deletes the frontend never asks for. Two deliberate, explicit
+  exceptions exist, both narrowly scoped and guarded rather than general-purpose: `clients.Delete`
+  (one bug-workaround scenario, see its own doc comment) and `projects.Delete` (a real,
+  user-requested feature — Owner-only, requires the project already archived/cancelled first, see
+  ADR-0013). Don't treat either as license to add more hard deletes without the same explicit
+  reasoning and guardrails.
 
 ## Tooling
 

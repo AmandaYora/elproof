@@ -135,12 +135,14 @@ a real `projects` row to reference)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/projects` | staff-only; **paginated** (Fase 7); `?search=` matches name + bride/groom name + venue, `?status=` filters exact status; does **not** include `progress` (see below) |
+| GET | `/projects` | staff-only; **paginated** (Fase 7); `?search=` matches name + bride/groom name + venue, `?status=` filters exact status; does **not** include `progress` (see below). `?archived=true` switches to the archived-only view — the two are disjoint, never merged (ADR-0013); omitted/`false` shows only non-archived projects. Note `GET /projects?all=true` (the full-roster/dashboard consumer) is **not** archive-filtered — it always includes archived projects, a deliberate scope boundary (see ADR-0013). |
 | POST | `/projects` | staff-only |
 | GET | `/projects/me` | **client-only** (Fase 6) — resolves and returns the calling client's own single project (same shape as `GET /projects/{id}`, `progress` included); the Client Portal's entry point, since a client never learns its own project id any other way (mirrors `GET /tenants/me` from Fase 2). Handled as a special `"me"` segment inside the same dispatcher as `/projects/{id}/...`, not a separate route — see implementation note. |
 | GET | `/projects/{id}` | includes `progress` (computed on read, not stored). Staff: any project in their tenant. **Client** (Fase 6): only their own project — any other `{id}` is 403, checked server-side via `clients.Contracts.ProjectIDForClient`, not just a frontend convention. |
 | PATCH | `/projects/{id}` | |
 | POST | `/projects/{id}/cancel` | soft status change |
+| POST | `/projects/{id}/toggle-archive` | single toggle (flips `isArchived`), no body, no role restriction — see ADR-0013 |
+| DELETE | `/projects/{id}` | **hard delete, Owner-only** (403 for any other staff role) and requires the project already be archived or cancelled (422 otherwise, enforced server-side) — see ADR-0013 for the full cascade scope (every same-module sub-entity table, evidence's object-storage files, and a best-effort cleanup of every client tied to the project) |
 | GET/POST | `/projects/{id}/milestones` | — |
 | PATCH | `/projects/{id}/milestones` | body `{orderedIds}` — full new order of all of the project's milestone IDs; rejected (422) unless it's an exact permutation of the existing set |
 | PATCH | `/projects/{id}/milestones/{milestoneId}` | body `{status, targetDate, completedDate}` — full update, mirrors vendor milestones below; `completedDate` is client-supplied, not server-stamped |
