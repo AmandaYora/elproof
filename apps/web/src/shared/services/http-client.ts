@@ -1,6 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 
 export const httpClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -40,6 +41,7 @@ async function refreshAccessToken(): Promise<string | null> {
       })
       .catch(() => {
         useAuthStore.getState().logout();
+        useTenantBrandingStore.getState().reset();
         return null;
       })
       .finally(() => {

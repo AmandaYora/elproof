@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -39,6 +40,18 @@ type tenantResponse struct {
 	SubscriptionExpiresAt *string `json:"subscriptionExpiresAt"`
 	IsSuspended           bool    `json:"isSuspended"`
 	LastCredentialResetAt *string `json:"lastCredentialResetAt"`
+	BrandColorPreset      string  `json:"brandColorPreset"`
+	HasLogo               bool    `json:"hasLogo"`
+}
+
+// brandingResponse is the minimal, non-sensitive branding shape any
+// tenant-scoped principal (staff of any role, or client) can read — unlike
+// tenantResponse/me, which stays Owner-only since it also carries
+// subscription/billing data.
+type brandingResponse struct {
+	BusinessName     string `json:"businessName"`
+	BrandColorPreset string `json:"brandColorPreset"`
+	HasLogo          bool   `json:"hasLogo"`
 }
 
 func dateOrNil(t *time.Time) *string {
@@ -56,6 +69,13 @@ func toTenantResponse(t domain.Tenant) tenantResponse {
 		PlanID: t.PlanID, SubscriptionStatus: string(t.SubscriptionStatus),
 		SubscriptionExpiresAt: dateOrNil(t.SubscriptionExpiresAt), IsSuspended: t.IsSuspended,
 		LastCredentialResetAt: dateOrNil(t.LastCredentialResetAt),
+		BrandColorPreset:      t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
+	}
+}
+
+func toBrandingResponse(t domain.Tenant) brandingResponse {
+	return brandingResponse{
+		BusinessName: t.BusinessName, BrandColorPreset: t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
 	}
 }
 
@@ -160,10 +180,22 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// "me" is the tenant Owner's own self-service read — everything else under
-	// /tenants/ is platform_admin only.
-	if segments[0] == "me" && len(segments) == 1 && r.Method == http.MethodGet {
-		h.me(w, r)
+	// "me" is the authenticated principal's own self-service read — never a
+	// platform_admin-only path. /me itself (full tenant incl. subscription)
+	// stays Owner-only; /me/branding and /me/logo are open to any tenant-scoped
+	// principal (any staff role, or client), since branding must render for
+	// everyone inside WO Console / Client Portal, not just the Owner.
+	if segments[0] == "me" {
+		switch {
+		case len(segments) == 1 && r.Method == http.MethodGet:
+			h.me(w, r)
+		case len(segments) == 2 && segments[1] == "branding" && r.Method == http.MethodGet:
+			h.myBranding(w, r)
+		case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodGet:
+			h.myLogo(w, r)
+		default:
+			response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
+		}
 		return
 	}
 	if !requirePlatformAdmin(w, r) {
@@ -181,6 +213,10 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 		h.get(w, r, id)
 	case len(segments) == 1 && r.Method == http.MethodPatch:
 		h.update(w, r, id)
+	case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodPut:
+		h.uploadLogo(w, r, id)
+	case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodGet:
+		h.downloadLogo(w, r, id)
 	case len(segments) == 2 && segments[1] == "toggle-suspension" && r.Method == http.MethodPost:
 		h.toggleSuspension(w, r, id)
 	case len(segments) == 2 && segments[1] == "reset-credential" && r.Method == http.MethodPost:
@@ -190,6 +226,45 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
+}
+
+// myBranding is the self-service read powering WO Console/Client Portal
+// theming — open to any authenticated tenant-scoped principal (unlike me,
+// which stays Owner-only since it also carries subscription/billing data).
+func (h *TenantHandler) myBranding(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := selfTenantID(r)
+	if !ok {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return
+	}
+	tenant, err := h.tenants.Get(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", toBrandingResponse(*tenant))
+}
+
+// myLogo streams the caller's own tenant's logo — same auth scoping as
+// myBranding above.
+func (h *TenantHandler) myLogo(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := selfTenantID(r)
+	if !ok {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return
+	}
+	streamLogo(w, r, h.tenants, tenantID)
+}
+
+// selfTenantID resolves the calling principal's own tenant from the JWT
+// claim — never a request parameter. Any tenant-bound principal (staff of
+// any role, or client) qualifies; platform_admin principals have none.
+func selfTenantID(r *http.Request) (int64, bool) {
+	claims, ok := middleware.FromContext(r.Context())
+	if !ok {
+		return 0, false
+	}
+	return claims.TenantIDInt()
 }
 
 // me is the tenant Owner's self-service read of their own tenant record
@@ -224,11 +299,12 @@ func (h *TenantHandler) get(w http.ResponseWriter, r *http.Request, id int64) {
 }
 
 type updateTenantBody struct {
-	BusinessName string `json:"businessName"`
-	OwnerName    string `json:"ownerName"`
-	Email        string `json:"email"`
-	Phone        string `json:"phone"`
-	City         string `json:"city"`
+	BusinessName     string `json:"businessName"`
+	OwnerName        string `json:"ownerName"`
+	Email            string `json:"email"`
+	Phone            string `json:"phone"`
+	City             string `json:"city"`
+	BrandColorPreset string `json:"brandColorPreset"`
 }
 
 func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64) {
@@ -239,12 +315,54 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64)
 	}
 	tenant, err := h.tenants.Update(r.Context(), id, application.UpdateTenantInput{
 		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Email: body.Email, Phone: body.Phone, City: body.City,
+		BrandColorPreset: body.BrandColorPreset,
 	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
 	response.OK(w, "Tenant berhasil diperbarui", toTenantResponse(*tenant))
+}
+
+type logoUploadBody struct {
+	FileName   string `json:"fileName"`
+	MimeType   string `json:"mimeType"`
+	Base64Data string `json:"base64Data"`
+}
+
+// uploadLogo is the platform-admin action (superadmin sets a tenant's logo
+// via the tenant edit form) — see PLAN.md §6 open question 1.
+func (h *TenantHandler) uploadLogo(w http.ResponseWriter, r *http.Request, id int64) {
+	var body logoUploadBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	tenant, err := h.tenants.UploadLogo(r.Context(), id, application.UploadLogoInput{
+		FileName: body.FileName, MimeType: body.MimeType, Base64Data: body.Base64Data,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Logo tenant berhasil diunggah", toTenantResponse(*tenant))
+}
+
+func (h *TenantHandler) downloadLogo(w http.ResponseWriter, r *http.Request, id int64) {
+	streamLogo(w, r, h.tenants, id)
+}
+
+func streamLogo(w http.ResponseWriter, r *http.Request, tenants *application.TenantService, tenantID int64) {
+	reader, err := tenants.DownloadLogo(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	defer reader.Close()
+
+	w.Header().Set("Content-Disposition", `inline; filename="logo"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, reader)
 }
 
 func (h *TenantHandler) toggleSuspension(w http.ResponseWriter, r *http.Request, id int64) {

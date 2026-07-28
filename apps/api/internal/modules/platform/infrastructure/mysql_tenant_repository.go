@@ -19,17 +19,19 @@ func NewMySQLTenantRepository(db *sql.DB) *MySQLTenantRepository {
 }
 
 const tenantColumns = `id, business_name, owner_name, username, email, phone, city, joined_at, plan_id,
-	subscription_status, subscription_expires_at, is_suspended, last_credential_reset_at, created_at, updated_at`
+	subscription_status, subscription_expires_at, is_suspended, last_credential_reset_at,
+	brand_color_preset, logo_storage_path, created_at, updated_at`
 
 func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	var t domain.Tenant
 	var planID sql.NullInt64
 	var status string
 	var expiresAt, lastReset sql.NullTime
+	var logoStoragePath sql.NullString
 
 	err := scan(
 		&t.ID, &t.BusinessName, &t.OwnerName, &t.Username, &t.Email, &t.Phone, &t.City, &t.JoinedAt, &planID,
-		&status, &expiresAt, &t.IsSuspended, &lastReset, &t.CreatedAt, &t.UpdatedAt,
+		&status, &expiresAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -47,6 +49,9 @@ func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	}
 	if lastReset.Valid {
 		t.LastCredentialResetAt = &lastReset.Time
+	}
+	if logoStoragePath.Valid {
+		t.LogoStoragePath = &logoStoragePath.String
 	}
 	return &t, nil
 }
@@ -139,9 +144,14 @@ func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenan
 
 func (r *MySQLTenantRepository) Update(ctx context.Context, tenant *domain.Tenant) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ? WHERE id = ?`,
-		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.ID,
+		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ?, brand_color_preset = ? WHERE id = ?`,
+		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.BrandColorPreset, tenant.ID,
 	)
+	return err
+}
+
+func (r *MySQLTenantRepository) UpdateLogo(ctx context.Context, id int64, logoStoragePath *string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET logo_storage_path = ? WHERE id = ?`, logoStoragePath, id)
 	return err
 }
 

@@ -14,6 +14,8 @@ export interface Tenant {
   subscriptionExpiresAt: string | null;
   isSuspended: boolean;
   lastCredentialResetAt: string | null;
+  brandColorPreset: string;
+  hasLogo: boolean;
 }
 
 export type SubscriptionTransactionType = "new" | "renewal";

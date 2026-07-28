@@ -17,6 +17,7 @@ import (
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/storage"
 )
 
 type Module struct {
@@ -31,12 +32,15 @@ func NewModule(
 	identity identitycontracts.Contracts,
 	billing billingcontracts.Contracts,
 	payment paymentcontracts.Client,
+	storageClient *storage.Client,
 ) *Module {
 	tenantRepo := infrastructure.NewMySQLTenantRepository(db)
 	pendingChargeRepo := infrastructure.NewMySQLPendingChargeRepository(db)
 	adminRepo := infrastructure.NewMySQLPlatformAdminRepository(db)
 
-	tenantService := application.NewTenantService(tenantRepo, pendingChargeRepo, staff, identity, billing, payment)
+	tenantService := application.NewTenantService(
+		tenantRepo, pendingChargeRepo, staff, identity, billing, payment, storageClient, storage.BuildKey,
+	)
 	adminService := application.NewPlatformAdminService(adminRepo, identity)
 
 	return &Module{

@@ -3,6 +3,7 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { PlatformAdmin, SubscriptionTransaction, Tenant } from "@/modules/platform-admin/data/types";
 import type { TenantCreateFormValues, TenantFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
+import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import type {
   PlatformAdminCreateFormValues,
   PlatformAdminFormValues,
@@ -61,6 +62,8 @@ interface RawTenant {
   subscriptionExpiresAt: string | null;
   isSuspended: boolean;
   lastCredentialResetAt: string | null;
+  brandColorPreset: string;
+  hasLogo: boolean;
 }
 
 function toTenant(raw: RawTenant): Tenant {
@@ -125,6 +128,7 @@ interface PlatformAdminState {
 
   registerTenant: (values: TenantCreateFormValues) => Promise<RegisterTenantResult>;
   updateTenant: (id: string, values: TenantFormValues) => Promise<void>;
+  uploadTenantLogo: (id: string, file: CompressedFilePayload) => Promise<void>;
   toggleTenantSuspension: (id: string) => Promise<void>;
   resetTenantCredential: (id: string, password: string) => Promise<ResetTenantCredentialResult>;
   activateTenantSubscription: (tenantId: string, planId: string) => Promise<void>;
@@ -215,6 +219,11 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
 
   updateTenant: async (id, values) => {
     await httpClient.patch(API.platform.tenant(id), values);
+    await get().fetchTenants();
+  },
+
+  uploadTenantLogo: async (id, file) => {
+    await httpClient.put(API.platform.tenantLogo(id), file);
     await get().fetchTenants();
   },
 

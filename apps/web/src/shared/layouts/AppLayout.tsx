@@ -1,10 +1,16 @@
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "@/shared/layouts/Sidebar";
 import { Topbar } from "@/shared/layouts/Topbar";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
+
+  useEffect(() => {
+    void hydrateBranding("WO Console");
+  }, [hydrateBranding]);
 
   return (
     <div className="min-h-screen bg-background">

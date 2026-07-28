@@ -7,6 +7,7 @@ import { daysUntil } from "@/modules/projects/lib/dates";
 import { APP_NAME } from "@/shared/constants/brand";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 
 export interface ClientPortalContext {
   projectId: string;
@@ -23,6 +24,9 @@ export default function ClientPortalLayout() {
   const navigate = useNavigate();
   const project = useProjectStore((s) => s.currentProject);
   const fetchMyProject = useProjectStore((s) => s.fetchMyProject);
+  const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
+  const brandName = useTenantBrandingStore((s) => s.businessName);
+  const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
   const [status, setStatus] = useState<"loading" | "ready" | "denied">("loading");
 
   useEffect(() => {
@@ -38,6 +42,10 @@ export default function ClientPortalLayout() {
       cancelled = true;
     };
   }, [fetchMyProject]);
+
+  useEffect(() => {
+    void hydrateBranding("Portal Klien");
+  }, [hydrateBranding]);
 
   if (status === "denied") {
     return <Navigate to={ROUTE_PATHS.login} replace />;
@@ -61,10 +69,16 @@ export default function ClientPortalLayout() {
         <div className="border-b border-border/50 bg-white/50">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <span className="flex shrink-0 items-center gap-2 text-[14px] font-bold text-navy-950">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-navy-900 to-navy-800 text-white shadow-sm">
-                <Heart className="h-4 w-4" fill="currentColor" />
-              </div>
-              {APP_NAME}
+              {logoUrl ? (
+                <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-7 w-auto max-w-[140px] object-contain" />
+              ) : (
+                <>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-navy-900 to-navy-800 text-white shadow-sm">
+                    <Heart className="h-4 w-4" fill="currentColor" />
+                  </div>
+                  {brandName ?? APP_NAME}
+                </>
+              )}
             </span>
 
             <div className="flex min-w-0 flex-1 items-center justify-end gap-2.5 sm:justify-center sm:gap-4">

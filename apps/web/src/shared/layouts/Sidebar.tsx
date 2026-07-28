@@ -4,6 +4,7 @@ import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
 
@@ -25,6 +26,8 @@ interface SidebarProps {
 export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const session = useAuthStore((s) => s.session);
+  const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
+  const brandName = useTenantBrandingStore((s) => s.businessName);
   const isOwner = session?.role === "Owner";
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.ownerOnly || isOwner);
 
@@ -44,8 +47,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         )}
       >
         <div className="flex items-center justify-between gap-2 px-5 py-6">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            {logoUrl ? (
+              <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-7 w-auto max-w-[160px] object-contain" />
+            ) : (
+              <span className="truncate text-[15px] font-bold tracking-tight">{brandName ?? APP_NAME}</span>
+            )}
             <span className="text-[12px] font-medium text-white/55">WO Console</span>
           </div>
           <button

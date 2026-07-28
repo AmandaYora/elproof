@@ -35,6 +35,8 @@ type Tenant struct {
 	SubscriptionExpiresAt *time.Time
 	IsSuspended           bool
 	LastCredentialResetAt *time.Time
+	BrandColorPreset      string
+	LogoStoragePath       *string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }

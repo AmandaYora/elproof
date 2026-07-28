@@ -2,8 +2,13 @@ package application
 
 import (
 	"context"
+	"encoding/base64"
+	"io"
+	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 
 	billingcontracts "elproof/internal/modules/billing/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
@@ -12,6 +17,7 @@ import (
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/compress"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/validator"
@@ -23,9 +29,19 @@ type TenantRepository interface {
 	FindByID(ctx context.Context, id int64) (*domain.Tenant, error)
 	Create(ctx context.Context, tenant *domain.Tenant) error
 	Update(ctx context.Context, tenant *domain.Tenant) error
+	UpdateLogo(ctx context.Context, id int64, logoStoragePath *string) error
 	SetSuspended(ctx context.Context, id int64, suspended bool) error
 	SetCredentialResetAt(ctx context.Context, id int64, when time.Time) error
 	UpdateSubscription(ctx context.Context, id int64, planID int64, status domain.SubscriptionStatus, expiresAt time.Time) error
+}
+
+// ObjectStorage is the narrow slice of internal/shared/storage.Client this
+// service depends on for tenant logo uploads — package-local (like
+// projects/application.ObjectStorage) so this module never imports another
+// module's application layer, per the modular-monolith boundary.
+type ObjectStorage interface {
+	Save(ctx context.Context, key string, data []byte, contentType string) (string, error)
+	Open(ctx context.Context, key string) (io.ReadCloser, error)
 }
 
 // PendingChargeRepository backs the Fase 9 self-service payment flow — see
@@ -45,6 +61,8 @@ type TenantService struct {
 	billing        billingcontracts.Contracts
 	payment        paymentcontracts.Client
 	vendors        vendorscontracts.Contracts
+	storage        ObjectStorage
+	buildKey       func(tenantID, projectID, category, filename string) string
 }
 
 func NewTenantService(
@@ -54,10 +72,13 @@ func NewTenantService(
 	identity identitycontracts.Contracts,
 	billing billingcontracts.Contracts,
 	payment paymentcontracts.Client,
+	storage ObjectStorage,
+	buildKey func(string, string, string, string) string,
 ) *TenantService {
 	return &TenantService{
 		repo: repo, pendingCharges: pendingCharges,
 		staff: staff, identity: identity, billing: billing, payment: payment,
+		storage: storage, buildKey: buildKey,
 	}
 }
 
@@ -130,6 +151,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		JoinedAt:           time.Now(),
 		PlanID:             nil,
 		SubscriptionStatus: domain.StatusPendingPayment,
+		BrandColorPreset:   domain.DefaultBrandColorPreset,
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
 		return nil, err
@@ -163,17 +185,31 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 }
 
 type UpdateTenantInput struct {
-	BusinessName string
-	OwnerName    string
-	Email        string
-	Phone        string
-	City         string
+	BusinessName     string
+	OwnerName        string
+	Email            string
+	Phone            string
+	City             string
+	BrandColorPreset string
 }
 
 func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenantInput) (*domain.Tenant, error) {
 	tenant, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	// BrandColorPreset is optional on this otherwise-full-replace update: an
+	// empty value (an older cached frontend bundle mid-deploy, calling this
+	// endpoint without knowing about branding yet) keeps the tenant's current
+	// preset rather than rejecting the whole edit; a non-empty, invalid value
+	// is still rejected, since presets are a fixed enum, not free text.
+	if input.BrandColorPreset != "" {
+		if !domain.IsValidBrandColorPreset(input.BrandColorPreset) {
+			return nil, apperror.Validation("Warna brand tidak valid", map[string][]string{
+				"brandColorPreset": {"Pilih salah satu preset warna yang tersedia"},
+			})
+		}
+		tenant.BrandColorPreset = input.BrandColorPreset
 	}
 	tenant.BusinessName = input.BusinessName
 	tenant.OwnerName = input.OwnerName
@@ -184,6 +220,98 @@ func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenant
 		return nil, err
 	}
 	return tenant, nil
+}
+
+// maxLogoDecodedSize caps a tenant logo well below evidence's 15MB — this is
+// a small header/sidebar image, not a document.
+const maxLogoDecodedSize = 2 * 1024 * 1024
+
+var allowedLogoMimeTypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/webp": true,
+}
+
+type UploadLogoInput struct {
+	FileName   string
+	MimeType   string
+	Base64Data string
+}
+
+// UploadLogo stores a tenant's logo in object storage (never inline in the
+// DB) and records only its key. SVG is deliberately not in
+// allowedLogoMimeTypes — sanitizing embedded <script>/event-handler risk
+// properly is out of scope for this feature (see PLAN.md §7).
+func (s *TenantService) UploadLogo(ctx context.Context, tenantID int64, input UploadLogoInput) (*domain.Tenant, error) {
+	if !allowedLogoMimeTypes[input.MimeType] {
+		return nil, apperror.Validation("Format logo tidak didukung", map[string][]string{
+			"mimeType": {"Gunakan PNG, JPEG, atau WebP"},
+		})
+	}
+	tenant, err := s.Get(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(input.Base64Data)
+	if err != nil {
+		return nil, apperror.Validation("Data logo tidak valid", map[string][]string{"base64Data": {"Gagal membaca data file"}})
+	}
+	if len(decoded) == 0 {
+		return nil, apperror.Validation("File logo kosong", map[string][]string{"base64Data": {"File tidak boleh kosong"}})
+	}
+	if len(decoded) > maxLogoDecodedSize {
+		return nil, apperror.Validation("Ukuran logo terlalu besar", map[string][]string{"base64Data": {"Maksimal 2 MB"}})
+	}
+
+	// Same backend re-compression pass evidence uploads get (ADR-0010) —
+	// authoritative regardless of what the frontend already did.
+	compressed, err := compress.Image(decoded, input.MimeType)
+	if err != nil {
+		return nil, apperror.Internal("Gagal memproses logo")
+	}
+
+	key := s.buildKey(
+		strconv.FormatInt(tenantID, 10), "0", "branding",
+		uuid.NewString()+"-"+sanitizeLogoFileName(input.FileName),
+	)
+	if _, err := s.storage.Save(ctx, key, compressed, input.MimeType); err != nil {
+		return nil, apperror.Internal("Gagal mengunggah logo ke object storage")
+	}
+
+	if err := s.repo.UpdateLogo(ctx, tenantID, &key); err != nil {
+		return nil, err
+	}
+	tenant.LogoStoragePath = &key
+	return tenant, nil
+}
+
+// DownloadLogo streams a tenant's stored logo back — same byte-proxy shape
+// as evidence.Download, since object storage requires backend auth and can't
+// be linked to directly from the browser.
+func (s *TenantService) DownloadLogo(ctx context.Context, tenantID int64) (io.ReadCloser, error) {
+	tenant, err := s.Get(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if tenant.LogoStoragePath == nil {
+		return nil, apperror.NotFound("Tenant belum memiliki logo")
+	}
+	reader, err := s.storage.Open(ctx, *tenant.LogoStoragePath)
+	if err != nil {
+		return nil, apperror.Internal("Gagal mengambil logo dari object storage")
+	}
+	return reader, nil
+}
+
+var unsafeLogoFileNameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+func sanitizeLogoFileName(name string) string {
+	cleaned := unsafeLogoFileNameChars.ReplaceAllString(name, "-")
+	if cleaned == "" {
+		return "logo"
+	}
+	return cleaned
 }
 
 func (s *TenantService) SetSuspended(ctx context.Context, id int64, suspended bool) (*domain.Tenant, error) {

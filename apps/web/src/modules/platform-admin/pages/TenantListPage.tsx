@@ -39,6 +39,7 @@ export default function TenantListPage() {
   const fetchPlans = useSubscriptionPlanStore((s) => s.fetchPlans);
   const registerTenant = usePlatformAdminStore((s) => s.registerTenant);
   const updateTenant = usePlatformAdminStore((s) => s.updateTenant);
+  const uploadTenantLogo = usePlatformAdminStore((s) => s.uploadTenantLogo);
   const toggleTenantSuspension = usePlatformAdminStore((s) => s.toggleTenantSuspension);
   const resetTenantCredential = usePlatformAdminStore((s) => s.resetTenantCredential);
   const activateTenantSubscription = usePlatformAdminStore((s) => s.activateTenantSubscription);
@@ -361,6 +362,7 @@ export default function TenantListPage() {
         initialTenant={editingTenant}
         onSubmitCreate={handleRegister}
         onSubmitEdit={handleEditSubmit}
+        onUploadLogo={uploadTenantLogo}
       />
 
       <TenantResetPasswordModal
