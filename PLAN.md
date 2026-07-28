@@ -456,3 +456,44 @@ palette is OKLCH-based — same color, just a different color-function represent
 custom hex-based `--brand-navy-*` variables elsewhere); tagline unchanged; and, checked
 specifically to rule out an accidental global regression, a platform-admin screen's ordinary
 primary button is still the exact original navy after this change.
+
+## 16. Contrast fix — gold/orange (and 5 more presets) were unreadable with white text
+
+User feedback: darken gold/orange a bit, and — more importantly — **guarantee every preset's text
+stays readable**, since Sidebar/Button text is always white. Investigated with the actual WCAG
+relative-luminance contrast formula rather than eyeballing it, and the finding was worse than just
+those two: §14's "shift lighter to look vivid" fix (`family-600/500/400`) broke white-text contrast
+on the `"900"` role — used on **every primary button app-wide**, plus `"800"` (hover/active-nav) —
+for 6 of the 20 presets:
+
+| Preset | Old `900` | Contrast vs white | New `900` | New contrast |
+|---|---|---|---|---|
+| Emas (gold) | `#f59e0b` | **2.15:1** | `#b45309` | **~5.02:1** |
+| Oranye | `#f97316` | **2.80:1** | `#c2410c` | **~5.18:1** |
+| Zaitun (mustard) | `#b3a500` | **2.53:1** | `#7a7000` | **~5.07:1** |
+| Kuning (yellow) | `#eab308` | **~2.1:1** | `#a16207` | **~4.92:1** |
+| Biru Langit (sky) | `#0ea5e9` | **2.77:1** | `#0369a1` | **~5.93:1** |
+| Merah Muda (pink) | `#ec4899` | **3.53:1** | `#db2777` | **~4.60:1** |
+
+Plus `green`'s `"800"`/hover role (`#22c55e`, ~2.28:1 — its `"900"` role was already fine at
+~5.01:1) → `#16a34a` (~3.30:1). WCAG AA requires 4.5:1 for normal text; all "900" (the
+most-seen role — every primary button) targets are now comfortably above that. "800"/hover roles
+were allowed a slightly lower bar (~3–4:1) since that state is momentary, not persistent.
+
+**The one deviation from a literal user request**: the user's own specified mustard hex, `#b3a500`,
+only measures ~2.53:1 — unusable on a button with white text. Flagged this explicitly and got
+confirmation before darkening it to `#7a7000` (same olive/mustard character, ~5.07:1) rather than
+keeping the exact hex at the cost of readability.
+
+**Method, to avoid re-breaking this later**: don't pick "vivid" by eye — for any future preset
+using a light/warm hue (yellow-through-green range), verify the WCAG relative-luminance contrast
+of its `"900"` value against white before shipping it; family shades `700` and darker are safe for
+most Tailwind hues, `600` is usually borderline/hover-only, `500` and lighter routinely fail badly
+for hues in this range (they were fine for cooler hues like blue/red/purple/indigo even at `900`,
+which is why those 14 original presets never needed this fix).
+
+Verified interactively: all 7 changed presets' swatch colors in the picker match the new hex
+exactly; full end-to-end recheck with "Oranye" (select → save → log in as that tenant's Owner) —
+Sidebar renders the new vivid-but-readable orange, `--brand-navy-900` computes to exactly
+`#c2410c`, and white Sidebar text (nav labels, avatar name, active-nav highlight) is clearly
+legible.

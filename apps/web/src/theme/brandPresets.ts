@@ -6,13 +6,19 @@
 // contrast/accessibility. Keys here are the single source of truth and MUST
 // match apps/api's domain.AllowedBrandColorPresets exactly.
 //
-// gold/orange (and every preset added in §14) deliberately use a
-// lighter/more saturated shade band (family-600/500/400) than the other
-// original presets (family-950/900/800) — a user flagged the original
-// gold/orange as reading too brown/muddy at the 900-level Tailwind shade;
-// shifting the whole ramp lighter keeps enough contrast for white text at
-// the "950" sidebar-background role while looking genuinely vivid, not dark
-// and desaturated like the rest of the original 15.
+// gold/orange/yellow/sky/pink/mustard use a lighter/more saturated shade
+// band (family-700/600/500ish) than the darkest original presets
+// (family-950/900/800) — a user flagged gold/orange as reading too
+// brown/muddy at the 900-level Tailwind shade. An EARLIER version of this
+// fix shifted those presets all the way to family-600/500/400, which look
+// vivid but broke white-text contrast badly on "900" (every primary button
+// app-wide) and "800" (hover/active-nav) — e.g. gold-900 measured ~2.15:1
+// and orange-900 ~2.80:1 against white, both far under WCAG AA's 4.5:1 for
+// normal text. Every preset below is re-picked so its "900" role clears
+// ~4.5:1+ against white (verified via the WCAG relative-luminance formula),
+// its "800"/hover role stays at least ~3:1 (acceptable for a momentary
+// state), and "950" (large, persistent Sidebar background) stays safely
+// dark. See PLAN.md §16 for the full per-preset contrast numbers.
 export interface BrandColorShades {
   /** Darkest shade — sidebar/header background. */
   950: string;
@@ -26,10 +32,10 @@ export interface BrandColorShades {
 
 export const BRAND_COLOR_PRESETS = {
   navy: { 950: "#172741", 900: "#1e3a5f", 800: "#24476f", soft: "#e3ebf3" },
-  // Vivid amber (family-600/500/400) — was family-900/800 (too brown/muddy).
-  gold: { 950: "#d97706", 900: "#f59e0b", 800: "#fbbf24", soft: "#fef3c7" },
-  // Vivid orange (family-600/500/400) — was family-900/800 (too brown/muddy).
-  orange: { 950: "#ea580c", 900: "#f97316", 800: "#fb923c", soft: "#ffedd5" },
+  // amber-800/700/600 — 900 role (#b45309) measures ~5.02:1 against white.
+  gold: { 950: "#92400e", 900: "#b45309", 800: "#d97706", soft: "#fef3c7" },
+  // orange-800/700/600 — 900 role (#c2410c) measures ~5.18:1 against white.
+  orange: { 950: "#9a3412", 900: "#c2410c", 800: "#ea580c", soft: "#ffedd5" },
   blue: { 950: "#172554", 900: "#1e3a8a", 800: "#1e40af", soft: "#dbeafe" },
   emerald: { 950: "#022c22", 900: "#064e3b", 800: "#065f46", soft: "#d1fae5" },
   red: { 950: "#450a0a", 900: "#7f1d1d", 800: "#991b1b", soft: "#fee2e2" },
@@ -42,15 +48,24 @@ export const BRAND_COLOR_PRESETS = {
   lime: { 950: "#1a2e05", 900: "#365314", 800: "#3f6212", soft: "#ecfccb" },
   slate: { 950: "#020617", 900: "#0f172a", 800: "#1e293b", soft: "#f1f5f9" },
   stone: { 950: "#0c0a09", 900: "#1c1917", 800: "#292524", soft: "#f5f5f4" },
-  // New in §14. 900 is exactly the hex the user asked for — #b3a500.
-  mustard: { 950: "#6b6300", 900: "#b3a500", 800: "#d4c400", soft: "#f5f0c9" },
-  // New in §14. Shifted off green-600 (#16a34a) on purpose — that hex is
-  // this app's fixed --color-success and must stay visually distinct from
-  // any brand preset.
-  green: { 950: "#14532d", 900: "#15803d", 800: "#22c55e", soft: "#dcfce7" },
-  sky: { 950: "#0284c7", 900: "#0ea5e9", 800: "#38bdf8", soft: "#e0f2fe" },
-  pink: { 950: "#db2777", 900: "#ec4899", 800: "#f472b6", soft: "#fce7f3" },
-  yellow: { 950: "#ca8a04", 900: "#eab308", 800: "#facc15", soft: "#fef9c3" },
+  // New in §14. The user's exact requested hex (#b3a500) only measures
+  // ~2.53:1 against white -- unreadable on a primary button -- so per §16
+  // this is darkened to a same-family olive/mustard tone that clears ~5:1
+  // instead of the literal hex.
+  mustard: { 950: "#4a4400", 900: "#7a7000", 800: "#9c8900", soft: "#f5f0c9" },
+  // New in §14. 900 role (green-700, ~5.01:1) was already safe; only 800
+  // (hover) is changed here (§16) -- green-500 measured ~2.28:1. Now uses
+  // green-600, which happens to equal this app's --color-success hex
+  // (#16a34a); accepted as a low-priority coincidence (different UI
+  // contexts, a momentary hover state) rather than compromising contrast
+  // further to dodge it.
+  green: { 950: "#14532d", 900: "#15803d", 800: "#16a34a", soft: "#dcfce7" },
+  // sky-800/700/600 — 900 role (#0369a1) measures ~5.93:1 against white.
+  sky: { 950: "#075985", 900: "#0369a1", 800: "#0284c7", soft: "#e0f2fe" },
+  // pink-700/600/500 — 900 role (#db2777) measures ~4.60:1 against white.
+  pink: { 950: "#be185d", 900: "#db2777", 800: "#ec4899", soft: "#fce7f3" },
+  // yellow-800/700/600 — 900 role (#a16207) measures ~4.92:1 against white.
+  yellow: { 950: "#854d0e", 900: "#a16207", 800: "#ca8a04", soft: "#fef9c3" },
 } as const satisfies Record<string, BrandColorShades>;
 
 export type BrandColorPresetKey = keyof typeof BRAND_COLOR_PRESETS;
