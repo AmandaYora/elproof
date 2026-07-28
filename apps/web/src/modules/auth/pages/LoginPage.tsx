@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Lock } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { loginSchema, type LoginFormValues } from "@/modules/auth/schemas/login.schema";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
-import { APP_NAME } from "@/shared/constants/brand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 
@@ -63,9 +62,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen">
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-navy-950 to-navy-900 lg:flex lg:w-1/2 lg:flex-col lg:justify-center lg:px-16">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-navy-800/40 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-navy-800/30 blur-3xl" />
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 lg:flex lg:w-1/2 lg:flex-col lg:justify-center lg:px-16">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-slate-700/40 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-slate-700/30 blur-3xl" />
         <div className="relative">
           <h1 className="text-[40px] font-bold leading-[1.15] text-white">
             Transparansi Persiapan Pernikahan,
@@ -81,13 +80,13 @@ export default function LoginPage() {
 
       <div className="flex w-full items-center justify-center bg-background px-6 py-12 lg:w-1/2">
         <div className="w-full max-w-md rounded-xl border border-border bg-surface p-10 shadow-sm">
-          <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-navy-900 text-base font-bold text-white">
-            EP
+          <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800 text-white">
+            <Lock className="h-5 w-5" />
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary">Selamat Datang di {APP_NAME}</h2>
+          <h2 className="text-2xl font-bold text-text-primary">Selamat Datang</h2>
           <p className="mt-1.5 text-[13.5px] text-text-secondary">
-            Masuk sebagai tim WO Console, client, atau admin platform ElProof.
+            Masuk sebagai tim WO Console, client, atau admin platform.
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
@@ -127,7 +126,7 @@ export default function LoginPage() {
               </div>
             </Field>
 
-            <Button className="mt-2 w-full justify-center" onClick={handleSubmit} disabled={isSubmitting}>
+            <Button variant="neutral" className="mt-2 w-full justify-center" onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting ? "Memproses..." : "Masuk"}
             </Button>
           </div>

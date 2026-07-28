@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "neutral";
 type ButtonSize = "sm" | "md";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,6 +15,9 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   secondary: "bg-white text-text-primary border border-border hover:bg-surface-muted",
   ghost: "bg-transparent text-text-secondary hover:bg-surface-muted",
   danger: "bg-danger text-white hover:bg-danger/90",
+  // Deliberately NOT tied to --brand-navy-* — for the rare screen (LoginPage)
+  // that must stay tenant-agnostic since no tenant is known pre-auth.
+  neutral: "bg-slate-800 text-white hover:bg-slate-700 disabled:bg-slate-800/50",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

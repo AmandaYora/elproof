@@ -382,3 +382,77 @@ dev-only fixture) had its `email`/`phone`/`city` overwritten with throwaway test
 early edge-case request before later tests switched to using dedicated fresh tenants instead —
 harmless (disposable local dev data, not its `brand_color_preset`/name/credentials), but flagged
 here rather than silently left unmentioned.
+
+## 14. 15 → 20 presets, gold/orange fixed to read as vivid instead of brown
+
+User feedback: comparing against a real vivid-orange CTA button, "Emas"/"Oranye" read as too
+brown/muddy — both used the Tailwind family's `900`/`800` shades (e.g. orange `#7c2d12`/`#9a3412`),
+which are dark and desaturated. Also requested reaching 20 presets total, including a specific
+mustard/olive hex, `#b3a500`.
+
+- **Fixed `gold`/`orange`**: shifted the whole shade ramp lighter — `family-600/500/400` instead of
+  `family-900/800` — e.g. orange is now `950 #ea580c / 900 #f97316 / 800 #fb923c` (was
+  `#431407/#7c2d12/#9a3412`). `900` (the button/active-nav role) is now visually near-identical to
+  the reference screenshot's vivid orange. Verified: the "Oranye" swatch's computed background is
+  `rgb(249, 115, 22)` = `#f97316`, exactly the intended hex.
+- **5 new presets** (`apps/web/src/theme/brandPresets.ts` + `apps/api/.../domain/brand_preset.go`):
+  `mustard` (Zaitun — `900` is exactly the requested `#b3a500`), `green` (Hijau — deliberately
+  shifted off `green-600`/`#16a34a` since that hex is this app's fixed `--color-success`, to avoid
+  a brand preset ever looking identical to the status color), `sky` (Biru Langit), `pink` (Merah
+  Muda), `yellow` (Kuning).
+- **Renamed one existing label**: `rose`'s Indonesian label changed from "Merah Muda" to "Mawar"
+  (its actual dusty/mauve tone reads more like a rose than a bubblegum pink) so the new, more vivid
+  `pink` preset could take the "Merah Muda" name instead — `rose`'s hex/key are unchanged, so no
+  tenant that already picked it is affected, only the label text in the picker.
+- No migration needed — presets are a validated string key in `VARCHAR(20)`, not stored hex; this
+  is a pure code change on both sides.
+
+Verified interactively: edit-tenant modal renders exactly 20 swatches with the expected labels in
+order; selected "Zaitun" (mustard), saved (`PATCH` returned `brandColorPreset: "mustard"`), logged
+in as that tenant's Owner — Sidebar background computed to exactly `#b3a500`, confirming the
+user's exact requested hex renders correctly end-to-end.
+
+## 15. LoginPage neutralized (no ElProof color, no ElProof wording)
+
+Per §0's scope decision, `LoginPage.tsx` was deliberately left ElProof-branded since no tenant is
+known pre-auth. User feedback: the navy color and literal "ElProof" wording there still work
+against the "feels like my own app" goal, for the two principal types (staff, client) who
+experience personalization everywhere else — even though a *literal* tenant-specific look here is
+impossible without subdomain-based tenant resolution (out of scope), a **neutral, tenant-agnostic**
+treatment (neither ElProof's nor any tenant's colors) is achievable and closes that gap.
+
+- **Wording removed**: `"Selamat Datang di {APP_NAME}"` → `"Selamat Datang"`; the hardcoded (not
+  even `APP_NAME`-templated) `"...admin platform ElProof."` → `"...admin platform."`. The
+  `APP_NAME` import was dropped from the file entirely (no longer referenced). The hero-panel
+  tagline ("Transparansi Persiapan Pernikahan...") needed no change — it never named ElProof to
+  begin with, only needed the color fix below.
+- **"EP" lettermark badge → generic `Lock` icon** (lucide-react) — the initials were themselves an
+  ElProof identity mark independent of color.
+- **Navy → slate**: the left hero panel's gradient/decorative blur circles and the icon badge
+  changed from `bg-navy-*` (literal Tailwind classes on this page, unrelated to the tenant-branding
+  CSS-variable system) to `bg-slate-*` — Tailwind's own neutral family, matching the neutral tone
+  already used for this app's body text/borders elsewhere.
+- **New `Button` variant, `"neutral"`** (`bg-slate-800 hover:bg-slate-700`, deliberately NOT tied to
+  `--brand-navy-*`) — added rather than passing an overriding `className`, since the shared `cn()`
+  helper is a plain class-joiner (no `tailwind-merge`), so two conflicting background classes on
+  one element would race unpredictably. Used only by the "Masuk" submit button; every other
+  `<Button>` call site in the app is untouched and still correctly resolves to `primary`
+  (brand-tied navy/tenant color) — verified live that a platform-admin screen's button (e.g.
+  "Tambah Tenant") is still exactly navy `#1e3a5f` after this change.
+- **Deliberately left alone**: the shared `Input`'s focus ring (`focus:ring-navy-900/20`) and
+  `Button`'s keyboard-focus outline (`focus-visible:outline-navy-900`) still reference navy on this
+  page too — both are global, shared-component styles (touching them means touching every form in
+  the app), and both are subtle, momentary, focus-only affordances, not a prominent brand
+  statement — judged out of scope for this pass.
+- **Deliberately left alone**: the pre-login browser tab title (still ElProof's default, since
+  `tabIdentity.ts`'s tenant override only ever fires post-login). Neutralizing `index.html`'s
+  static default would also strip ElProof's name from the marketing/homepage pages, which *should*
+  keep it — that needs a proper per-route title system to do correctly, a separate, larger change.
+
+Verified interactively: no "ElProof" substring anywhere in the rendered login page; heading reads
+exactly "Selamat Datang"; hero panel and "Masuk" button both compute to Tailwind's `slate-800`
+(confirmed via `getComputedStyle`, reported as an `oklch()` triple since Tailwind v4's default
+palette is OKLCH-based — same color, just a different color-function representation than the
+custom hex-based `--brand-navy-*` variables elsewhere); tagline unchanged; and, checked
+specifically to rule out an accidental global regression, a platform-admin screen's ordinary
+primary button is still the exact original navy after this change.

@@ -6,14 +6,18 @@ package domain
 // in-memory value agrees with what the DB will actually store.
 const DefaultBrandColorPreset = "navy"
 
-// AllowedBrandColorPresets is the fixed set of 15 brand colors a tenant may
-// pick for its WO Console / Client Portal theme (see PLAN.md §3) — free-form
+// AllowedBrandColorPresets is the fixed set of 20 brand colors a tenant may
+// pick for its WO Console / Client Portal theme (see PLAN.md §3/§14) — free-form
 // hex is deliberately not supported, so this is the single source of truth
 // the application layer validates against. "navy" is the app's original,
-// unbranded look and stays the default for every existing tenant.
+// unbranded look and stays the default for every existing tenant. Hex values
+// (and the mustard/green/sky/pink/yellow additions) live only on the
+// frontend (apps/web/src/theme/brandPresets.ts) — this backend list only
+// needs to agree on which keys are valid.
 var AllowedBrandColorPresets = []string{
 	"navy", "gold", "orange", "blue", "emerald", "red", "purple",
 	"teal", "indigo", "rose", "cyan", "fuchsia", "lime", "slate", "stone",
+	"mustard", "green", "sky", "pink", "yellow",
 }
 
 func IsValidBrandColorPreset(preset string) bool {
