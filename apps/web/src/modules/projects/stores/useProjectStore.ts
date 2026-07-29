@@ -377,6 +377,10 @@ interface ProjectState {
   // archived or cancelled, both enforced server-side, not just by the UI
   // hiding the button.
   deleteProject: (id: string) => Promise<void>;
+  // Duplicate (ADR-0014) — clones the source project's milestones and vendor
+  // lineup into a brand-new project; `values` is the new project's own
+  // (possibly user-edited) fields, same shape as create.
+  duplicateProject: (sourceId: string, values: ProjectFormValues) => Promise<Project>;
 
   fetchProjectDetail: (projectId: string) => Promise<void>;
   fetchMyProject: () => Promise<string>;
@@ -509,6 +513,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projects: state.projects.filter((p) => p.id !== id),
       currentProject: state.currentProject?.id === id ? null : state.currentProject,
     }));
+  },
+
+  duplicateProject: async (sourceId, values) => {
+    const res = await httpClient.post(API.projects.duplicate(sourceId), projectInputBody(values));
+    const project = toProject(res.data.data as RawProject);
+    await get().fetchProjects();
+    return project;
   },
 
   fetchProjectDetail: async (projectId) => {

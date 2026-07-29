@@ -210,6 +210,31 @@ func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request, claims s
 	response.OK(w, "Project berhasil dihapus permanen", nil)
 }
 
+// duplicateProject clones the source project's Project Milestones and Vendor
+// Engagements (with their Vendor Milestones) into a brand-new project — see
+// ADR-0014. `body` is the new project's own fields (name/dates/etc.), same
+// shape as create/update, since the frontend's duplicate form is the normal
+// ProjectFormModal pre-filled from the source project — the caller decides
+// what to change (e.g. name, event date) before submitting.
+func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	var body projectInputBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	input, err := toProjectInput(body)
+	if err != nil {
+		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
+		return
+	}
+	p, err := h.projects.Duplicate(r.Context(), claims.tenantID, claims.staffID, projectID, input)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.Created(w, "Project berhasil diduplikasi", toProjectResponse(*p))
+}
+
 // --- Project milestones ---
 
 func (h *Handler) listMilestones(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) {

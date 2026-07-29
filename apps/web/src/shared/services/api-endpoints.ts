@@ -65,6 +65,7 @@ export const API = {
     item: (id: string) => `/api/v1/projects/${id}`,
     cancel: (id: string) => `/api/v1/projects/${id}/cancel`,
     toggleArchive: (id: string) => `/api/v1/projects/${id}/toggle-archive`,
+    duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
     milestone: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}`,
     vendors: (id: string) => `/api/v1/projects/${id}/vendors`,

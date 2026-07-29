@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Pencil, AlertTriangle, Archive, ArchiveRestore } from "lucide-react";
+import { Pencil, AlertTriangle, Archive, ArchiveRestore, Copy } from "lucide-react";
 import { Card, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -27,11 +27,13 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const cancelProject = useProjectStore((s) => s.cancelProject);
   const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
   const deleteProject = useProjectStore((s) => s.deleteProject);
+  const duplicateProject = useProjectStore((s) => s.duplicateProject);
   const staff = useStaffStore((s) => s.staff);
   const fetchStaff = useStaffStore((s) => s.fetchStaff);
   const isOwner = useAuthStore((s) => s.session?.role === "Owner");
 
   const [editOpen, setEditOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -84,6 +86,17 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     }
   }
 
+  async function handleDuplicate(values: ProjectFormValues) {
+    setActionError(null);
+    try {
+      const duplicated = await duplicateProject(projectId, values);
+      setDuplicateOpen(false);
+      navigate(ROUTE_PATHS.projectDetail(duplicated.id));
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menduplikasi project"));
+    }
+  }
+
   async function handleDeleteProject() {
     setActionError(null);
     setIsDeleting(true);
@@ -113,6 +126,9 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
               Ubah Project
+            </Button>
+            <Button variant="secondary" size="sm" icon={<Copy className="h-3.5 w-3.5" />} onClick={() => setDuplicateOpen(true)}>
+              Duplikat Project
             </Button>
             <Button
               variant="secondary"
@@ -208,6 +224,13 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
       </CardContent>
 
       <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={(values) => void handleEdit(values)} initialProject={project} />
+      <ProjectFormModal
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        onSubmit={(values) => void handleDuplicate(values)}
+        initialProject={project}
+        mode="duplicate"
+      />
     </Card>
   );
 }

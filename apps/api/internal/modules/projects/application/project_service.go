@@ -254,6 +254,104 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 	return nil
 }
 
+// Duplicate creates a new project from `input` (the caller's, possibly
+// user-edited, copy of the source project's fields — see ADR-0014) and
+// clones the source's Project Milestones and Vendor Engagements (with their
+// own Vendor Milestones) as a reusable structural template. Deliberately
+// excluded: vendor_payments, vendor_issues, evidence, activity_log, and
+// clients — all historical/transactional data tied to what actually happened
+// on the source project, not to a template. Every cloned row is reset to its
+// initial state (milestone status, engagement status, paid/DP amounts);
+// every date (including the source's own milestone/booking/due dates) is
+// copied verbatim, not shifted — the user adjusts whatever's stale by hand
+// afterward, same as any other edit.
+func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorStaffID int64, sourceID int64, input ProjectInput) (*domain.Project, error) {
+	source, err := s.Get(ctx, tenantID, sourceID)
+	if err != nil {
+		return nil, err
+	}
+
+	p := &domain.Project{
+		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
+		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
+		PackageName: input.PackageName, ContractValue: input.ContractValue, Status: input.Status,
+		PICStaffID: input.PICStaffID, Description: input.Description,
+	}
+	if err := s.repo.Create(ctx, p); err != nil {
+		return nil, err
+	}
+
+	if err := s.cloneMilestonesFrom(ctx, sourceID, p.ID); err != nil {
+		return nil, err
+	}
+	if err := s.cloneVendorEngagementsFrom(ctx, sourceID, p.ID, p.EventDate); err != nil {
+		return nil, err
+	}
+
+	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
+		"Project baru dibuat dari duplikasi project: "+source.Name)
+	return p, nil
+}
+
+func (s *ProjectService) cloneMilestonesFrom(ctx context.Context, sourceProjectID, newProjectID int64) error {
+	milestones, err := s.milestones.ListByProject(ctx, sourceProjectID)
+	if err != nil {
+		return err
+	}
+	for _, m := range milestones {
+		clone := &domain.ProjectMilestone{
+			ProjectID: newProjectID, SortOrder: m.SortOrder, Name: m.Name,
+			Status: domain.MilestoneNotStarted, TargetDate: m.TargetDate,
+		}
+		if err := s.milestones.Create(ctx, clone); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cloneVendorEngagementsFrom clones every vendor engagement (and each one's
+// own vendor milestones) from the source project. EventDate is synced to the
+// new project's own event date (newEventDate) rather than copied from the
+// source engagement — it's a denormalized mirror of the parent project's
+// event date, always set that way on every other creation path (see
+// useProjectStore.ts's vendorEngagementInputBody), not an independent piece
+// of information the "copy dates verbatim" choice applies to. BookingDate and
+// DueDate, which are genuinely independent, are copied as-is.
+func (s *ProjectService) cloneVendorEngagementsFrom(ctx context.Context, sourceProjectID, newProjectID int64, newEventDate time.Time) error {
+	engagements, err := s.vendorEngagements.ListByProject(ctx, sourceProjectID)
+	if err != nil {
+		return err
+	}
+	for _, pv := range engagements {
+		clone := &domain.ProjectVendor{
+			ProjectID: newProjectID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope,
+			ContractValue: pv.ContractValue, EngagementStatus: domain.EngagementPlanned,
+			BookingDate: pv.BookingDate, EventDate: newEventDate, DPAmount: 0, PaidAmount: 0,
+			DueDate: pv.DueDate, PICStaffID: pv.PICStaffID, Notes: pv.Notes,
+		}
+		if err := s.vendorEngagements.Create(ctx, clone); err != nil {
+			return err
+		}
+
+		vendorMilestones, err := s.vendorMilestones.ListByProjectVendor(ctx, pv.ID)
+		if err != nil {
+			return err
+		}
+		for _, vm := range vendorMilestones {
+			vmClone := &domain.VendorMilestone{
+				ProjectVendorID: clone.ID, SortOrder: vm.SortOrder, Name: vm.Name, Description: vm.Description,
+				Status: domain.MilestoneNotStarted, TargetDate: vm.TargetDate,
+				PICStaffID: vm.PICStaffID, Notes: vm.Notes,
+			}
+			if err := s.vendorMilestones.Create(ctx, vmClone); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // --- Project milestones ---
 
 type MilestoneInput struct {

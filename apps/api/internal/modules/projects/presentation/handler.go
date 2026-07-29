@@ -115,6 +115,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.cancelProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "toggle-archive" && r.Method == http.MethodPost:
 		h.toggleArchiveProject(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "duplicate" && r.Method == http.MethodPost:
+		h.duplicateProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodGet:
 		h.listMilestones(w, r, claims.tenantID, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodPost:

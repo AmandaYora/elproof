@@ -142,6 +142,7 @@ a real `projects` row to reference)
 | PATCH | `/projects/{id}` | |
 | POST | `/projects/{id}/cancel` | soft status change |
 | POST | `/projects/{id}/toggle-archive` | single toggle (flips `isArchived`), no body, no role restriction — see ADR-0013 |
+| POST | `/projects/{id}/duplicate` | body: same shape as create (`{name, brideName, ..., description}`) — the new project's own fields, since the frontend pre-fills its normal create/edit form from the source project. Clones the source's Project Milestones and Vendor Engagements (with their Vendor Milestones) as a structural template; does **not** copy payments, issues, evidence, activity log, or clients — see ADR-0014. No role restriction. |
 | DELETE | `/projects/{id}` | **hard delete, Owner-only** (403 for any other staff role) and requires the project already be archived or cancelled (422 otherwise, enforced server-side) — see ADR-0013 for the full cascade scope (every same-module sub-entity table, evidence's object-storage files, and a best-effort cleanup of every client tied to the project) |
 | GET/POST | `/projects/{id}/milestones` | — |
 | PATCH | `/projects/{id}/milestones` | body `{orderedIds}` — full new order of all of the project's milestone IDs; rejected (422) unless it's an exact permutation of the existing set |

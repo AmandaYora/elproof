@@ -11,9 +11,14 @@ interface ProjectFormModalProps {
   onClose: () => void;
   onSubmit: (values: ProjectFormValues) => void;
   initialProject?: Project;
+  // "duplicate" pre-fills every field from initialProject (like edit) but is
+  // meant to create a brand-new project — see ADR-0014. Name gets a "(Salinan)"
+  // suffix and status resets to Draft as safer defaults; everything else
+  // (including dates) is copied verbatim for the user to adjust as needed.
+  mode?: "edit" | "duplicate";
 }
 
-function toFormValues(project?: Project, defaultStaffId = ""): ProjectFormValues {
+function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "duplicate"): ProjectFormValues {
   if (!project) {
     return {
       name: "",
@@ -30,7 +35,7 @@ function toFormValues(project?: Project, defaultStaffId = ""): ProjectFormValues
     };
   }
   return {
-    name: project.name,
+    name: mode === "duplicate" ? `${project.name} (Salinan)` : project.name,
     brideName: project.brideName,
     groomName: project.groomName,
     eventDate: project.eventDate,
@@ -38,16 +43,16 @@ function toFormValues(project?: Project, defaultStaffId = ""): ProjectFormValues
     prepStartDate: project.prepStartDate,
     packageName: project.packageName,
     contractValue: project.contractValue,
-    status: project.status,
+    status: mode === "duplicate" ? "Draft" : project.status,
     picStaffId: project.picStaffId,
     description: project.description,
   };
 }
 
-export function ProjectFormModal({ open, onClose, onSubmit, initialProject }: ProjectFormModalProps) {
+export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode }: ProjectFormModalProps) {
   const staffList = useStaffStore((s) => s.staff);
   const fetchStaff = useStaffStore((s) => s.fetchStaff);
-  const [values, setValues] = useState<ProjectFormValues>(() => toFormValues(initialProject));
+  const [values, setValues] = useState<ProjectFormValues>(() => toFormValues(initialProject, "", mode));
   const [errors, setErrors] = useState<Partial<Record<keyof ProjectFormValues, string>>>({});
 
   useEffect(() => {
@@ -84,13 +89,19 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject }: Pr
     <Modal
       open={open}
       onClose={onClose}
-      title={initialProject ? "Ubah Project" : "Tambah Project Baru"}
-      description="Informasi dasar project pernikahan yang dikelola WO."
+      title={mode === "duplicate" ? "Duplikat Project" : initialProject ? "Ubah Project" : "Tambah Project Baru"}
+      description={
+        mode === "duplicate"
+          ? "Project baru berdasarkan project ini — milestone dan daftar vendor akan ikut disalin sebagai template. Sesuaikan bagian yang berbeda sebelum menyimpan."
+          : "Informasi dasar project pernikahan yang dikelola WO."
+      }
       size="lg"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>{initialProject ? "Simpan Perubahan" : "Simpan Project"}</Button>
+          <Button onClick={handleSubmit}>
+            {mode === "duplicate" ? "Buat Duplikat" : initialProject ? "Simpan Perubahan" : "Simpan Project"}
+          </Button>
         </>
       }
     >
