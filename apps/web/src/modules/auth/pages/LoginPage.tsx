@@ -17,6 +17,25 @@ interface DomainBranding {
   logoUrl: string | null;
 }
 
+// LoginPage's slate/neutral look is deliberately not tied to --brand-navy-*
+// (ADR-0012 — no tenant is knowable pre-auth on the platform's own domain).
+// Once ADR-0015 resolves a tenant from the request's Host header, that
+// constraint no longer applies for *this specific request* — swapping these
+// two className sets for the brand-tied ones below is the only visual
+// difference a matched custom domain makes; the copy, layout, and structure
+// stay identical either way.
+// Every class below is written out in full (never built by string
+// concatenation) since Tailwind generates CSS by statically scanning source
+// text for whole utility tokens — a class assembled at runtime from pieces
+// (e.g. `${"bg-navy-800"}/40`) never gets its CSS emitted.
+const PANEL_CLASSES = {
+  neutral: "bg-gradient-to-br from-slate-900 to-slate-800",
+  branded: "bg-gradient-to-br from-navy-950 to-navy-900",
+};
+const BLUR_1_CLASSES = { neutral: "bg-slate-700/40", branded: "bg-navy-800/40" };
+const BLUR_2_CLASSES = { neutral: "bg-slate-700/30", branded: "bg-navy-800/30" };
+const ICON_BOX_CLASSES = { neutral: "bg-slate-800", branded: "bg-navy-900" };
+
 // Fetches branding for the current request's Host header (ADR-0015) — only
 // resolves to something when this page is loaded from a tenant's own custom
 // domain; a 404 (the platform's own domain, localhost, anything unconfigured)
@@ -116,9 +135,15 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen">
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 lg:flex lg:w-1/2 lg:flex-col lg:justify-center lg:px-16">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-slate-700/40 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-slate-700/30 blur-3xl" />
+      <div
+        className={`relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-center lg:px-16 ${branding ? PANEL_CLASSES.branded : PANEL_CLASSES.neutral}`}
+      >
+        <div
+          className={`pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full blur-3xl ${branding ? BLUR_1_CLASSES.branded : BLUR_1_CLASSES.neutral}`}
+        />
+        <div
+          className={`pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full blur-3xl ${branding ? BLUR_2_CLASSES.branded : BLUR_2_CLASSES.neutral}`}
+        />
         <div className="relative">
           <h1 className="text-[40px] font-bold leading-[1.15] text-white">
             Transparansi Persiapan Pernikahan,
@@ -134,7 +159,9 @@ export default function LoginPage() {
 
       <div className="flex w-full items-center justify-center bg-background px-6 py-12 lg:w-1/2">
         <div className="w-full max-w-md rounded-xl border border-border bg-surface p-10 shadow-sm">
-          <div className="mb-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-slate-800 text-white">
+          <div
+            className={`mb-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl text-white ${branding ? ICON_BOX_CLASSES.branded : ICON_BOX_CLASSES.neutral}`}
+          >
             {branding?.logoUrl ? (
               <img src={branding.logoUrl} alt={branding.businessName} className="h-full w-full object-contain" />
             ) : (
@@ -186,7 +213,12 @@ export default function LoginPage() {
               </div>
             </Field>
 
-            <Button variant="neutral" className="mt-2 w-full justify-center" onClick={handleSubmit} disabled={isSubmitting}>
+            <Button
+              variant={branding ? "primary" : "neutral"}
+              className="mt-2 w-full justify-center"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            >
               {isSubmitting ? "Memproses..." : "Masuk"}
             </Button>
           </div>
