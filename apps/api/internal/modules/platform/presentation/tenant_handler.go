@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	paymentcontracts "elproof/internal/modules/payment/contracts"
@@ -42,6 +43,7 @@ type tenantResponse struct {
 	LastCredentialResetAt *string `json:"lastCredentialResetAt"`
 	BrandColorPreset      string  `json:"brandColorPreset"`
 	HasLogo               bool    `json:"hasLogo"`
+	CustomDomain          *string `json:"customDomain"`
 }
 
 // brandingResponse is the minimal, non-sensitive branding shape any
@@ -70,6 +72,7 @@ func toTenantResponse(t domain.Tenant) tenantResponse {
 		SubscriptionExpiresAt: dateOrNil(t.SubscriptionExpiresAt), IsSuspended: t.IsSuspended,
 		LastCredentialResetAt: dateOrNil(t.LastCredentialResetAt),
 		BrandColorPreset:      t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
+		CustomDomain: t.CustomDomain,
 	}
 }
 
@@ -256,6 +259,46 @@ func (h *TenantHandler) myLogo(w http.ResponseWriter, r *http.Request) {
 	streamLogo(w, r, h.tenants, tenantID)
 }
 
+// hostWithoutPort strips an optional ":port" suffix from r.Host — a custom
+// domain is stored/compared as a bare hostname, but a dev/local request's
+// Host header often includes a port (e.g. "localhost:8080"). Lowercased to
+// match how TenantService.Update normalizes custom_domain before saving it —
+// defense-in-depth alongside whatever collation the tenants table happens to
+// use, not a substitute for it.
+func hostWithoutPort(host string) string {
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	return strings.ToLower(host)
+}
+
+// PublicBranding is the pre-auth counterpart to myBranding (ADR-0015) — it
+// resolves the tenant from the request's Host header instead of a JWT claim,
+// so LoginPage can render a tenant's own branding before anyone logs in. A
+// Host that matches no tenant's custom_domain (e.g. the platform's own
+// elproof.elcodelabs.com) 404s via writeAppError — the frontend treats that
+// as "no custom branding, use the default look".
+func (h *TenantHandler) PublicBranding(w http.ResponseWriter, r *http.Request) {
+	tenant, err := h.tenants.GetBrandingByDomain(r.Context(), hostWithoutPort(r.Host))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", toBrandingResponse(*tenant))
+}
+
+// PublicLogo streams the logo for the tenant matching the request's Host
+// header — same Host-based resolution and same "unknown domain" 404 as
+// PublicBranding above, unauthenticated like it.
+func (h *TenantHandler) PublicLogo(w http.ResponseWriter, r *http.Request) {
+	tenant, err := h.tenants.GetBrandingByDomain(r.Context(), hostWithoutPort(r.Host))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	streamLogo(w, r, h.tenants, tenant.ID)
+}
+
 // selfTenantID resolves the calling principal's own tenant from the JWT
 // claim — never a request parameter. Any tenant-bound principal (staff of
 // any role, or client) qualifies; platform_admin principals have none.
@@ -305,6 +348,9 @@ type updateTenantBody struct {
 	Phone            string `json:"phone"`
 	City             string `json:"city"`
 	BrandColorPreset string `json:"brandColorPreset"`
+	// A *string (unlike every sibling field here) so the service can tell a
+	// missing key apart from an explicit "" — see UpdateTenantInput.CustomDomain.
+	CustomDomain *string `json:"customDomain"`
 }
 
 func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64) {
@@ -315,7 +361,7 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64)
 	}
 	tenant, err := h.tenants.Update(r.Context(), id, application.UpdateTenantInput{
 		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Email: body.Email, Phone: body.Phone, City: body.City,
-		BrandColorPreset: body.BrandColorPreset,
+		BrandColorPreset: body.BrandColorPreset, CustomDomain: body.CustomDomain,
 	})
 	if err != nil {
 		writeAppError(w, err)

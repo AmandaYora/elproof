@@ -3,9 +3,11 @@ package application
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +29,7 @@ type TenantRepository interface {
 	List(ctx context.Context) ([]domain.Tenant, error)
 	ListPaginated(ctx context.Context, params pagination.Params, search, status string) ([]domain.Tenant, int64, error)
 	FindByID(ctx context.Context, id int64) (*domain.Tenant, error)
+	FindByDomain(ctx context.Context, host string) (*domain.Tenant, error)
 	Create(ctx context.Context, tenant *domain.Tenant) error
 	Update(ctx context.Context, tenant *domain.Tenant) error
 	UpdateLogo(ctx context.Context, id int64, logoStoragePath *string) error
@@ -105,6 +108,20 @@ func (s *TenantService) Get(ctx context.Context, id int64) (*domain.Tenant, erro
 	}
 	if tenant == nil {
 		return nil, apperror.NotFound("Tenant tidak ditemukan")
+	}
+	return tenant, nil
+}
+
+// GetBrandingByDomain resolves a tenant from an incoming request's Host
+// header (ADR-0015) — the pre-auth counterpart to Get, used only by the
+// public branding/logo endpoints, never by anything JWT-scoped.
+func (s *TenantService) GetBrandingByDomain(ctx context.Context, host string) (*domain.Tenant, error) {
+	tenant, err := s.repo.FindByDomain(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if tenant == nil {
+		return nil, apperror.NotFound("Domain tidak terdaftar")
 	}
 	return tenant, nil
 }
@@ -191,6 +208,14 @@ type UpdateTenantInput struct {
 	Phone            string
 	City             string
 	BrandColorPreset string
+	// CustomDomain is a pointer, unlike every other field on this input: nil
+	// means the caller's JSON body omitted the key entirely (e.g. a stale
+	// cached frontend bundle that predates this field, same "don't touch it"
+	// concern BrandColorPreset's own comment below addresses) and the
+	// tenant's existing domain is left untouched. A non-nil pointer means the
+	// key was present — "" explicitly clears it to NULL, anything else is
+	// normalized/validated and set.
+	CustomDomain *string
 }
 
 func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenantInput) (*domain.Tenant, error) {
@@ -211,12 +236,32 @@ func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenant
 		}
 		tenant.BrandColorPreset = input.BrandColorPreset
 	}
+	// CustomDomain (ADR-0015): nil means the key was absent from the request
+	// — leave tenant.CustomDomain exactly as Get() returned it. Only a
+	// present key can change it: "" clears to NULL, anything else is
+	// normalized + validated then set.
+	if input.CustomDomain != nil {
+		if *input.CustomDomain != "" {
+			normalized := strings.ToLower(strings.TrimSpace(*input.CustomDomain))
+			if err := validator.CustomDomain(normalized); err != nil {
+				return nil, err
+			}
+			tenant.CustomDomain = &normalized
+		} else {
+			tenant.CustomDomain = nil
+		}
+	}
 	tenant.BusinessName = input.BusinessName
 	tenant.OwnerName = input.OwnerName
 	tenant.Email = input.Email
 	tenant.Phone = input.Phone
 	tenant.City = input.City
 	if err := s.repo.Update(ctx, tenant); err != nil {
+		if errors.Is(err, domain.ErrDuplicateCustomDomain) {
+			return nil, apperror.Validation("Domain kustom sudah digunakan tenant lain", map[string][]string{
+				"customDomain": {"Domain ini sudah dipakai tenant lain"},
+			})
+		}
 		return nil, err
 	}
 	return tenant, nil

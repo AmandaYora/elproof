@@ -67,6 +67,14 @@ func (m *Module) ApplyWebhookEvent(ctx context.Context, orderRef string, event p
 	return m.tenantService.ApplyWebhookEvent(ctx, orderRef, event)
 }
 
+// RegisterPublicRoutes registers this module's pre-auth endpoints (ADR-0015)
+// — Host-header-resolved tenant branding for a custom domain's login page,
+// never wrapped in the `authed` middleware since no session exists yet.
+func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
+	mux.Handle("/api/v1/public/branding", httpx.Method(http.MethodGet, m.tenantHandler.PublicBranding))
+	mux.Handle("/api/v1/public/logo", httpx.Method(http.MethodGet, m.tenantHandler.PublicLogo))
+}
+
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/tenants", authed(http.HandlerFunc(m.tenantHandler.Collection)))
 	mux.Handle("/api/v1/tenants/", authed(http.HandlerFunc(m.tenantHandler.Item)))

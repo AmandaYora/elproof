@@ -59,6 +59,7 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 | last_credential_reset_at | DATE NULL | |
 | brand_color_preset | VARCHAR(20) NOT NULL DEFAULT 'navy' | one of 20 fixed keys (see `MODULE_PLATFORM.md` §6) — never free-form hex |
 | logo_storage_path | VARCHAR(500) NULL | object storage key (same `shared/storage` utility as `evidence.storage_path`, ADR-0006) — `NULL` means no logo configured yet |
+| custom_domain | VARCHAR(255) NULL UNIQUE | tenant's own hostname (see `MODULE_PLATFORM.md` §8, ADR-0015) — `NULL` means no custom domain configured; resolved from the request `Host` header by `GET /public/branding`/`/public/logo`, not by JWT |
 | created_at, updated_at | TIMESTAMP | |
 
 ### `platform_admins`

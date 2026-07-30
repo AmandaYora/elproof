@@ -155,6 +155,9 @@ func serve(cfg config.Config) {
 	staffModule := staff.NewModule(db, identityModule.Contracts())
 	billingModule := billing.NewModule(db)
 	platformModule := platform.NewModule(db, staffModule.Contracts(), identityModule.Contracts(), billingModule.Contracts(), paymentModule.Client(), storageClient)
+	// Pre-auth, Host-header-resolved tenant branding (ADR-0015) — registered
+	// unwrapped, same style as identityModule.RegisterRoutes(mux) above.
+	platformModule.RegisterPublicRoutes(mux)
 	// projects is built before vendors — vendors' "Lihat Project" resolves a
 	// vendor's cross-project engagement history through projects.Contracts()
 	// (project_vendors is owned by projects, not vendors).

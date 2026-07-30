@@ -115,12 +115,34 @@ vivid.
   evidence's 15 MB), PNG/JPEG/WebP only (no SVG). Streamed through an authenticated Go handler,
   never a public URL — same byte-proxy shape as evidence download.
 - **Where it never applies**: Platform Console (superadmin's own backoffice — not "inside" any one
-  tenant) and the login page (no tenant is known before auth succeeds) — see ADR-0012 for why the
-  login page was neutralized (not tenant-branded, but not ElProof-branded either) rather than left
-  as the original default.
+  tenant). The login page was neutralized by ADR-0012 for the same reason (no tenant knowable
+  before auth) — **except** when reached via a tenant's own custom domain, see §8 below.
 
 ## 7. Platform Console's own admin accounts (`platform_admins`)
 
 A separate, simpler CRUD (`/platform-admins`) with no cross-module orchestration — a
 platform_admin's only side effect on creation is `identity.CreateCredential`. Self-lockout (an
 admin deactivating their own account via `toggle-active`) is rejected with 403.
+
+## 8. Custom domain (pre-login branding on a tenant's own hostname) — ADR-0015
+
+Closes the gap ADR-0012 left open: a tenant's optional `custom_domain` column (nullable, unique)
+lets `LoginPage` render that tenant's own branding *before* login, resolved from the request's
+`Host` header rather than a JWT claim — the only Host-based lookup in this module.
+
+- **Two new unauthenticated endpoints**: `GET /api/v1/public/branding` / `GET /api/v1/public/logo`
+  — same response shape as §6's self-service pair, registered via
+  `platform.Module.RegisterPublicRoutes(mux)` (never wrapped in `authed(...)`), mirroring
+  `identity`'s existing public-route pattern. A Host matching no tenant 404s; the frontend treats
+  that as "no custom branding" and keeps the neutral login look.
+- **Configured by**: platform-admin only, same tenant edit form/permission model as §6 —
+  `PATCH /tenants/{id}` now also accepts `customDomain` — a `*string` on the wire: an omitted
+  key leaves it untouched (this app's own form always sends it, but any other/future caller
+  that doesn't know about this field yet can't accidentally wipe a configured domain), while a
+  key present with `""` explicitly clears it back to `NULL`.
+- **Uniqueness**: enforced by a `UNIQUE` index; a collision is caught (MySQL error 1062) and
+  surfaced as a field-level validation error, not a 500.
+- **Does not change CORS** (production is already same-origin regardless of Host) **or the Tripay
+  webhook** (HMAC-trusted, never domain-scoped) — see ADR-0015 for the full reasoning.
+- **Still a manual, per-domain ops step** on the VPS (DNS → nginx `server_name` → `certbot`) — not
+  scripted by this repo; see ADR-0015's "Consequences" for the exact steps.

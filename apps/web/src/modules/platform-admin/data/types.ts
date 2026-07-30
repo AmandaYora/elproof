@@ -16,6 +16,7 @@ export interface Tenant {
   lastCredentialResetAt: string | null;
   brandColorPreset: string;
   hasLogo: boolean;
+  customDomain: string | null;
 }
 
 export type SubscriptionTransactionType = "new" | "renewal";

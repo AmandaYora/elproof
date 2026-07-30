@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Lock } from "lucide-react";
@@ -9,9 +9,63 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
+import { applyBrandColorPreset, resetBrandColorPreset, isBrandColorPresetKey } from "@/theme/brandPresets";
+import { applyTabIdentity, resetTabIdentity } from "@/theme/tabIdentity";
+
+interface DomainBranding {
+  businessName: string;
+  logoUrl: string | null;
+}
+
+// Fetches branding for the current request's Host header (ADR-0015) — only
+// resolves to something when this page is loaded from a tenant's own custom
+// domain; a 404 (the platform's own domain, localhost, anything unconfigured)
+// is swallowed and the page keeps its default neutral look, same convention
+// as useTenantBrandingStore.hydrate().
+function useDomainBranding() {
+  const [branding, setBranding] = useState<DomainBranding | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let logoObjectUrl: string | null = null;
+
+    async function load() {
+      try {
+        const res = await httpClient.get(API.public.branding);
+        const raw = res.data.data as { businessName: string; brandColorPreset: string; hasLogo: boolean };
+        if (cancelled) return;
+
+        let logoUrl: string | null = null;
+        if (raw.hasLogo) {
+          const fileRes = await httpClient.get(API.public.logo, { responseType: "blob" });
+          if (cancelled) return;
+          logoObjectUrl = URL.createObjectURL(fileRes.data as Blob);
+          logoUrl = logoObjectUrl;
+        }
+
+        applyBrandColorPreset(isBrandColorPresetKey(raw.brandColorPreset) ? raw.brandColorPreset : "navy");
+        applyTabIdentity(raw.businessName, logoUrl);
+        setBranding({ businessName: raw.businessName, logoUrl });
+      } catch {
+        // No custom domain match, or a transient failure — keep the default look.
+      }
+    }
+    void load();
+
+    return () => {
+      cancelled = true;
+      resetBrandColorPreset();
+      resetTabIdentity();
+      if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
+    };
+  }, []);
+
+  return branding;
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const branding = useDomainBranding();
   const [values, setValues] = useState<LoginFormValues>({ username: "", password: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof LoginFormValues, string>>>({});
   const [authError, setAuthError] = useState<string | null>(null);
@@ -80,11 +134,17 @@ export default function LoginPage() {
 
       <div className="flex w-full items-center justify-center bg-background px-6 py-12 lg:w-1/2">
         <div className="w-full max-w-md rounded-xl border border-border bg-surface p-10 shadow-sm">
-          <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800 text-white">
-            <Lock className="h-5 w-5" />
+          <div className="mb-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-slate-800 text-white">
+            {branding?.logoUrl ? (
+              <img src={branding.logoUrl} alt={branding.businessName} className="h-full w-full object-contain" />
+            ) : (
+              <Lock className="h-5 w-5" />
+            )}
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary">Selamat Datang</h2>
+          <h2 className="text-2xl font-bold text-text-primary">
+            {branding ? `Selamat Datang di ${branding.businessName}` : "Selamat Datang"}
+          </h2>
           <p className="mt-1.5 text-[13.5px] text-text-secondary">
             Masuk sebagai tim WO Console, client, atau admin platform.
           </p>

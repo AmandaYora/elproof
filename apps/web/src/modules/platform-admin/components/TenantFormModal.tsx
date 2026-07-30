@@ -31,7 +31,7 @@ function toFormState(tenant?: Tenant): FormState {
   if (!tenant) {
     return {
       businessName: "", ownerName: "", email: "", phone: "", city: "",
-      brandColorPreset: "navy", username: "", password: "", confirmPassword: "",
+      brandColorPreset: "navy", customDomain: "", username: "", password: "", confirmPassword: "",
     };
   }
   return {
@@ -41,6 +41,7 @@ function toFormState(tenant?: Tenant): FormState {
     phone: tenant.phone,
     city: tenant.city,
     brandColorPreset: (tenant.brandColorPreset as BrandColorPresetKey) || "navy",
+    customDomain: tenant.customDomain ?? "",
     username: tenant.username,
     password: "",
     confirmPassword: "",
@@ -273,6 +274,17 @@ export function TenantFormModal({
                   );
                 })}
               </div>
+            </Field>
+
+            <Field label="Domain Kustom" hint={errors.customDomain}>
+              <Input
+                value={values.customDomain}
+                onChange={(e) => set("customDomain", e.target.value)}
+                placeholder="cth. app.namabisnis.com"
+              />
+              <p className="mt-1.5 text-[12px] text-text-secondary">
+                Kosongkan jika tenant belum punya domainnya sendiri. Arahkan DNS domain ke server terlebih dahulu.
+              </p>
             </Field>
 
             <Field label="Logo" hint={logoError ?? undefined}>

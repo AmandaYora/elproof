@@ -7,13 +7,19 @@ file adds ElProof-specific conventions.
 
 ## Auth header
 
-Every endpoint except `POST /api/v1/auth/login` and `POST /api/v1/auth/refresh` requires:
+Every endpoint except `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, and the two
+`/api/v1/public/*` endpoints below requires:
 ```
 Authorization: Bearer <access_token>
 ```
 The `shared` auth middleware verifies the token and injects `principal_type`, `principal_id`,
 `tenant_id` (nullable), `role` into the request context. Tenant-scoped modules read `tenant_id`
 from context — never from a request parameter or body.
+
+`GET /api/v1/public/branding` / `GET /api/v1/public/logo` (ADR-0015) are the one deliberate
+exception to both rules above: unauthenticated, and the tenant is resolved from the request's
+`Host` header instead of a token — they exist so a tenant's own custom domain can render branding
+on the pre-login screen, where no token exists yet.
 
 ## Path conventions
 

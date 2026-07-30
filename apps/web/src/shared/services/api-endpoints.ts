@@ -45,6 +45,14 @@ export const API = {
     platformAdminToggleActive: (id: string) => `/api/v1/platform-admins/${id}/toggle-active`,
     platformAdminResetPassword: (id: string) => `/api/v1/platform-admins/${id}/reset-password`,
   },
+  // Pre-auth, Host-header-resolved tenant branding (ADR-0015) — powers
+  // LoginPage for a tenant's own custom domain. Unlike every other group
+  // above, these carry no auth and resolve the tenant from the request's
+  // Host header server-side, not from a JWT or an :id param.
+  public: {
+    branding: "/api/v1/public/branding",
+    logo: "/api/v1/public/logo",
+  },
   staff: {
     base: "/api/v1/staff",
     item: (id: string) => `/api/v1/staff/${id}`,

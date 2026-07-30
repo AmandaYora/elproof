@@ -64,6 +64,7 @@ interface RawTenant {
   lastCredentialResetAt: string | null;
   brandColorPreset: string;
   hasLogo: boolean;
+  customDomain: string | null;
 }
 
 function toTenant(raw: RawTenant): Tenant {

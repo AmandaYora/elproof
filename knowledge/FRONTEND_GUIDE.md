@@ -70,13 +70,20 @@ flight.
 
 - **Called from**: `AppLayout.tsx` (`hydrate("WO Console")`) and `ClientPortalLayout.tsx`
   (`hydrate("Portal Klien")`) on mount — never from `PlatformLayout.tsx` (superadmin's own
-  backoffice stays unbranded) or the login page (no tenant known pre-auth).
-  `reset()` is called from both places a session actually ends: `shared/lib/auth-actions.ts`'s
-  `logoutAndRedirect` and `http-client.ts`'s silent logout-on-refresh-failure.
+  backoffice stays unbranded). `reset()` is called from both places a session actually ends:
+  `shared/lib/auth-actions.ts`'s `logoutAndRedirect` and `http-client.ts`'s silent
+  logout-on-refresh-failure.
 - **`Button`'s `"neutral"` variant** (`bg-slate-800`, deliberately not tied to `--brand-navy-*`)
   exists specifically so `LoginPage` can render a primary-looking button without showing *anyone's*
   brand color, not even ElProof's own — every other `<Button>` call site still uses the default
   `primary` variant (brand-tied).
+- **`LoginPage` itself is pre-auth but not always unbranded** (ADR-0015): a local
+  `useDomainBranding()` hook (not `useTenantBrandingStore` — this is page-local, one-shot state, no
+  session to key off yet) fetches `GET /public/branding` (Host-header-resolved, not JWT) and calls
+  the *same* `applyBrandColorPreset`/`applyTabIdentity` functions above when the current domain
+  matches a tenant's `customDomain`. A 404 (any other domain, including the platform's own) is
+  swallowed and the page keeps its original neutral look — the `"neutral"` `Button` variant above
+  is untouched either way, since it was never wired to `--brand-navy-*` in the first place.
 
 ## Routing
 

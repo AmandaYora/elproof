@@ -3,8 +3,11 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/pagination"
@@ -20,18 +23,19 @@ func NewMySQLTenantRepository(db *sql.DB) *MySQLTenantRepository {
 
 const tenantColumns = `id, business_name, owner_name, username, email, phone, city, joined_at, plan_id,
 	subscription_status, subscription_expires_at, is_suspended, last_credential_reset_at,
-	brand_color_preset, logo_storage_path, created_at, updated_at`
+	brand_color_preset, logo_storage_path, custom_domain, created_at, updated_at`
 
 func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	var t domain.Tenant
 	var planID sql.NullInt64
 	var status string
 	var expiresAt, lastReset sql.NullTime
-	var logoStoragePath sql.NullString
+	var logoStoragePath, customDomain sql.NullString
 
 	err := scan(
 		&t.ID, &t.BusinessName, &t.OwnerName, &t.Username, &t.Email, &t.Phone, &t.City, &t.JoinedAt, &planID,
-		&status, &expiresAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &t.CreatedAt, &t.UpdatedAt,
+		&status, &expiresAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &customDomain,
+		&t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -52,6 +56,9 @@ func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	}
 	if logoStoragePath.Valid {
 		t.LogoStoragePath = &logoStoragePath.String
+	}
+	if customDomain.Valid {
+		t.CustomDomain = &customDomain.String
 	}
 	return &t, nil
 }
@@ -124,6 +131,14 @@ func (r *MySQLTenantRepository) FindByID(ctx context.Context, id int64) (*domain
 	return scanTenant(row.Scan)
 }
 
+// FindByDomain resolves a tenant from an incoming request's Host header — the
+// pre-auth lookup ADR-0015's public branding/logo endpoints use, distinct
+// from every other lookup in this repo (all JWT/ID-scoped).
+func (r *MySQLTenantRepository) FindByDomain(ctx context.Context, host string) (*domain.Tenant, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT `+tenantColumns+` FROM tenants WHERE custom_domain = ? LIMIT 1`, host)
+	return scanTenant(row.Scan)
+}
+
 func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenant) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status)
@@ -144,9 +159,14 @@ func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenan
 
 func (r *MySQLTenantRepository) Update(ctx context.Context, tenant *domain.Tenant) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ?, brand_color_preset = ? WHERE id = ?`,
-		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.BrandColorPreset, tenant.ID,
+		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ?, brand_color_preset = ?, custom_domain = ? WHERE id = ?`,
+		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.BrandColorPreset,
+		tenant.CustomDomain, tenant.ID,
 	)
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		return domain.ErrDuplicateCustomDomain
+	}
 	return err
 }
 

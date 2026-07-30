@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type SubscriptionStatus string
 
@@ -37,6 +40,13 @@ type Tenant struct {
 	LastCredentialResetAt *time.Time
 	BrandColorPreset      string
 	LogoStoragePath       *string
+	CustomDomain          *string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }
+
+// ErrDuplicateCustomDomain signals a unique-key collision on custom_domain —
+// the repository returns this instead of a raw driver error so the
+// application layer can translate it into a field-level validation error
+// (see ADR-0015) without knowing MySQL error codes itself.
+var ErrDuplicateCustomDomain = errors.New("domain kustom sudah digunakan tenant lain")
