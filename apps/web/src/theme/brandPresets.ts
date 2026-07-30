@@ -1,4 +1,4 @@
-// The 20 fixed brand-color presets a tenant can pick (see PLAN.md §3/§14) — no
+// The 21 fixed brand-color presets a tenant can pick (see PLAN.md §3/§14) — no
 // free-form hex is supported. Each preset supplies the same 4 shades
 // theme.css already defines for the app's default "navy" look
 // (--brand-navy-950/900/800 + --color-primary-soft), sourced from Tailwind's
@@ -66,6 +66,12 @@ export const BRAND_COLOR_PRESETS = {
   pink: { 950: "#be185d", 900: "#db2777", 800: "#ec4899", soft: "#fce7f3" },
   // yellow-800/700/600 — 900 role (#a16207) measures ~4.92:1 against white.
   yellow: { 950: "#854d0e", 900: "#a16207", 800: "#ca8a04", soft: "#fef9c3" },
+  // Requested as #B88A44/#C49A57 (hue ~36-37°, a muted bronze/antique-gold,
+  // not a Tailwind family swatch) — both measured well under the 4.5:1/3:1
+  // floors (~3.11:1 and ~2.59:1 against white) so, same treatment as
+  // mustard above, darkened within the same hue to a tone that clears them:
+  // 900 (#96692e) ~4.82:1, 800 (#ab8347) ~3.46:1.
+  bronze: { 950: "#6b4a1f", 900: "#96692e", 800: "#ab8347", soft: "#f4e4cc" },
 } as const satisfies Record<string, BrandColorShades>;
 
 export type BrandColorPresetKey = keyof typeof BRAND_COLOR_PRESETS;
@@ -93,6 +99,7 @@ export const BRAND_COLOR_PRESET_LABELS: Record<BrandColorPresetKey, string> = {
   sky: "Biru Langit",
   pink: "Merah Muda",
   yellow: "Kuning",
+  bronze: "Perunggu",
 };
 
 export const BRAND_COLOR_PRESET_KEYS = Object.keys(BRAND_COLOR_PRESETS) as BrandColorPresetKey[];
