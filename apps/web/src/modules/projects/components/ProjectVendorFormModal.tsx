@@ -134,7 +134,7 @@ export function ProjectVendorFormModal({ open, onClose, onSubmit, initialProject
         <Field label="Vendor" required hint={errors.vendorId}>
           <Select value={values.vendorId} onChange={(e) => set("vendorId", e.target.value)} disabled={Boolean(initialProjectVendor)}>
             {vendors.filter((v) => v.isActive || v.id === values.vendorId).map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
+              <option key={v.id} value={v.id}>{v.city ? `${v.name} — ${v.city}` : v.name}</option>
             ))}
           </Select>
           {selectedVendor && (

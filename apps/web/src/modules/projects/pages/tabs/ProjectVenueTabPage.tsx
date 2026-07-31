@@ -221,7 +221,7 @@ export default function ProjectVenueTabPage() {
               .filter((v) => v.isActive)
               .map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.name}
+                  {v.city ? `${v.name} — ${v.city}` : v.name}
                 </option>
               ))}
           </Select>

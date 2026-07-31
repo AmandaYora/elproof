@@ -2165,3 +2165,270 @@ existing staff-only endpoints, per §1.6.
 - Confirm Client Portal's own Venue tab is visually and functionally unchanged — `VenueSummary` was not
   touched by this plan, so no cost data is newly exposed there.
 
+# PLAN — Client Payments ("Uang Masuk dari Client")
+
+## 0. Goal
+
+Today's "Pembayaran" tab on a project tracks only money going **out** to vendors
+(`vendor_payments`). Add a second, distinct concept — money coming **in** from the client, against
+the project's own Nilai Kontrak, paid in installments (DP/Termin/Pelunasan/Tambahan/Refund) — living
+in the same tab, and switch the Client Portal's own Pembayaran tab from showing vendor-payment data
+(not very relevant to a client) to the client's own payment history (directly relevant). Explicit
+design constraint from the user: **this must land as an easy-to-use, easy-to-understand feature** —
+every design choice below is made with that in mind, not just "correct."
+
+## 1. Decisions confirmed
+
+1. **One tab, two sections** — no new tab added to Project Detail's navigation. "Uang Masuk dari
+   Client" (new) sits above "Pembayaran ke Vendor" (today's feature, relabeled from "Pembayaran
+   Vendor" for clarity, otherwise untouched).
+2. **A new, separate table** (`client_payments`), not a modification of `vendor_payments`. These are
+   opposite accounting directions (receivable vs. payable) — conflating them into one table with a
+   "direction" flag would make every future query/report need to filter by direction, for no benefit
+   over just having two tables. `client_payments` has no `project_vendor_id` at all (it belongs to
+   the project itself, not any vendor) — structurally simpler than `vendor_payments`, not a subset of it.
+3. **Reuses `domain.PaymentType`** (`DP`/`Termin`/`Pelunasan`/`Tambahan`/`Refund`) — the same five
+   tranche concepts apply directly to a client's own installment schedule, so no new enum is needed.
+4. **Evidence: one slot, not two, and attachable in the same step as recording the payment.**
+   Unlike a vendor payment (which asks for both an Invoice and a Transfer Proof — and, per §2 below,
+   has never actually been attachable at creation time in this codebase, a known standing gap), a
+   client payment only ever needs a transfer proof — there's no "invoice from the WO to itself."
+   Uses the existing polymorphic evidence mechanism (`related_kind`/`related_id`, already used
+   elsewhere) with a new `relatedKind` value, `clientPayment` — not `vendor_payments`' own two direct
+   FK columns (`invoiceEvidenceId`/`proofEvidenceId`), which is an inconsistent, harder-to-follow
+   pattern this plan doesn't repeat. Crucially, the "Tambah Pembayaran Client" form includes the file
+   picker directly — one submit both creates the payment record and attaches its proof, closing the
+   exact "always incomplete in practice" gap `vendor_payments` has today (§2) rather than reproducing it.
+5. **Client Portal's Pembayaran tab is repurposed**, not left alongside a new one: it stops showing
+   vendor-payment data (WO's own cost management, not something a client needs visibility into) and
+   shows the client's own payment history instead — how much they've paid, how much is left, exactly
+   the two questions a bride/groom actually has.
+6. **Visible to Wedding Planner** — this is day-to-day operational status ("has the client paid this
+   installment"), not a profitability figure like Margin/Keuntungan, so it follows the same access
+   Wedding Planner already has to `project_vendors.dpAmount`/`paidAmount`, not Margin's Owner/Admin-only gate.
+7. **Recommended, flagged as optional — a new "Sisa Tagihan Client" figure on `ProjectHeaderCard`**,
+   alongside the existing Nilai Kontrak/Margin fields: Nilai Kontrak − Total Diterima Client. This
+   wasn't explicitly asked for, but it's the natural next number once client payments are tracked at
+   all, and completes the financial story already started by Margin. Drop it from scope if unwanted —
+   nothing else in this plan depends on it.
+
+## 2. Current state (what exists today, that this plan must not break)
+
+- `vendor_payments` (`domain/payment.go`, `VendorPayment` struct) — tied to one `project_vendor_id`,
+  types `DP/Termin/Pelunasan/Tambahan/Refund`. `IsEvidenceComplete()` (payment.go:32-37): a `Refund`
+  needs only `ProofEvidenceID`; every other type needs both `InvoiceEvidenceID` and `ProofEvidenceID`.
+- **Standing gap, confirmed, not touched by this plan**: `PaymentService.Create`
+  (`application/payment_service.go:39`) never sets `InvoiceEvidenceID`/`ProofEvidenceID`, and no
+  endpoint exists to set them afterward either (`API_CONTRACT.md` already documents this: "always
+  incomplete in practice"). `ProjectPaymentsSection.tsx`'s displayed totals (`totalContractValue`/
+  `totalPaid`/`totalRemaining`, lines 38-40) are summed from `project_vendors.contractValue`/
+  `paidAmount` — **not** from actually summing `vendor_payments` rows, a second pre-existing quirk
+  (the ledger and the running totals are two independently-maintained numbers today). Both are
+  called out here so the new client-payment feature isn't built the same way by copy-paste habit.
+- `evidence.related_kind` is currently `ENUM('vendorMilestone','payment','projectVendor','issue')`
+  (`domain/evidence.go:24-28`) — a `'payment'` value already exists but, per the point above, is
+  never actually populated by anything (dead in practice, since `vendor_payments` uses its own direct
+  columns instead). This plan does not repurpose `'payment'` for client payments — a fresh
+  `'clientPayment'` value keeps the two concepts unambiguous or, and doesn't inherit `'payment'`'s
+  history of never actually being wired up to anything.
+- `Project.ContractValue` has no "amount collected"/"outstanding" concept anywhere today — confirmed
+  by a full-repo search (no `amountPaid`, `clientPayment`, `receivable`, `tagihan` hits before this
+  plan).
+- Client Portal's `PembayaranTabPage.tsx` today renders the **same** `payments`/`vendorEngagements`
+  data as staff's own vendor-payment view (three summary cards computed the same way, a card list
+  per `vendor_payments` row with Invoice/Bukti Transfer evidence buttons) — i.e., a client's own money
+  is nowhere in this picture at all today; only the WO's spend on vendors is shown.
+
+## 3. Design
+
+### 3.1 Database
+
+New migration `apps/api/migrations/000027_create_client_payments_table.up.sql` / `.down.sql`:
+
+```sql
+-- up
+CREATE TABLE client_payments (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  project_id BIGINT UNSIGNED NOT NULL,
+  type ENUM('DP','Termin','Pelunasan','Tambahan','Refund') NOT NULL,
+  amount BIGINT UNSIGNED NOT NULL,
+  payment_date DATE NOT NULL,
+  method VARCHAR(100) NOT NULL,
+  reference_number VARCHAR(100) NOT NULL,
+  notes TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (project_id) REFERENCES projects(id),
+  INDEX idx_client_payments_project (project_id)
+);
+
+ALTER TABLE evidence MODIFY COLUMN related_kind
+  ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment') NOT NULL;
+```
+
+Same-module FK to `projects.id` (both tables live in `projects`, so a real constraint is allowed —
+mirrors `project_milestones.project_id`). No `project_vendor_id` column at all, unlike
+`vendor_payments` — this table doesn't belong to any vendor.
+
+### 3.2 Backend — domain
+
+`apps/api/internal/modules/projects/domain/payment.go`: add (reusing the existing `PaymentType`)
+
+```go
+type ClientPayment struct {
+	ID              int64
+	ProjectID       int64
+	Type            PaymentType
+	Amount          int64
+	PaymentDate     time.Time
+	Method          string
+	ReferenceNumber string
+	Notes           string
+}
+```
+
+No `IsEvidenceComplete()` method needed on this struct — evidence-completeness for a client payment
+is a simple existence check (§3.4), not the two-field dual condition `VendorPayment` has.
+
+`apps/api/internal/modules/projects/domain/evidence.go`: add `RelatedClientPayment
+EvidenceRelatedKind = "clientPayment"` alongside the existing four values.
+
+### 3.3 Backend — repository
+
+New file `apps/api/internal/modules/projects/infrastructure/mysql_client_payment_repository.go`,
+`MySQLClientPaymentRepository` — `ListByProject`, `FindByID`, `Create`. Same shape as
+`mysql_payment_repository.go`, minus every `project_vendor_id`/evidence-ID column.
+
+### 3.4 Backend — application
+
+New file `apps/api/internal/modules/projects/application/client_payment_service.go`:
+`ClientPaymentRepository` interface, `ClientPaymentService` (`List`, `Create`), `ClientPaymentInput`
+(`Type, Amount, PaymentDate, Method, ReferenceNumber, Notes`). `Create` logs activity reusing the
+existing `domain.ActivityPaymentRecorded` type (same as vendor payments already do) with
+`entity_type: "client_payment"` and description `"Pembayaran client dicatat"` — distinguishing the
+two only by `entity_type`/description text, the same reuse pattern `ActivityMilestoneUpdated`
+already has across Project Milestones and Vendor Milestones. No new `ActivityType` value needed.
+
+Evidence-completeness (used by the response DTO, §3.5) is computed by the **presentation** layer by
+checking whether any fetched `evidence` row has `relatedKind: "clientPayment"` and `relatedId` equal
+to the payment's id — mirroring how the frontend already checks milestone evidence completeness
+elsewhere, not a new backend concept.
+
+### 3.5 Backend — presentation
+
+New file `apps/api/internal/modules/projects/presentation/client_payment_endpoints.go`:
+- `GET /projects/{id}/client-payments` — list, response `{id, type, amount, paymentDate, method,
+  referenceNumber, notes}` (no vendor field — there is none).
+- `POST /projects/{id}/client-payments` — body `{type, amount, paymentDate, method,
+  referenceNumber, notes}`. Same `resolveProjectAccess` gate every other `/projects/{id}/...`
+  sub-resource already goes through (Wedding Planner PIC-scoped, any staff role can create — matches
+  `vendor_payments`' own unrestricted-by-role create today, §1.6).
+
+Routed in `handler.go`'s existing big `Item` switch, alongside the `payments` cases (`rest[0] ==
+"client-payments"`), not a new dispatcher — same file, same pattern, immediately next to the
+existing `payments` routes for discoverability.
+
+### 3.6 Frontend — data layer
+
+- `apps/web/src/modules/projects/types.ts`: add `ClientPayment { id, type, amount, paymentDate,
+  method, referenceNumber, notes }`.
+- `apps/web/src/modules/projects/schemas/client-payment.schema.ts` (new, simpler than
+  `payment.schema.ts` — no `projectVendorId` field): `{ type, amount, paymentDate, method,
+  referenceNumber, notes, proofFile? }` — `proofFile` is a plain in-memory `File`/undefined, validated
+  only client-side (optional), never sent as part of the JSON body itself (see below).
+- `apps/web/src/modules/projects/stores/useProjectStore.ts`: add `clientPayments: ClientPayment[]`
+  state, `fetchClientPayments(projectId)`, and `createClientPayment(projectId, values)` — the latter
+  does the two-call orchestration behind one action (§1.4): `POST .../client-payments` first, then
+  (only if `values.proofFile` is set) `compressFileForUpload` + `POST .../evidence` with
+  `relatedKind: "clientPayment"`, `relatedId: <new payment id>` — mirroring the exact
+  compress-then-upload two-step already used by `VendorMilestoneEditModal`'s own evidence flow, just
+  triggered automatically from one store action instead of a second manual "Tambah Evidence" click.
+- `apps/web/src/shared/services/api-endpoints.ts`: add `clientPayments: (id) =>
+  \`/api/v1/projects/${id}/client-payments\`` under `API.projects`.
+
+### 3.7 Frontend — "Uang Masuk dari Client" (new component)
+
+New file `apps/web/src/modules/projects/components/detail/ClientPaymentsSection.tsx` — same visual
+language as `ProjectPaymentsSection.tsx` (Card, summary stats row, Table/CardList + Pagination,
+"Tambah" button + Modal), deliberately **simpler**, per the "mudah digunakan" goal:
+- 3 summary stats: **Nilai Kontrak** (`project.contractValue`), **Total Diterima** (sum of
+  non-Cancelled — n/a here, all rows count — client payments, `Refund` subtracted rather than
+  added), **Sisa Tagihan** (Nilai Kontrak − Total Diterima).
+- Table/CardList columns: Jenis, Nominal, Tanggal, Metode, No. Referensi, Bukti (single badge: Ada/
+  Belum Ada — not the two-part "Lengkap/Belum Lengkap" vendor payments show, since there's only one
+  evidence slot to begin with, nothing to be "partially" complete about).
+- "Tambah Pembayaran Client" modal: **one fewer field than the vendor version** (no Vendor picker —
+  nothing to pick), plus one new optional field, **Bukti Transfer** (a plain file input, same
+  accept-list convention as every other attachment in this app — image/pdf), submitted together with
+  the rest in one "Simpan" click.
+- No "Kelengkapan Evidence" ambiguity to explain to a user: the badge is binary (uploaded or not),
+  matching whether the optional field was filled in, not a derived multi-field rule.
+
+`apps/web/src/modules/projects/pages/tabs/ProjectPaymentsTabPage.tsx` renders **both** sections
+stacked, `ClientPaymentsSection` first: this is the order the tab's own subtitle/mental model should
+follow ("money in, then money out"), and matches where the equivalent info now sits on
+`ProjectHeaderCard` (Nilai Kontrak → Sisa Tagihan → Margin, left to right, §3.9).
+
+`ProjectPaymentsSection.tsx` itself: only its `CardHeader`'s `title` changes, `"Pembayaran Vendor"` →
+`"Pembayaran ke Vendor"` — everything else (fields, totals, evidence-complete logic) stays exactly
+as it is today; this plan does not touch the vendor-payment gap noted in §2, since fixing that
+wasn't asked for and would be unrelated scope creep on top of an already-large plan.
+
+### 3.8 Frontend — Client Portal (repurposed)
+
+`apps/web/src/modules/client-portal/pages/tabs/PembayaranTabPage.tsx` is rewritten, not extended:
+fetches `clientPayments` instead of `payments`/`vendorEngagements`, keeps the exact same three-card
+visual layout (Total Nilai Kerja Sama → **Nilai Kontrak**, Total Sudah Dibayar → **Total Diterima**,
+Sisa Pembayaran → **Sisa Tagihan** — same colors/emphasis, new source numbers) and the same
+per-payment card list styling, but each card now shows a single "Bukti Transfer" button (if
+attached) instead of the Invoice/Bukti Transfer pair, and drops the vendor-name line entirely (a
+client payment has no vendor). The intro copy ("Halaman ini menampilkan setiap pembayaran... kepada
+vendor...") is rewritten to describe the client's own payment history instead.
+
+### 3.9 Frontend — optional "Sisa Tagihan Client" on `ProjectHeaderCard` (§1.7)
+
+`apps/web/src/modules/projects/components/detail/ProjectHeaderCard.tsx`: fetch `clientPayments` the
+same way `vendorEngagements` already is (existing mount effect), compute `totalReceived = sum(type
+!= 'Refund') - sum(type == 'Refund')`, `outstanding = project.contractValue - totalReceived`, and
+add `<InfoField label="Sisa Tagihan Client" value={formatCurrency(outstanding)} />` immediately after
+the existing "Nilai Kontrak" field and before "Margin/Keuntungan" — reading left to right as: what
+was agreed → what's still owed → what's left after costs. Visible to every role that already sees
+Nilai Kontrak (including Wedding Planner, §1.6) — not gated behind `canSeeMargin`.
+
+## 4. Order of implementation
+
+1. Migration (`client_payments` table + `evidence.related_kind` ENUM extension) + domain additions.
+2. Repository + application service (`ClientPaymentService`).
+3. Presentation (new endpoints, wired into the existing `Item` routing switch).
+4. Backend verification: `go build ./...`, `go vet ./...`; apply migration locally.
+5. Frontend data layer (`types.ts`, schema, store actions, `api-endpoints.ts`).
+6. `ClientPaymentsSection.tsx` (new) + `ProjectPaymentsTabPage.tsx` (stack both sections) +
+   `ProjectPaymentsSection.tsx`'s title-only rename.
+7. Client Portal's `PembayaranTabPage.tsx` rewrite.
+8. `ProjectHeaderCard.tsx`'s "Sisa Tagihan Client" addition (§3.9) — confirm with the user first if
+   they'd rather skip it, per §1.7's "optional" framing.
+9. Frontend verification: `npx tsc --noEmit -p apps/web/tsconfig.json`, `npm run build -w apps/web`.
+10. Manual pass (§5).
+
+## 5. Verification
+
+- `go build ./...` / `go vet ./...`; apply migration locally, confirm `client_payments` exists and
+  `evidence.related_kind` accepts `'clientPayment'`.
+- `npx tsc --noEmit -p apps/web/tsconfig.json` and `npm run build -w apps/web`.
+- Record a client payment with a proof file attached in one submit — confirm both the payment row
+  and its evidence row exist afterward, linked correctly (`relatedKind: "clientPayment"`), and the
+  Bukti badge shows "Ada" immediately without a page refresh.
+- Record one without a file — confirm it saves fine and shows "Belum Ada," recoverable later only by
+  the general `ProjectEvidenceSection` (no dedicated "attach evidence after the fact" flow for client
+  payments either, matching the same scope boundary vendor payments already have, §2).
+- Confirm the two Payments-tab sections are visually distinct and independently paginated/scoped —
+  adding a client payment must not affect the vendor-payment table below it, and vice versa.
+- Confirm a `Refund`-type client payment reduces (not increases) "Total Diterima"/"Sisa Tagihan" —
+  hand-compute against 3-4 mixed-type rows.
+- Log in as Wedding Planner on their own PIC'd project: confirm "Uang Masuk dari Client" is visible
+  (unlike Margin/Keuntungan, which stays hidden).
+- Client Portal: confirm the Pembayaran tab now shows the client's own payment history (no vendor
+  names, no vendor-payment data at all), same visual polish as before.
+- Confirm `ProjectPaymentsSection.tsx`'s (vendor) behavior is byte-for-byte unchanged apart from its
+  title string — same fields, same totals, same known evidence-completeness gap from §2 (deliberately
+  not fixed here).
+

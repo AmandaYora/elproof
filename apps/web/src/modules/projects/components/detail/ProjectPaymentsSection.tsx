@@ -194,7 +194,7 @@ function AddPaymentModal({
   onClose: () => void;
   onSubmit: (values: PaymentFormValues) => void;
   vendorEngagements: ProjectVendor[];
-  vendors: { id: string; name: string }[];
+  vendors: { id: string; name: string; city: string | null }[];
 }) {
   const defaultVendorId = vendorEngagements[0]?.id ?? "";
   const [values, setValues] = useState<PaymentFormValues>(() => toFormValues(defaultVendorId));
@@ -235,11 +235,13 @@ function AddPaymentModal({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Vendor" required hint={errors.projectVendorId}>
           <Select value={values.projectVendorId} onChange={(e) => set("projectVendorId", e.target.value)}>
-            {vendorEngagements.map((pv) => (
-              <option key={pv.id} value={pv.id}>
-                {vendors.find((v) => v.id === pv.vendorId)?.name ?? "Vendor tidak diketahui"}
-              </option>
-            ))}
+            {vendorEngagements.map((pv) => {
+              const vendor = vendors.find((v) => v.id === pv.vendorId);
+              const label = vendor ? (vendor.city ? `${vendor.name} — ${vendor.city}` : vendor.name) : "Vendor tidak diketahui";
+              return (
+                <option key={pv.id} value={pv.id}>{label}</option>
+              );
+            })}
           </Select>
         </Field>
         <Field label="Jenis Pembayaran" required>
