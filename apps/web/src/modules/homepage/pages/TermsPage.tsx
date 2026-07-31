@@ -8,7 +8,7 @@ const SECTIONS = [
     id: "definisi",
     title: "1. Definisi",
     body: [
-      `"ElProof" adalah platform perangkat lunak berbasis langganan (Software as a Service) yang membantu wedding organizer ("WO") mendokumentasikan persiapan project pernikahan — termasuk vendor, milestone, pembayaran, dan kendala — serta membagikan sebagian informasi tersebut kepada pasangan client terkait.`,
+      `"ElProof" adalah platform perangkat lunak berbasis langganan (Software as a Service) yang membantu wedding organizer ("WO") mendokumentasikan persiapan project pernikahan — termasuk vendor, timeline, pembayaran, dan kendala — serta membagikan sebagian informasi tersebut kepada pasangan client terkait.`,
       `"Tenant" adalah satu akun bisnis WO yang berlangganan ElProof. "Staff" adalah pengguna yang bekerja di bawah satu Tenant (Owner, Admin, atau Staff). "Client" adalah pasangan yang project pernikahannya dikelola oleh Tenant tersebut, dan diberi akses baca terbatas melalui Client Portal.`,
     ],
   },
@@ -16,7 +16,7 @@ const SECTIONS = [
     id: "ruang-lingkup",
     title: "2. Ruang Lingkup Layanan",
     body: [
-      `ElProof menyediakan pencatatan project, manajemen vendor dan kategori vendor, pelacakan milestone dan pembayaran, log aktivitas, serta portal khusus bagi Client untuk memantau progress project mereka sendiri secara read-only.`,
+      `ElProof menyediakan pencatatan project, manajemen vendor dan kategori vendor, pelacakan timeline dan pembayaran, log aktivitas, serta portal khusus bagi Client untuk memantau progress project mereka sendiri secara read-only.`,
       `ElProof tidak menjadi pihak dalam perjanjian antara Tenant dan vendor atau Client-nya. Seluruh kesepakatan bisnis, kontrak kerja, dan transaksi antara Tenant dengan pihak ketiga sepenuhnya menjadi tanggung jawab Tenant.`,
     ],
   },
@@ -43,7 +43,7 @@ const SECTIONS = [
     title: "5. Data dan Kerahasiaan",
     body: [
       `Data project, vendor, dan dokumen bukti yang diunggah Tenant adalah milik Tenant tersebut. ElProof menyimpan data ini selama langganan aktif untuk keperluan operasional layanan.`,
-      `Informasi yang ditampilkan kepada Client di Client Portal terbatas pada data project miliknya sendiri — status milestone, ringkasan pembayaran, dan kendala yang relevan — dan tidak mencakup data internal lain milik Tenant.`,
+      `Informasi yang ditampilkan kepada Client di Client Portal terbatas pada data project miliknya sendiri — status timeline, ringkasan pembayaran, dan kendala yang relevan — dan tidak mencakup data internal lain milik Tenant.`,
       `ElProof menerapkan pemisahan akses berbasis peran (Staff, Client, admin platform) untuk memastikan setiap pihak hanya melihat data yang menjadi haknya.`,
     ],
   },

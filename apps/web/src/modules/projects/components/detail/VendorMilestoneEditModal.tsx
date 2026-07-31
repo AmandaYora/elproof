@@ -59,8 +59,8 @@ export function VendorMilestoneEditModal({
   onSave,
   onAddEvidence,
 }: VendorMilestoneEditModalProps) {
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const [fields, setFields] = useState<MilestoneEditFields>({
     status: milestone.status,
     targetDate: milestone.targetDate,
@@ -114,7 +114,7 @@ export function VendorMilestoneEditModal({
       open={open}
       onClose={onClose}
       title={milestone.name}
-      description={`${vendorName} · Milestone ${milestone.order} dari ${totalMilestones}`}
+      description={`${vendorName} · Timeline ${milestone.order} dari ${totalMilestones}`}
       size="lg"
       footer={
         <>
@@ -157,7 +157,7 @@ export function VendorMilestoneEditModal({
               <Textarea rows={2} value={fields.description} onChange={(e) => set("description", e.target.value)} />
             </Field>
             <Field label="Catatan">
-              <Textarea rows={2} value={fields.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Tambahkan catatan perkembangan milestone ini..." />
+              <Textarea rows={2} value={fields.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Tambahkan catatan perkembangan timeline ini..." />
             </Field>
           </div>
         </section>
@@ -210,7 +210,7 @@ export function VendorMilestoneEditModal({
 
           {evidenceList.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-3 text-[13px] text-text-secondary">
-              Belum ada evidence untuk milestone ini.
+              Belum ada evidence untuk timeline ini.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -229,7 +229,7 @@ export function VendorMilestoneEditModal({
         <section>
           <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Riwayat Perubahan</p>
           {historyEntries.length === 0 ? (
-            <EmptyState title="Belum ada riwayat" description="Perubahan pada milestone ini akan tercatat di sini." />
+            <EmptyState title="Belum ada riwayat" description="Perubahan pada timeline ini akan tercatat di sini." />
           ) : (
             <ul className="flex flex-col">
               {historyEntries.map((h, idx) => (

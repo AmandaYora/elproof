@@ -6,7 +6,7 @@ import { formatDateTime } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 export function RecentActivity({ activity }: { activity: ActivityLogEntry[] }) {
-  const staff = useStaffStore((s) => s.staff);
+  const staff = useStaffStore((s) => s.staffSummaries);
 
   return (
     <Card>

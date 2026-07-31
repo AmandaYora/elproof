@@ -28,6 +28,7 @@ type vendorEngagementInputBody struct {
 	CategoryID       int64  `json:"categoryId"`
 	Scope            string `json:"scope"`
 	ContractValue    int64  `json:"contractValue"`
+	PricingTier      string `json:"pricingTier"`
 	EngagementStatus string `json:"engagementStatus"`
 	BookingDate      string `json:"bookingDate"`
 	EventDate        string `json:"eventDate"`
@@ -47,6 +48,7 @@ func toVendorEngagementInput(body vendorEngagementInputBody) (application.Vendor
 	dueDate := parseOptionalDate(body.DueDate)
 	return application.VendorEngagementInput{
 		VendorID: body.VendorID, CategoryID: body.CategoryID, Scope: body.Scope, ContractValue: body.ContractValue,
+		PricingTier:      domain.VendorPricingTier(body.PricingTier),
 		EngagementStatus: domain.EngagementStatus(body.EngagementStatus), BookingDate: bookingDate, EventDate: eventDate,
 		DPAmount: body.DPAmount, PaidAmount: body.PaidAmount, DueDate: dueDate, PICStaffID: body.PICStaffID, Notes: body.Notes,
 	}, nil
@@ -170,7 +172,7 @@ func (h *Handler) createVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Milestone vendor berhasil ditambahkan", toVendorMilestoneResponse(*m))
+	response.Created(w, "Timeline vendor berhasil ditambahkan", toVendorMilestoneResponse(*m))
 }
 
 type vendorMilestoneUpdateBody struct {
@@ -190,7 +192,7 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 	}
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ID milestone tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
 		return
 	}
 	var body vendorMilestoneUpdateBody
@@ -211,5 +213,5 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Milestone vendor berhasil diperbarui", toVendorMilestoneResponse(*m))
+	response.OK(w, "Timeline vendor berhasil diperbarui", toVendorMilestoneResponse(*m))
 }

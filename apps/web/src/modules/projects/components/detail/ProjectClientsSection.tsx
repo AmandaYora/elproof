@@ -6,6 +6,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { useClientStore } from "@/modules/clients/stores/useClientStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import {
   clientContactSchema,
   clientCreateSchema,
@@ -39,6 +40,11 @@ interface ModalTarget {
 const EMPTY_CLIENTS: Client[] = [];
 
 export function ProjectClientsSection({ projectId }: { projectId: string }) {
+  // Wedding Planner reads client data for their own project fine (backend
+  // already scopes it), but every write action here is Owner/Admin only
+  // (see PLAN.md's RBAC section) — hide the buttons for that role instead of
+  // letting them click through to a 403.
+  const canManage = useAuthStore((s) => s.session?.role) !== "Staff";
   const clients = useClientStore((s) => s.clientsByProject[projectId] ?? EMPTY_CLIENTS);
   const fetchClients = useClientStore((s) => s.fetchClients);
   const createClient = useClientStore((s) => s.createClient);
@@ -142,9 +148,11 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                   className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-border px-4 py-3 text-[13px] text-text-secondary"
                 >
                   <span>Belum ada data {ROLE_LABEL[role]}.</span>
-                  <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setCreateRole(role)}>
-                    Tambah {ROLE_LABEL[role]}
-                  </Button>
+                  {canManage && (
+                    <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setCreateRole(role)}>
+                      Tambah {ROLE_LABEL[role]}
+                    </Button>
+                  )}
                 </div>
               );
             }
@@ -172,49 +180,51 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                   </span>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={<Pencil className="h-3.5 w-3.5" />}
-                    onClick={() => setModalTarget({ clientId: client.id, mode: "contact" })}
-                  >
-                    Ubah Kontak
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={<RefreshCw className="h-3.5 w-3.5" />}
-                    onClick={() => setModalTarget({ clientId: client.id, mode: "reset" })}
-                  >
-                    Reset Credential
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={client.isActive ? "danger" : "secondary"}
-                    onClick={() => void handleToggleActive(client.id)}
-                  >
-                    {client.isActive ? "Nonaktifkan" : "Aktifkan"}
-                  </Button>
-                  {role === "Family Representative" && (
+                {canManage && (
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="secondary"
-                      icon={<UserCog className="h-3.5 w-3.5" />}
-                      onClick={() => setModalTarget({ clientId: client.id, mode: "replace" })}
+                      icon={<Pencil className="h-3.5 w-3.5" />}
+                      onClick={() => setModalTarget({ clientId: client.id, mode: "contact" })}
                     >
-                      Ganti Wedding Representative
+                      Ubah Kontak
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={<Trash2 className="h-3.5 w-3.5" />}
-                    onClick={() => setDeletingClientId(client.id)}
-                  >
-                    Hapus Client
-                  </Button>
-                </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<RefreshCw className="h-3.5 w-3.5" />}
+                      onClick={() => setModalTarget({ clientId: client.id, mode: "reset" })}
+                    >
+                      Reset Credential
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={client.isActive ? "danger" : "secondary"}
+                      onClick={() => void handleToggleActive(client.id)}
+                    >
+                      {client.isActive ? "Nonaktifkan" : "Aktifkan"}
+                    </Button>
+                    {role === "Family Representative" && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<UserCog className="h-3.5 w-3.5" />}
+                        onClick={() => setModalTarget({ clientId: client.id, mode: "replace" })}
+                      >
+                        Ganti Wedding Representative
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon={<Trash2 className="h-3.5 w-3.5" />}
+                      onClick={() => setDeletingClientId(client.id)}
+                    >
+                      Hapus Client
+                    </Button>
+                  </div>
+                )}
 
                 {deletingClientId === client.id && (
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">

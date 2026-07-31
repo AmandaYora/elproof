@@ -25,6 +25,19 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// HasRole reports whether Role matches one of the given values — a plain
+// string-comparison utility (same tier as RequireAuth itself, not domain
+// logic), so every module's own auth helper can call this instead of
+// re-implementing the comparison inline.
+func (c *Claims) HasRole(roles ...string) bool {
+	for _, r := range roles {
+		if c.Role == r {
+			return true
+		}
+	}
+	return false
+}
+
 // TenantIDInt parses the string tenant_id claim to int64 — every
 // tenant-scoped module (staff, clients, vendors, projects) needs this to
 // scope its own queries; platform_admin principals have no tenant_id, so ok

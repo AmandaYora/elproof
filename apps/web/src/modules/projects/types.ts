@@ -19,6 +19,24 @@ export type EngagementStatus =
 
 export type IssueImpact = "Low" | "Medium" | "High" | "Critical";
 
+// Public-safe subset backing GET /projects/{id}/venue (ADR-0016) — shared by
+// the WO Console's own summary card and Client Portal's Venue tab. Never
+// carries rental price/charge/PIC contact (staff-only, fetched directly from
+// the venues module instead — see ProjectVenueTabPage.tsx). facilities/
+// socialMedia are free text now, not arrays/structured lists; there's no
+// more photo gallery, just hasVisibleAttachment (true only when an
+// attachment exists and it's an image — see ADR-0016's Revisi).
+export interface ProjectVenueSummary {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  capacity: number | null;
+  facilities: string | null;
+  socialMedia: string | null;
+  hasVisibleAttachment: boolean;
+}
+
 export type IssueStatus = "Open" | "In Review" | "In Resolution" | "Resolved" | "Closed";
 
 export type PaymentType = "DP" | "Termin" | "Pelunasan" | "Tambahan" | "Refund";
@@ -69,6 +87,10 @@ export interface Project {
   groomName: string;
   eventDate: string;
   venue: string;
+  // Cross-module reference into the vendors module's Venue directory
+  // (ADR-0016) — null means no structured venue attached yet; `venue`
+  // (free text) stays the fallback display in that case.
+  venueId: string | null;
   prepStartDate: string;
   packageName: string;
   contractValue: number;
@@ -88,12 +110,15 @@ export interface ProjectMilestone {
   completedDate: string | null;
 }
 
+export type VendorPricingTier = "Akad" | "AkadResepsi";
+
 export interface ProjectVendor {
   id: string;
   vendorId: string;
   categoryId: string;
   scope: string;
   contractValue: number;
+  pricingTier: VendorPricingTier;
   engagementStatus: EngagementStatus;
   bookingDate: string | null;
   eventDate: string;

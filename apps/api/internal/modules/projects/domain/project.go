@@ -16,22 +16,27 @@ const (
 )
 
 type Project struct {
-	ID             int64
-	TenantID       int64
-	Name           string
-	BrideName      string
-	GroomName      string
-	EventDate      time.Time
-	Venue          string
-	PrepStartDate  time.Time
-	PackageName    string
-	ContractValue  int64
-	Status         ProjectStatus
-	PICStaffID     int64
-	Description    string
-	IsArchived     bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID        int64
+	TenantID  int64
+	Name      string
+	BrideName string
+	GroomName string
+	EventDate time.Time
+	Venue     string
+	// VenueID is a cross-module primitive reference into vendors' Venue
+	// directory (ADR-0016) -- resolved via a module contract, never a SQL
+	// foreign key. nil means no structured venue is attached yet; Venue
+	// (the free-text field above) stays as the fallback display in that case.
+	VenueID       *int64
+	PrepStartDate time.Time
+	PackageName   string
+	ContractValue int64
+	Status        ProjectStatus
+	PICStaffID    int64
+	Description   string
+	IsArchived    bool
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type MilestoneStatus string

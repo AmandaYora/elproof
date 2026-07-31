@@ -9,7 +9,7 @@ const PARTIES = [
   {
     icon: ClipboardList,
     title: "Tim WO Console",
-    body: "Mencatat setiap project, vendor, milestone, dan pembayaran di satu tempat, alih-alih tercecer di grup chat.",
+    body: "Mencatat setiap project, vendor, timeline, dan pembayaran di satu tempat, alih-alih tercecer di grup chat.",
     color: "bg-blue-50 text-blue-600",
   },
   {

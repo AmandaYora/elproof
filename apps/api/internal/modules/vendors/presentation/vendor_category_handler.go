@@ -51,6 +51,23 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return tenantID, true
 }
 
+// requireOwnerRole is the extra gate every Kategori Vendor **write** action
+// needs on top of requireTenant. Unlike Vendor/Venue (whose write actions are
+// Owner+Admin), managing categories stays inside "Pengaturan" and is Owner
+// only — but *reading* the list is NOT restricted the same way: the Vendor
+// create/edit form's category dropdown (Owner/Admin) and every project's
+// Vendor tab (any role, to display a vendor's category name) both need it —
+// nothing about those two read paths is a "Pengaturan" management action, so
+// Collection's GET below deliberately stays on plain requireTenant.
+func requireOwnerRole(w http.ResponseWriter, r *http.Request) bool {
+	claims, _ := middleware.FromContext(r.Context())
+	if !claims.HasRole("Owner") {
+		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat mengelola kategori vendor", nil)
+		return false
+	}
+	return true
+}
+
 func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
 	if !ok {
@@ -71,6 +88,9 @@ func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Reques
 			response.OK(w, "ok", result)
 			return
 		}
+		if !requireOwnerRole(w, r) {
+			return
+		}
 		params := pagination.FromRequest(r)
 		search := r.URL.Query().Get("search")
 		categories, total, err := h.categories.ListPaginated(r.Context(), tenantID, params, search)
@@ -84,6 +104,9 @@ func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Reques
 		}
 		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 	case http.MethodPost:
+		if !requireOwnerRole(w, r) {
+			return
+		}
 		h.create(w, r, tenantID)
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
@@ -112,6 +135,9 @@ func (h *VendorCategoryHandler) create(w http.ResponseWriter, r *http.Request, t
 func (h *VendorCategoryHandler) Item(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
 	if !ok {
+		return
+	}
+	if !requireOwnerRole(w, r) {
 		return
 	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/vendor-categories/")

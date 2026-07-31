@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import type { StaffMember } from "@/modules/users/types";
+import type { StaffMember, StaffSummary } from "@/modules/users/types";
 import type { UserFormValues, UserCreateFormValues } from "@/modules/users/schemas/user.schema";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 
@@ -21,6 +21,16 @@ function toStaffMember(raw: RawStaffMember): StaffMember {
   return { ...raw, id: String(raw.id) };
 }
 
+interface RawStaffSummary {
+  id: number;
+  name: string;
+  title: string;
+}
+
+function toStaffSummary(raw: RawStaffSummary): StaffSummary {
+  return { id: String(raw.id), name: raw.name, title: raw.title };
+}
+
 export interface CreateStaffResult {
   staff: StaffMember;
   username: string;
@@ -31,24 +41,35 @@ interface StaffState {
   staff: StaffMember[];
   staffPage: StaffMember[];
   staffPageMeta: PaginationMeta;
+  staffSummaries: StaffSummary[];
   fetchStaff: () => Promise<void>;
   fetchStaffPage: (page: number, search: string, role: string) => Promise<void>;
+  // Public-safe {id, name, title} list (any staff role) — what every PIC
+  // picker/label across the `projects` module should use; `staff` above is
+  // Owner-only now (Pengguna management, see staff_handler.go's
+  // requireOwnerTenant).
+  fetchStaffSummaries: () => Promise<void>;
   createStaff: (values: UserCreateFormValues) => Promise<CreateStaffResult>;
   updateStaff: (id: string, values: UserFormValues) => Promise<void>;
   toggleStaffActive: (id: string) => Promise<void>;
 }
 
 // Backed by the real `staff` module (Fase 3) — tenant-scoped, fetch-then-set
-// (ADR-0009). Also the single source of truth for PIC pickers elsewhere
-// (e.g. `projects`' ProjectFormModal).
+// (ADR-0009).
 export const useStaffStore = create<StaffState>((set, get) => ({
   staff: [],
   staffPage: [],
   staffPageMeta: EMPTY_PAGINATION_META,
+  staffSummaries: [],
 
   fetchStaff: async () => {
     const res = await httpClient.get(API.staff.base, { params: { all: true } });
     set({ staff: (res.data.data as RawStaffMember[]).map(toStaffMember) });
+  },
+
+  fetchStaffSummaries: async () => {
+    const res = await httpClient.get(API.staff.summary);
+    set({ staffSummaries: (res.data.data as RawStaffSummary[]).map(toStaffSummary) });
   },
 
   // Backs UserListPage's table — real server-side pagination + search/role

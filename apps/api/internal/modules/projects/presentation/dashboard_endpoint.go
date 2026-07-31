@@ -137,9 +137,18 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 	return resp
 }
 
+// Dashboard is Owner/Admin only (confirmed role rule) — it aggregates stats
+// across every project/vendor/issue in the whole tenant, which a Wedding
+// Planner (scoped to only their own PIC'd projects everywhere else in this
+// module) must never see in bulk, even though requireStaff alone would let
+// any staff role through.
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	claims, ok := requireStaff(w, r)
 	if !ok {
+		return
+	}
+	if claims.role == "Staff" {
+		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat mengakses dashboard", nil)
 		return
 	}
 	if r.Method != http.MethodGet {

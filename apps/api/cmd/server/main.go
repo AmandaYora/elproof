@@ -162,12 +162,22 @@ func serve(cfg config.Config) {
 	// vendor's cross-project engagement history through projects.Contracts()
 	// (project_vendors is owned by projects, not vendors).
 	projectsModule := projects.NewModule(db, storageClient)
-	vendorsModule := vendors.NewModule(db, projectsModule.Contracts())
+	// Two-phase wiring: platform needs projects' contract (seed a newly
+	// registered tenant's Timeline Default template, PLAN.md) but
+	// platformModule is built above, before projectsModule exists — same
+	// bridging pattern as SetVendors below.
+	platformModule.SetProjects(projectsModule.Contracts())
+	vendorsModule := vendors.NewModule(db, projectsModule.Contracts(), storageClient)
 	// Two-phase wiring: platform needs vendors' contract (seed default vendor
 	// categories on tenant registration) but platformModule is built above,
 	// before vendorsModule exists — same bridging pattern as the
 	// SetClientAccessResolver call below.
 	platformModule.SetVendors(vendorsModule.Contracts())
+	// Same bridge, the new reciprocal direction (ADR-0016): projects needs to
+	// resolve a project's attached venue_id into venue details for its own
+	// Project Detail tab and Client Portal's Venue tab, but projectsModule is
+	// built above, before vendorsModule exists.
+	projectsModule.SetVenueResolver(vendorsModule.Contracts())
 	clientsModule := clients.NewModule(db, projectsModule.Contracts(), identityModule.Contracts())
 	// Two-phase wiring: projects needs clients' contract (Fase 6 client-portal
 	// scoping) but clients.NewModule already needs projects.Contracts() to

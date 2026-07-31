@@ -10,9 +10,15 @@ import { ProjectCard } from "@/modules/projects/components/ProjectCard";
 import { PROJECT_STATUS_OPTIONS } from "@/modules/projects/schemas/project.schema";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 
 export default function ProjectListPage() {
+  // Wedding Planner ("Staff" role) never creates a project — only Owner/Admin
+  // do, then assign it to a planner (see PLAN.md's RBAC section). The
+  // backend already rejects POST /projects for this role; hiding the button
+  // too avoids a confusing 403 after filling out the whole form.
+  const canCreate = useAuthStore((s) => s.session?.role) !== "Staff";
   const projects = useProjectStore((s) => s.projectPage);
   const meta = useProjectStore((s) => s.projectPageMeta);
   const fetchProjectPage = useProjectStore((s) => s.fetchProjectPage);
@@ -51,9 +57,11 @@ export default function ProjectListPage() {
           <h1 className="text-xl font-bold text-text-primary">Project</h1>
           <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh project pernikahan yang sedang dan pernah ditangani.</p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={() => setModalOpen(true)}>
-          Tambah Project
-        </Button>
+        {canCreate && (
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setModalOpen(true)}>
+            Tambah Project
+          </Button>
+        )}
       </div>
 
       {actionError && (

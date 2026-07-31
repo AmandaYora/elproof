@@ -40,8 +40,8 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
     items.push({
       id: `vm-${m.id}`,
       tone: "warning",
-      category: "Milestone Terlambat",
-      title: `Milestone "${m.name}" terlambat`,
+      category: "Timeline Terlambat",
+      title: `Timeline "${m.name}" terlambat`,
       description: `${m.projectName} — ${vendorName(m.vendorId)} · target ${formatDate(m.targetDate)}`,
       to: ROUTE_PATHS.projectDetail(m.projectId, "vendor"),
     });
@@ -76,7 +76,7 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
       tone: "warning",
       category: "Progress Tertinggal",
       title: "Progress persiapan tertinggal dari rencana",
-      description: `${row.project.name} · ${row.overallPercent}% milestone selesai, H-${daysUntil(row.project.eventDate)}`,
+      description: `${row.project.name} · ${row.overallPercent}% timeline selesai, H-${daysUntil(row.project.eventDate)}`,
       to: ROUTE_PATHS.projectDetail(row.project.id),
     });
   }

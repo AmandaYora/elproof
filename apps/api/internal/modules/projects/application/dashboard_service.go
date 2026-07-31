@@ -32,7 +32,7 @@ func NewDashboardService(projects *ProjectService, repo DashboardRepository) *Da
 const trendMonthsBack = 12
 
 func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Time) (*domain.DashboardStats, error) {
-	allProjects, err := s.projects.List(ctx, tenantID)
+	allProjects, err := s.projects.List(ctx, tenantID, nil)
 	if err != nil {
 		return nil, err
 	}

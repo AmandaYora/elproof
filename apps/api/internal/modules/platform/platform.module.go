@@ -14,6 +14,7 @@ import (
 	"elproof/internal/modules/platform/application"
 	"elproof/internal/modules/platform/infrastructure"
 	"elproof/internal/modules/platform/presentation"
+	projectscontracts "elproof/internal/modules/projects/contracts"
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/httpx"
@@ -55,6 +56,13 @@ func NewModule(
 // built, the same slot as projectsModule.SetClientAccessResolver.
 func (m *Module) SetVendors(vendors vendorscontracts.Contracts) {
 	m.tenantService.SetVendors(vendors)
+}
+
+// SetProjects completes the same two-phase wiring as SetVendors above — see
+// TenantService.SetProjects. main.go calls this right after projectsModule
+// is built.
+func (m *Module) SetProjects(projects projectscontracts.Contracts) {
+	m.tenantService.SetProjects(projects)
 }
 
 // ApplyWebhookEvent makes *Module itself satisfy

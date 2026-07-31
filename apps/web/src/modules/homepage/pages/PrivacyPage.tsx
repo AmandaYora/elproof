@@ -11,7 +11,7 @@ const SECTIONS = [
     title: "1. Data yang Kami Kumpulkan",
     body: [
       `Data akun: nama, email, dan nomor telepon Staff (Owner, Admin, Staff) serta kredensial akses Client yang dibuatkan oleh Tenant terkait.`,
-      `Data operasional yang diinput Tenant: project pernikahan, vendor, milestone, status pembayaran, kendala, serta dokumen atau foto bukti kerja yang diunggah sebagai lampiran project.`,
+      `Data operasional yang diinput Tenant: project pernikahan, vendor, timeline, status pembayaran, kendala, serta dokumen atau foto bukti kerja yang diunggah sebagai lampiran project.`,
       `Data langganan: riwayat status dan periode aktif paket langganan Tenant. ElProof tidak menyimpan data kartu atau rekening pembayaran — proses tersebut sepenuhnya ditangani oleh mitra payment gateway.`,
     ],
   },
@@ -46,7 +46,7 @@ const SECTIONS = [
     title: "5. Pemisahan dan Keamanan Akses",
     body: [
       `Setiap Tenant hanya dapat mengakses data project miliknya sendiri. Data antar-Tenant terpisah secara penuh dan tidak dapat diakses lintas akun bisnis.`,
-      `Client hanya dapat melihat data project yang menjadi tanggung jawab Tenant yang mengundangnya, terbatas pada status milestone, ringkasan pembayaran, dan kendala yang relevan — tidak mencakup data internal Tenant lainnya.`,
+      `Client hanya dapat melihat data project yang menjadi tanggung jawab Tenant yang mengundangnya, terbatas pada status timeline, ringkasan pembayaran, dan kendala yang relevan — tidak mencakup data internal Tenant lainnya.`,
       `ElProof menerapkan pemisahan akses berbasis peran (Staff, Client, admin platform) sehingga setiap pihak hanya melihat data yang menjadi haknya.`,
     ],
   },

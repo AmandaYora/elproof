@@ -16,6 +16,7 @@ export interface ClientPortalContext {
 const TABS = [
   { to: ROUTE_PATHS.portal("ringkasan"), label: "Ringkasan" },
   { to: ROUTE_PATHS.portal("vendor"), label: "Vendor & Progress" },
+  { to: ROUTE_PATHS.portal("venue"), label: "Venue" },
   { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran" },
   { to: ROUTE_PATHS.portal("kendala"), label: "Kendala" },
 ];

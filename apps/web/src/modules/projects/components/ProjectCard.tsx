@@ -11,7 +11,7 @@ import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 export function ProjectCard({ project }: { project: Project }) {
-  const pic = useStaffStore((s) => s.staff.find((member) => member.id === project.picStaffId));
+  const pic = useStaffStore((s) => s.staffSummaries.find((member) => member.id === project.picStaffId));
   const progress = project.progress;
   const d = daysUntil(project.eventDate);
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
@@ -20,8 +20,8 @@ export function ProjectCard({ project }: { project: Project }) {
   const completedMilestones = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
   const caption =
     totalMilestones === 0
-      ? "Belum ada milestone"
-      : `${completedMilestones}/${totalMilestones} milestone selesai${
+      ? "Belum ada timeline"
+      : `${completedMilestones}/${totalMilestones} timeline selesai${
           progress && progress.openIssueCount > 0 ? ` · ${progress.openIssueCount} kendala aktif` : ""
         }`;
 

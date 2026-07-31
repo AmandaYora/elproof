@@ -35,5 +35,6 @@ func (m *Module) Contracts() contracts.Contracts {
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/staff", authed(http.HandlerFunc(m.handler.Collection)))
+	mux.Handle("/api/v1/staff/summary", authed(http.HandlerFunc(m.handler.Summary)))
 	mux.Handle("/api/v1/staff/", authed(http.HandlerFunc(m.handler.Item)))
 }

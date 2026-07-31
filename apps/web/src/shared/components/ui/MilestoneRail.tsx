@@ -46,7 +46,7 @@ export function MilestoneRail({ milestones, size = "md", showCount = true, class
   const total = relevant.length;
 
   if (total === 0) {
-    return <span className="text-[13px] text-text-secondary">Belum ada milestone</span>;
+    return <span className="text-[13px] text-text-secondary">Belum ada timeline</span>;
   }
 
   return (

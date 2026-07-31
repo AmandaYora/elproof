@@ -15,14 +15,16 @@ import (
 )
 
 type Module struct {
-	handler        *presentation.Handler
-	contracts      contracts.Contracts
-	projectService *application.ProjectService
+	handler                  *presentation.Handler
+	milestoneTemplateHandler *presentation.MilestoneTemplateHandler
+	contracts                contracts.Contracts
+	projectService           *application.ProjectService
 }
 
 func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 	projectRepo := infrastructure.NewMySQLProjectRepository(db)
 	milestoneRepo := infrastructure.NewMySQLMilestoneRepository(db)
+	milestoneTemplateRepo := infrastructure.NewMySQLMilestoneTemplateRepository(db)
 	vendorEngagementRepo := infrastructure.NewMySQLVendorEngagementRepository(db)
 	vendorMilestoneRepo := infrastructure.NewMySQLVendorMilestoneRepository(db)
 	paymentRepo := infrastructure.NewMySQLPaymentRepository(db)
@@ -33,7 +35,8 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 
 	activityService := application.NewActivityService(activityRepo)
 	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
-	projectService := application.NewProjectService(projectRepo, milestoneRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, evidenceService, activityService)
+	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, evidenceService, activityService)
+	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
 	paymentService := application.NewPaymentService(paymentRepo, activityService)
 	issueService := application.NewIssueService(issueRepo, activityService)
@@ -42,9 +45,10 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, issueService, evidenceService, activityService, dashboardService)
 
 	return &Module{
-		handler:        handler,
-		contracts:      contracts.New(projectService, vendorEngagementService),
-		projectService: projectService,
+		handler:                  handler,
+		milestoneTemplateHandler: presentation.NewMilestoneTemplateHandler(milestoneTemplateService),
+		contracts:                contracts.New(projectService, vendorEngagementService, milestoneTemplateService),
+		projectService:           projectService,
 	}
 }
 
@@ -69,8 +73,17 @@ func (m *Module) SetClientCleaner(cleaner application.ClientCleaner) {
 	m.projectService.SetClientCleaner(cleaner)
 }
 
+// SetVenueResolver completes the same two-phase wiring, for resolving a
+// project's attached venue_id into display data (ADR-0016) — see
+// application.VenueResolver's doc comment.
+func (m *Module) SetVenueResolver(resolver application.VenueResolver) {
+	m.projectService.SetVenueResolver(resolver)
+}
+
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/projects", authed(http.HandlerFunc(m.handler.Collection)))
 	mux.Handle("/api/v1/projects/", authed(http.HandlerFunc(m.handler.Item)))
 	mux.Handle("/api/v1/dashboard", authed(http.HandlerFunc(m.handler.Dashboard)))
+	mux.Handle("/api/v1/milestone-templates", authed(http.HandlerFunc(m.milestoneTemplateHandler.Collection)))
+	mux.Handle("/api/v1/milestone-templates/", authed(http.HandlerFunc(m.milestoneTemplateHandler.Item)))
 }

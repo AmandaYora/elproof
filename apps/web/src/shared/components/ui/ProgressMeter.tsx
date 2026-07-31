@@ -37,7 +37,7 @@ export function ProgressMeter({ percent, segments, caption, className }: Progres
             key={i}
             className="absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-danger ring-2 ring-background"
             style={{ left: `${b.position}%` }}
-            title="Milestone terhambat"
+            title="Timeline terhambat"
           />
         ))}
       </div>

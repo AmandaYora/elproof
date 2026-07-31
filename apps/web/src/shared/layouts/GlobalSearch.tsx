@@ -31,7 +31,11 @@ export function GlobalSearch() {
   useEffect(() => {
     void fetchProjects();
     void fetchVendors();
-    void fetchAllClients();
+    // A Wedding Planner ("Staff" role) gets 403 here — tenant-wide client
+    // search is Owner/Admin only (see PLAN.md's RBAC section) — swallow it
+    // so global search still works for projects/vendors, just without
+    // client results for that role, instead of an unhandled rejection.
+    fetchAllClients().catch(() => {});
   }, [fetchProjects, fetchVendors, fetchAllClients]);
 
   const results = useMemo<ResultItem[]>(() => {

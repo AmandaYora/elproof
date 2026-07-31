@@ -11,7 +11,8 @@ export interface ProjectDetailContext {
 
 const TABS = [
   { to: "vendor", label: "Vendor" },
-  { to: "milestone", label: "Milestone" },
+  { to: "venue", label: "Venue" },
+  { to: "milestone", label: "Timeline" },
   { to: "client", label: "Client" },
   { to: "pembayaran", label: "Pembayaran" },
   { to: "kendala", label: "Kendala" },

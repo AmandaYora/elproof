@@ -17,9 +17,16 @@ func parseDate(s string) (time.Time, error) {
 	return time.Parse(dateLayout, s)
 }
 
-func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, tenantID int64) {
+// listProjects scopes the result to the caller's own PIC'd projects when
+// their role is "Staff" (Wedding Planner) — nil (Owner/Admin) means every
+// project in the tenant, unchanged from before this role existed.
+func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims staffClaims) {
+	var picStaffID *int64
+	if claims.role == "Staff" {
+		picStaffID = &claims.staffID
+	}
 	if r.URL.Query().Get("all") == "true" {
-		projects, err := h.projects.List(r.Context(), tenantID)
+		projects, err := h.projects.List(r.Context(), claims.tenantID, picStaffID)
 		if err != nil {
 			writeAppError(w, err)
 			return
@@ -35,7 +42,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, tenantID 
 	search := r.URL.Query().Get("search")
 	status := r.URL.Query().Get("status")
 	showArchived := r.URL.Query().Get("archived") == "true"
-	projects, total, err := h.projects.ListPaginated(r.Context(), tenantID, params, search, status, showArchived)
+	projects, total, err := h.projects.ListPaginated(r.Context(), claims.tenantID, picStaffID, params, search, status, showArchived)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -59,6 +66,12 @@ type projectInputBody struct {
 	Status        string `json:"status"`
 	PICStaffID    int64  `json:"picStaffId"`
 	Description   string `json:"description"`
+	// VenueID is only meaningful on update -- see ProjectInput.VenueID's doc
+	// comment for the omitted/0/positive tri-state. create/duplicate bodies
+	// never send this key, so it decodes to nil and Create simply never
+	// reads it (ADR-0016: attaching a venue is a separate, post-creation
+	// action).
+	VenueID *int64 `json:"venueId"`
 }
 
 func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
@@ -74,11 +87,18 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
 		Name: body.Name, BrideName: body.BrideName, GroomName: body.GroomName, EventDate: eventDate,
 		Venue: body.Venue, PrepStartDate: prepStartDate, PackageName: body.PackageName,
 		ContractValue: body.ContractValue, Status: domain.ProjectStatus(body.Status),
-		PICStaffID: body.PICStaffID, Description: body.Description,
+		PICStaffID: body.PICStaffID, Description: body.Description, VenueID: body.VenueID,
 	}, nil
 }
 
+// createProject is Owner/Admin only (confirmed role rule) — a Wedding
+// Planner only ever operates within a project already assigned to them by
+// someone else, never creates one themselves.
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims staffClaims) {
+	if claims.role == "Staff" {
+		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat membuat project baru", nil)
+		return
+	}
 	var body projectInputBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
@@ -158,12 +178,31 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	p, err := h.projects.Update(r.Context(), claims.tenantID, projectID, claims.staffID, input)
+	p, err := h.projects.Update(r.Context(), claims.tenantID, projectID, claims.staffID, claims.role, input)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
 	response.OK(w, "Project berhasil diperbarui", toProjectResponse(*p))
+}
+
+// getProjectVenue backs GET /projects/{id}/venue (ADR-0016) -- reachable by
+// both staff and client principals (resolveProjectAccess in handler.go
+// already scoped access before this is called), always the public-safe
+// VenueSummary shape regardless of caller. Returns `data: null` (not an
+// error) when no venue is attached, so both the WO Console tab and Client
+// Portal's tab can render an empty state.
+func (h *Handler) getProjectVenue(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) {
+	summary, err := h.projects.GetVenue(r.Context(), tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if summary == nil {
+		response.OK(w, "ok", nil)
+		return
+	}
+	response.OK(w, "ok", toVenueSummaryResponse(*summary))
 }
 
 func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
@@ -217,6 +256,14 @@ func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request, claims s
 // ProjectFormModal pre-filled from the source project — the caller decides
 // what to change (e.g. name, event date) before submitting.
 func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	// Duplicating produces a brand-new project, same restriction as
+	// createProject — being the PIC of the source project (already verified
+	// by resolveProjectAccess before this is ever reached) doesn't matter,
+	// a Wedding Planner is never allowed to create the resulting copy.
+	if claims.role == "Staff" {
+		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat menduplikasi project", nil)
+		return
+	}
 	var body projectInputBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
@@ -271,7 +318,7 @@ func (h *Handler) createMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Milestone berhasil ditambahkan", toMilestoneResponse(*m))
+	response.Created(w, "Timeline berhasil ditambahkan", toMilestoneResponse(*m))
 }
 
 type milestoneUpdateBody struct {
@@ -283,7 +330,7 @@ type milestoneUpdateBody struct {
 func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ID milestone tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
 		return
 	}
 	var body milestoneUpdateBody
@@ -303,7 +350,7 @@ func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Milestone berhasil diperbarui", toMilestoneResponse(*m))
+	response.OK(w, "Timeline berhasil diperbarui", toMilestoneResponse(*m))
 }
 
 type milestoneReorderBody struct {
@@ -320,5 +367,5 @@ func (h *Handler) reorderMilestones(w http.ResponseWriter, r *http.Request, clai
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Urutan milestone berhasil diperbarui", nil)
+	response.OK(w, "Urutan timeline berhasil diperbarui", nil)
 }

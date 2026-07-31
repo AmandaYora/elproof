@@ -1,5 +1,5 @@
-export type ProjectDetailTab = "vendor" | "milestone" | "client" | "pembayaran" | "kendala" | "dokumen" | "aktivitas";
-export type ClientPortalTab = "ringkasan" | "vendor" | "pembayaran" | "kendala";
+export type ProjectDetailTab = "vendor" | "milestone" | "client" | "pembayaran" | "kendala" | "dokumen" | "aktivitas" | "venue";
+export type ClientPortalTab = "ringkasan" | "vendor" | "pembayaran" | "kendala" | "venue";
 
 export const ROUTE_PATHS = {
   home: "/",
@@ -17,8 +17,10 @@ export const ROUTE_PATHS = {
   clients: "/clients",
   vendorCategories: "/vendor-categories",
   vendors: "/vendors",
+  venues: "/venues",
   users: "/pengguna",
   subscription: "/langganan",
+  milestoneTemplates: "/timeline-default",
   portal: (tab: ClientPortalTab = "ringkasan") => `/portal/${tab}`,
   platformDashboard: "/platform/dashboard",
   platformTenants: "/platform/tenant",

@@ -42,7 +42,7 @@ export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: 
       open={open}
       onClose={onClose}
       title={milestone.name}
-      description="Perbarui status dan jadwal milestone ini."
+      description="Perbarui status dan jadwal timeline ini."
       size="sm"
       footer={
         <>

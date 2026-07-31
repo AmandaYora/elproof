@@ -29,8 +29,8 @@ const PARTIES = [
 const FEATURES = [
   {
     icon: CalendarCheck,
-    title: "Timeline & Milestone",
-    body: "Setiap tahap persiapan punya milestone dan tenggat yang dipantau bersama.",
+    title: "Timeline",
+    body: "Setiap tahap persiapan punya timeline dan tenggat yang dipantau bersama.",
     className: "md:col-span-2 md:row-span-1",
   },
   {
@@ -127,7 +127,7 @@ export default function HomePage() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/20 text-blue-300">
                     <CalendarCheck className="h-4 w-4" />
                   </div>
-                  <span className="text-[14px] font-bold text-white">Milestone Persiapan</span>
+                  <span className="text-[14px] font-bold text-white">Timeline Persiapan</span>
                 </div>
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 border border-white/5">

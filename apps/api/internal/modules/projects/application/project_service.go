@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/domain"
+	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
 
 type ProjectRepository interface {
-	List(ctx context.Context, tenantID int64) ([]domain.Project, error)
-	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
+	List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error)
+	ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
 	Update(ctx context.Context, p *domain.Project) error
@@ -37,6 +38,18 @@ type ClientCleaner interface {
 	DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error
 }
 
+// VenueResolver is the narrow shape ProjectService needs from `vendors` to
+// resolve a project's attached venue_id into display data (ADR-0016) --
+// deliberately a local interface (not an import of vendors/application) so
+// this file only depends on vendors' public contracts package for the return
+// type. Bridged from main.go via Module.SetVenueResolver, the same two-phase
+// idiom as SetClientCleaner above -- needed because `vendors` itself depends
+// on `projects.Contracts()` (built after `projects`), so `projects` can't
+// take this as a constructor argument.
+type VenueResolver interface {
+	GetVenueSummary(ctx context.Context, tenantID, venueID int64) (vendorscontracts.VenueSummary, error)
+}
+
 type MilestoneRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectMilestone, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectMilestone, error)
@@ -47,20 +60,23 @@ type MilestoneRepository interface {
 }
 
 type ProjectService struct {
-	repo           ProjectRepository
-	milestones     MilestoneRepository
-	vendorEngagements VendorEngagementRepository
-	vendorMilestones  VendorMilestoneRepository
-	issues         IssueRepository
-	payments       PaymentRepository
-	evidence       *EvidenceService
-	activity       *ActivityService
-	clients        ClientCleaner
+	repo               ProjectRepository
+	milestones         MilestoneRepository
+	milestoneTemplates MilestoneTemplateRepository
+	vendorEngagements  VendorEngagementRepository
+	vendorMilestones   VendorMilestoneRepository
+	issues             IssueRepository
+	payments           PaymentRepository
+	evidence           *EvidenceService
+	activity           *ActivityService
+	clients            ClientCleaner
+	venues             VenueResolver
 }
 
 func NewProjectService(
 	repo ProjectRepository,
 	milestones MilestoneRepository,
+	milestoneTemplates MilestoneTemplateRepository,
 	vendorEngagements VendorEngagementRepository,
 	vendorMilestones VendorMilestoneRepository,
 	issues IssueRepository,
@@ -69,7 +85,7 @@ func NewProjectService(
 	activity *ActivityService,
 ) *ProjectService {
 	return &ProjectService{
-		repo: repo, milestones: milestones, vendorEngagements: vendorEngagements,
+		repo: repo, milestones: milestones, milestoneTemplates: milestoneTemplates, vendorEngagements: vendorEngagements,
 		vendorMilestones: vendorMilestones, issues: issues, payments: payments,
 		evidence: evidence, activity: activity,
 	}
@@ -83,16 +99,45 @@ func (s *ProjectService) SetClientCleaner(cleaner ClientCleaner) {
 	s.clients = cleaner
 }
 
-func (s *ProjectService) List(ctx context.Context, tenantID int64) ([]domain.Project, error) {
-	return s.repo.List(ctx, tenantID)
+// SetVenueResolver completes the two-phase wiring described on VenueResolver
+// above. main.go calls this right after vendorsModule is built, the same
+// slot as SetClientCleaner/SetClientAccessResolver.
+func (s *ProjectService) SetVenueResolver(resolver VenueResolver) {
+	s.venues = resolver
+}
+
+// GetVenue resolves this project's attached venue (if any) into display
+// data via the vendors module's contract. Returns (nil, nil) — not an error
+// — when no venue is attached, so callers (both the WO Console tab and
+// Client Portal's) can render an empty state rather than treat it as a
+// failure.
+func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64) (*vendorscontracts.VenueSummary, error) {
+	p, err := s.Get(ctx, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if p.VenueID == nil || s.venues == nil {
+		return nil, nil
+	}
+	summary, err := s.venues.GetVenueSummary(ctx, tenantID, *p.VenueID)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+// picStaffID scopes results to a single PIC's own projects — nil means every
+// project in the tenant (see MySQLProjectRepository.List's own doc comment).
+func (s *ProjectService) List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error) {
+	return s.repo.List(ctx, tenantID, picStaffID)
 }
 
 // ListPaginated backs the real project list page — showArchived splits the
 // result into two disjoint views (active vs. archived), never merged, so
 // archived projects stay genuinely out of the way of day-to-day work (see
 // ADR-0013) rather than just visually deprioritized in a mixed list.
-func (s *ProjectService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, params, search, status, showArchived)
+func (s *ProjectService) ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, picStaffID, params, search, status, showArchived)
 }
 
 func (s *ProjectService) Get(ctx context.Context, tenantID, id int64) (*domain.Project, error) {
@@ -130,6 +175,13 @@ type ProjectInput struct {
 	Status        domain.ProjectStatus
 	PICStaffID    int64
 	Description   string
+	// VenueID is only ever read by Update (Create always leaves a new
+	// project's VenueID nil — attaching a venue is a separate, post-creation
+	// action, see ADR-0016). nil means the caller's JSON body omitted the
+	// key entirely — leave the project's current attachment untouched; `0`
+	// explicitly detaches; a positive ID attaches that venue. Venue IDs are
+	// AUTO_INCREMENT starting at 1, so `0` is never a real one.
+	VenueID *int64
 }
 
 func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffID int64, input ProjectInput) (*domain.Project, error) {
@@ -142,7 +194,7 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffI
 	if err := s.repo.Create(ctx, p); err != nil {
 		return nil, err
 	}
-	if err := s.seedDefaultMilestones(ctx, p.ID, p.EventDate, p.PrepStartDate); err != nil {
+	if err := s.seedDefaultMilestones(ctx, tenantID, p.ID, p.EventDate, p.PrepStartDate); err != nil {
 		return nil, err
 	}
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
@@ -150,10 +202,18 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffI
 	return p, nil
 }
 
-func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorStaffID int64, input ProjectInput) (*domain.Project, error) {
+// Update rejects a Wedding Planner ("Staff" role) reassigning PICStaffID —
+// confirmed role rule: only Owner/Admin assign or reassign who a project's
+// PIC is, even on a project the Wedding Planner already manages day to day.
+// callerRole == "" (or any non-"Staff" value) skips the check entirely, so
+// Owner/Admin keep reassigning freely exactly as before.
+func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorStaffID int64, callerRole string, input ProjectInput) (*domain.Project, error) {
 	p, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
+	}
+	if callerRole == "Staff" && input.PICStaffID != p.PICStaffID {
+		return nil, apperror.Forbidden("Hanya Owner atau Admin yang dapat menugaskan ulang PIC project")
 	}
 	p.Name = input.Name
 	p.BrideName = input.BrideName
@@ -166,6 +226,13 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorSt
 	p.Status = input.Status
 	p.PICStaffID = input.PICStaffID
 	p.Description = input.Description
+	if input.VenueID != nil {
+		if *input.VenueID == 0 {
+			p.VenueID = nil
+		} else {
+			p.VenueID = input.VenueID
+		}
+	}
 	if err := s.repo.Update(ctx, p); err != nil {
 		return nil, err
 	}
@@ -326,7 +393,7 @@ func (s *ProjectService) cloneVendorEngagementsFrom(ctx context.Context, sourceP
 	for _, pv := range engagements {
 		clone := &domain.ProjectVendor{
 			ProjectID: newProjectID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope,
-			ContractValue: pv.ContractValue, EngagementStatus: domain.EngagementPlanned,
+			ContractValue: pv.ContractValue, PricingTier: pv.PricingTier, EngagementStatus: domain.EngagementPlanned,
 			BookingDate: pv.BookingDate, EventDate: newEventDate, DPAmount: 0, PaidAmount: 0,
 			DueDate: pv.DueDate, PICStaffID: pv.PICStaffID, Notes: pv.Notes,
 		}
@@ -382,7 +449,7 @@ func (s *ProjectService) CreateMilestone(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(m.ID), m.Name,
-		"Milestone project ditambahkan: "+m.Name)
+		"Timeline project ditambahkan: "+m.Name)
 	return m, nil
 }
 
@@ -406,7 +473,7 @@ func (s *ProjectService) UpdateMilestone(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	if m == nil {
-		return nil, apperror.NotFound("Milestone tidak ditemukan")
+		return nil, apperror.NotFound("Timeline tidak ditemukan")
 	}
 	m.Status = input.Status
 	m.TargetDate = input.TargetDate
@@ -415,7 +482,7 @@ func (s *ProjectService) UpdateMilestone(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(m.ID), m.Name,
-		"Milestone project diperbarui: "+m.Name)
+		"Timeline project diperbarui: "+m.Name)
 	return m, nil
 }
 
@@ -432,7 +499,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 		return err
 	}
 	if len(orderedIDs) != len(existing) {
-		return apperror.Validation("Urutan milestone tidak valid", nil)
+		return apperror.Validation("Urutan timeline tidak valid", nil)
 	}
 	existingIDs := make(map[int64]bool, len(existing))
 	for _, m := range existing {
@@ -441,7 +508,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 	seen := make(map[int64]bool, len(orderedIDs))
 	for _, id := range orderedIDs {
 		if !existingIDs[id] || seen[id] {
-			return apperror.Validation("Urutan milestone tidak valid", nil)
+			return apperror.Validation("Urutan timeline tidak valid", nil)
 		}
 		seen[id] = true
 	}
@@ -449,7 +516,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 		return err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", "", "",
-		"Urutan milestone diubah")
+		"Urutan timeline diubah")
 	return nil
 }
 

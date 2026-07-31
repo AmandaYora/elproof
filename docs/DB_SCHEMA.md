@@ -181,6 +181,10 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | is_active | BOOLEAN DEFAULT TRUE | |
 | created_at, updated_at | TIMESTAMP | |
 
+"Venue" was removed from this table's default seed template (ADR-0016) — a tenant that already had
+it gets that row deactivated by data migration, never deleted (this module's usual convention).
+Venue is now its own directory (`venues`, below), not a category.
+
 ### `vendors`
 | Column | Type | Notes |
 |---|---|---|
@@ -190,11 +194,50 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | name | VARCHAR(150) | |
 | pic_name | VARCHAR(150) | |
 | phone | VARCHAR(30) | |
-| email | VARCHAR(150) | |
-| address | VARCHAR(255) | |
+| email | VARCHAR(150) NULL | no longer mandatory — migration `000023` |
+| social_media | TEXT NULL | free text, migration `000023` |
+| city | VARCHAR(100) NULL | migration `000023` |
+| price_akad | BIGINT UNSIGNED NULL | vendor's own preset price for an "Akad Saja" engagement — migration `000023`. Reference/catalog price only: a specific project engagement's own `project_vendors.contract_value` is always the source of truth and may be freely negotiated away from this number (see `pricing_tier` below) |
+| price_akad_resepsi | BIGINT UNSIGNED NULL | same as above, for "Akad + Resepsi" |
+| address | VARCHAR(255) NULL | no longer mandatory — migration `000023` |
 | notes | TEXT NULL | |
+| attachment_path | VARCHAR(500) NULL | object storage key (single slot, document or photo — same convention as `venues.attachment_path` below), migration `000023` |
+| attachment_mime_type | VARCHAR(100) NULL | migration `000023` |
 | is_active | BOOLEAN DEFAULT TRUE | |
 | created_at, updated_at | TIMESTAMP | |
+
+### `venues` — **ADR-0016**
+Its own directory inside `vendors` (not a new top-level module — Venue and Vendor are conceptually
+siblings), not a vendor category. Exactly one venue per project, referenced by `projects.venue_id`
+below (never a `project_venues` engagement table — no per-project negotiated price/DP/paid-amount
+tracking for venues, unlike vendor engagements).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| name | VARCHAR(150) | |
+| pic_name | VARCHAR(150) | mandatory at creation |
+| phone_pic | VARCHAR(30) | mandatory — the PIC's own personal contact number |
+| phone_venue | VARCHAR(30) NULL | optional official/office number, distinct from `phone_pic` |
+| email | VARCHAR(150) NULL | |
+| address | VARCHAR(255) NULL | optional (Revisi — was mandatory in the original ADR-0016 plan) |
+| city | VARCHAR(100) NULL | mandatory on the create form, validated against a fixed 128 kota/kabupaten list; nullable at the DB only so the one-time vendor→venue data migration doesn't fail for rows with no city info |
+| rental_price | BIGINT UNSIGNED NULL | mandatory on the create form; nullable at the DB for the same migration-safety reason as `city` — the UI flags "harga sewa belum diisi" rather than blocking attachment to a project |
+| charge | BIGINT UNSIGNED NULL | separate fixed charge, distinct from `rental_price` |
+| capacity | INT NULL | |
+| facilities | TEXT NULL | free text (Revisi — the original ADR-0016 plan used a JSON array; simplified for UI consistency + easier bulk-import) |
+| social_media | TEXT NULL | free text, same Revisi reasoning as `facilities` |
+| notes | TEXT NULL | |
+| attachment_path | VARCHAR(500) NULL | single slot — document OR photo (Revisi — the original plan had a separate `venue_photos` gallery table, dropped entirely) |
+| attachment_mime_type | VARCHAR(100) NULL | determines Client Portal visibility: an image is treated as a venue photo (client-visible); a non-image (e.g. PDF contract) is treated as an internal document (hidden from `client` principals) — enforced at the file-stream endpoint itself, not just the frontend |
+| is_active | BOOLEAN DEFAULT TRUE | |
+| created_at, updated_at | TIMESTAMP | |
+
+Existing tenants' real venue data (previously `vendors` rows under a "Venue" category) was
+one-time-migrated into this table by `000022_migrate_venue_vendor_data` — new fields land empty for
+the WO to fill in; the source `vendors` rows are deactivated, not deleted, and never auto-linked to
+old `project_vendors` history (fuzzy-matching risk — see ADR-0016).
 
 ---
 
@@ -208,11 +251,12 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | name | VARCHAR(150) | |
 | bride_name, groom_name | VARCHAR(150) | |
 | event_date, prep_start_date | DATE | |
-| venue | VARCHAR(255) | |
+| venue | VARCHAR(255) | free-text location — kept as a fallback for projects that never get a structured `venue_id` below (ADR-0016); not touched by attaching one |
+| venue_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.venues.id` (ADR-0016) — at most one venue per project; resolved via `vendors.Contracts` (`VenueResolver`), never a SQL join. `NULL` means no structured venue attached yet |
 | package_name | VARCHAR(150) | |
-| contract_value | BIGINT UNSIGNED | |
+| contract_value | BIGINT UNSIGNED | the WO's own price quoted to the client for the whole event — a distinct figure from any vendor's or the venue's own cost (see `project_vendors.contract_value` and `venues.rental_price`/`charge`); the frontend derives a "Margin/Keuntungan" figure as this value minus those costs, computed client-side, never stored |
 | status | ENUM('Draft','Preparation','Ready','Completed','Cancelled') | |
-| pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
+| pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` — reassignable only by Owner/Admin, never by the "Staff" (Wedding Planner) role itself, see ADR-0017 |
 | description | TEXT NULL | |
 | is_archived | BOOLEAN NOT NULL DEFAULT FALSE | orthogonal to `status` — see ADR-0013 |
 | created_at, updated_at | TIMESTAMP | |
@@ -228,6 +272,36 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | target_date | DATE | |
 | completed_date | DATE NULL | |
 
+Displayed in the UI as "Timeline" (Project Timeline), not "Milestone" — a display-text-only rename;
+this table, its Go domain type (`ProjectMilestone`), and every internal identifier keep the
+`milestone` name (see `PLAN.md`'s "Terminology: 'Milestone' → 'Timeline'" section for the full
+rationale, including why the DB schema/data was explicitly left alone — a live tenant's
+`evidence.related_kind = 'vendorMilestone'` data made a schema-level rename too risky for a
+display-only ask).
+
+### `project_milestone_templates`
+Per-tenant configurable checklist auto-seeded into a new project's own `project_milestones` at
+creation time ("Timeline Default", Pengaturan menu, Owner-only) — replaces what used to be a single
+hardcoded 6-item list shared by every tenant.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| sort_order | INT | |
+| name | VARCHAR(255) | |
+| days_before_event | INT | target date = project's `event_date` minus this many days, clamped to `prep_start_date` for short-notice projects |
+| created_at, updated_at | TIMESTAMP | |
+
+No `is_active` column (unlike `vendor_categories`/`vendors`/`venues`) — items are hard-deleted, one
+of only three deliberate hard-delete exceptions in this codebase (see
+[`DATABASE_GUIDE.md`](../knowledge/DATABASE_GUIDE.md)): once copied into a project's own
+`project_milestones` row, a template row is never referenced again, so there's nothing to orphan.
+Migration `000024` also backfilled every already-registered tenant with the previous hardcoded
+6-item list (guarded by `WHERE NOT EXISTS` against a re-run); a brand-new tenant gets the same
+6-item seed via `platform`'s tenant-registration flow instead (`SeedDefaultMilestoneTemplate`,
+mirroring `vendors.SeedDefaultCategories`).
+
 ### `project_vendors`
 | Column | Type | Notes |
 |---|---|---|
@@ -236,7 +310,8 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | vendor_id | BIGINT UNSIGNED | `FK*` → `vendors.vendors.id` |
 | category_id | BIGINT UNSIGNED | `FK*` → `vendors.vendor_categories.id` (denormalized at engagement time) |
 | scope | VARCHAR(255) | |
-| contract_value | BIGINT UNSIGNED | |
+| contract_value | BIGINT UNSIGNED | the actual, possibly negotiated, amount for this specific engagement — never re-derived from `pricing_tier`/the vendor's own preset prices after the fact |
+| pricing_tier | VARCHAR(20) NOT NULL DEFAULT 'Akad' | `Akad` \| `AkadResepsi` — which of the vendor's own two preset prices (`vendors.price_akad`/`price_akad_resepsi`) this engagement's `contract_value` was auto-filled from when created/last edited; purely an informational label, not backend-validated against the two-value set (same lax convention as `engagement_status`) |
 | engagement_status | ENUM(...) | see `EngagementStatus` |
 | booking_date, event_date, due_date | DATE NULL | |
 | dp_amount, paid_amount | BIGINT UNSIGNED | |
@@ -254,6 +329,8 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 | target_date, completed_date | DATE NULL | |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
 | notes | TEXT NULL | |
+
+Displayed as "Timeline Vendor" in the UI — same display-only rename as `project_milestones` above.
 
 ### `vendor_payments`
 | Column | Type | Notes |
@@ -395,8 +472,11 @@ staff_members.tenant_id        --*--> tenants.id            (platform)
 clients.tenant_id              --*--> tenants.id            (platform)
 clients.project_id             --*--> projects.id           (projects)
 vendors.tenant_id              --*--> tenants.id            (platform)
+venues.tenant_id               --*--> tenants.id            (platform)
 projects.tenant_id             --*--> tenants.id            (platform)
 projects.pic_staff_id          --*--> staff_members.id      (staff)
+projects.venue_id              --*--> venues.id             (vendors)
+project_milestone_templates.tenant_id --*--> tenants.id     (platform)
 project_vendors.vendor_id      --*--> vendors.id            (vendors)
 project_vendors.category_id    --*--> vendor_categories.id  (vendors)
 project_vendors.pic_staff_id   --*--> staff_members.id      (staff)

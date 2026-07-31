@@ -61,6 +61,21 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return tenantID, true
 }
 
+// requireManagerRole is the extra gate every Client **write** action and the
+// standalone (non-project-scoped) list needs on top of requireTenant —
+// mirrors vendors/venue_handler.go's own requireManagerRole exactly: a
+// Wedding Planner keeps read access to a single project's clients (see
+// list's projectId branch below, gated by ClientService.VerifyProjectReadAccess
+// instead), but every mutation and the tenant-wide list are Owner/Admin only.
+func requireManagerRole(w http.ResponseWriter, r *http.Request) bool {
+	claims, _ := middleware.FromContext(r.Context())
+	if !claims.HasRole("Owner", "Admin") {
+		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat melakukan aksi ini", nil)
+		return false
+	}
+	return true
+}
+
 func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
 	if !ok {
@@ -70,6 +85,9 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		h.list(w, r, tenantID)
 	case http.MethodPost:
+		if !requireManagerRole(w, r) {
+			return
+		}
 		h.create(w, r, tenantID)
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
@@ -83,6 +101,15 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		projectID, err := strconv.ParseInt(projectIDRaw, 10, 64)
 		if err != nil {
 			response.Error(w, http.StatusBadRequest, "projectId tidak valid", nil)
+			return
+		}
+		// A Wedding Planner may read clients for exactly the project they're
+		// PIC of (used by Project Detail's own Client tab) — anyone else
+		// (Owner/Admin) reads any project's clients freely.
+		claims, _ := middleware.FromContext(r.Context())
+		staffID, _ := strconv.ParseInt(claims.PrincipalID, 10, 64)
+		if err := h.clients.VerifyProjectReadAccess(r.Context(), tenantID, projectID, staffID, claims.Role); err != nil {
+			writeAppError(w, err)
 			return
 		}
 		list, err := h.clients.ListByProject(r.Context(), tenantID, projectID)
@@ -100,7 +127,12 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 
 	// No projectId filter — list every client for the tenant. `all=true` is
 	// used by WO Console's global search, which matches names across all
-	// projects in one shot; otherwise this is the tenant-wide Client list page.
+	// projects in one shot; otherwise this is the tenant-wide Client list
+	// page. Both are Owner/Admin only (a Wedding Planner has no legitimate
+	// need to see clients across projects that aren't theirs).
+	if !requireManagerRole(w, r) {
+		return
+	}
 	if r.URL.Query().Get("all") == "true" {
 		list, err := h.clients.ListByTenant(r.Context(), tenantID)
 		if err != nil {
@@ -157,9 +189,15 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 	response.Created(w, "Client berhasil ditambahkan", toClientResponse(*c))
 }
 
+// Item only ever dispatches write actions (update/delete/toggle-active/
+// reset-credential/replace-representative — no GET case exists here), so
+// the whole function is gated to Owner/Admin in one place.
 func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
 	if !ok {
+		return
+	}
+	if !requireManagerRole(w, r) {
 		return
 	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/clients/")

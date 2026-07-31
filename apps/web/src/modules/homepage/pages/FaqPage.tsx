@@ -8,7 +8,7 @@ import { cn } from "@/shared/lib/cn";
 const FAQS = [
   {
     question: "Apa itu ElProof?",
-    answer: `ElProof adalah platform berbasis langganan (Software as a Service) yang membantu wedding organizer (WO) mendokumentasikan persiapan project pernikahan — vendor, milestone, pembayaran, dan kendala — serta membagikan sebagian informasi tersebut kepada pasangan client terkait lewat Client Portal.`,
+    answer: `ElProof adalah platform berbasis langganan (Software as a Service) yang membantu wedding organizer (WO) mendokumentasikan persiapan project pernikahan — vendor, timeline, pembayaran, dan kendala — serta membagikan sebagian informasi tersebut kepada pasangan client terkait lewat Client Portal.`,
   },
   {
     question: "Siapa yang bisa menggunakan ElProof?",

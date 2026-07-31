@@ -32,8 +32,8 @@ export function ProjectIssuesSection({ projectId }: { projectId: string }) {
   const updateIssueStatus = useProjectStore((s) => s.updateIssueStatus);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);

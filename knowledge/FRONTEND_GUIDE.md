@@ -92,3 +92,12 @@ three *authenticated* route trees (`protected.routes.tsx`, `client-portal.routes
 `platform.routes.tsx`) — built in Fase 7. Two more route files carry no guard, by design:
 `public.routes.tsx` (`/login`) and `homepage.routes.tsx` (the public marketing site, `/homepage/*`
 — frontend-only, no API calls, see the `homepage` row in `MODULE_MAP.md`).
+
+**Role-based sub-guards within `protected.routes.tsx` (ADR-0017):** `RequireRole` (`shared/
+components/RequireRole.tsx`) wraps a sub-tree of routes inside the already-`RequireAuth`-guarded WO
+Console tree, redirecting away if the session's role isn't in its `allow` list — kept 1:1 with
+`Sidebar.tsx`'s own `allowedRoles` per nav item, so a route is never reachable by direct URL when
+its menu entry is hidden. A narrower, in-page (not whole-route) restriction that doesn't warrant
+hiding a route entirely is instead a plain inline role check in the component itself (e.g.
+`ProjectHeaderCard.tsx`'s `canDuplicate`/`canSeeMargin`) — reach for `RequireRole` only when an
+entire page should be unreachable for a role, not for hiding one button on an otherwise-shared page.

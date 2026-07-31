@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/domain"
+	vendorscontracts "elproof/internal/modules/vendors/contracts"
 )
 
 const dateLayout = "2006-01-02"
@@ -23,6 +24,7 @@ type projectResponse struct {
 	GroomName     string            `json:"groomName"`
 	EventDate     string            `json:"eventDate"`
 	Venue         string            `json:"venue"`
+	VenueID       *int64            `json:"venueId"`
 	PrepStartDate string            `json:"prepStartDate"`
 	PackageName   string            `json:"packageName"`
 	ContractValue int64             `json:"contractValue"`
@@ -36,9 +38,32 @@ type projectResponse struct {
 func toProjectResponse(p domain.Project) projectResponse {
 	return projectResponse{
 		ID: p.ID, Name: p.Name, BrideName: p.BrideName, GroomName: p.GroomName,
-		EventDate: p.EventDate.Format(dateLayout), Venue: p.Venue, PrepStartDate: p.PrepStartDate.Format(dateLayout),
-		PackageName: p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
+		EventDate: p.EventDate.Format(dateLayout), Venue: p.Venue, VenueID: p.VenueID,
+		PrepStartDate: p.PrepStartDate.Format(dateLayout),
+		PackageName:   p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
 		PICStaffID: p.PICStaffID, Description: p.Description, IsArchived: p.IsArchived,
+	}
+}
+
+// venueSummaryResponse is the public-safe subset backing GET
+// /projects/{id}/venue (ADR-0016) -- shared verbatim by the WO Console
+// Project Detail tab and Client Portal's Venue tab; the former additionally
+// fetches GET /venues/{id} directly (staff-only) for commercial fields.
+type venueSummaryResponse struct {
+	ID                   int64   `json:"id"`
+	Name                 string  `json:"name"`
+	Address              *string `json:"address"`
+	City                 *string `json:"city"`
+	Capacity             *int    `json:"capacity"`
+	Facilities           *string `json:"facilities"`
+	SocialMedia          *string `json:"socialMedia"`
+	HasVisibleAttachment bool    `json:"hasVisibleAttachment"`
+}
+
+func toVenueSummaryResponse(v vendorscontracts.VenueSummary) venueSummaryResponse {
+	return venueSummaryResponse{
+		ID: v.ID, Name: v.Name, Address: v.Address, City: v.City, Capacity: v.Capacity,
+		Facilities: v.Facilities, SocialMedia: v.SocialMedia, HasVisibleAttachment: v.HasVisibleAttachment,
 	}
 }
 
@@ -103,6 +128,7 @@ type projectVendorResponse struct {
 	CategoryID       int64   `json:"categoryId"`
 	Scope            string  `json:"scope"`
 	ContractValue    int64   `json:"contractValue"`
+	PricingTier      string  `json:"pricingTier"`
 	EngagementStatus string  `json:"engagementStatus"`
 	BookingDate      *string `json:"bookingDate"`
 	EventDate        string  `json:"eventDate"`
@@ -116,7 +142,7 @@ type projectVendorResponse struct {
 func toProjectVendorResponse(pv domain.ProjectVendor) projectVendorResponse {
 	return projectVendorResponse{
 		ID: pv.ID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope, ContractValue: pv.ContractValue,
-		EngagementStatus: string(pv.EngagementStatus), BookingDate: formatDatePtr(pv.BookingDate),
+		PricingTier: string(pv.PricingTier), EngagementStatus: string(pv.EngagementStatus), BookingDate: formatDatePtr(pv.BookingDate),
 		EventDate: pv.EventDate.Format(dateLayout), DPAmount: pv.DPAmount, PaidAmount: pv.PaidAmount,
 		DueDate: formatDatePtr(pv.DueDate), PICStaffID: pv.PICStaffID, Notes: pv.Notes,
 	}

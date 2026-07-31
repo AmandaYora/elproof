@@ -40,6 +40,25 @@ func (s *ClientService) ListByProject(ctx context.Context, tenantID, projectID i
 	return s.repo.ListByProject(ctx, tenantID, projectID)
 }
 
+// VerifyProjectReadAccess scopes a Wedding Planner ("Staff" role) to reading
+// client data only for a project they're PIC of — the same restriction
+// `projects` itself already enforces on every one of its own sub-resources
+// (see handler.go's resolveProjectAccess there); Owner/Admin pass through
+// unconditionally, matching their full-tenant access everywhere else.
+func (s *ClientService) VerifyProjectReadAccess(ctx context.Context, tenantID, projectID, staffID int64, role string) error {
+	if role != "Staff" {
+		return nil
+	}
+	picStaffID, err := s.projects.ProjectPICStaffID(ctx, tenantID, projectID)
+	if err != nil {
+		return err
+	}
+	if picStaffID != staffID {
+		return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
+	}
+	return nil
+}
+
 // ListByTenant powers the WO Console's global search, which needs to match
 // client names across every project at once rather than one project at a time.
 func (s *ClientService) ListByTenant(ctx context.Context, tenantID int64) ([]domain.Client, error) {

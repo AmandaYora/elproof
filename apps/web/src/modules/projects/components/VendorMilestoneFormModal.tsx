@@ -17,8 +17,8 @@ function emptyValues(defaultStaffId = ""): VendorMilestoneFormValues {
 }
 
 export function VendorMilestoneFormModal({ open, onClose, onSubmit, vendorName }: VendorMilestoneFormModalProps) {
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const [values, setValues] = useState<VendorMilestoneFormValues>(() => emptyValues());
   const [errors, setErrors] = useState<Partial<Record<keyof VendorMilestoneFormValues, string>>>({});
 
@@ -55,17 +55,17 @@ export function VendorMilestoneFormModal({ open, onClose, onSubmit, vendorName }
     <Modal
       open={open}
       onClose={onClose}
-      title="Tambah Milestone Vendor"
-      description={`Milestone baru untuk ${vendorName}, ditambahkan di urutan paling akhir.`}
+      title="Tambah Timeline Vendor"
+      description={`Timeline baru untuk ${vendorName}, ditambahkan di urutan paling akhir.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Milestone</Button>
+          <Button onClick={handleSubmit}>Simpan Timeline</Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label="Nama Milestone" required hint={errors.name}>
+        <Field label="Nama Timeline" required hint={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Survey Lokasi" />
         </Field>
         <Field label="Deskripsi">

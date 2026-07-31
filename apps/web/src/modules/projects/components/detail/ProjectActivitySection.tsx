@@ -8,8 +8,8 @@ import { formatDateTime } from "@/shared/lib/formatters";
 export function ProjectActivitySection({ projectId }: { projectId: string }) {
   const activity = useProjectStore((s) => s.activity);
   const fetchActivity = useProjectStore((s) => s.fetchActivity);
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
 
   useEffect(() => {
     void fetchActivity(projectId);

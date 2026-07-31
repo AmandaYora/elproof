@@ -12,10 +12,13 @@ export const ENGAGEMENT_STATUS_OPTIONS = [
   "Cancelled",
 ] as const;
 
+export const PRICING_TIER_OPTIONS = ["Akad", "AkadResepsi"] as const;
+
 export const projectVendorSchema = z.object({
   vendorId: z.string().min(1, "Vendor wajib dipilih"),
   scope: z.string().min(3, "Scope pekerjaan wajib diisi"),
   contractValue: z.coerce.number().min(0, "Nilai kerja sama tidak valid"),
+  pricingTier: z.enum(PRICING_TIER_OPTIONS),
   engagementStatus: z.enum(ENGAGEMENT_STATUS_OPTIONS),
   bookingDate: z.string().optional().default(""),
   dpAmount: z.coerce.number().min(0, "Jumlah DP tidak valid"),

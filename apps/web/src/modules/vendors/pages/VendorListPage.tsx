@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Pencil, CheckCircle2, Ban, Eye } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, Eye, Download, Upload } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
@@ -14,9 +14,9 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { VendorFormModal } from "@/modules/vendors/components/VendorFormModal";
 import { VendorStatusBadge } from "@/modules/vendors/components/VendorStatusBadge";
-import type { VendorFormValues } from "@/modules/vendors/schemas/vendor.schema";
+import type { VendorFormValues, VendorCreateFormValues } from "@/modules/vendors/schemas/vendor.schema";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import type { Vendor, VendorProjectHistoryItem } from "@/modules/vendors/types";
+import type { Vendor, VendorProjectHistoryItem, VendorImportResult } from "@/modules/vendors/types";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -30,6 +30,8 @@ export default function VendorListPage() {
   const updateVendor = useVendorStore((s) => s.updateVendor);
   const toggleVendorActive = useVendorStore((s) => s.toggleVendorActive);
   const fetchVendorProjectHistory = useVendorStore((s) => s.fetchVendorProjectHistory);
+  const downloadVendorTemplate = useVendorStore((s) => s.downloadVendorTemplate);
+  const importVendors = useVendorStore((s) => s.importVendors);
   const categories = useVendorCategoryStore((s) => s.categories);
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
 
@@ -42,6 +44,9 @@ export default function VendorListPage() {
   const [history, setHistory] = useState<VendorProjectHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<VendorImportResult | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void fetchCategories();
@@ -81,13 +86,13 @@ export default function VendorListPage() {
     setEditingVendor(undefined);
   }
 
-  async function handleSubmit(values: VendorFormValues) {
+  async function handleSubmit(values: VendorFormValues | VendorCreateFormValues) {
     setActionError(null);
     try {
       if (editingVendor) {
-        await updateVendor(editingVendor.id, values);
+        await updateVendor(editingVendor.id, values as VendorFormValues);
       } else {
-        await createVendor(values);
+        await createVendor(values as VendorCreateFormValues);
       }
       closeModal();
       await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
@@ -106,6 +111,38 @@ export default function VendorListPage() {
     }
   }
 
+  async function handleDownloadTemplate() {
+    setActionError(null);
+    try {
+      const blob = await downloadVendorTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "template-vendor.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal mengunduh template"));
+    }
+  }
+
+  async function handleImportFile(file: File | undefined) {
+    if (!file) return;
+    setActionError(null);
+    setImportResult(null);
+    setImporting(true);
+    try {
+      const result = await importVendors(file);
+      setImportResult(result);
+      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal mengimpor berkas vendor"));
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -113,13 +150,58 @@ export default function VendorListPage() {
           <h1 className="text-xl font-bold text-text-primary">Vendor</h1>
           <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh vendor yang bekerja sama dengan WO.</p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-          Tambah Vendor
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleDownloadTemplate()}>
+            Download Template
+          </Button>
+          <label>
+            <Button
+              type="button"
+              variant="secondary"
+              icon={<Upload className="h-4 w-4" />}
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {importing ? "Mengimpor..." : "Import Excel"}
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={(e) => void handleImportFile(e.target.files?.[0])}
+            />
+          </label>
+          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+            Tambah Vendor
+          </Button>
+        </div>
       </div>
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+      )}
+
+      {importResult && (
+        <Card className="flex flex-col gap-2 p-4">
+          <p className="text-[13.5px] font-semibold text-text-primary">
+            {importResult.insertedCount} vendor baru ditambahkan, {importResult.updatedCount} vendor diperbarui (nama+kota+kategori
+            sudah ada sebelumnya).
+          </p>
+          {importResult.errors.length > 0 && (
+            <div className="mt-1 flex flex-col gap-1">
+              <p className="text-[12.5px] font-semibold text-danger">{importResult.errors.length} baris gagal diproses:</p>
+              <ul className="flex flex-col gap-0.5 text-[12.5px] text-text-secondary">
+                {importResult.errors.map((e, idx) => (
+                  <li key={idx}>
+                    {e.row > 0 ? `Baris ${e.row}: ` : ""}
+                    {e.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
       )}
 
       <div className="flex flex-wrap gap-3">
@@ -159,8 +241,8 @@ export default function VendorListPage() {
                   <div className="flex flex-col gap-1.5">
                     <CardListField label="Kategori" value={category?.name ?? "-"} />
                     <CardListField label="PIC" value={vendor.picName} />
-                    <CardListField label="Telepon" value={vendor.phone} />
-                    <CardListField label="Email" value={vendor.email} />
+                    <CardListField label="No Tlp Vendor" value={vendor.phone} />
+                    <CardListField label="Kota" value={vendor.city ?? "-"} />
                   </div>
                   <div className="flex items-center gap-1.5 pt-1">
                     <IconActionButton icon={Pencil} label="Ubah Vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
@@ -183,6 +265,7 @@ export default function VendorListPage() {
                 <TH>Kategori</TH>
                 <TH>PIC</TH>
                 <TH>Kontak</TH>
+                <TH>Kota</TH>
                 <TH>Status</TH>
                 <TH>Aksi</TH>
               </TR>
@@ -197,8 +280,9 @@ export default function VendorListPage() {
                     <TD>{vendor.picName}</TD>
                     <TD>
                       <span className="block">{vendor.phone}</span>
-                      <span className="block text-[12.5px] text-text-secondary">{vendor.email}</span>
+                      <span className="block text-[12.5px] text-text-secondary">{vendor.email ?? "-"}</span>
                     </TD>
+                    <TD>{vendor.city ?? <span className="text-text-secondary">-</span>}</TD>
                     <TD>
                       <VendorStatusBadge isActive={vendor.isActive} />
                     </TD>
@@ -228,7 +312,8 @@ export default function VendorListPage() {
         key={editingVendor?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmit={(values) => void handleSubmit(values)}
+        onSubmitCreate={(values) => void handleSubmit(values)}
+        onSubmitEdit={(values) => void handleSubmit(values)}
         initialVendor={editingVendor}
         categories={categories}
       />

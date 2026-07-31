@@ -97,11 +97,12 @@ No `POST /subscription-transactions` on this module — both "pay" and "activate
 also update the `tenants` row `billing` doesn't own; they call `billing.Contracts.RecordTransaction`
 internally. See ADR-0008.
 
-## `staff` (WO Console, tenant-scoped)
+## `staff` (WO Console, tenant-scoped) — Owner-only (`requireOwnerTenant`) except `/staff/summary`
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/staff` | tenant-scoped; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role; response includes `username` |
+| GET | `/staff` | Owner-only; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role; response includes `username` |
+| GET | `/staff/summary` | any staff role (`requireTenant`, not `requireOwnerTenant`) — `[{id, name, title}]` only, deliberately excludes `username`/`email`/`phone`/`isActive`. Backs every PIC picker/"assigned to" label across the `projects` module (project PIC, vendor-engagement PIC, milestone PIC, issue PIC, activity actor) — needed by every role, not just Owner |
 | POST | `/staff` | body `{name, title, role, username, password, email, phone}` — rejects `role=Owner` (422); provisions a real login credential via `identity.CreateCredential` in the same call (mirrors `clients`' `POST /clients`), rolling back (deleting) the just-inserted row if that fails, e.g. username or email already taken by *any* principal on the platform (neither is tenant-scoped) |
 | PATCH | `/staff/{id}` | body `{name, title, role, email, phone}` — no `username` (immutable after creation). Rejects assigning `role=Owner` to a non-Owner row (403). For a row that's already `role=Owner`: rejected (403) unless the caller's own JWT principal id equals `{id}` — i.e. the Owner may edit their own name/title/contact details, but no other staff member (even Admin) may touch the Owner's row; even the Owner can't change their own role away from `Owner` this way |
 | POST | `/staff/{id}/toggle-active` | rejects deactivating the Owner row (403), regardless of caller |
@@ -119,38 +120,75 @@ a real `projects` row to reference)
 | POST | `/clients/{id}/replace-representative` | body `{name, phone, email, relationNote}`; only valid when `role=Family Representative`; overwrites the same row, no history kept (§6.3) |
 | DELETE | `/clients/{id}` | hard delete — the one permanent-delete endpoint in this module (every other mutation elsewhere is a soft toggle). Best-effort deactivates the client's `identity` credential first (harmless no-op if none exists); exists specifically so an operator can self-service clear a client stuck with no working credential, since deactivating alone doesn't free up that client's role slot on the project (the role lookup doesn't filter on `is_active`) |
 
-## `vendors` (tenant-scoped) — **implemented, Fase 3**
+## `vendors` (tenant-scoped) — **implemented, Fase 3** (Venue directory added ADR-0016; RBAC below added later — see ADR-0017)
+
+**Role gate, applies uniformly across `vendors`/`venues` below (`requireManagerRole`):** reading
+(list/get/attachment-download) stays open to any staff role, including Wedding Planner (`"Staff"`),
+so the vendor/venue pickers inside their own project keep working — but every write
+(create/update/toggle-active/attachment-upload/template/import) is Owner/Admin only.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/vendor-categories` | tenant-scoped; **paginated** (Fase 7); `?search=` matches category name |
-| POST | `/vendor-categories` | |
-| PATCH | `/vendor-categories/{id}` | |
-| POST | `/vendor-categories/{id}/toggle-active` | |
-| GET | `/vendors` | tenant-scoped, `?categoryId=` filter; **paginated** (Fase 7); `?search=` matches name + PIC + email |
-| POST | `/vendors` | validates `categoryId` belongs to the same tenant (422 if not) |
-| PATCH | `/vendors/{id}` | same `categoryId` validation |
-| POST | `/vendors/{id}/toggle-active` | |
-| GET | `/vendors/{id}/project-history` | backs "Lihat Project" — the vendor's engagement history across every project in the tenant, `[{projectId, projectName, eventDate, venue, engagementStatus}]` ordered by `eventDate DESC`. `project_vendors` is owned by `projects`, not `vendors` — resolved through `projects.Contracts.ListVendorEngagementHistory` (`vendors.NewModule` now takes `projects.Contracts` as a constructor arg; `main.go` builds `projects` before `vendors` accordingly). |
+| GET | `/vendor-categories` | tenant-scoped, open to any staff role; **paginated** (Fase 7) view is Owner-only, `?all=true` (picker/display use) stays open to any role; `?search=` matches category name |
+| POST | `/vendor-categories` | Owner-only |
+| PATCH | `/vendor-categories/{id}` | Owner-only |
+| POST | `/vendor-categories/{id}/toggle-active` | Owner-only |
+| GET | `/vendors` | `?categoryId=` filter; **paginated** (Fase 7); `?search=` matches name + PIC + email |
+| POST | `/vendors` | Owner/Admin only. Body now also accepts `socialMedia`, `city`, `priceAkad`, `priceAkadResepsi` (migration `000023`) — `email`/`address` are no longer mandatory; validates `categoryId` belongs to the same tenant (422 if not) |
+| PATCH | `/vendors/{id}` | Owner/Admin only; same body/`categoryId` validation as create |
+| POST | `/vendors/{id}/toggle-active` | Owner/Admin only |
+| PUT | `/vendors/{id}/attachment` | Owner/Admin only. Body `{fileName, mimeType, base64Data}` — same base64-JSON shape as evidence/logo upload; single slot (document or photo), replaces any existing attachment |
+| GET | `/vendors/{id}/attachment` | any staff role — streams the stored bytes back, `Content-Disposition: inline` |
+| GET | `/vendors/{id}/project-history` | Owner/Admin only — backs "Lihat Project," the vendor's engagement history across every project in the tenant, `[{projectId, projectName, eventDate, venue, engagementStatus}]` ordered by `eventDate DESC`. `project_vendors` is owned by `projects`, not `vendors` — resolved through `projects.Contracts.ListVendorEngagementHistory` (`vendors.NewModule` now takes `projects.Contracts` as a constructor arg; `main.go` builds `projects` before `vendors` accordingly). A Wedding Planner has no legitimate need to see a vendor's history across the whole tenant, only their own project's own engagement (lives in `projects` itself) |
+| GET | `/vendors/summary` | any staff role — `[{id, name}]`, **includes inactive vendors** (unlike every other `?all=true` listing in this module) so a project already engaging a since-deactivated vendor can still resolve its name. Backs Client Portal's Vendor Progress tab and any picker that only ever needs a name |
+| GET | `/vendors/template` | Owner/Admin only — downloads an empty `.xlsx` with the fixed header row `Nama Vendor, Kategori, Nama PIC, No Tlp Vendor, Email, Sosial Media, Kota, Alamat, Harga Akad, Harga Akad+Resepsi, Catatan` |
+| POST | `/vendors/import` | Owner/Admin only. Body `{base64Data}` (an `.xlsx` matching the template's column order) → partial-success import, `{insertedCount, updatedCount, errors: [{row, message}]}` — invalid rows are reported back by row number, valid rows still commit; capped at 1000 data rows |
 
-## `projects` (tenant-scoped — the largest surface) — **implemented, Fase 4**
+## `venues` (tenant-scoped) — **implemented, ADR-0016**
+
+Its own directory inside the `vendors` module (not a new top-level Go module) — see ADR-0016. Same
+`requireManagerRole` read/write split as `vendors` above, with one exception: the attachment
+download route is reachable by a `client` principal too (see below).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/projects` | staff-only; **paginated** (Fase 7); `?search=` matches name + bride/groom name + venue, `?status=` filters exact status; does **not** include `progress` (see below). `?archived=true` switches to the archived-only view — the two are disjoint, never merged (ADR-0013); omitted/`false` shows only non-archived projects. Note `GET /projects?all=true` (the full-roster/dashboard consumer) is **not** archive-filtered — it always includes archived projects, a deliberate scope boundary (see ADR-0013). |
-| POST | `/projects` | staff-only |
+| GET | `/venues` | any staff role; **paginated** (Fase 7); `?search=` |
+| POST | `/venues` | Owner/Admin only. Body `{name, picName, phonePic, phoneVenue, email, address, city, rentalPrice, charge, capacity, facilities, socialMedia, notes}` |
+| GET | `/venues/{id}` | any staff role — full record (rental price, charge, PIC contact included); the Client Portal never calls this directly, only the public-safe `GET /projects/{id}/venue` below |
+| PATCH | `/venues/{id}` | Owner/Admin only |
+| POST | `/venues/{id}/toggle-active` | Owner/Admin only |
+| PUT | `/venues/{id}/attachment` | Owner/Admin only. Body `{fileName, mimeType, base64Data}` — single slot (document or photo) |
+| GET | `/venues/{id}/attachment` | reachable by **both** `staff` and `client` principals (`requireTenant`, not `requireStaffTenant`) — the mime-type gate is enforced inside the handler itself, not just at the route level: an image-type attachment is served to a `client` principal (treated as a venue photo), a non-image (e.g. a PDF contract) is rejected 403 for `client` even with a valid venue id |
+| GET | `/venues/template` | Owner/Admin only — `.xlsx` header row `Nama Venue, Nama PIC, No Tlp PIC, No Tlp Venue, Email, Alamat, Kota, Harga Sewa, Charge, Kapasitas, Fasilitas, Sosial Media, Catatan` |
+| POST | `/venues/import` | Owner/Admin only. Same partial-success shape as `/vendors/import`; required fields per row: name/picName/phonePic/city |
+
+Migration `000022_migrate_venue_vendor_data` one-time-copied existing tenants' "Venue"-category
+`vendors` rows into this table (new fields land empty) and deactivated both the source rows and the
+"Venue" `vendor_categories` seed entry — see ADR-0016.
+
+## `projects` (tenant-scoped — the largest surface) — **implemented, Fase 4**; RBAC added later (ADR-0017)
+
+Both "Project Milestone" and "Vendor Milestone" below are displayed in the UI as "Timeline" and
+"Timeline Vendor" respectively — a display-text-only rename; every path segment (`milestones`),
+field name (`orderedIds`, activity type `milestone_updated`), and response shape stayed as-is.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/projects` | staff-only; **paginated** (Fase 7); `?search=` matches name + bride/groom name + venue, `?status=` filters exact status; does **not** include `progress` (see below). `?archived=true` switches to the archived-only view — the two are disjoint, never merged (ADR-0013); omitted/`false` shows only non-archived projects. Note `GET /projects?all=true` (the full-roster/dashboard consumer) is **not** archive-filtered — it always includes archived projects, a deliberate scope boundary (see ADR-0013). **Wedding Planner** (`role="Staff"`): both paginated and `all=true` results are silently scoped to only projects where `picStaffId` equals the caller — never a 403, just a narrower result set (see ADR-0017). |
+| POST | `/projects` | **Owner/Admin only** (403 for `role="Staff"`) — a Wedding Planner only ever operates within a project already assigned to them, never creates one (ADR-0017) |
 | GET | `/projects/me` | **client-only** (Fase 6) — resolves and returns the calling client's own single project (same shape as `GET /projects/{id}`, `progress` included); the Client Portal's entry point, since a client never learns its own project id any other way (mirrors `GET /tenants/me` from Fase 2). Handled as a special `"me"` segment inside the same dispatcher as `/projects/{id}/...`, not a separate route — see implementation note. |
-| GET | `/projects/{id}` | includes `progress` (computed on read, not stored). Staff: any project in their tenant. **Client** (Fase 6): only their own project — any other `{id}` is 403, checked server-side via `clients.Contracts.ProjectIDForClient`, not just a frontend convention. |
-| PATCH | `/projects/{id}` | |
+| GET | `/projects/{id}` | includes `progress` (computed on read, not stored). Staff: any project in their tenant, **except** Wedding Planner, who gets 403 on any project they aren't PIC of (ADR-0017, enforced by `resolveProjectAccess` — the single choke point every sub-resource below funnels through). **Client** (Fase 6): only their own project — any other `{id}` is 403, checked server-side via `clients.Contracts.ProjectIDForClient`, not just a frontend convention. |
+| PATCH | `/projects/{id}` | body now also accepts `venueId` (tri-state: omitted key = leave current attachment unchanged, `0` = detach, positive id = attach — see `GET .../venue` below). **Wedding Planner**: rejected 403 if `picStaffId` in the body differs from the project's current PIC — only Owner/Admin may reassign a project's PIC, even on a project the Wedding Planner already manages day to day (ADR-0017) |
 | POST | `/projects/{id}/cancel` | soft status change |
 | POST | `/projects/{id}/toggle-archive` | single toggle (flips `isArchived`), no body, no role restriction — see ADR-0013 |
-| POST | `/projects/{id}/duplicate` | body: same shape as create (`{name, brideName, ..., description}`) — the new project's own fields, since the frontend pre-fills its normal create/edit form from the source project. Clones the source's Project Milestones and Vendor Engagements (with their Vendor Milestones) as a structural template; does **not** copy payments, issues, evidence, activity log, or clients — see ADR-0014. No role restriction. |
+| POST | `/projects/{id}/duplicate` | body: same shape as create (`{name, brideName, ..., description}`) — the new project's own fields, since the frontend pre-fills its normal create/edit form from the source project. Clones the source's Project Milestones and Vendor Engagements (with their Vendor Milestones, including each one's `pricingTier`) as a structural template; does **not** copy payments, issues, evidence, activity log, or clients — see ADR-0014. **Owner/Admin only** (403 for `role="Staff"`, same reasoning as `POST /projects` — duplicating still produces a brand-new project, ADR-0017) |
 | DELETE | `/projects/{id}` | **hard delete, Owner-only** (403 for any other staff role) and requires the project already be archived or cancelled (422 otherwise, enforced server-side) — see ADR-0013 for the full cascade scope (every same-module sub-entity table, evidence's object-storage files, and a best-effort cleanup of every client tied to the project) |
+| GET | `/projects/{id}/venue` | resolves the project's attached `venueId` into public-safe display data (`{id, name, address, city, capacity, facilities, socialMedia, hasVisibleAttachment}` — no `rentalPrice`/`charge`/PIC contact, ADR-0016). `data: null` (not an error) when no venue is attached. Reachable by both staff and `client` principals — the WO Console's own Project Detail Venue tab instead fetches the *full* record directly from `GET /venues/{id}` (staff-only), since it needs the commercial fields this endpoint deliberately omits |
 | GET/POST | `/projects/{id}/milestones` | — |
 | PATCH | `/projects/{id}/milestones` | body `{orderedIds}` — full new order of all of the project's milestone IDs; rejected (422) unless it's an exact permutation of the existing set |
 | PATCH | `/projects/{id}/milestones/{milestoneId}` | body `{status, targetDate, completedDate}` — full update, mirrors vendor milestones below; `completedDate` is client-supplied, not server-stamped |
-| GET/POST | `/projects/{id}/vendors` | project-vendor engagements; create/update body requires `eventDate` (frontend fills it from the parent project's own `eventDate` — there's no separate date field in the vendor form) |
-| PATCH | `/projects/{id}/vendors/{projectVendorId}` | full-body update, same shape as create |
+| GET/POST | `/projects/{id}/vendors` | project-vendor engagements; create/update body requires `eventDate` (frontend fills it from the parent project's own `eventDate`) and now also `pricingTier` (`"Akad"` \| `"AkadResepsi"`, migration `000025`) — which of the vendor's own two preset prices (`vendors.priceAkad`/`priceAkadResepsi`) the frontend auto-filled `contractValue` from; purely a stored label, not backend-validated against the two-value set (same lax convention as `engagementStatus`) — `contractValue` itself stays whatever was actually submitted, negotiated or not |
+| PATCH | `/projects/{id}/vendors/{projectVendorId}` | full-body update, same shape as create (including `pricingTier`) |
 | POST | `/projects/{id}/vendors/{projectVendorId}/cancel` | one-way; "un-cancelling" is just editing `engagementStatus` back via PATCH |
 | GET/POST | `/projects/{id}/vendors/{projectVendorId}/milestones` | vendor milestones |
 | PATCH | `/projects/{id}/vendors/{projectVendorId}/milestones/{id}` | full-body update (`status`, `targetDate`, `completedDate`, `picStaffId`, `description`, `notes`) — no partial-field PATCH |
@@ -161,6 +199,25 @@ a real `projects` row to reference)
 | POST | `/projects/{id}/evidence` | JSON body `{name, type, fileName, mimeType, base64Data, documentDate, description, relatedKind, relatedId}` — base64, not multipart (see ADR-0006, ADR-0010); 15 MB decoded-size cap; `relatedKind` is one of `vendorMilestone`/`payment`/`projectVendor`/`issue` |
 | GET | `/projects/{id}/evidence/{evidenceId}/file` | authenticated download (Bearer token required — not a public URL); streams the object exactly as stored (already compressed at upload time); frontend fetches it as a blob via `httpClient`, not a bare `<img src>` |
 | GET | `/projects/{id}/activity` | append-only, populated server-side on every mutation above; activity types actually emitted: `project_created`, `project_updated`, `project_status_changed`, `vendor_added`, `vendor_status_changed`, `milestone_updated`, `payment_recorded`, `evidence_uploaded`, `issue_created`, `issue_updated`; response includes `projectId` (needed by the dashboard's cross-project activity feed, not by the per-project tab which already knows it from the URL) |
+
+## `milestone-templates` (tenant-scoped, "Pengaturan → Timeline Default") — every route Owner-only
+
+Per-tenant configurable checklist auto-seeded into a new project's own Timeline tab (`project_milestone_templates`
+table) — replaces a single hardcoded 6-item list shared by every tenant. Not routed through the
+`/projects/{id}/...` dispatcher — a standalone tenant-level resource, un-paginated (expected to stay
+a short list). See `DB_SCHEMA.md`.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/milestone-templates` | Owner-only — `[{id, name, daysBeforeEvent, sortOrder}]` |
+| POST | `/milestone-templates` | Owner-only. Body `{name, daysBeforeEvent}` |
+| PATCH | `/milestone-templates` | Owner-only — reorder. Body `{orderedIds}`, rejected (422) unless an exact permutation of the tenant's current template IDs |
+| PATCH | `/milestone-templates/{id}` | Owner-only — update `{name, daysBeforeEvent}` |
+| DELETE | `/milestone-templates/{id}` | Owner-only — **hard delete** (one of only three deliberate hard-delete exceptions in this codebase, see `knowledge/DATABASE_GUIDE.md`): a template row is only ever copied into a project's own `project_milestones` at creation time, never referenced again afterward, so there's nothing to orphan |
+
+A newly registered tenant gets the same starter 6-item template via `platform`'s tenant-registration
+flow (`SeedDefaultMilestoneTemplate`, called the same moment `vendors.SeedDefaultCategories` is) —
+already-registered tenants were backfilled directly by migration `000024`.
 
 ## WO Console dashboard — **implemented, Fase 5**
 
@@ -179,8 +236,11 @@ changed (real `todayISO()` instead of the mock's hardcoded `TODAY`).
 ## Client Portal (read-scoped subset — same `projects` endpoints, `client` principal) — **implemented, Fase 6**
 
 `client` principals hit the exact same `/projects/{id}/...` GET endpoints as staff (milestones,
-vendor engagements + their milestones, payments, issues, evidence + file download, activity) —
-there is no separate client-portal endpoint set. Enforcement, checked server-side on every request
+vendor engagements + their milestones, payments, issues, evidence + file download, activity, and
+`venue` — the public-safe summary, ADR-0016) — there is no separate client-portal endpoint set. The
+one exception is `venues/{id}/attachment`, a `venues`-module route (not under `/projects/{id}/...`)
+that `client` principals also reach, gated by mime type (image only) rather than by project
+ownership, since it isn't itself project-scoped. Enforcement, checked server-side on every request
 (not just a frontend routing convention):
 - Only `GET` is ever allowed for a `client` principal — any `POST`/`PATCH` is rejected 403 before
   reaching any business logic, even for the client's own project.

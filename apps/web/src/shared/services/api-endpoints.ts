@@ -57,6 +57,10 @@ export const API = {
     base: "/api/v1/staff",
     item: (id: string) => `/api/v1/staff/${id}`,
     toggleActive: (id: string) => `/api/v1/staff/${id}/toggle-active`,
+    // Public-safe within the tenant (any staff role) — {id, name, title}
+    // only, powers every PIC picker/label across the `projects` module.
+    // `base` above is Owner-only now (Pengguna management).
+    summary: "/api/v1/staff/summary",
   },
   vendors: {
     categories: "/api/v1/vendor-categories",
@@ -66,6 +70,24 @@ export const API = {
     item: (id: string) => `/api/v1/vendors/${id}`,
     toggleActive: (id: string) => `/api/v1/vendors/${id}/toggle-active`,
     projectHistory: (id: string) => `/api/v1/vendors/${id}/project-history`,
+    attachment: (id: string) => `/api/v1/vendors/${id}/attachment`,
+    template: "/api/v1/vendors/template",
+    import: "/api/v1/vendors/import",
+    // Public-safe (staff AND client) — {id, name} only, powers Client
+    // Portal's Vendor Progress tab. Every other vendor endpoint above is
+    // staff-only now that commercial fields (harga akad, lampiran) exist.
+    summary: "/api/v1/vendors/summary",
+  },
+  // `venues` — its own directory, not a vendor category (ADR-0016). One
+  // attachment slot per venue (no more photo gallery), plus a bulk Excel
+  // import/template flow (ADR-0016's Revisi).
+  venues: {
+    base: "/api/v1/venues",
+    item: (id: string) => `/api/v1/venues/${id}`,
+    toggleActive: (id: string) => `/api/v1/venues/${id}/toggle-active`,
+    attachment: (id: string) => `/api/v1/venues/${id}/attachment`,
+    template: "/api/v1/venues/template",
+    import: "/api/v1/venues/import",
   },
   projects: {
     base: "/api/v1/projects",
@@ -88,6 +110,14 @@ export const API = {
     evidence: (id: string) => `/api/v1/projects/${id}/evidence`,
     evidenceFile: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}/file`,
     activity: (id: string) => `/api/v1/projects/${id}/activity`,
+    venue: (id: string) => `/api/v1/projects/${id}/venue`,
+  },
+  // Timeline Default Template (PLAN.md) -- a tenant's own configurable
+  // checklist seeded into every new project's Timeline tab, managed from
+  // Pengaturan -> Timeline Default. Un-paginated, so no page/search params.
+  milestoneTemplates: {
+    base: "/api/v1/milestone-templates",
+    item: (id: string) => `/api/v1/milestone-templates/${id}`,
   },
   dashboard: "/api/v1/dashboard",
   clients: {

@@ -17,14 +17,15 @@ func NewMySQLProjectRepository(db *sql.DB) *MySQLProjectRepository {
 	return &MySQLProjectRepository{db: db}
 }
 
-const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, prep_start_date,
+const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, prep_start_date,
 	package_name, contract_value, status, pic_staff_id, description, is_archived, created_at, updated_at`
 
 func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) {
 	var p domain.Project
 	var status string
 	var description sql.NullString
-	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &p.PrepStartDate,
+	var venueID sql.NullInt64
+	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &venueID, &p.PrepStartDate,
 		&p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -34,11 +35,24 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	}
 	p.Status = domain.ProjectStatus(status)
 	p.Description = description.String
+	if venueID.Valid {
+		p.VenueID = &venueID.Int64
+	}
 	return &p, nil
 }
 
-func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64) ([]domain.Project, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE tenant_id = ? ORDER BY event_date DESC, id DESC`, tenantID)
+// picStaffID, when non-nil, scopes the result to a single PIC's own projects
+// — the Wedding Planner ("Staff" role) role restriction; nil means every
+// project in the tenant (Owner/Admin, and internal callers like Dashboard).
+func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error) {
+	query := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ?`
+	args := []interface{}{tenantID}
+	if picStaffID != nil {
+		query += ` AND pic_staff_id = ?`
+		args = append(args, *picStaffID)
+	}
+	query += ` ORDER BY event_date DESC, id DESC`
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -59,10 +73,15 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64) ([]do
 // as-is for dashboard/global-search consumers that need the full roster
 // (including archived projects; this method's showArchived split doesn't
 // apply there — see ProjectService.ListPaginated's doc comment).
-func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
+func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
 	countQuery := `SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = ?`
 	listQuery := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ? AND is_archived = ?`
 	args := []interface{}{tenantID, showArchived}
+	if picStaffID != nil {
+		countQuery += ` AND pic_staff_id = ?`
+		listQuery += ` AND pic_staff_id = ?`
+		args = append(args, *picStaffID)
+	}
 	var conditions []string
 	if search != "" {
 		conditions = append(conditions, `(name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ? OR venue LIKE ?)`)
@@ -128,9 +147,9 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 
 func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, prep_start_date = ?,
+		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, venue_id = ?, prep_start_date = ?,
 		 package_name = ?, contract_value = ?, status = ?, pic_staff_id = ?, description = ? WHERE tenant_id = ? AND id = ?`,
-		p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.PrepStartDate,
+		p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.PrepStartDate,
 		p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.Description, p.TenantID, p.ID,
 	)
 	return err

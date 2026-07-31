@@ -55,6 +55,7 @@ type VendorEngagementInput struct {
 	CategoryID       int64
 	Scope            string
 	ContractValue    int64
+	PricingTier      domain.VendorPricingTier
 	EngagementStatus domain.EngagementStatus
 	BookingDate      *time.Time
 	EventDate        time.Time
@@ -68,7 +69,7 @@ type VendorEngagementInput struct {
 func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, actorStaffID int64, input VendorEngagementInput) (*domain.ProjectVendor, error) {
 	pv := &domain.ProjectVendor{
 		ProjectID: projectID, VendorID: input.VendorID, CategoryID: input.CategoryID, Scope: input.Scope,
-		ContractValue: input.ContractValue, EngagementStatus: input.EngagementStatus, BookingDate: input.BookingDate,
+		ContractValue: input.ContractValue, PricingTier: input.PricingTier, EngagementStatus: input.EngagementStatus, BookingDate: input.BookingDate,
 		EventDate: input.EventDate, DPAmount: input.DPAmount, PaidAmount: input.PaidAmount, DueDate: input.DueDate,
 		PICStaffID: input.PICStaffID, Notes: input.Notes,
 	}
@@ -89,6 +90,7 @@ func (s *VendorEngagementService) Update(ctx context.Context, projectID, id int6
 	pv.CategoryID = input.CategoryID
 	pv.Scope = input.Scope
 	pv.ContractValue = input.ContractValue
+	pv.PricingTier = input.PricingTier
 	pv.EngagementStatus = input.EngagementStatus
 	pv.BookingDate = input.BookingDate
 	pv.EventDate = input.EventDate
@@ -158,7 +160,7 @@ func (s *VendorEngagementService) CreateMilestone(ctx context.Context, projectID
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(m.ID), m.Name,
-		"Milestone vendor ditambahkan: "+m.Name)
+		"Timeline vendor ditambahkan: "+m.Name)
 	return m, nil
 }
 
@@ -180,7 +182,7 @@ func (s *VendorEngagementService) UpdateMilestone(ctx context.Context, projectID
 		return nil, err
 	}
 	if m == nil {
-		return nil, apperror.NotFound("Milestone vendor tidak ditemukan")
+		return nil, apperror.NotFound("Timeline vendor tidak ditemukan")
 	}
 	m.Status = input.Status
 	m.TargetDate = input.TargetDate
@@ -192,6 +194,6 @@ func (s *VendorEngagementService) UpdateMilestone(ctx context.Context, projectID
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(m.ID), m.Name,
-		"Milestone vendor diperbarui")
+		"Timeline vendor diperbarui")
 	return m, nil
 }

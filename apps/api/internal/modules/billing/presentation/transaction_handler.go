@@ -45,11 +45,19 @@ func toTransactionResponse(t domain.Transaction) transactionResponse {
 }
 
 // List: platform_admin sees all tenants (optionally filtered by ?tenantId=),
-// staff is always forced to their own tenant regardless of any query param.
+// staff is always forced to their own tenant regardless of any query param —
+// and, for a staff principal, Owner-only (billing/transaction history is
+// part of the "Langganan" menu, which the confirmed role rule locks to
+// Owner in full, not just the write actions already gated elsewhere in
+// `platform/tenant_handler.go`).
 func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)
+		return
+	}
+	if claims.PrincipalType == "staff" && !claims.HasRole("Owner") {
+		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengakses riwayat transaksi langganan", nil)
 		return
 	}
 

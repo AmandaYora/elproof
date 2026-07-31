@@ -61,8 +61,11 @@ in the same form before submit, exactly like every other field.
 
 ## Consequences
 - New endpoint `POST /projects/{id}/duplicate`, same request/response shape as create — see
-  `docs/API_CONTRACT.md`. No role restriction (matches `Create`'s permission model — any staff, not
-  an Owner-only action like ADR-0013's hard delete, since duplicating destroys nothing).
+  `docs/API_CONTRACT.md`. At the time this shipped, no role restriction applied (matched `Create`'s
+  permission model — any staff, not an Owner-only action like ADR-0013's hard delete, since
+  duplicating destroys nothing). **Superseded by ADR-0017**: both `Create` and `Duplicate` are now
+  Owner/Admin only — a Wedding Planner only ever operates within a project already assigned to
+  them, never creates the resulting copy themselves.
 - `ProjectService.Duplicate` orchestrates: create the new `projects` row from the caller's input,
   then clone milestones, then clone vendor engagements (and their vendor milestones) — sequential,
   not wrapped in one cross-repository DB transaction. This matches the existing precedent already

@@ -66,7 +66,7 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		h.listProjects(w, r, claims.tenantID)
+		h.listProjects(w, r, claims)
 	case http.MethodPost:
 		h.createProject(w, r, claims)
 	default:
@@ -157,6 +157,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.downloadEvidence(w, r, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "activity" && r.Method == http.MethodGet:
 		h.listActivity(w, r, projectID)
+	case len(rest) == 1 && rest[0] == "venue" && r.Method == http.MethodGet:
+		h.getProjectVenue(w, r, claims.tenantID, projectID)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
@@ -191,11 +193,17 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 }
 
 // resolveProjectAccess authorizes the /projects/{id}/... subtree for either
-// principal type. Staff get the existing full access (any project in their
-// tenant). A client principal only ever gets a synthetic staffClaims with
-// staffID/role left zero-valued — safe because every write branch in Item
-// requires POST/PATCH, which this function already rejects for clients
-// before the big switch is ever reached, so those zero values are never read.
+// principal type. Owner/Admin get the existing full access (any project in
+// their tenant). A Wedding Planner ("Staff" role) is additionally scoped to
+// only the project they're PIC of — checked once here, since every
+// sub-resource under /projects/{id}/... (milestones, vendor engagements,
+// issues, evidence, payments, activity, venue) already funnels through this
+// same function, so a Wedding Planner can't reach another project's data by
+// guessing its numeric ID even though it's the same tenant. A client
+// principal only ever gets a synthetic staffClaims with staffID/role left
+// zero-valued — safe because every write branch in Item requires
+// POST/PATCH, which this function already rejects for clients before the
+// big switch is ever reached, so those zero values are never read.
 func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, projectID int64) (staffClaims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
@@ -205,7 +213,22 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 
 	switch claims.PrincipalType {
 	case "staff":
-		return requireStaff(w, r)
+		sc, ok := requireStaff(w, r)
+		if !ok {
+			return staffClaims{}, false
+		}
+		if sc.role == "Staff" {
+			p, err := h.projects.Get(r.Context(), sc.tenantID, projectID)
+			if err != nil {
+				writeAppError(w, err)
+				return staffClaims{}, false
+			}
+			if p.PICStaffID != sc.staffID {
+				response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+				return staffClaims{}, false
+			}
+		}
+		return sc, true
 	case "client":
 		if r.Method != http.MethodGet {
 			response.Error(w, http.StatusForbidden, "Client hanya memiliki akses baca", nil)

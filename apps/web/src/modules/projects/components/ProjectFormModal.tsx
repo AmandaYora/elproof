@@ -5,6 +5,7 @@ import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { projectSchema, PROJECT_STATUS_OPTIONS, type ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { Project } from "@/modules/projects/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 
 interface ProjectFormModalProps {
   open: boolean;
@@ -50,10 +51,17 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
 }
 
 export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode }: ProjectFormModalProps) {
-  const staffList = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staffList = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
+  const role = useAuthStore((s) => s.session?.role);
   const [values, setValues] = useState<ProjectFormValues>(() => toFormValues(initialProject, "", mode));
   const [errors, setErrors] = useState<Partial<Record<keyof ProjectFormValues, string>>>({});
+
+  // Wedding Planner never reassigns a project's PIC, even their own project's
+  // (only Owner/Admin do — see PLAN.md's RBAC section); the backend already
+  // rejects a changed picStaffId from this role, so this is a read-only
+  // display for them, not a disabled-but-still-submittable control.
+  const picLocked = role === "Staff" && Boolean(initialProject) && mode !== "duplicate";
 
   useEffect(() => {
     void fetchStaff();
@@ -92,7 +100,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
       title={mode === "duplicate" ? "Duplikat Project" : initialProject ? "Ubah Project" : "Tambah Project Baru"}
       description={
         mode === "duplicate"
-          ? "Project baru berdasarkan project ini — milestone dan daftar vendor akan ikut disalin sebagai template. Sesuaikan bagian yang berbeda sebelum menyimpan."
+          ? "Project baru berdasarkan project ini — timeline dan daftar vendor akan ikut disalin sebagai template. Sesuaikan bagian yang berbeda sebelum menyimpan."
           : "Informasi dasar project pernikahan yang dikelola WO."
       }
       size="lg"
@@ -143,11 +151,15 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
           />
         </Field>
         <Field label="Penanggung Jawab WO" required hint={errors.picStaffId}>
-          <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
-            {staffList.map((s) => (
-              <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
-            ))}
-          </Select>
+          {picLocked ? (
+            <Input value={staffList.find((s) => s.id === values.picStaffId)?.name ?? "..."} disabled />
+          ) : (
+            <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
+              {staffList.map((s) => (
+                <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
+              ))}
+            </Select>
+          )}
         </Field>
         <div className="sm:col-span-2">
           <Field label="Deskripsi / Catatan Project">

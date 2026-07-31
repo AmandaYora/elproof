@@ -20,6 +20,7 @@ import type {
   ProjectMilestone,
   ProjectProgress,
   ProjectVendor,
+  ProjectVenueSummary,
   VendorIssue,
   VendorMilestone,
   VendorPayment,
@@ -57,6 +58,7 @@ export interface RawProject {
   groomName: string;
   eventDate: string;
   venue: string;
+  venueId: number | null;
   prepStartDate: string;
   packageName: string;
   contractValue: number;
@@ -88,6 +90,7 @@ export function toProject(raw: RawProject): Project {
     groomName: raw.groomName,
     eventDate: raw.eventDate,
     venue: raw.venue,
+    venueId: raw.venueId !== null ? String(raw.venueId) : null,
     prepStartDate: raw.prepStartDate,
     packageName: raw.packageName,
     contractValue: raw.contractValue,
@@ -112,6 +115,24 @@ function projectInputBody(values: ProjectFormValues) {
     status: values.status,
     picStaffId: Number(values.picStaffId),
     description: values.description,
+  };
+}
+
+interface RawProjectVenueSummary {
+  id: number;
+  name: string;
+  address: string | null;
+  city: string | null;
+  capacity: number | null;
+  facilities: string | null;
+  socialMedia: string | null;
+  hasVisibleAttachment: boolean;
+}
+
+function toProjectVenueSummary(raw: RawProjectVenueSummary): ProjectVenueSummary {
+  return {
+    id: String(raw.id), name: raw.name, address: raw.address, city: raw.city, capacity: raw.capacity,
+    facilities: raw.facilities, socialMedia: raw.socialMedia, hasVisibleAttachment: raw.hasVisibleAttachment,
   };
 }
 
@@ -140,6 +161,7 @@ interface RawProjectVendor {
   categoryId: number;
   scope: string;
   contractValue: number;
+  pricingTier: ProjectVendor["pricingTier"];
   engagementStatus: ProjectVendor["engagementStatus"];
   bookingDate: string | null;
   eventDate: string;
@@ -157,6 +179,7 @@ function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
     categoryId: String(raw.categoryId),
     scope: raw.scope,
     contractValue: raw.contractValue,
+    pricingTier: raw.pricingTier,
     engagementStatus: raw.engagementStatus,
     bookingDate: raw.bookingDate,
     eventDate: raw.eventDate,
@@ -176,6 +199,7 @@ function vendorEngagementInputBody(values: ProjectVendorFormValues) {
     categoryId: 0,
     scope: values.scope,
     contractValue: values.contractValue,
+    pricingTier: values.pricingTier,
     engagementStatus: values.engagementStatus,
     bookingDate: values.bookingDate || "",
     eventDate: "",
@@ -371,6 +395,15 @@ interface ProjectState {
   fetchProjectPage: (page: number, search: string, status: string, showArchived?: boolean) => Promise<void>;
   createProject: (values: ProjectFormValues) => Promise<Project>;
   updateProject: (id: string, values: ProjectFormValues) => Promise<Project>;
+  // Attaches/detaches this project's structured venue (ADR-0016) — pass
+  // null to detach. Sends a full-replace PATCH body sourced from the
+  // already-loaded currentProject (same wire shape as updateProject), since
+  // the backend's Update endpoint doesn't support a true partial patch.
+  setProjectVenue: (id: string, venueId: string | null) => Promise<Project>;
+  // Public-safe summary (ADR-0016) — not cached in store state, same
+  // "return directly, don't stash" convention as fetchVendorProjectHistory,
+  // since it's only ever needed by whichever single tab is currently open.
+  fetchProjectVenueSummary: (id: string) => Promise<ProjectVenueSummary | null>;
   cancelProject: (id: string) => Promise<void>;
   toggleArchiveProject: (id: string) => Promise<void>;
   // Hard delete (ADR-0013) — Owner-only and requires the project already be
@@ -489,6 +522,41 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return project;
   },
 
+  setProjectVenue: async (id, venueId) => {
+    const current = get().currentProject;
+    if (!current || current.id !== id) {
+      throw new Error("Project belum dimuat");
+    }
+    const res = await httpClient.patch(API.projects.item(id), {
+      name: current.name,
+      brideName: current.brideName,
+      groomName: current.groomName,
+      eventDate: current.eventDate,
+      venue: current.venue,
+      prepStartDate: current.prepStartDate,
+      packageName: current.packageName,
+      contractValue: current.contractValue,
+      status: current.status,
+      picStaffId: Number(current.picStaffId),
+      description: current.description,
+      // 0 is never a real venue id (AUTO_INCREMENT starts at 1) — the
+      // backend's sentinel for "detach" (see ADR-0016).
+      venueId: venueId !== null ? Number(venueId) : 0,
+    });
+    const project = toProject(res.data.data as RawProject);
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? project : p)),
+      currentProject: state.currentProject?.id === id ? { ...project, progress: state.currentProject.progress } : state.currentProject,
+    }));
+    return project;
+  },
+
+  fetchProjectVenueSummary: async (id) => {
+    const res = await httpClient.get(API.projects.venue(id));
+    if (!res.data.data) return null;
+    return toProjectVenueSummary(res.data.data as RawProjectVenueSummary);
+  },
+
   cancelProject: async (id) => {
     const res = await httpClient.post(API.projects.cancel(id));
     const project = toProject(res.data.data as RawProject);
@@ -523,6 +591,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   fetchProjectDetail: async (projectId) => {
+    // vendorEngagements/vendorMilestones are separately fetched (fetchVendorSection)
+    // and, unlike currentProject, never scoped by project id in the store —
+    // cleared here, synchronously, the moment a project switch starts so a
+    // still-loading ProjectHeaderCard can never compute its Margin/Keuntungan
+    // (or anything else) against the PREVIOUS project's vendor costs while
+    // this project's own fetchVendorSection call is still in flight.
+    set({ vendorEngagements: [], vendorMilestones: [] });
     const res = await httpClient.get(API.projects.item(projectId));
     set({ currentProject: toProject(res.data.data as RawProject) });
   },

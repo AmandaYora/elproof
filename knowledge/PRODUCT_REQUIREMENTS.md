@@ -5,26 +5,48 @@
 See [PROJECT_BRIEF.md](PROJECT_BRIEF.md) for who uses ElProof and why. This file lists what each
 surface actually does, at the feature level, as already implemented in the frontend.
 
-## WO Console (`/dashboard`, `/projects`, `/clients`, `/vendor-categories`, `/vendors`, `/pengguna`, `/langganan`)
+## WO Console (`/dashboard`, `/projects`, `/clients`, `/vendors`, `/venues`, `/pengguna`, `/langganan`, `/vendor-categories`, `/timeline-default`)
 
-- **Dashboard**: stat cards + revenue/project trend charts + attention queue (overdue milestones,
-  open issues, incomplete payment evidence, near-D-day projects) + recent activity + upcoming events.
+**Role-based access (RBAC — see ADR-0017):** Owner sees and can do everything below. Admin sees
+everything except the "Pengaturan" group (Pengguna, Langganan, Kategori Vendor, Timeline Default —
+collapsed under one sidebar entry, invisible to Admin entirely). Wedding Planner (backend role
+`"Staff"`) only sees Project, scoped to just the projects they're PIC of — never creates or
+duplicates a project, and never reassigns a project's PIC (Owner/Admin only).
+
+- **Dashboard** (Owner/Admin): stat cards + revenue/project trend charts + attention queue (overdue
+  Timeline items, open issues, incomplete payment evidence, near-D-day projects, lagging progress) +
+  recent activity + upcoming events.
 - **Projects**: full lifecycle per wedding project — status (`Draft→Preparation→Ready→Completed`,
-  or `Cancelled`), 7 tabs per project: vendor engagements, milestones, client contacts, payments,
-  issues, evidence documents, activity log.
-- **Clients**: contacts per project (Bride/Groom/Family Representative), contact edit, credential
-  reset, active/inactive toggle, and a self-service permanent delete for a client left without a
-  working login credential (frees up its role slot on the project — deactivating alone doesn't).
-- **Vendor Categories** / **Vendors**: reference data + vendor directory with project history.
-- **Pengguna** (Users): create/edit Admin and Staff accounts, each provisioned with a real login
-  credential (username + password) the same way Clients are. The Owner row is seeded once by
-  Platform Console at tenant registration, but the Owner can edit their own name/title/contact
+  or `Cancelled`), 8 tabs per project: vendor engagements, Timeline, Venue, client contacts, payments,
+  issues, evidence documents, activity log. The header also shows a computed **Margin/Keuntungan**
+  (contract value minus vendor costs minus venue cost) — Owner/Admin only, hidden from Wedding
+  Planner. Creating a new project or duplicating one is Owner/Admin only.
+- **Clients** (Owner/Admin): contacts per project (Bride/Groom/Family Representative), contact edit,
+  credential reset, active/inactive toggle, and a self-service permanent delete for a client left
+  without a working login credential (frees up its role slot on the project — deactivating alone
+  doesn't).
+- **Vendors** (Owner/Admin write, read open to every staff role for pickers): directory with project
+  history, each with a pair of preset prices ("Harga Akad" / "Harga Akad + Resepsi") a project
+  engagement can auto-fill its own Nilai Kerja Sama from, plus social media/city/a single
+  document-or-photo attachment; bulk Excel import/export.
+- **Venues** (ADR-0016; Owner/Admin write, read open to every staff role): its own directory,
+  separate from Vendors — rental price, a separate charge, capacity, facilities, a single
+  attachment; bulk Excel import/export; attaches to a Project 1:1 from the Project's own Venue tab.
+- **Pengguna** (Users, Owner-only): create/edit Admin and Staff accounts, each provisioned with a
+  real login credential (username + password) the same way Clients are. The Owner row is seeded once
+  by Platform Console at tenant registration, but the Owner can edit their own name/title/contact
   details here afterward — no other staff member (even Admin) can touch the Owner's row, and
   nobody can reassign the Owner's role or username from this page.
-- **Langganan** (Subscription): Owner-only. Shows the tenant's current plan, features, expiry, and
+- **Langganan** (Subscription, Owner-only): Shows the tenant's current plan, features, expiry, and
   transaction history; "Bayar Sekarang" creates a real QRIS charge through Tripay (`payment` module,
   Fase 9) and polls the transaction status until the gateway confirms it — see
   [MODULE_PAYMENT.md](MODULE_PAYMENT.md).
+- **Kategori Vendor** (Owner-only to manage; the plain list stays readable by every staff role for
+  the Vendor form's category picker and each project's Vendor tab).
+- **Timeline Default** (Owner-only): configure the per-tenant checklist (name + days-before-event)
+  auto-seeded into every new project's own Timeline tab, replacing what used to be one hardcoded
+  6-item list shared by every tenant. Editing it never retroactively changes an already-created
+  project, and has no effect on Duplikat Project (which clones the source project's actual Timeline).
 
 ## Client Portal (`/portal/*`)
 

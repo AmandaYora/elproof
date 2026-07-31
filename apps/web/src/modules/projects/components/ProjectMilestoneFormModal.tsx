@@ -41,17 +41,17 @@ export function ProjectMilestoneFormModal({ open, onClose, onSubmit }: ProjectMi
     <Modal
       open={open}
       onClose={onClose}
-      title="Tambah Milestone"
-      description="Milestone baru akan ditambahkan di urutan paling akhir — gunakan tombol urutkan untuk memindahkannya."
+      title="Tambah Timeline"
+      description="Timeline baru akan ditambahkan di urutan paling akhir — gunakan tombol urutkan untuk memindahkannya."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Milestone</Button>
+          <Button onClick={handleSubmit}>Simpan Timeline</Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label="Nama Milestone" required hint={errors.name}>
+        <Field label="Nama Timeline" required hint={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Fitting Baju Pengantin" />
         </Field>
         <Field label="Target Tanggal" required hint={errors.targetDate}>

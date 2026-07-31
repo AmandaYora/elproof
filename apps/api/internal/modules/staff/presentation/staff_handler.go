@@ -41,10 +41,16 @@ func toStaffResponse(m domain.StaffMember) staffResponse {
 	}
 }
 
-func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
+// requireOwnerTenant gates the entire Pengguna (staff directory) surface to
+// Owner only — confirmed business rule: Admin has no access to User
+// management at all, not even to view the list or edit their own row via
+// this endpoint (Owner-editing-Owner's own row, per StaffService.Update's
+// isSelf check, still works fine since only Owner ever reaches this handler
+// at all now).
+func requireOwnerTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok {
-		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)
+	if !ok || claims.PrincipalType != "staff" || !claims.HasRole("Owner") {
+		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat mengakses pengelolaan pengguna", nil)
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()
@@ -55,8 +61,57 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return tenantID, true
 }
 
-func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
+// requireTenant is the plain "any authenticated staff" gate — used only by
+// Summary below, since PIC-name resolution (project PIC pickers, milestone/
+// vendor-engagement/issue/activity "assigned to" labels throughout the
+// `projects` module) is needed by every role, not just Owner.
+func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	claims, ok := middleware.FromContext(r.Context())
+	if !ok || claims.PrincipalType != "staff" {
+		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat mengakses endpoint ini", nil)
+		return 0, false
+	}
+	tenantID, ok := claims.TenantIDInt()
+	if !ok {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return 0, false
+	}
+	return tenantID, true
+}
+
+type staffSummaryResponse struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Title string `json:"title"`
+}
+
+// Summary backs every PIC picker/label across the `projects` module —
+// deliberately excludes username/email/phone/isActive (Pengguna's
+// management-only fields), reachable by any staff role regardless of the
+// Owner-only gate on the rest of this module (see requireOwnerTenant).
+func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
+		return
+	}
+	members, err := h.staff.List(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result := make([]staffSummaryResponse, 0, len(members))
+	for _, m := range members {
+		result = append(result, staffSummaryResponse{ID: m.ID, Name: m.Name, Title: m.Title})
+	}
+	response.OK(w, "ok", result)
+}
+
+func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := requireOwnerTenant(w, r)
 	if !ok {
 		return
 	}
@@ -123,7 +178,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 }
 
 func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := requireTenant(w, r)
+	tenantID, ok := requireOwnerTenant(w, r)
 	if !ok {
 		return
 	}

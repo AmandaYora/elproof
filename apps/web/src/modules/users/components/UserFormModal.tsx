@@ -10,7 +10,7 @@ import {
   type UserFormValues,
   type UserCreateFormValues,
 } from "@/modules/users/schemas/user.schema";
-import type { StaffMember } from "@/modules/users/types";
+import { ROLE_LABELS, type StaffMember } from "@/modules/users/types";
 
 interface FormState extends UserFormValues {
   username: string;
@@ -110,7 +110,7 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
           ) : (
             <Select value={values.role} onChange={(e) => set("role", e.target.value as UserFormValues["role"])}>
               {STAFF_ROLE_OPTIONS.map((r) => (
-                <option key={r} value={r}>{r}</option>
+                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
               ))}
             </Select>
           )}

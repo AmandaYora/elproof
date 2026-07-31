@@ -58,7 +58,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
     try {
       await updateMilestoneStatus(projectId, id, status);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui status milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal memperbarui status timeline"));
     }
   }
 
@@ -68,7 +68,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
       await createMilestone(projectId, values);
       setAddOpen(false);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal menambahkan timeline"));
     }
   }
 
@@ -79,7 +79,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
       await updateMilestone(projectId, editingMilestone.id, fields);
       setEditingMilestone(null);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal memperbarui timeline"));
     }
   }
 
@@ -94,7 +94,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
     try {
       await reorderMilestones(projectId, [...reordered, ...cancelled].map((m) => m.id));
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah urutan milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal mengubah urutan timeline"));
     }
   }
 
@@ -102,11 +102,11 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
     <div id="milestone">
       <Card>
         <CardHeader
-          title="Milestone Persiapan Acara"
-          subtitle="Progress keseluruhan didasarkan pada milestone yang benar-benar telah diselesaikan, bukan angka manual."
+          title="Timeline Persiapan Acara"
+          subtitle="Progress keseluruhan didasarkan pada timeline yang benar-benar telah diselesaikan, bukan angka manual."
           action={
             <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
-              Tambah Milestone
+              Tambah Timeline
             </Button>
           }
         />
@@ -119,7 +119,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <MilestoneRailLegend />
               {stats.overdue > 0 && (
-                <span className="text-[12.5px] font-semibold text-danger">{stats.overdue} milestone terlambat dari target</span>
+                <span className="text-[12.5px] font-semibold text-danger">{stats.overdue} timeline terlambat dari target</span>
               )}
             </div>
           </div>
@@ -155,7 +155,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                           />
                         </>
                       )}
-                      <IconActionButton icon={Pencil} label="Edit milestone" tone="neutral" onClick={() => setEditingMilestone(m)} />
+                      <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />
                       {cancelled ? (
                         <IconActionButton
                           icon={CheckCircle2}
@@ -166,7 +166,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                       ) : (
                         <IconActionButton
                           icon={Ban}
-                          label="Batalkan milestone"
+                          label="Batalkan timeline"
                           tone="danger"
                           onClick={() => void updateStatus(m.id, "Cancelled")}
                         />
@@ -202,7 +202,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
           <Table className="mt-2">
             <THead>
               <TR>
-                <TH>Milestone</TH>
+                <TH>Timeline</TH>
                 <TH>Status</TH>
                 <TH>Target Tanggal</TH>
                 <TH>Tanggal Selesai</TH>
@@ -253,7 +253,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                             />
                           </>
                         )}
-                        <IconActionButton icon={Pencil} label="Edit milestone" tone="neutral" onClick={() => setEditingMilestone(m)} />
+                        <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />
                         {cancelled ? (
                           <IconActionButton
                             icon={CheckCircle2}
@@ -264,7 +264,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                         ) : (
                           <IconActionButton
                             icon={Ban}
-                            label="Batalkan milestone"
+                            label="Batalkan timeline"
                             tone="danger"
                             onClick={() => void updateStatus(m.id, "Cancelled")}
                           />

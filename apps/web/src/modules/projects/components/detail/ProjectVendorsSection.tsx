@@ -78,8 +78,8 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
   const categories = useVendorCategoryStore((s) => s.categories);
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
@@ -145,7 +145,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
       await createVendorMilestone(projectId, addMilestoneFor.projectVendorId, values);
       setAddMilestoneFor(null);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan milestone vendor"));
+      setActionError(getApiErrorMessage(err, "Gagal menambahkan timeline vendor"));
     }
   }
 
@@ -168,7 +168,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         status: m.status === "Cancelled" ? "Not Started" : "Cancelled",
       });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal memperbarui timeline"));
     }
   }
 
@@ -181,7 +181,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         completedDate: status === "Completed" ? m.completedDate ?? todayISO() : m.completedDate ?? "",
       });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui status milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal memperbarui status timeline"));
     }
   }
 
@@ -192,7 +192,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
       await updateVendorMilestone(projectId, editingMilestone.milestone.projectVendorId, editingMilestone.milestone.id, fields);
       setEditingMilestone(null);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan milestone"));
+      setActionError(getApiErrorMessage(err, "Gagal menyimpan timeline"));
     }
   }
 
@@ -225,7 +225,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
       <Card>
         <CardHeader
           title="Vendor Project"
-          subtitle="Progress setiap vendor berdasarkan pencapaian milestone yang telah diselesaikan."
+          subtitle="Progress setiap vendor berdasarkan pencapaian timeline yang telah diselesaikan."
           action={
             <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
               Tambah Vendor
@@ -433,7 +433,7 @@ function VendorAccordionRow({
         <div className="mx-5 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
           <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            Yakin ingin membatalkan kerja sama dengan vendor ini? Milestone, pembayaran, dan kendala yang sudah tercatat tidak akan dihapus.
+            Yakin ingin membatalkan kerja sama dengan vendor ini? Timeline, pembayaran, dan kendala yang sudah tercatat tidak akan dihapus.
           </span>
           <span className="flex shrink-0 gap-2">
             <Button variant="secondary" size="sm" onClick={() => setConfirmingCancel(false)}>Batal</Button>
@@ -461,22 +461,22 @@ function VendorAccordionRow({
           </div>
 
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Milestone Vendor</p>
+            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Timeline Vendor</p>
             <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={onAddMilestone}>
-              Tambah Milestone
+              Tambah Timeline
             </Button>
           </div>
 
           {milestones.length === 0 ? (
             <p className="rounded-md border border-dashed border-border bg-white px-4 py-3 text-[13px] text-text-secondary">
-              Belum ada milestone untuk vendor ini.
+              Belum ada timeline untuk vendor ini.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-md border border-border bg-white">
               <table className="w-full text-left text-[13px]">
                 <thead className="border-b border-border-light">
                   <tr>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Milestone</th>
+                    <th className="px-3 py-2 font-semibold text-text-secondary">Timeline</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Status</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Target</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Selesai</th>
@@ -519,7 +519,7 @@ function VendorAccordionRow({
                           <div className="flex items-center gap-1.5">
                             <IconActionButton
                               icon={Pencil}
-                              label="Edit Milestone"
+                              label="Edit Timeline"
                               tone="neutral"
                               onClick={() => onEditMilestone(m, vendorName, milestones.length)}
                             />
@@ -533,7 +533,7 @@ function VendorAccordionRow({
                             ) : (
                               <IconActionButton
                                 icon={Ban}
-                                label="Batalkan milestone"
+                                label="Batalkan timeline"
                                 tone="danger"
                                 onClick={() => onToggleCancelMilestone(m)}
                               />

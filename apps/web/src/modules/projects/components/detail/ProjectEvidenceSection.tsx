@@ -28,7 +28,7 @@ import type { Evidence, EvidenceRelatedKind, EvidenceType } from "@/modules/proj
 import { formatDate } from "@/shared/lib/formatters";
 
 const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
-  vendorMilestone: "Milestone Vendor",
+  vendorMilestone: "Timeline Vendor",
   payment: "Pembayaran",
   projectVendor: "Kerja Sama Vendor",
   issue: "Kendala",
@@ -47,8 +47,8 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
 
   const [typeFilter, setTypeFilter] = useState<"Semua" | EvidenceType>("Semua");
   const [modalOpen, setModalOpen] = useState(false);
@@ -75,7 +75,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   function contextLabel(item: Evidence): string {
     if (item.relatedKind === "vendorMilestone") {
       const milestone = vendorMilestones.find((m) => m.id === item.relatedId);
-      return milestone ? `Milestone: ${milestone.name} — ${vendorNameFor(milestone.projectVendorId)}` : "Milestone";
+      return milestone ? `Timeline: ${milestone.name} — ${vendorNameFor(milestone.projectVendorId)}` : "Timeline";
     }
     if (item.relatedKind === "payment") {
       const payment = payments.find((p) => p.id === item.relatedId);
@@ -128,7 +128,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       <Card>
         <CardHeader
           title="Dokumen & Evidence"
-          subtitle="Seluruh dokumen pendukung milestone, pembayaran, kerja sama vendor, dan kendala pada project ini."
+          subtitle="Seluruh dokumen pendukung timeline, pembayaran, kerja sama vendor, dan kendala pada project ini."
           action={
             <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
               Tambah Evidence
@@ -152,7 +152,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
           {evidence.length === 0 ? (
             <EmptyState
               title="Belum ada evidence"
-              description="Evidence akan muncul di sini setelah diunggah untuk milestone, pembayaran, kerja sama vendor, atau kendala pada project ini."
+              description="Evidence akan muncul di sini setelah diunggah untuk timeline, pembayaran, kerja sama vendor, atau kendala pada project ini."
             />
           ) : filteredEvidence.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
@@ -313,7 +313,7 @@ function AddEvidenceModal({
       open={open}
       onClose={onClose}
       title="Tambah Evidence"
-      description="Unggah dokumen pendukung dan kaitkan dengan milestone, pembayaran, kerja sama vendor, atau kendala pada project ini."
+      description="Unggah dokumen pendukung dan kaitkan dengan timeline, pembayaran, kerja sama vendor, atau kendala pada project ini."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>

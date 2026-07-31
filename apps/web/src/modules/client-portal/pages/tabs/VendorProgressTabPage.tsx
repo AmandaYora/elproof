@@ -21,8 +21,12 @@ export default function VendorProgressTabPage() {
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
+  // Public-safe {id, name} only (ADR-0016-style split) — every other vendor
+  // field (PIC, phone, email, price, lampiran) is staff-only now, and this
+  // tab never needed more than the name anyway (category name comes from
+  // the separate `vendor-categories` store below).
+  const vendors = useVendorStore((s) => s.vendorSummaries);
+  const fetchVendorSummaries = useVendorStore((s) => s.fetchVendorSummaries);
   const categories = useVendorCategoryStore((s) => s.categories);
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
   const [viewingEvidence, setViewingEvidence] = useState<Evidence | null>(null);
@@ -31,9 +35,9 @@ export default function VendorProgressTabPage() {
     void fetchVendorSection(projectId);
     void fetchIssues(projectId);
     void fetchEvidence(projectId);
-    void fetchVendors();
+    void fetchVendorSummaries();
     void fetchCategories();
-  }, [projectId, fetchVendorSection, fetchIssues, fetchEvidence, fetchVendors, fetchCategories]);
+  }, [projectId, fetchVendorSection, fetchIssues, fetchEvidence, fetchVendorSummaries, fetchCategories]);
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">

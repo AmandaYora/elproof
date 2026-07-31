@@ -16,6 +16,17 @@ const (
 	EngagementCancelled   EngagementStatus = "Cancelled"
 )
 
+// VendorPricingTier records which of a vendor's own preset prices
+// (PriceAkad / PriceAkadResepsi) an engagement's ContractValue started from --
+// purely an informational label: ContractValue stays freely negotiable and
+// is never re-derived from this tier after the fact.
+type VendorPricingTier string
+
+const (
+	PricingTierAkad        VendorPricingTier = "Akad"
+	PricingTierAkadResepsi VendorPricingTier = "AkadResepsi"
+)
+
 type ProjectVendor struct {
 	ID               int64
 	ProjectID        int64
@@ -23,6 +34,7 @@ type ProjectVendor struct {
 	CategoryID       int64
 	Scope            string
 	ContractValue    int64
+	PricingTier      VendorPricingTier
 	EngagementStatus EngagementStatus
 	BookingDate      *time.Time
 	EventDate        time.Time

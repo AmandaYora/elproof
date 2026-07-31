@@ -26,13 +26,17 @@ owning module's contract function when the display layer needs the related data.
 - Timestamps: `created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`, `updated_at TIMESTAMP NOT
   NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` where mutation history matters.
 - Soft state over hard delete: the frontend consistently uses `is_active`/status-toggle rather than
-  deleting rows (vendors, clients, staff, plans all "deactivate" instead of delete) — mirror this
-  server-side; don't introduce hard deletes the frontend never asks for. Two deliberate, explicit
-  exceptions exist, both narrowly scoped and guarded rather than general-purpose: `clients.Delete`
-  (one bug-workaround scenario, see its own doc comment) and `projects.Delete` (a real,
-  user-requested feature — Owner-only, requires the project already archived/cancelled first, see
-  ADR-0013). Don't treat either as license to add more hard deletes without the same explicit
-  reasoning and guardrails.
+  deleting rows (vendors, venues, clients, staff, plans all "deactivate" instead of delete) — mirror
+  this server-side; don't introduce hard deletes the frontend never asks for. Three deliberate,
+  explicit exceptions exist, each narrowly scoped and guarded rather than general-purpose:
+  `clients.Delete` (one bug-workaround scenario, see its own doc comment), `projects.Delete` (a
+  real, user-requested feature — Owner-only, requires the project already archived/cancelled first,
+  see ADR-0013), and `MilestoneTemplateService.Delete` (Timeline Default Template items, Owner-only
+  — safe here specifically because a template row is only ever *copied* into a project's own
+  `project_milestones` at creation time, never referenced again afterward, so there's nothing to
+  orphan the way deleting a `vendors`/`venues` row referenced by `project_vendors`/`projects.venue_id`
+  would). Don't treat any of these three as license to add more hard deletes without the same
+  explicit reasoning and guardrails.
 
 ## Tooling
 

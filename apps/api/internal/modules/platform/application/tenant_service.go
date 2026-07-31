@@ -16,6 +16,7 @@ import (
 	identitycontracts "elproof/internal/modules/identity/contracts"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform/domain"
+	projectscontracts "elproof/internal/modules/projects/contracts"
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
@@ -64,6 +65,7 @@ type TenantService struct {
 	billing        billingcontracts.Contracts
 	payment        paymentcontracts.Client
 	vendors        vendorscontracts.Contracts
+	projects       projectscontracts.Contracts
 	storage        ObjectStorage
 	buildKey       func(tenantID, projectID, category, filename string) string
 }
@@ -91,6 +93,14 @@ func NewTenantService(
 // projects' SetClientAccessResolver for the clients<->projects cycle.
 func (s *TenantService) SetVendors(vendors vendorscontracts.Contracts) {
 	s.vendors = vendors
+}
+
+// SetProjects completes the same two-phase wiring as SetVendors above, so
+// Register() can seed a newly registered tenant's Timeline Default template
+// (PLAN.md) via projects/contracts, alongside the existing default vendor
+// categories seed.
+func (s *TenantService) SetProjects(projects projectscontracts.Contracts) {
+	s.projects = projects
 }
 
 func (s *TenantService) List(ctx context.Context) ([]domain.Tenant, error) {
@@ -175,6 +185,10 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 	}
 
 	if err := s.vendors.SeedDefaultCategories(ctx, tenant.ID); err != nil {
+		return nil, err
+	}
+
+	if err := s.projects.SeedDefaultMilestoneTemplate(ctx, tenant.ID); err != nil {
 		return nil, err
 	}
 

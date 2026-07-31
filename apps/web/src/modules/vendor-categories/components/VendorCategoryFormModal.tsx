@@ -69,7 +69,7 @@ export function VendorCategoryFormModal({ open, onClose, onSubmit, initialCatego
     >
       <div className="grid grid-cols-1 gap-4">
         <Field label="Nama Kategori" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Venue" />
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Dekorasi" />
         </Field>
         <Field label="Deskripsi" required hint={errors.description}>
           <Textarea

@@ -74,11 +74,15 @@ func (s *VendorCategoryService) Update(ctx context.Context, tenantID, id int64, 
 // Vendor Categories page isn't blank by default — the near-universal vendor
 // types every WO deals with. A tenant that doesn't need one can deactivate it
 // via SetActive; there's no delete, same as project milestones.
+//
+// "Venue" was removed from this list (ADR-0016) — it's now its own directory
+// (see vendors/domain/venue.go), not a vendor category. Existing tenants'
+// already-seeded "Venue" category is deactivated by migration
+// 000022_migrate_venue_vendor_data, not by this code change.
 var defaultCategoryTemplate = []struct {
 	Name        string
 	Description string
 }{
-	{"Venue", "Gedung, hotel, atau lokasi acara pernikahan"},
 	{"Katering", "Penyedia konsumsi untuk tamu dan keluarga"},
 	{"Dekorasi", "Dekorasi pelaminan, panggung, dan area acara"},
 	{"Fotografi & Videografi", "Dokumentasi foto dan video acara"},

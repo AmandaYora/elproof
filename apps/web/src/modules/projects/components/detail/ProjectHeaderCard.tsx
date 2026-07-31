@@ -10,6 +10,8 @@ import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
+import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
+import type { Venue } from "@/modules/venues/types";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
@@ -21,16 +23,30 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const project = useProjectStore((s) => s.currentProject);
   const milestones = useProjectStore((s) => s.milestones);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
+  const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
+  const fetchVenue = useVenueStore((s) => s.fetchVenue);
   const updateProject = useProjectStore((s) => s.updateProject);
   const cancelProject = useProjectStore((s) => s.cancelProject);
   const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
-  const staff = useStaffStore((s) => s.staff);
-  const fetchStaff = useStaffStore((s) => s.fetchStaff);
+  const staff = useStaffStore((s) => s.staffSummaries);
+  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // Wedding Planner never duplicates a project (duplicating creates a new
+  // one — same restriction as creating from scratch, see PLAN.md's RBAC
+  // section); the backend already rejects this role's POST .../duplicate.
+  const canDuplicate = useAuthStore((s) => s.session?.role) !== "Staff";
+  // Margin/Keuntungan reveals vendor-cost/venue-cost business data — Wedding
+  // Planner is not supposed to access Vendor/Venue data at all (confirmed
+  // RBAC rule), even though the underlying GET /venues/{id} this feature
+  // calls happens to stay staff-wide open for picker use elsewhere. Gating
+  // this specifically (not just hiding the InfoField) also skips the venue
+  // fetch below entirely for this role, so the cost figures never even
+  // reach a Wedding Planner's browser.
+  const canSeeMargin = useAuthStore((s) => s.session?.role) !== "Staff";
 
   const [editOpen, setEditOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -38,6 +54,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [venue, setVenue] = useState<Venue | null>(null);
 
   useEffect(() => {
     void fetchMilestones(projectId);
@@ -45,9 +62,36 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     void fetchStaff();
   }, [projectId, fetchMilestones, fetchVendorSection, fetchStaff]);
 
+  // Fetched purely for the Margin/Keuntungan figure below (rentalPrice/charge
+  // are never part of the cross-module VenueSummary the Client Portal's own
+  // Venue tab uses, to avoid leaking WO cost data there — see PLAN.md) —
+  // mirrors ProjectVenueTabPage's own direct staff-only venue fetch.
+  useEffect(() => {
+    let cancelled = false;
+    if (!canSeeMargin || !project?.venueId) {
+      setVenue(null);
+      return;
+    }
+    void fetchVenue(project.venueId).then((v) => {
+      if (!cancelled) setVenue(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeMargin, project?.venueId, fetchVenue]);
+
   if (!project) {
     return <div className="text-sm text-text-secondary">Project tidak ditemukan.</div>;
   }
+
+  // Margin/Keuntungan = Nilai Kontrak − biaya vendor aktif − biaya venue
+  // (PLAN.md). Cancelled engagements are excluded, same as milestone stats
+  // already exclude Cancelled from every "relevant" computation.
+  const vendorCost = vendorEngagements
+    .filter((v) => v.engagementStatus !== "Cancelled")
+    .reduce((sum, v) => sum + v.contractValue, 0);
+  const venueCost = venue ? (venue.rentalPrice ?? 0) + (venue.charge ?? 0) : 0;
+  const margin = project.contractValue - vendorCost - venueCost;
 
   const progress = project.progress;
   const segments = [...milestones, ...vendorMilestones];
@@ -127,9 +171,11 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
               Ubah Project
             </Button>
-            <Button variant="secondary" size="sm" icon={<Copy className="h-3.5 w-3.5" />} onClick={() => setDuplicateOpen(true)}>
-              Duplikat Project
-            </Button>
+            {canDuplicate && (
+              <Button variant="secondary" size="sm" icon={<Copy className="h-3.5 w-3.5" />} onClick={() => setDuplicateOpen(true)}>
+                Duplikat Project
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -171,7 +217,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
             <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
               <AlertTriangle className="h-4 w-4" /> Yakin ingin menghapus project ini secara permanen? Tindakan ini permanen — seluruh
-              milestone, vendor, pembayaran, kendala, dan evidence akan ikut terhapus dan tidak dapat dipulihkan.
+              timeline, vendor, pembayaran, kendala, dan evidence akan ikut terhapus dan tidak dapat dipulihkan.
             </span>
             <span className="flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)} disabled={isDeleting}>Batal</Button>
@@ -192,6 +238,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <InfoField label="Mulai Persiapan" value={formatDate(project.prepStartDate)} />
           <InfoField label="Paket / Layanan" value={project.packageName} />
           <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
+          {canSeeMargin && <InfoField label="Margin/Keuntungan" value={formatCurrency(margin)} />}
           <InfoField label="Penanggung Jawab" value={pic?.name ?? "-"} />
         </div>
 
@@ -207,7 +254,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
                 <ConditionBadge condition={progress.condition} />
               </div>
               <span className="text-[12.5px] text-text-secondary">
-                Milestone project {progress.projectMilestoneStats.completed}/{progress.projectMilestoneStats.total} · Milestone vendor{" "}
+                Timeline project {progress.projectMilestoneStats.completed}/{progress.projectMilestoneStats.total} · Timeline vendor{" "}
                 {progress.vendorMilestoneStats.completed}/{progress.vendorMilestoneStats.total}
                 {progress.overdueMilestoneCount > 0 && (
                   <span className="font-semibold text-danger"> · {progress.overdueMilestoneCount} terlambat</span>
@@ -217,7 +264,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             <ProgressMeter
               percent={progress.overallPercent}
               segments={segments}
-              caption={`${completedMilestones}/${totalMilestones} milestone selesai berdasarkan pencapaian nyata — bukan estimasi manual.`}
+              caption={`${completedMilestones}/${totalMilestones} timeline selesai berdasarkan pencapaian nyata — bukan estimasi manual.`}
             />
           </div>
         )}
