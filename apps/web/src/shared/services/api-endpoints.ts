@@ -105,6 +105,7 @@ export const API = {
     vendorMilestone: (id: string, pvId: string, milestoneId: string) =>
       `/api/v1/projects/${id}/vendors/${pvId}/milestones/${milestoneId}`,
     payments: (id: string) => `/api/v1/projects/${id}/payments`,
+    clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
     issues: (id: string) => `/api/v1/projects/${id}/issues`,
     issue: (id: string, issueId: string) => `/api/v1/projects/${id}/issues/${issueId}`,
     evidence: (id: string) => `/api/v1/projects/${id}/evidence`,
