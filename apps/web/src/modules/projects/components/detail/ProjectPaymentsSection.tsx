@@ -54,7 +54,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
     <div id="pembayaran">
       <Card>
         <CardHeader
-          title="Pembayaran Vendor"
+          title="Pembayaran ke Vendor"
           subtitle="Ringkasan nilai kerja sama dan seluruh riwayat pembayaran ke vendor pada project ini."
           action={
             <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>

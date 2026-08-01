@@ -7,10 +7,13 @@ import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/proj
 import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project-vendor.schema";
 import type { VendorMilestoneFormValues } from "@/modules/projects/schemas/vendor-milestone.schema";
 import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
+import type { ClientPaymentFormValues } from "@/modules/projects/schemas/client-payment.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
+import { compressFileForUpload } from "@/shared/lib/image-compression";
 import type {
   ActivityLogEntry,
+  ClientPayment,
   Evidence,
   EvidenceRelatedKind,
   EvidenceType,
@@ -26,6 +29,12 @@ import type {
   VendorPayment,
 } from "@/modules/projects/types";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
+
+// Thrown by createClientPayment when the payment itself was saved but its
+// proof upload failed — distinct from a full failure so the caller can close
+// the modal (the payment is real) instead of leaving it open for a retry,
+// which would otherwise risk creating a duplicate payment.
+export class ClientPaymentEvidenceError extends Error {}
 
 // --- Raw wire shapes (see apps/api .../projects/presentation/dto.go) ---
 
@@ -277,6 +286,30 @@ function toPayment(raw: RawPayment): VendorPayment {
   };
 }
 
+interface RawClientPayment {
+  id: number;
+  type: ClientPayment["type"];
+  amount: number;
+  paymentDate: string;
+  method: string;
+  referenceNumber: string;
+  notes: string;
+  evidenceComplete: boolean;
+}
+
+function toClientPayment(raw: RawClientPayment): ClientPayment {
+  return {
+    id: String(raw.id),
+    type: raw.type,
+    amount: raw.amount,
+    paymentDate: raw.paymentDate,
+    method: raw.method,
+    referenceNumber: raw.referenceNumber,
+    notes: raw.notes,
+    evidenceComplete: raw.evidenceComplete,
+  };
+}
+
 interface RawIssue {
   id: number;
   projectVendorId: number;
@@ -379,6 +412,7 @@ interface ProjectState {
   vendorEngagements: ProjectVendor[];
   vendorMilestones: VendorMilestone[];
   payments: VendorPayment[];
+  clientPayments: ClientPayment[];
   issues: VendorIssue[];
   evidence: Evidence[];
   activity: ActivityLogEntry[];
@@ -439,6 +473,14 @@ interface ProjectState {
   fetchPayments: (projectId: string) => Promise<void>;
   createPayment: (projectId: string, values: PaymentFormValues) => Promise<void>;
 
+  fetchClientPayments: (projectId: string) => Promise<void>;
+  // Orchestrates POST .../client-payments then, only if values.proofFile is
+  // set, compress+POST .../evidence with relatedKind "clientPayment" — one
+  // store action instead of a separate manual "Tambah Evidence" step (PLAN.md
+  // §1.4), closing the "always incomplete in practice" gap vendor_payments
+  // has today (createPayment above never attaches evidence at creation time).
+  createClientPayment: (projectId: string, values: ClientPaymentFormValues) => Promise<void>;
+
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
   updateIssueStatus: (projectId: string, issueId: string, status: IssueStatus) => Promise<void>;
@@ -460,6 +502,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   vendorEngagements: [],
   vendorMilestones: [],
   payments: [],
+  clientPayments: [],
   issues: [],
   evidence: [],
   activity: [],
@@ -720,6 +763,51 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projectVendorId: Number(values.projectVendorId),
     });
     await get().fetchPayments(projectId);
+  },
+
+  fetchClientPayments: async (projectId) => {
+    const res = await httpClient.get(API.projects.clientPayments(projectId));
+    set({ clientPayments: (res.data.data as RawClientPayment[]).map(toClientPayment) });
+  },
+
+  createClientPayment: async (projectId, values) => {
+    const res = await httpClient.post(API.projects.clientPayments(projectId), {
+      type: values.type,
+      amount: values.amount,
+      paymentDate: values.paymentDate,
+      method: values.method,
+      referenceNumber: values.referenceNumber,
+      notes: values.notes,
+    });
+    const created = toClientPayment(res.data.data as RawClientPayment);
+    // The payment itself is already persisted at this point — if the proof
+    // upload fails (network/storage error), that must NOT look like the
+    // whole submission failed (the caller would otherwise invite a resubmit,
+    // creating a duplicate payment). Refetch regardless, then signal the
+    // partial failure via a distinct error type so the caller can close the
+    // modal instead of leaving it open for a retry.
+    if (values.proofFile) {
+      try {
+        const compressed = await compressFileForUpload(values.proofFile);
+        await httpClient.post(API.projects.evidence(projectId), {
+          name: `Bukti Transfer - ${values.referenceNumber}`,
+          type: "Transfer Proof",
+          fileName: compressed.fileName,
+          mimeType: compressed.mimeType,
+          base64Data: compressed.base64Data,
+          documentDate: values.paymentDate,
+          description: "",
+          relatedKind: "clientPayment",
+          relatedId: Number(created.id),
+        });
+      } catch {
+        await get().fetchClientPayments(projectId);
+        throw new ClientPaymentEvidenceError(
+          "Pembayaran tersimpan, tapi bukti transfer gagal diunggah. Anda bisa melampirkan buktinya nanti melalui tab Dokumen."
+        );
+      }
+    }
+    await get().fetchClientPayments(projectId);
   },
 
   fetchIssues: async (projectId) => {

@@ -24,8 +24,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const milestones = useProjectStore((s) => s.milestones);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
+  const clientPayments = useProjectStore((s) => s.clientPayments);
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
+  const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
   const fetchVenue = useVenueStore((s) => s.fetchVenue);
   const updateProject = useProjectStore((s) => s.updateProject);
   const cancelProject = useProjectStore((s) => s.cancelProject);
@@ -59,8 +61,9 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   useEffect(() => {
     void fetchMilestones(projectId);
     void fetchVendorSection(projectId);
+    void fetchClientPayments(projectId);
     void fetchStaff();
-  }, [projectId, fetchMilestones, fetchVendorSection, fetchStaff]);
+  }, [projectId, fetchMilestones, fetchVendorSection, fetchClientPayments, fetchStaff]);
 
   // Fetched purely for the Margin/Keuntungan figure below (rentalPrice/charge
   // are never part of the cross-module VenueSummary the Client Portal's own
@@ -92,6 +95,15 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     .reduce((sum, v) => sum + v.contractValue, 0);
   const venueCost = venue ? (venue.rentalPrice ?? 0) + (venue.charge ?? 0) : 0;
   const margin = project.contractValue - vendorCost - venueCost;
+
+  // Sisa Tagihan Client (PLAN.md §1.7/§3.9) — day-to-day operational status
+  // ("has the client paid this installment"), visible to every role that
+  // already sees Nilai Kontrak, unlike Margin/Keuntungan above.
+  const totalReceived = clientPayments.reduce(
+    (sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount),
+    0
+  );
+  const outstanding = project.contractValue - totalReceived;
 
   const progress = project.progress;
   const segments = [...milestones, ...vendorMilestones];
@@ -238,6 +250,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <InfoField label="Mulai Persiapan" value={formatDate(project.prepStartDate)} />
           <InfoField label="Paket / Layanan" value={project.packageName} />
           <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
+          <InfoField label="Sisa Tagihan Client" value={formatCurrency(outstanding)} />
           {canSeeMargin && <InfoField label="Margin/Keuntungan" value={formatCurrency(margin)} />}
           <InfoField label="Penanggung Jawab" value={pic?.name ?? "-"} />
         </div>

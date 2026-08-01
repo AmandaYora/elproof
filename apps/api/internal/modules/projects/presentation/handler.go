@@ -29,26 +29,31 @@ type ClientAccessResolver interface {
 }
 
 type Handler struct {
-	projects     *application.ProjectService
-	vendors      *application.VendorEngagementService
-	payments     *application.PaymentService
-	issues       *application.IssueService
-	evidence     *application.EvidenceService
-	activity     *application.ActivityService
-	dashboard    *application.DashboardService
-	clientAccess ClientAccessResolver
+	projects       *application.ProjectService
+	vendors        *application.VendorEngagementService
+	payments       *application.PaymentService
+	clientPayments *application.ClientPaymentService
+	issues         *application.IssueService
+	evidence       *application.EvidenceService
+	activity       *application.ActivityService
+	dashboard      *application.DashboardService
+	clientAccess   ClientAccessResolver
 }
 
 func NewHandler(
 	projects *application.ProjectService,
 	vendors *application.VendorEngagementService,
 	payments *application.PaymentService,
+	clientPayments *application.ClientPaymentService,
 	issues *application.IssueService,
 	evidence *application.EvidenceService,
 	activity *application.ActivityService,
 	dashboard *application.DashboardService,
 ) *Handler {
-	return &Handler{projects: projects, vendors: vendors, payments: payments, issues: issues, evidence: evidence, activity: activity, dashboard: dashboard}
+	return &Handler{
+		projects: projects, vendors: vendors, payments: payments, clientPayments: clientPayments,
+		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard,
+	}
 }
 
 // SetClientAccessResolver completes the two-phase wiring needed to break the
@@ -143,6 +148,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listPayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "payments" && r.Method == http.MethodPost:
 		h.createPayment(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodGet:
+		h.listClientPayments(w, r, projectID)
+	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
+		h.createClientPayment(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodGet:
 		h.listIssues(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:
@@ -193,17 +202,22 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 }
 
 // resolveProjectAccess authorizes the /projects/{id}/... subtree for either
-// principal type. Owner/Admin get the existing full access (any project in
-// their tenant). A Wedding Planner ("Staff" role) is additionally scoped to
-// only the project they're PIC of — checked once here, since every
-// sub-resource under /projects/{id}/... (milestones, vendor engagements,
-// issues, evidence, payments, activity, venue) already funnels through this
-// same function, so a Wedding Planner can't reach another project's data by
-// guessing its numeric ID even though it's the same tenant. A client
-// principal only ever gets a synthetic staffClaims with staffID/role left
-// zero-valued — safe because every write branch in Item requires
-// POST/PATCH, which this function already rejects for clients before the
-// big switch is ever reached, so those zero values are never read.
+// principal type. Every staff principal — regardless of role — is first
+// confirmed to own `projectID` within their own tenant via `h.projects.Get`
+// (a tenant_id+id-scoped lookup; a project belonging to a different tenant
+// resolves as NotFound, just like a nonexistent one). Owner/Admin get full
+// access to any project that check confirms is theirs. A Wedding Planner
+// ("Staff" role) is additionally scoped to only the project they're PIC of —
+// checked once here, since every sub-resource under /projects/{id}/...
+// (milestones, vendor engagements, issues, evidence, payments,
+// client-payments, activity, venue) already funnels through this same
+// function, so neither a Wedding Planner nor any other staff role can reach
+// another tenant's — or, for a Wedding Planner, another project's — data by
+// guessing its numeric ID. A client principal only ever gets a synthetic
+// staffClaims with staffID/role left zero-valued — safe because every write
+// branch in Item requires POST/PATCH, which this function already rejects
+// for clients before the big switch is ever reached, so those zero values
+// are never read.
 func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, projectID int64) (staffClaims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
@@ -217,16 +231,14 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 		if !ok {
 			return staffClaims{}, false
 		}
-		if sc.role == "Staff" {
-			p, err := h.projects.Get(r.Context(), sc.tenantID, projectID)
-			if err != nil {
-				writeAppError(w, err)
-				return staffClaims{}, false
-			}
-			if p.PICStaffID != sc.staffID {
-				response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
-				return staffClaims{}, false
-			}
+		p, err := h.projects.Get(r.Context(), sc.tenantID, projectID)
+		if err != nil {
+			writeAppError(w, err)
+			return staffClaims{}, false
+		}
+		if sc.role == "Staff" && p.PICStaffID != sc.staffID {
+			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+			return staffClaims{}, false
 		}
 		return sc, true
 	case "client":

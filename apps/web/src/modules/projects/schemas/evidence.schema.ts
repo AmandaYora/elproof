@@ -14,7 +14,7 @@ export const EVIDENCE_TYPE_OPTIONS = [
   "Other",
 ] as const;
 
-export const EVIDENCE_RELATED_KIND_OPTIONS = ["vendorMilestone", "payment", "projectVendor", "issue"] as const;
+export const EVIDENCE_RELATED_KIND_OPTIONS = ["vendorMilestone", "payment", "projectVendor", "issue", "clientPayment"] as const;
 
 export const evidenceUploadSchema = z.object({
   name: z.string().min(3, "Nama evidence wajib diisi"),

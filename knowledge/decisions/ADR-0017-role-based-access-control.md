@@ -44,14 +44,34 @@ bool` on `internal/shared/middleware/auth.go`, used by every one of those guard 
 each hand-rolling its own `==`/loop comparison.
 
 ### The single choke point for Wedding Planner's project scoping: `resolveProjectAccess`
-Every `/projects/{id}/...` sub-resource (milestones, vendor engagements, payments, issues, evidence,
-activity, venue) already funneled through one function in `projects/presentation/handler.go`. The
-Wedding Planner's PIC check was added exactly once, there — `sc.role == "Staff"` →
-`p.PICStaffID != sc.staffID` → 403 — rather than repeated per sub-resource, so a Wedding Planner
-can't reach another project's data by guessing its numeric id even within their own tenant. `GET
-/projects` (list) and `GET /projects?all=true` apply the equivalent scoping at the query level
-(`picStaffID *int64` threaded through `ProjectRepository.List`/`ListPaginated`) instead — a narrower
-result set, never a 403, since listing is expected to return *something* for every role.
+Every `/projects/{id}/...` sub-resource (milestones, vendor engagements, payments, client-payments,
+issues, evidence, activity, venue) already funneled through one function in
+`projects/presentation/handler.go`. The Wedding Planner's PIC check was added exactly once, there —
+`sc.role == "Staff"` → `p.PICStaffID != sc.staffID` → 403 — rather than repeated per sub-resource, so
+a Wedding Planner can't reach another project's data by guessing its numeric id even within their own
+tenant. `GET /projects` (list) and `GET /projects?all=true` apply the equivalent scoping at the query
+level (`picStaffID *int64` threaded through `ProjectRepository.List`/`ListPaginated`) instead — a
+narrower result set, never a 403, since listing is expected to return *something* for every role.
+
+### Addendum (found + fixed alongside the Client Payments feature): cross-tenant gap in `resolveProjectAccess`
+This ADR's own text above already claimed "Owner/Admin get the existing full access (any project in
+their tenant)" — but the code never actually enforced the "in their tenant" part for those two roles.
+`h.projects.Get(ctx, sc.tenantID, projectID)` (the tenant-scoped lookup that returns `NotFound` when
+`projectID` belongs to a different tenant) was only ever called inside the `if sc.role == "Staff"`
+branch — Owner/Admin skipped it entirely and fell straight through to `return sc, true`. Since none
+of the sub-resource repositories filter by `tenant_id` either (only `project_id`), and project ids
+are a single global `BIGINT AUTO_INCREMENT` sequence (not per-tenant), any authenticated Owner/Admin
+in *any* tenant could read — and, for evidence, download the actual file bytes of — another tenant's
+`vendors`, `milestones`, `payments`, `client-payments`, `issues`, `evidence`, and `activity` by
+guessing/enumerating a numeric project id. This predates this ADR (this ADR only added the
+*additional* Wedding Planner narrowing on top of an assumed-already-tenant-scoped baseline) and was
+never an accepted tradeoff — ADR-0004 states unconditionally that every tenant-owned table's queries
+filter by `tenant_id`. **Fixed**: `h.projects.Get(ctx, sc.tenantID, projectID)` now runs for every
+staff principal regardless of role; the PIC check applies only on top of that, for `role == "Staff"`.
+Verified with a throwaway JWT-minting smoke test (not committed) hitting a locally running server:
+cross-tenant access now 404s (both for `client-payments` and, confirming the fix isn't
+client-payments-specific, the sibling `payments` endpoint), same-tenant Owner/Admin access and the
+Wedding Planner PIC-scoping 403 both still behave exactly as before.
 
 ### Read-open, write-restricted split for shared reference data
 Vendor, Venue, and Vendor Category reads (list/get, including the picker-friendly `?all=true`

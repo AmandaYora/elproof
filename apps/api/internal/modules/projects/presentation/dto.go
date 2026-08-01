@@ -191,6 +191,24 @@ func toPaymentResponse(p domain.VendorPayment) paymentResponse {
 	}
 }
 
+type clientPaymentResponse struct {
+	ID               int64  `json:"id"`
+	Type             string `json:"type"`
+	Amount           int64  `json:"amount"`
+	PaymentDate      string `json:"paymentDate"`
+	Method           string `json:"method"`
+	ReferenceNumber  string `json:"referenceNumber"`
+	Notes            string `json:"notes"`
+	EvidenceComplete bool   `json:"evidenceComplete"`
+}
+
+func toClientPaymentResponse(p domain.ClientPayment, evidenceComplete bool) clientPaymentResponse {
+	return clientPaymentResponse{
+		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
+		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
+	}
+}
+
 type issueResponse struct {
 	ID                   int64   `json:"id"`
 	ProjectVendorID      int64   `json:"projectVendorId"`

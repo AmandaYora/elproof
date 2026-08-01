@@ -166,14 +166,18 @@ func (r *MySQLProjectRepository) SetArchived(ctx context.Context, tenantID, id i
 }
 
 // DeleteCascade permanently removes a project and every row across this
-// module's 7 sub-entity tables that references it, in one transaction —
+// module's 8 sub-entity tables that references it, in one transaction —
 // see ADR-0013. Deletion order matters: vendor_payments references evidence
 // (invoice_evidence_id/proof_evidence_id), so it must go first; everything
 // that references project_vendors must go before project_vendors itself;
-// everything goes before the projects row. Evidence's object-storage files
-// are NOT touched here — the caller (ProjectService.Delete) deletes those
-// only after this transaction commits, so a storage failure never leaves a
-// dangling DB reference (see its own doc comment).
+// everything goes before the projects row. client_payments has its own
+// direct FK straight to projects (no project_vendor_id, unlike
+// vendor_payments) so it has no ordering dependency on anything else here —
+// it just needs to go before the final projects delete. Evidence's
+// object-storage files are NOT touched here — the caller
+// (ProjectService.Delete) deletes those only after this transaction
+// commits, so a storage failure never leaves a dangling DB reference (see
+// its own doc comment).
 func (r *MySQLProjectRepository) DeleteCascade(ctx context.Context, tenantID, id int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -185,6 +189,9 @@ func (r *MySQLProjectRepository) DeleteCascade(ctx context.Context, tenantID, id
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_payments WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM client_payments WHERE project_id = ?`, id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_issues WHERE project_id = ?`, id); err != nil {

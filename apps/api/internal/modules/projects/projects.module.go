@@ -28,6 +28,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 	vendorEngagementRepo := infrastructure.NewMySQLVendorEngagementRepository(db)
 	vendorMilestoneRepo := infrastructure.NewMySQLVendorMilestoneRepository(db)
 	paymentRepo := infrastructure.NewMySQLPaymentRepository(db)
+	clientPaymentRepo := infrastructure.NewMySQLClientPaymentRepository(db)
 	issueRepo := infrastructure.NewMySQLIssueRepository(db)
 	evidenceRepo := infrastructure.NewMySQLEvidenceRepository(db)
 	activityRepo := infrastructure.NewMySQLActivityRepository(db)
@@ -39,10 +40,11 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
 	paymentService := application.NewPaymentService(paymentRepo, activityService)
+	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, activityService)
 	issueService := application.NewIssueService(issueRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo)
 
-	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, issueService, evidenceService, activityService, dashboardService)
+	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, issueService, evidenceService, activityService, dashboardService)
 
 	return &Module{
 		handler:                  handler,

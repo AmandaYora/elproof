@@ -346,6 +346,24 @@ Displayed as "Timeline Vendor" in the UI — same display-only rename as `projec
 | proof_evidence_id | BIGINT UNSIGNED NULL | `FK` → evidence.id (same module) |
 | notes | TEXT NULL | |
 
+### `client_payments`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | no `project_vendor_id` — belongs to the project itself, not any vendor |
+| type | ENUM(...) | `PaymentType`, reused verbatim from `vendor_payments` |
+| amount | BIGINT UNSIGNED | |
+| payment_date | DATE | |
+| method, reference_number | VARCHAR(100) | |
+| notes | TEXT NULL | |
+| created_at | TIMESTAMP | |
+
+Money coming **in** from the client against the project's own `contract_value` — the opposite
+accounting direction from `vendor_payments` (PLAN.md "Uang Masuk dari Client"), and structurally
+simpler: no invoice/proof evidence-ID columns either, since it only ever has one evidence slot (a
+transfer proof) resolved via the polymorphic `evidence` table (`related_kind = 'clientPayment'`),
+not a direct FK column.
+
 ### `vendor_issues`
 | Column | Type | Notes |
 |---|---|---|
@@ -373,7 +391,7 @@ Displayed as "Timeline Vendor" in the UI — same display-only rename as `projec
 | uploaded_at | TIMESTAMP | |
 | description | VARCHAR(255) NULL | |
 | uploaded_by_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
-| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue') | |
+| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment') | |
 | related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind` |
 
 ### `activity_log`

@@ -25,13 +25,14 @@ import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { Evidence, EvidenceRelatedKind, EvidenceType } from "@/modules/projects/types";
-import { formatDate } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
 const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
   vendorMilestone: "Timeline Vendor",
   payment: "Pembayaran",
   projectVendor: "Kerja Sama Vendor",
   issue: "Kendala",
+  clientPayment: "Pembayaran Client",
 };
 
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
@@ -39,10 +40,12 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const payments = useProjectStore((s) => s.payments);
+  const clientPayments = useProjectStore((s) => s.clientPayments);
   const issues = useProjectStore((s) => s.issues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchPayments = useProjectStore((s) => s.fetchPayments);
+  const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
   const vendors = useVendorStore((s) => s.vendors);
@@ -59,10 +62,11 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     void fetchEvidence(projectId);
     void fetchVendorSection(projectId);
     void fetchPayments(projectId);
+    void fetchClientPayments(projectId);
     void fetchIssues(projectId);
     void fetchVendors();
     void fetchStaff();
-  }, [projectId, fetchEvidence, fetchVendorSection, fetchPayments, fetchIssues, fetchVendors, fetchStaff]);
+  }, [projectId, fetchEvidence, fetchVendorSection, fetchPayments, fetchClientPayments, fetchIssues, fetchVendors, fetchStaff]);
 
   const filteredEvidence = typeFilter === "Semua" ? evidence : evidence.filter((e) => e.type === typeFilter);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(filteredEvidence);
@@ -88,6 +92,10 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       const issue = issues.find((i) => i.id === item.relatedId);
       return issue ? `Kendala: ${issue.title} — ${vendorNameFor(issue.projectVendorId)}` : "Kendala";
     }
+    if (item.relatedKind === "clientPayment") {
+      const payment = clientPayments.find((p) => p.id === item.relatedId);
+      return payment ? `Pembayaran Client ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran Client";
+    }
     return "-";
   }
 
@@ -100,6 +108,9 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     }
     if (kind === "projectVendor") {
       return vendorEngagements.map((pv) => ({ id: pv.id, label: vendorNameFor(pv.id) }));
+    }
+    if (kind === "clientPayment") {
+      return clientPayments.map((p) => ({ id: p.id, label: `${p.type} — ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})` }));
     }
     return issues.map((i) => ({ id: i.id, label: `${i.title} — ${vendorNameFor(i.projectVendorId)}` }));
   }

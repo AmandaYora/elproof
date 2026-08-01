@@ -192,13 +192,14 @@ field name (`orderedIds`, activity type `milestone_updated`), and response shape
 | POST | `/projects/{id}/vendors/{projectVendorId}/cancel` | one-way; "un-cancelling" is just editing `engagementStatus` back via PATCH |
 | GET/POST | `/projects/{id}/vendors/{projectVendorId}/milestones` | vendor milestones |
 | PATCH | `/projects/{id}/vendors/{projectVendorId}/milestones/{id}` | full-body update (`status`, `targetDate`, `completedDate`, `picStaffId`, `description`, `notes`) — no partial-field PATCH |
-| GET/POST | `/projects/{id}/payments` | no endpoint to attach `invoiceEvidenceId`/`proofEvidenceId` after creation — a payment's evidence-completeness can only ever be satisfied by whatever was true at creation (always incomplete in practice; matches the pre-integration mock's own limitation) |
+| GET/POST | `/projects/{id}/payments` | vendor payments (money **out**). no endpoint to attach `invoiceEvidenceId`/`proofEvidenceId` after creation — a payment's evidence-completeness can only ever be satisfied by whatever was true at creation (always incomplete in practice; matches the pre-integration mock's own limitation) |
+| GET/POST | `/projects/{id}/client-payments` | client payments (money **in** — PLAN.md "Uang Masuk dari Client"), no `projectVendorId`. Response includes `evidenceComplete`, computed by the handler as a plain existence check against `evidence` (`relatedKind = "clientPayment"`), not a stored column — this table has no direct evidence-ID columns at all, unlike `vendor_payments` |
 | GET/POST | `/projects/{id}/issues` | |
 | PATCH | `/projects/{id}/issues/{issueId}` | body `{status}`; auto-stamps `resolvedDate` exactly once when status becomes `Resolved`/`Closed` |
 | GET | `/projects/{id}/evidence` | returns every evidence row for the project directly (not derived client-side from milestones/payments/issues) |
-| POST | `/projects/{id}/evidence` | JSON body `{name, type, fileName, mimeType, base64Data, documentDate, description, relatedKind, relatedId}` — base64, not multipart (see ADR-0006, ADR-0010); 15 MB decoded-size cap; `relatedKind` is one of `vendorMilestone`/`payment`/`projectVendor`/`issue` |
+| POST | `/projects/{id}/evidence` | JSON body `{name, type, fileName, mimeType, base64Data, documentDate, description, relatedKind, relatedId}` — base64, not multipart (see ADR-0006, ADR-0010); 15 MB decoded-size cap; `relatedKind` is one of `vendorMilestone`/`payment`/`projectVendor`/`issue`/`clientPayment` |
 | GET | `/projects/{id}/evidence/{evidenceId}/file` | authenticated download (Bearer token required — not a public URL); streams the object exactly as stored (already compressed at upload time); frontend fetches it as a blob via `httpClient`, not a bare `<img src>` |
-| GET | `/projects/{id}/activity` | append-only, populated server-side on every mutation above; activity types actually emitted: `project_created`, `project_updated`, `project_status_changed`, `vendor_added`, `vendor_status_changed`, `milestone_updated`, `payment_recorded`, `evidence_uploaded`, `issue_created`, `issue_updated`; response includes `projectId` (needed by the dashboard's cross-project activity feed, not by the per-project tab which already knows it from the URL) |
+| GET | `/projects/{id}/activity` | append-only, populated server-side on every mutation above; activity types actually emitted: `project_created`, `project_updated`, `project_status_changed`, `vendor_added`, `vendor_status_changed`, `milestone_updated`, `payment_recorded` (shared by both vendor and client payments, distinguished only by `entityType`: `"vendor_payment"` vs. `"client_payment"`), `evidence_uploaded`, `issue_created`, `issue_updated`; response includes `projectId` (needed by the dashboard's cross-project activity feed, not by the per-project tab which already knows it from the URL) |
 
 ## `milestone-templates` (tenant-scoped, "Pengaturan → Timeline Default") — every route Owner-only
 
@@ -236,8 +237,10 @@ changed (real `todayISO()` instead of the mock's hardcoded `TODAY`).
 ## Client Portal (read-scoped subset — same `projects` endpoints, `client` principal) — **implemented, Fase 6**
 
 `client` principals hit the exact same `/projects/{id}/...` GET endpoints as staff (milestones,
-vendor engagements + their milestones, payments, issues, evidence + file download, activity, and
-`venue` — the public-safe summary, ADR-0016) — there is no separate client-portal endpoint set. The
+vendor engagements + their milestones, payments, client-payments, issues, evidence + file download,
+activity, and `venue` — the public-safe summary, ADR-0016) — there is no separate client-portal
+endpoint set. The Pembayaran tab specifically now reads `client-payments` (the client's own payment
+history), not `payments` (the WO's spend on vendors) — see PLAN.md "Uang Masuk dari Client". The
 one exception is `venues/{id}/attachment`, a `venues`-module route (not under `/projects/{id}/...`)
 that `client` principals also reach, gated by mime type (image only) rather than by project
 ownership, since it isn't itself project-scoped. Enforcement, checked server-side on every request

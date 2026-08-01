@@ -25,6 +25,7 @@ const (
 	RelatedPayment         EvidenceRelatedKind = "payment"
 	RelatedProjectVendor   EvidenceRelatedKind = "projectVendor"
 	RelatedIssue           EvidenceRelatedKind = "issue"
+	RelatedClientPayment   EvidenceRelatedKind = "clientPayment"
 )
 
 type Evidence struct {
