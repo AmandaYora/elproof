@@ -12,6 +12,9 @@ const ProjectVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/Pr
 const ProjectMilestoneTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectMilestoneTabPage"));
 const ProjectClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectClientTabPage"));
 const ProjectPaymentsTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectPaymentsTabPage"));
+const PembayaranClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranClientTabPage"));
+const PembayaranVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVendorTabPage"));
+const PembayaranVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVenueTabPage"));
 const ProjectIssuesTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectIssuesTabPage"));
 const ProjectEvidenceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectEvidenceTabPage"));
 const ProjectActivityTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectActivityTabPage"));
@@ -42,7 +45,16 @@ export const protectedRoutes: RouteObject = {
             { path: "vendor", element: <ProjectVendorTabPage /> },
             { path: "milestone", element: <ProjectMilestoneTabPage /> },
             { path: "client", element: <ProjectClientTabPage /> },
-            { path: "pembayaran", element: <ProjectPaymentsTabPage /> },
+            {
+              path: "pembayaran",
+              element: <ProjectPaymentsTabPage />,
+              children: [
+                { index: true, element: <Navigate to="client" replace /> },
+                { path: "client", element: <PembayaranClientTabPage /> },
+                { path: "vendor", element: <PembayaranVendorTabPage /> },
+                { path: "venue", element: <PembayaranVenueTabPage /> },
+              ],
+            },
             { path: "kendala", element: <ProjectIssuesTabPage /> },
             { path: "dokumen", element: <ProjectEvidenceTabPage /> },
             { path: "aktivitas", element: <ProjectActivityTabPage /> },

@@ -9,9 +9,14 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
-import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
+import { useProjectStore, VendorPaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import { paymentSchema, PAYMENT_TYPE_OPTIONS, type PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
+import {
+  paymentSchema,
+  PAYMENT_TYPE_OPTIONS,
+  PAYMENT_METHOD_OPTIONS,
+  type PaymentFormValues,
+} from "@/modules/projects/schemas/payment.schema";
 import type { ProjectVendor } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -53,7 +58,16 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
       await createPayment(projectId, values);
       setModalOpen(false);
     } catch (err) {
+      if (err instanceof VendorPaymentEvidenceError) {
+        // The payment itself was saved — close the modal so the user isn't
+        // invited to resubmit (which would create a duplicate payment), just
+        // surface that one or both evidence slots didn't make it.
+        setActionError(err.message);
+        setModalOpen(false);
+        return;
+      }
       setActionError(getApiErrorMessage(err, "Gagal mencatat pembayaran"));
+      throw err;
     }
   }
 
@@ -159,8 +173,9 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
       {modalOpen && (
         <AddPaymentModal
           open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          onSubmit={(values) => void handleAddPayment(values)}
+          onClose={() => { setModalOpen(false); setActionError(null); }}
+          onSubmit={handleAddPayment}
+          error={actionError}
           vendorEngagements={vendorEngagements}
           vendors={vendors}
         />
@@ -187,6 +202,8 @@ function toFormValues(defaultProjectVendorId: string): PaymentFormValues {
     method: "Transfer Bank",
     referenceNumber: "",
     notes: "",
+    invoiceFile: undefined,
+    proofFile: undefined,
   };
 }
 
@@ -194,24 +211,27 @@ function AddPaymentModal({
   open,
   onClose,
   onSubmit,
+  error,
   vendorEngagements,
   vendors,
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: PaymentFormValues) => void;
+  onSubmit: (values: PaymentFormValues) => Promise<void>;
+  error: string | null;
   vendorEngagements: ProjectVendor[];
   vendors: { id: string; name: string; city: string | null }[];
 }) {
   const defaultVendorId = vendorEngagements[0]?.id ?? "";
   const [values, setValues] = useState<PaymentFormValues>(() => toFormValues(defaultVendorId));
   const [errors, setErrors] = useState<Partial<Record<keyof PaymentFormValues, string>>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   function set<K extends keyof PaymentFormValues>(key: K, value: PaymentFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const result = paymentSchema.safeParse(values);
     if (!result.success) {
       const fieldErrors: Partial<Record<keyof PaymentFormValues, string>> = {};
@@ -221,9 +241,22 @@ function AddPaymentModal({
       setErrors(fieldErrors);
       return;
     }
-    onSubmit(result.data);
-    setValues(toFormValues(defaultVendorId));
-    setErrors({});
+    setSubmitting(true);
+    try {
+      await onSubmit(result.data);
+      // Only reset on a resolved submit — on failure the modal stays open
+      // (parent doesn't close it), so the form must keep the user's input
+      // rather than silently wiping it out from under them.
+      setValues(toFormValues(defaultVendorId));
+      setErrors({});
+    } catch {
+      // The `error` prop (parent's actionError, passed back down) surfaces
+      // this inside the modal itself -- the modal stays open here, and its
+      // own fixed-overlay backdrop would otherwise hide a banner rendered
+      // only in the parent's now-obscured page content.
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -235,11 +268,16 @@ function AddPaymentModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Pembayaran</Button>
+          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? "Menyimpan..." : "Simpan Pembayaran"}
+          </Button>
         </>
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {error && (
+          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
+        )}
         <Field label="Vendor" required hint={errors.projectVendorId}>
           <Select value={values.projectVendorId} onChange={(e) => set("projectVendorId", e.target.value)}>
             {vendorEngagements.map((pv) => {
@@ -265,10 +303,30 @@ function AddPaymentModal({
           <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
         </Field>
         <Field label="Metode" required hint={errors.method}>
-          <Input value={values.method} onChange={(e) => set("method", e.target.value)} />
+          <Select value={values.method} onChange={(e) => set("method", e.target.value as PaymentFormValues["method"])}>
+            {PAYMENT_METHOD_OPTIONS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </Select>
         </Field>
-        <Field label="No. Referensi" required hint={errors.referenceNumber}>
+        <Field label="No. Referensi" hint={errors.referenceNumber}>
           <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
+        </Field>
+        <Field label="Invoice">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            onChange={(e) => set("invoiceFile", e.target.files?.[0] ?? undefined)}
+            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
+          />
+        </Field>
+        <Field label="Bukti Transfer">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            onChange={(e) => set("proofFile", e.target.files?.[0] ?? undefined)}
+            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
+          />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Catatan">

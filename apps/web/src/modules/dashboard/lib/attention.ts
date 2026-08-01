@@ -54,7 +54,23 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
       category: "Evidence Pembayaran",
       title: `Pembayaran ${p.type} belum memiliki evidence lengkap`,
       description: `${p.projectName} — ${vendorName(p.vendorId)} · ${formatCurrency(p.amount)}`,
-      to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran"),
+      to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/vendor"),
+    });
+  }
+
+  // Same category as vendor's own incomplete-payment items above -- the two
+  // sources merge into one feed here (rather than a second widget), each row
+  // labeled by which ledger it's from via its description instead of a
+  // vendor name (a venue payment has none). See PLAN.md "Venue Payments +
+  // Pembayaran tab restructuring".
+  for (const p of stats.incompleteVenuePayments) {
+    items.push({
+      id: `venuepay-${p.id}`,
+      tone: "warning",
+      category: "Evidence Pembayaran",
+      title: `Pembayaran ${p.type} (venue) belum memiliki evidence lengkap`,
+      description: `${p.projectName} — Venue · ${formatCurrency(p.amount)}`,
+      to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/venue"),
     });
   }
 

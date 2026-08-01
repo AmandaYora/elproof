@@ -33,6 +33,7 @@ const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
   projectVendor: "Kerja Sama Vendor",
   issue: "Kendala",
   clientPayment: "Pembayaran Client",
+  venuePayment: "Pembayaran Venue",
 };
 
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
@@ -41,11 +42,13 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const payments = useProjectStore((s) => s.payments);
   const clientPayments = useProjectStore((s) => s.clientPayments);
+  const venuePayments = useProjectStore((s) => s.venuePayments);
   const issues = useProjectStore((s) => s.issues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchPayments = useProjectStore((s) => s.fetchPayments);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
+  const fetchVenuePayments = useProjectStore((s) => s.fetchVenuePayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
   const vendors = useVendorStore((s) => s.vendors);
@@ -63,10 +66,11 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     void fetchVendorSection(projectId);
     void fetchPayments(projectId);
     void fetchClientPayments(projectId);
+    void fetchVenuePayments(projectId);
     void fetchIssues(projectId);
     void fetchVendors();
     void fetchStaff();
-  }, [projectId, fetchEvidence, fetchVendorSection, fetchPayments, fetchClientPayments, fetchIssues, fetchVendors, fetchStaff]);
+  }, [projectId, fetchEvidence, fetchVendorSection, fetchPayments, fetchClientPayments, fetchVenuePayments, fetchIssues, fetchVendors, fetchStaff]);
 
   const filteredEvidence = typeFilter === "Semua" ? evidence : evidence.filter((e) => e.type === typeFilter);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(filteredEvidence);
@@ -96,6 +100,10 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       const payment = clientPayments.find((p) => p.id === item.relatedId);
       return payment ? `Pembayaran Client ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran Client";
     }
+    if (item.relatedKind === "venuePayment") {
+      const payment = venuePayments.find((p) => p.id === item.relatedId);
+      return payment ? `Pembayaran Venue ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran Venue";
+    }
     return "-";
   }
 
@@ -111,6 +119,9 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     }
     if (kind === "clientPayment") {
       return clientPayments.map((p) => ({ id: p.id, label: `${p.type} — ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})` }));
+    }
+    if (kind === "venuePayment") {
+      return venuePayments.map((p) => ({ id: p.id, label: `${p.type} — ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})` }));
     }
     return issues.map((i) => ({ id: i.id, label: `${i.title} — ${vendorNameFor(i.projectVendorId)}` }));
   }
@@ -237,7 +248,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
         <AddEvidenceModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          onSubmit={(file, values) => void handleAddEvidence(file, values)}
+          onSubmit={handleAddEvidence}
           error={modalError}
           relatedOptionsFor={relatedOptionsFor}
         />
@@ -276,7 +287,7 @@ function AddEvidenceModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (file: File, values: EvidenceUploadFormValues) => void;
+  onSubmit: (file: File, values: EvidenceUploadFormValues) => Promise<void>;
   error: string | null;
   relatedOptionsFor: (kind: EvidenceRelatedKind) => { id: string; label: string }[];
 }) {
@@ -313,7 +324,7 @@ function AddEvidenceModal({
     }
     setSubmitting(true);
     try {
-      onSubmit(file, result.data);
+      await onSubmit(file, result.data);
     } finally {
       setSubmitting(false);
     }

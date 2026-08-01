@@ -38,6 +38,19 @@ type dashboardPaymentResponse struct {
 	PaymentDate string `json:"paymentDate"`
 }
 
+// dashboardVenuePaymentResponse has no VendorID -- a venue payment isn't
+// tied to any vendor. Kept as its own response type/field (see
+// domain.DashboardVenuePaymentRow's doc comment) rather than reshaping
+// dashboardPaymentResponse into a source-discriminated union.
+type dashboardVenuePaymentResponse struct {
+	ID          int64  `json:"id"`
+	ProjectID   int64  `json:"projectId"`
+	ProjectName string `json:"projectName"`
+	Type        string `json:"type"`
+	Amount      int64  `json:"amount"`
+	PaymentDate string `json:"paymentDate"`
+}
+
 type laggingProjectResponse struct {
 	Project        projectResponse `json:"project"`
 	OverallPercent int             `json:"overallPercent"`
@@ -62,19 +75,20 @@ type revenueSummaryResponse struct {
 }
 
 type dashboardResponse struct {
-	TotalProjects           int                          `json:"totalProjects"`
-	ActiveProjects          int                          `json:"activeProjects"`
-	ActiveVendorCount       int                          `json:"activeVendorCount"`
-	OpenIssues              []dashboardIssueResponse     `json:"openIssues"`
-	OverdueVendorMilestones []dashboardMilestoneResponse `json:"overdueVendorMilestones"`
-	IncompletePayments      []dashboardPaymentResponse   `json:"incompletePayments"`
-	NearDDayProjects        []projectResponse            `json:"nearDDayProjects"`
-	LaggingProjects         []laggingProjectResponse     `json:"laggingProjects"`
-	UpcomingProjects        []projectResponse            `json:"upcomingProjects"`
-	RecentActivity          []activityResponse           `json:"recentActivity"`
-	Revenue                 revenueSummaryResponse       `json:"revenue"`
-	ProjectTrend            []projectTrendPointResponse  `json:"projectTrend"`
-	RevenueTrend            []revenueTrendPointResponse  `json:"revenueTrend"`
+	TotalProjects           int                             `json:"totalProjects"`
+	ActiveProjects          int                             `json:"activeProjects"`
+	ActiveVendorCount       int                             `json:"activeVendorCount"`
+	OpenIssues              []dashboardIssueResponse        `json:"openIssues"`
+	OverdueVendorMilestones []dashboardMilestoneResponse    `json:"overdueVendorMilestones"`
+	IncompletePayments      []dashboardPaymentResponse      `json:"incompletePayments"`
+	IncompleteVenuePayments []dashboardVenuePaymentResponse `json:"incompleteVenuePayments"`
+	NearDDayProjects        []projectResponse               `json:"nearDDayProjects"`
+	LaggingProjects         []laggingProjectResponse        `json:"laggingProjects"`
+	UpcomingProjects        []projectResponse               `json:"upcomingProjects"`
+	RecentActivity          []activityResponse              `json:"recentActivity"`
+	Revenue                 revenueSummaryResponse          `json:"revenue"`
+	ProjectTrend            []projectTrendPointResponse     `json:"projectTrend"`
+	RevenueTrend            []revenueTrendPointResponse     `json:"revenueTrend"`
 }
 
 func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
@@ -89,6 +103,7 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 		OpenIssues:              make([]dashboardIssueResponse, 0, len(s.OpenIssues)),
 		OverdueVendorMilestones: make([]dashboardMilestoneResponse, 0, len(s.OverdueVendorMilestones)),
 		IncompletePayments:      make([]dashboardPaymentResponse, 0, len(s.IncompletePayments)),
+		IncompleteVenuePayments: make([]dashboardVenuePaymentResponse, 0, len(s.IncompleteVenuePayments)),
 		NearDDayProjects:        make([]projectResponse, 0, len(s.NearDDayProjects)),
 		LaggingProjects:         make([]laggingProjectResponse, 0, len(s.LaggingProjects)),
 		UpcomingProjects:        make([]projectResponse, 0, len(s.UpcomingProjects)),
@@ -112,6 +127,12 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 	for _, row := range s.IncompletePayments {
 		resp.IncompletePayments = append(resp.IncompletePayments, dashboardPaymentResponse{
 			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID,
+			Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
+		})
+	}
+	for _, row := range s.IncompleteVenuePayments {
+		resp.IncompleteVenuePayments = append(resp.IncompleteVenuePayments, dashboardVenuePaymentResponse{
+			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName,
 			Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
 		})
 	}

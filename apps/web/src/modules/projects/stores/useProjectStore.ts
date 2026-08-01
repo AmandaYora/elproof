@@ -8,6 +8,7 @@ import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project
 import type { VendorMilestoneFormValues } from "@/modules/projects/schemas/vendor-milestone.schema";
 import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
 import type { ClientPaymentFormValues } from "@/modules/projects/schemas/client-payment.schema";
+import type { VenuePaymentFormValues } from "@/modules/projects/schemas/venue-payment.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
@@ -27,6 +28,7 @@ import type {
   VendorIssue,
   VendorMilestone,
   VendorPayment,
+  VenuePayment,
 } from "@/modules/projects/types";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 
@@ -35,6 +37,13 @@ import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawP
 // the modal (the payment is real) instead of leaving it open for a retry,
 // which would otherwise risk creating a duplicate payment.
 export class ClientPaymentEvidenceError extends Error {}
+
+// Same purpose as ClientPaymentEvidenceError, for createPayment's two
+// possible evidence slots (Invoice, Bukti Transfer) instead of one.
+export class VendorPaymentEvidenceError extends Error {}
+
+// Same purpose as VendorPaymentEvidenceError, for createVenuePayment.
+export class VenuePaymentEvidenceError extends Error {}
 
 // --- Raw wire shapes (see apps/api .../projects/presentation/dto.go) ---
 
@@ -267,8 +276,6 @@ interface RawPayment {
   paymentDate: string;
   method: string;
   referenceNumber: string;
-  invoiceEvidenceId: number | null;
-  proofEvidenceId: number | null;
   notes: string;
   evidenceComplete: boolean;
 }
@@ -282,8 +289,6 @@ function toPayment(raw: RawPayment): VendorPayment {
     paymentDate: raw.paymentDate,
     method: raw.method,
     referenceNumber: raw.referenceNumber,
-    invoiceEvidenceId: raw.invoiceEvidenceId !== null ? String(raw.invoiceEvidenceId) : null,
-    proofEvidenceId: raw.proofEvidenceId !== null ? String(raw.proofEvidenceId) : null,
     notes: raw.notes,
     evidenceComplete: raw.evidenceComplete,
   };
@@ -301,6 +306,30 @@ interface RawClientPayment {
 }
 
 function toClientPayment(raw: RawClientPayment): ClientPayment {
+  return {
+    id: String(raw.id),
+    type: raw.type,
+    amount: raw.amount,
+    paymentDate: raw.paymentDate,
+    method: raw.method,
+    referenceNumber: raw.referenceNumber,
+    notes: raw.notes,
+    evidenceComplete: raw.evidenceComplete,
+  };
+}
+
+interface RawVenuePayment {
+  id: number;
+  type: VenuePayment["type"];
+  amount: number;
+  paymentDate: string;
+  method: string;
+  referenceNumber: string;
+  notes: string;
+  evidenceComplete: boolean;
+}
+
+function toVenuePayment(raw: RawVenuePayment): VenuePayment {
   return {
     id: String(raw.id),
     type: raw.type,
@@ -416,6 +445,7 @@ interface ProjectState {
   vendorMilestones: VendorMilestone[];
   payments: VendorPayment[];
   clientPayments: ClientPayment[];
+  venuePayments: VenuePayment[];
   issues: VendorIssue[];
   evidence: Evidence[];
   activity: ActivityLogEntry[];
@@ -492,6 +522,11 @@ interface ProjectState {
   // has today (createPayment above never attaches evidence at creation time).
   createClientPayment: (projectId: string, values: ClientPaymentFormValues) => Promise<void>;
 
+  fetchVenuePayments: (projectId: string) => Promise<void>;
+  // Same two-slot evidence orchestration as createPayment (vendor's own),
+  // just against .../venue-payments and relatedKind "venuePayment".
+  createVenuePayment: (projectId: string, values: VenuePaymentFormValues) => Promise<void>;
+
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
   updateIssueStatus: (projectId: string, issueId: string, status: IssueStatus) => Promise<void>;
@@ -514,6 +549,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   vendorMilestones: [],
   payments: [],
   clientPayments: [],
+  venuePayments: [],
   issues: [],
   evidence: [],
   activity: [],
@@ -773,11 +809,66 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   createPayment: async (projectId, values) => {
-    await httpClient.post(API.projects.payments(projectId), {
-      ...values,
+    const res = await httpClient.post(API.projects.payments(projectId), {
       projectVendorId: Number(values.projectVendorId),
+      type: values.type,
+      amount: values.amount,
+      paymentDate: values.paymentDate,
+      method: values.method,
+      referenceNumber: values.referenceNumber,
+      notes: values.notes,
     });
+    const created = toPayment(res.data.data as RawPayment);
+    // The payment itself is already persisted at this point -- each of the
+    // two evidence slots (Invoice, Bukti Transfer) is uploaded independently
+    // so one failing doesn't abort the other; a failure in either must NOT
+    // look like the whole submission failed (the caller would otherwise
+    // invite a resubmit, creating a duplicate payment). Refetch regardless,
+    // then signal any partial failure via a distinct error type naming
+    // which slot(s) didn't make it -- same pattern as createClientPayment.
+    const failedSlots: string[] = [];
+    if (values.invoiceFile) {
+      try {
+        const compressed = await compressFileForUpload(values.invoiceFile);
+        await httpClient.post(API.projects.evidence(projectId), {
+          name: values.referenceNumber ? `Invoice - ${values.referenceNumber}` : "Invoice",
+          type: "Invoice",
+          fileName: compressed.fileName,
+          mimeType: compressed.mimeType,
+          base64Data: compressed.base64Data,
+          documentDate: values.paymentDate,
+          description: "",
+          relatedKind: "payment",
+          relatedId: Number(created.id),
+        });
+      } catch {
+        failedSlots.push("invoice");
+      }
+    }
+    if (values.proofFile) {
+      try {
+        const compressed = await compressFileForUpload(values.proofFile);
+        await httpClient.post(API.projects.evidence(projectId), {
+          name: values.referenceNumber ? `Bukti Transfer - ${values.referenceNumber}` : "Bukti Transfer",
+          type: "Transfer Proof",
+          fileName: compressed.fileName,
+          mimeType: compressed.mimeType,
+          base64Data: compressed.base64Data,
+          documentDate: values.paymentDate,
+          description: "",
+          relatedKind: "payment",
+          relatedId: Number(created.id),
+        });
+      } catch {
+        failedSlots.push("bukti transfer");
+      }
+    }
     await get().fetchPayments(projectId);
+    if (failedSlots.length > 0) {
+      throw new VendorPaymentEvidenceError(
+        `Pembayaran tersimpan, tapi ${failedSlots.join(" dan ")} gagal diunggah. Anda bisa melampirkannya nanti melalui tab Dokumen.`
+      );
+    }
   },
 
   fetchClientPayments: async (projectId) => {
@@ -805,7 +896,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       try {
         const compressed = await compressFileForUpload(values.proofFile);
         await httpClient.post(API.projects.evidence(projectId), {
-          name: `Bukti Transfer - ${values.referenceNumber}`,
+          name: values.referenceNumber ? `Bukti Transfer - ${values.referenceNumber}` : "Bukti Transfer",
           type: "Transfer Proof",
           fileName: compressed.fileName,
           mimeType: compressed.mimeType,
@@ -823,6 +914,69 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     }
     await get().fetchClientPayments(projectId);
+  },
+
+  fetchVenuePayments: async (projectId) => {
+    const res = await httpClient.get(API.projects.venuePayments(projectId));
+    set({ venuePayments: (res.data.data as RawVenuePayment[]).map(toVenuePayment) });
+  },
+
+  createVenuePayment: async (projectId, values) => {
+    const res = await httpClient.post(API.projects.venuePayments(projectId), {
+      type: values.type,
+      amount: values.amount,
+      paymentDate: values.paymentDate,
+      method: values.method,
+      referenceNumber: values.referenceNumber,
+      notes: values.notes,
+    });
+    const created = toVenuePayment(res.data.data as RawVenuePayment);
+    // Same independent-slot orchestration as createPayment (vendor's own) --
+    // see its own comment for why each slot is caught separately and the
+    // failure surfaced via a distinct error type instead of aborting.
+    const failedSlots: string[] = [];
+    if (values.invoiceFile) {
+      try {
+        const compressed = await compressFileForUpload(values.invoiceFile);
+        await httpClient.post(API.projects.evidence(projectId), {
+          name: values.referenceNumber ? `Invoice - ${values.referenceNumber}` : "Invoice",
+          type: "Invoice",
+          fileName: compressed.fileName,
+          mimeType: compressed.mimeType,
+          base64Data: compressed.base64Data,
+          documentDate: values.paymentDate,
+          description: "",
+          relatedKind: "venuePayment",
+          relatedId: Number(created.id),
+        });
+      } catch {
+        failedSlots.push("invoice");
+      }
+    }
+    if (values.proofFile) {
+      try {
+        const compressed = await compressFileForUpload(values.proofFile);
+        await httpClient.post(API.projects.evidence(projectId), {
+          name: values.referenceNumber ? `Bukti Transfer - ${values.referenceNumber}` : "Bukti Transfer",
+          type: "Transfer Proof",
+          fileName: compressed.fileName,
+          mimeType: compressed.mimeType,
+          base64Data: compressed.base64Data,
+          documentDate: values.paymentDate,
+          description: "",
+          relatedKind: "venuePayment",
+          relatedId: Number(created.id),
+        });
+      } catch {
+        failedSlots.push("bukti transfer");
+      }
+    }
+    await get().fetchVenuePayments(projectId);
+    if (failedSlots.length > 0) {
+      throw new VenuePaymentEvidenceError(
+        `Pembayaran tersimpan, tapi ${failedSlots.join(" dan ")} gagal diunggah. Anda bisa melampirkannya nanti melalui tab Dokumen.`
+      );
+    }
   },
 
   fetchIssues: async (projectId) => {

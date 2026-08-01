@@ -15,16 +15,13 @@ func NewMySQLPaymentRepository(db *sql.DB) *MySQLPaymentRepository {
 	return &MySQLPaymentRepository{db: db}
 }
 
-const paymentColumns = `id, project_id, project_vendor_id, type, amount, payment_date, method, reference_number,
-	invoice_evidence_id, proof_evidence_id, notes`
+const paymentColumns = `id, project_id, project_vendor_id, type, amount, payment_date, method, reference_number, notes`
 
 func scanPayment(scan func(dest ...interface{}) error) (*domain.VendorPayment, error) {
 	var p domain.VendorPayment
 	var paymentType string
-	var invoiceEvidenceID, proofEvidenceID sql.NullInt64
 	var notes sql.NullString
-	err := scan(&p.ID, &p.ProjectID, &p.ProjectVendorID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber,
-		&invoiceEvidenceID, &proofEvidenceID, &notes)
+	err := scan(&p.ID, &p.ProjectID, &p.ProjectVendorID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -33,12 +30,6 @@ func scanPayment(scan func(dest ...interface{}) error) (*domain.VendorPayment, e
 	}
 	p.Type = domain.PaymentType(paymentType)
 	p.Notes = notes.String
-	if invoiceEvidenceID.Valid {
-		p.InvoiceEvidenceID = &invoiceEvidenceID.Int64
-	}
-	if proofEvidenceID.Valid {
-		p.ProofEvidenceID = &proofEvidenceID.Int64
-	}
 	return &p, nil
 }
 

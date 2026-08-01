@@ -178,25 +178,29 @@ func toVendorMilestoneResponse(m domain.VendorMilestone) vendorMilestoneResponse
 }
 
 type paymentResponse struct {
-	ID                int64  `json:"id"`
-	ProjectVendorID   int64  `json:"projectVendorId"`
-	Type              string `json:"type"`
-	Amount            int64  `json:"amount"`
-	PaymentDate       string `json:"paymentDate"`
-	Method            string `json:"method"`
-	ReferenceNumber   string `json:"referenceNumber"`
-	InvoiceEvidenceID *int64 `json:"invoiceEvidenceId"`
-	ProofEvidenceID   *int64 `json:"proofEvidenceId"`
-	Notes             string `json:"notes"`
-	EvidenceComplete  bool   `json:"evidenceComplete"`
+	ID               int64  `json:"id"`
+	ProjectVendorID  int64  `json:"projectVendorId"`
+	Type             string `json:"type"`
+	Amount           int64  `json:"amount"`
+	PaymentDate      string `json:"paymentDate"`
+	Method           string `json:"method"`
+	ReferenceNumber  string `json:"referenceNumber"`
+	Notes            string `json:"notes"`
+	EvidenceComplete bool   `json:"evidenceComplete"`
 }
 
-func toPaymentResponse(p domain.VendorPayment) paymentResponse {
+// toPaymentResponse takes evidenceComplete explicitly rather than reading
+// it off domain.VendorPayment -- there is no such stored field/method
+// anymore. The caller (listPayments) computes it by cross-referencing this
+// payment's own evidence rows (Invoice/Transfer Proof), the same
+// presentation-layer derivation already used for Client Payments'
+// evidenceComplete and the vendor paid-amount fix. See PLAN.md "Payment
+// evidence (Invoice/Bukti Transfer)...".
+func toPaymentResponse(p domain.VendorPayment, evidenceComplete bool) paymentResponse {
 	return paymentResponse{
 		ID: p.ID, ProjectVendorID: p.ProjectVendorID, Type: string(p.Type), Amount: p.Amount,
 		PaymentDate: p.PaymentDate.Format(dateLayout), Method: p.Method, ReferenceNumber: p.ReferenceNumber,
-		InvoiceEvidenceID: p.InvoiceEvidenceID, ProofEvidenceID: p.ProofEvidenceID, Notes: p.Notes,
-		EvidenceComplete: p.IsEvidenceComplete(),
+		Notes: p.Notes, EvidenceComplete: evidenceComplete,
 	}
 }
 
@@ -213,6 +217,27 @@ type clientPaymentResponse struct {
 
 func toClientPaymentResponse(p domain.ClientPayment, evidenceComplete bool) clientPaymentResponse {
 	return clientPaymentResponse{
+		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
+		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
+	}
+}
+
+type venuePaymentResponse struct {
+	ID               int64  `json:"id"`
+	Type             string `json:"type"`
+	Amount           int64  `json:"amount"`
+	PaymentDate      string `json:"paymentDate"`
+	Method           string `json:"method"`
+	ReferenceNumber  string `json:"referenceNumber"`
+	Notes            string `json:"notes"`
+	EvidenceComplete bool   `json:"evidenceComplete"`
+}
+
+// toVenuePaymentResponse takes evidenceComplete explicitly for the same
+// reason toPaymentResponse does -- see PLAN.md "Venue Payments + Pembayaran
+// tab restructuring".
+func toVenuePaymentResponse(p domain.VenuePayment, evidenceComplete bool) venuePaymentResponse {
+	return venuePaymentResponse{
 		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
 		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
 	}

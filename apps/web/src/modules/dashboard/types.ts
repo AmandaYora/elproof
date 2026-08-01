@@ -30,6 +30,18 @@ export interface DashboardPaymentRow {
   paymentDate: string;
 }
 
+// No vendorId -- a venue payment isn't tied to any vendor. Kept as its own
+// type/list (see DashboardStats.incompleteVenuePayments) rather than
+// reshaping DashboardPaymentRow into a source-discriminated union.
+export interface DashboardVenuePaymentRow {
+  id: string;
+  projectId: string;
+  projectName: string;
+  type: PaymentType;
+  amount: number;
+  paymentDate: string;
+}
+
 export interface LaggingProjectRow {
   project: Project;
   overallPercent: number;
@@ -60,6 +72,7 @@ export interface DashboardStats {
   openIssues: DashboardIssueRow[];
   overdueVendorMilestones: DashboardMilestoneRow[];
   incompletePayments: DashboardPaymentRow[];
+  incompleteVenuePayments: DashboardVenuePaymentRow[];
   nearDDayProjects: Project[];
   laggingProjects: LaggingProjectRow[];
   upcomingProjects: Project[];

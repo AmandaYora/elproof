@@ -67,6 +67,7 @@ type ProjectService struct {
 	vendorMilestones   VendorMilestoneRepository
 	issues             IssueRepository
 	payments           PaymentRepository
+	venuePayments      VenuePaymentRepository
 	evidence           *EvidenceService
 	activity           *ActivityService
 	clients            ClientCleaner
@@ -81,12 +82,13 @@ func NewProjectService(
 	vendorMilestones VendorMilestoneRepository,
 	issues IssueRepository,
 	payments PaymentRepository,
+	venuePayments VenuePaymentRepository,
 	evidence *EvidenceService,
 	activity *ActivityService,
 ) *ProjectService {
 	return &ProjectService{
 		repo: repo, milestones: milestones, milestoneTemplates: milestoneTemplates, vendorEngagements: vendorEngagements,
-		vendorMilestones: vendorMilestones, issues: issues, payments: payments,
+		vendorMilestones: vendorMilestones, issues: issues, payments: payments, venuePayments: venuePayments,
 		evidence: evidence, activity: activity,
 	}
 }
@@ -577,9 +579,25 @@ func (s *ProjectService) ComputeProgress(ctx context.Context, tenantID, projectI
 	if err != nil {
 		return nil, err
 	}
+	evidences, err := s.evidence.List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
 	incompleteCount := 0
 	for _, p := range payments {
-		if !p.IsEvidenceComplete() {
+		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof) {
+			incompleteCount++
+		}
+	}
+
+	venuePayments, err := s.venuePayments.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	vHasInvoice, vHasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
+	for _, p := range venuePayments {
+		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, vHasInvoice, vHasProof) {
 			incompleteCount++
 		}
 	}

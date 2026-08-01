@@ -348,10 +348,20 @@ Displayed as "Timeline Vendor" in the UI — same display-only rename as `projec
 | type | ENUM(...) | `PaymentType`, includes `Refund` (special evidence-completeness rule) |
 | amount | BIGINT UNSIGNED | |
 | payment_date | DATE | |
-| method, reference_number | VARCHAR(100) | |
-| invoice_evidence_id | BIGINT UNSIGNED NULL | `FK` → evidence.id (same module) |
-| proof_evidence_id | BIGINT UNSIGNED NULL | `FK` → evidence.id (same module) |
+| method | VARCHAR(100) | frontend constrains this to a fixed `Tunai`/`Transfer Bank`/`QRIS` dropdown (`PAYMENT_METHOD_OPTIONS`, shared with `client_payments`); not enforced at this column, same lax convention as `pricing_tier`/`engagement_status` |
+| reference_number | VARCHAR(100) | optional in the frontend form (empty string allowed) — a `Tunai` payment has no transfer reference number |
 | notes | TEXT NULL | |
+
+No `invoice_evidence_id`/`proof_evidence_id` columns (removed, migration `000029`) — confirmed via a
+full-repo search that no code path had ever written a non-null value to either since this table's
+first migration. "Lengkap"/`evidenceComplete` is **computed**, cross-referencing the polymorphic
+`evidence` table (`related_kind = 'payment'`, distinguished by `evidence.type` — `Invoice` vs
+`Transfer Proof`) via `domain.PaymentEvidenceStatus`/`IsPaymentEvidenceComplete` — the same
+presentation-layer derivation pattern already used for `client_payments`' `evidenceComplete` and the
+vendor paid-amount fix. A `Refund` only needs a `Transfer Proof`; every other type needs both an
+`Invoice` and a `Transfer Proof` attached — the same rule the old (dead) columns encoded, now finally
+collectible since "Tambah Pembayaran" attaches both file slots in the same submit that records the
+payment. See PLAN.md "Payment evidence (Invoice/Bukti Transfer)...".
 
 ### `client_payments`
 | Column | Type | Notes |
@@ -361,7 +371,8 @@ Displayed as "Timeline Vendor" in the UI — same display-only rename as `projec
 | type | ENUM(...) | `PaymentType`, reused verbatim from `vendor_payments` |
 | amount | BIGINT UNSIGNED | |
 | payment_date | DATE | |
-| method, reference_number | VARCHAR(100) | |
+| method | VARCHAR(100) | same fixed `Tunai`/`Transfer Bank`/`QRIS` frontend dropdown as `vendor_payments`, shared constant |
+| reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `vendor_payments` |
 | notes | TEXT NULL | |
 | created_at | TIMESTAMP | |
 
@@ -370,6 +381,25 @@ accounting direction from `vendor_payments` (PLAN.md "Uang Masuk dari Client"), 
 simpler: no invoice/proof evidence-ID columns either, since it only ever has one evidence slot (a
 transfer proof) resolved via the polymorphic `evidence` table (`related_kind = 'clientPayment'`),
 not a direct FK column.
+
+### `venue_payments`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | independent `AUTO_INCREMENT` sequence from `vendor_payments.id` — the two can numerically collide, which is exactly why `evidence.related_kind` distinguishes them (`'venuePayment'` vs `'payment'`) |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | no `project_vendor_id`-equivalent — a project has at most one venue (`projects.venue_id`), so this ties directly to the project like `client_payments` does |
+| type | ENUM(...) | `PaymentType`, reused verbatim from `vendor_payments` |
+| amount | BIGINT UNSIGNED | |
+| payment_date | DATE | |
+| method | VARCHAR(100) | same fixed `Tunai`/`Transfer Bank`/`QRIS` frontend dropdown, shared constant |
+| reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `vendor_payments` |
+| notes | TEXT NULL | |
+| created_at | TIMESTAMP | |
+
+Money going **out** to the project's venue — same accounting direction and same two-slot evidence
+rule (Invoice + Transfer Proof, `Refund` needs only proof) as `vendor_payments`, resolved via the
+polymorphic `evidence` table (`related_kind = 'venuePayment'`), never a direct FK column — same
+lesson already learned from `vendor_payments`' now-removed dead columns. See PLAN.md "Venue Payments
++ Pembayaran tab restructuring".
 
 ### `vendor_issues`
 | Column | Type | Notes |
@@ -398,7 +428,7 @@ not a direct FK column.
 | uploaded_at | TIMESTAMP | |
 | description | VARCHAR(255) NULL | |
 | uploaded_by_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
-| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment') | |
+| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment','venuePayment') | |
 | related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind` |
 
 ### `activity_log`

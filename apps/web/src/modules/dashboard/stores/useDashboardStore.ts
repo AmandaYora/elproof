@@ -6,6 +6,7 @@ import type {
   DashboardIssueRow,
   DashboardPaymentRow,
   DashboardStats,
+  DashboardVenuePaymentRow,
   LaggingProjectRow,
   ProjectTrendPoint,
   RevenueTrendPoint,
@@ -41,6 +42,15 @@ interface RawDashboardPayment {
   paymentDate: string;
 }
 
+interface RawDashboardVenuePayment {
+  id: number;
+  projectId: number;
+  projectName: string;
+  type: DashboardVenuePaymentRow["type"];
+  amount: number;
+  paymentDate: string;
+}
+
 interface RawLaggingProject {
   project: RawProject;
   overallPercent: number;
@@ -53,6 +63,7 @@ interface RawDashboard {
   openIssues: RawDashboardIssue[];
   overdueVendorMilestones: RawDashboardMilestone[];
   incompletePayments: RawDashboardPayment[];
+  incompleteVenuePayments: RawDashboardVenuePayment[];
   nearDDayProjects: RawProject[];
   laggingProjects: RawLaggingProject[];
   upcomingProjects: RawProject[];
@@ -77,6 +88,10 @@ function toDashboardStats(raw: RawDashboard): DashboardStats {
     })),
     incompletePayments: raw.incompletePayments.map((p) => ({
       id: String(p.id), projectId: String(p.projectId), projectName: p.projectName, vendorId: String(p.vendorId),
+      type: p.type, amount: p.amount, paymentDate: p.paymentDate,
+    })),
+    incompleteVenuePayments: raw.incompleteVenuePayments.map((p) => ({
+      id: String(p.id), projectId: String(p.projectId), projectName: p.projectName,
       type: p.type, amount: p.amount, paymentDate: p.paymentDate,
     })),
     nearDDayProjects: raw.nearDDayProjects.map(toProject),

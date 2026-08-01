@@ -120,7 +120,7 @@ func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Conte
 func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardPaymentRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT vp.id, vp.project_id, vp.project_vendor_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number,
-		       vp.invoice_evidence_id, vp.proof_evidence_id, vp.notes, p.name, pv.vendor_id
+		       vp.notes, p.name, pv.vendor_id
 		FROM vendor_payments vp
 		JOIN projects p ON p.id = vp.project_id
 		JOIN project_vendors pv ON pv.id = vp.project_vendor_id
@@ -137,21 +137,45 @@ func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, te
 	for rows.Next() {
 		var row domain.DashboardPaymentRow
 		var paymentType string
-		var invoiceEvidenceID, proofEvidenceID sql.NullInt64
 		var notes sql.NullString
 		if err := rows.Scan(&row.Payment.ID, &row.Payment.ProjectID, &row.Payment.ProjectVendorID, &paymentType, &row.Payment.Amount,
-			&row.Payment.PaymentDate, &row.Payment.Method, &row.Payment.ReferenceNumber, &invoiceEvidenceID, &proofEvidenceID,
+			&row.Payment.PaymentDate, &row.Payment.Method, &row.Payment.ReferenceNumber,
 			&notes, &row.ProjectName, &row.VendorID); err != nil {
 			return nil, err
 		}
 		row.Payment.Type = domain.PaymentType(paymentType)
 		row.Payment.Notes = notes.String
-		if invoiceEvidenceID.Valid {
-			row.Payment.InvoiceEvidenceID = &invoiceEvidenceID.Int64
+		list = append(list, row)
+	}
+	return list, rows.Err()
+}
+
+func (r *MySQLDashboardRepository) ListVenuePaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardVenuePaymentRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT vp.id, vp.project_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number, vp.notes, p.name
+		FROM venue_payments vp
+		JOIN projects p ON p.id = vp.project_id
+		WHERE p.tenant_id = ?
+		ORDER BY vp.payment_date DESC, vp.id DESC`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.DashboardVenuePaymentRow
+	for rows.Next() {
+		var row domain.DashboardVenuePaymentRow
+		var paymentType string
+		var notes sql.NullString
+		if err := rows.Scan(&row.Payment.ID, &row.Payment.ProjectID, &paymentType, &row.Payment.Amount,
+			&row.Payment.PaymentDate, &row.Payment.Method, &row.Payment.ReferenceNumber,
+			&notes, &row.ProjectName); err != nil {
+			return nil, err
 		}
-		if proofEvidenceID.Valid {
-			row.Payment.ProofEvidenceID = &proofEvidenceID.Int64
-		}
+		row.Payment.Type = domain.PaymentType(paymentType)
+		row.Payment.Notes = notes.String
 		list = append(list, row)
 	}
 	return list, rows.Err()

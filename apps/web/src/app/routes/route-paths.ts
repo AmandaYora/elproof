@@ -1,4 +1,14 @@
-export type ProjectDetailTab = "vendor" | "milestone" | "client" | "pembayaran" | "kendala" | "dokumen" | "aktivitas" | "venue";
+export type ProjectDetailTab =
+  | "vendor"
+  | "milestone"
+  | "client"
+  | "pembayaran/client"
+  | "pembayaran/vendor"
+  | "pembayaran/venue"
+  | "kendala"
+  | "dokumen"
+  | "aktivitas"
+  | "venue";
 export type ClientPortalTab = "ringkasan" | "vendor" | "pembayaran" | "kendala" | "venue";
 
 export const ROUTE_PATHS = {

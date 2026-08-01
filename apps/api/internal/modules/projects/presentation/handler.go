@@ -33,6 +33,7 @@ type Handler struct {
 	vendors        *application.VendorEngagementService
 	payments       *application.PaymentService
 	clientPayments *application.ClientPaymentService
+	venuePayments  *application.VenuePaymentService
 	issues         *application.IssueService
 	evidence       *application.EvidenceService
 	activity       *application.ActivityService
@@ -45,13 +46,14 @@ func NewHandler(
 	vendors *application.VendorEngagementService,
 	payments *application.PaymentService,
 	clientPayments *application.ClientPaymentService,
+	venuePayments *application.VenuePaymentService,
 	issues *application.IssueService,
 	evidence *application.EvidenceService,
 	activity *application.ActivityService,
 	dashboard *application.DashboardService,
 ) *Handler {
 	return &Handler{
-		projects: projects, vendors: vendors, payments: payments, clientPayments: clientPayments,
+		projects: projects, vendors: vendors, payments: payments, clientPayments: clientPayments, venuePayments: venuePayments,
 		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard,
 	}
 }
@@ -152,6 +154,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listClientPayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
 		h.createClientPayment(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodGet:
+		h.listVenuePayments(w, r, projectID)
+	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodPost:
+		h.createVenuePayment(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodGet:
 		h.listIssues(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:
@@ -210,7 +216,7 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 // ("Staff" role) is additionally scoped to only the project they're PIC of —
 // checked once here, since every sub-resource under /projects/{id}/...
 // (milestones, vendor engagements, issues, evidence, payments,
-// client-payments, activity, venue) already funnels through this same
+// client-payments, venue-payments, activity, venue) already funnels through this same
 // function, so neither a Wedding Planner nor any other staff role can reach
 // another tenant's — or, for a Wedding Planner, another project's — data by
 // guessing its numeric ID. A client principal only ever gets a synthetic

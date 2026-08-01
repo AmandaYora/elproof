@@ -17,16 +17,18 @@ type DashboardRepository interface {
 	ListOpenIssues(ctx context.Context, tenantID int64) ([]domain.DashboardIssueRow, error)
 	ListOverdueVendorMilestones(ctx context.Context, tenantID int64, asOf time.Time) ([]domain.DashboardMilestoneRow, error)
 	ListPaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardPaymentRow, error)
+	ListVenuePaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardVenuePaymentRow, error)
 	ListRecentActivity(ctx context.Context, tenantID int64, limit int) ([]domain.ActivityLogEntry, error)
 }
 
 type DashboardService struct {
 	projects *ProjectService
 	repo     DashboardRepository
+	evidence *EvidenceService
 }
 
-func NewDashboardService(projects *ProjectService, repo DashboardRepository) *DashboardService {
-	return &DashboardService{projects: projects, repo: repo}
+func NewDashboardService(projects *ProjectService, repo DashboardRepository, evidence *EvidenceService) *DashboardService {
+	return &DashboardService{projects: projects, repo: repo, evidence: evidence}
 }
 
 const trendMonthsBack = 12
@@ -89,9 +91,27 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 	if err != nil {
 		return nil, err
 	}
+	hasInvoice, hasProof, err := s.evidenceLookup(ctx, paymentProjectIDs(paymentCandidates), domain.RelatedPayment)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range paymentCandidates {
-		if !row.Payment.IsEvidenceComplete() {
+		if !domain.IsPaymentEvidenceComplete(row.Payment.Type, row.Payment.ID, hasInvoice, hasProof) {
 			stats.IncompletePayments = append(stats.IncompletePayments, row)
+		}
+	}
+
+	venuePaymentCandidates, err := s.repo.ListVenuePaymentCandidates(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	vHasInvoice, vHasProof, err := s.evidenceLookup(ctx, venuePaymentProjectIDs(venuePaymentCandidates), domain.RelatedVenuePayment)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range venuePaymentCandidates {
+		if !domain.IsPaymentEvidenceComplete(row.Payment.Type, row.Payment.ID, vHasInvoice, vHasProof) {
+			stats.IncompleteVenuePayments = append(stats.IncompleteVenuePayments, row)
 		}
 	}
 
@@ -106,6 +126,52 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 	stats.Revenue = buildRevenueSummary(stats.RevenueTrend)
 
 	return stats, nil
+}
+
+// evidenceLookup fetches evidence per distinct project id (not per payment)
+// -- a small, bounded number of calls for what's meant to stay a curated
+// dashboard widget, not an exhaustive report -- and cross-references it
+// against a single relatedKind. Shared by both the vendor and venue
+// incomplete-payments passes in Get() above; `kind` is what keeps the two
+// lookups from ever mixing (see PaymentEvidenceStatus's own doc comment).
+func (s *DashboardService) evidenceLookup(ctx context.Context, projectIDs []int64, kind domain.EvidenceRelatedKind) (hasInvoice, hasProof map[int64]bool, err error) {
+	hasInvoice = make(map[int64]bool)
+	hasProof = make(map[int64]bool)
+	seen := make(map[int64]bool)
+	for _, projectID := range projectIDs {
+		if seen[projectID] {
+			continue
+		}
+		seen[projectID] = true
+		evidences, err := s.evidence.List(ctx, projectID)
+		if err != nil {
+			return nil, nil, err
+		}
+		inv, prf := domain.PaymentEvidenceStatus(evidences, kind)
+		for id, v := range inv {
+			hasInvoice[id] = v
+		}
+		for id, v := range prf {
+			hasProof[id] = v
+		}
+	}
+	return hasInvoice, hasProof, nil
+}
+
+func paymentProjectIDs(rows []domain.DashboardPaymentRow) []int64 {
+	ids := make([]int64, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Payment.ProjectID
+	}
+	return ids
+}
+
+func venuePaymentProjectIDs(rows []domain.DashboardVenuePaymentRow) []int64 {
+	ids := make([]int64, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Payment.ProjectID
+	}
+	return ids
 }
 
 var monthsID = [...]string{"Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}

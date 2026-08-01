@@ -54,7 +54,7 @@ export type EvidenceType =
   | "Minutes of Meeting"
   | "Other";
 
-export type EvidenceRelatedKind = "vendorMilestone" | "payment" | "projectVendor" | "issue" | "clientPayment";
+export type EvidenceRelatedKind = "vendorMilestone" | "payment" | "projectVendor" | "issue" | "clientPayment" | "venuePayment";
 
 export type ProjectCondition = "On Track" | "Attention" | "At Risk";
 
@@ -156,8 +156,6 @@ export interface VendorPayment {
   paymentDate: string;
   method: string;
   referenceNumber: string;
-  invoiceEvidenceId: string | null;
-  proofEvidenceId: string | null;
   notes: string;
   evidenceComplete: boolean;
 }
@@ -168,6 +166,21 @@ export interface VendorPayment {
 // vendor), and only one evidence slot (a transfer proof), so evidenceComplete
 // here is a plain existence check, not a two-field rule.
 export interface ClientPayment {
+  id: string;
+  type: PaymentType;
+  amount: number;
+  paymentDate: string;
+  method: string;
+  referenceNumber: string;
+  notes: string;
+  evidenceComplete: boolean;
+}
+
+// Money going OUT to the project's venue -- same accounting direction and
+// same two-slot evidence rule (Invoice + Transfer Proof) as VendorPayment,
+// but structurally simpler like ClientPayment: no projectVendorId-equivalent
+// field, since a project has at most one venue.
+export interface VenuePayment {
   id: string;
   type: PaymentType;
   amount: number;

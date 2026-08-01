@@ -27,6 +27,19 @@ type DashboardPaymentRow struct {
 	VendorID    int64
 }
 
+// DashboardVenuePaymentRow deliberately stays a separate slice/type from
+// DashboardPaymentRow above rather than a merged, source-discriminated one --
+// there's no VendorID-equivalent for a venue payment, and keeping the
+// already-working vendor path untouched was judged safer than reshaping it
+// just to accommodate a second source. The two lists are merged into one
+// labeled feed at the presentation layer instead (dashboard/lib/attention.ts
+// on the frontend). See PLAN.md "Venue Payments + Pembayaran tab
+// restructuring".
+type DashboardVenuePaymentRow struct {
+	Payment     VenuePayment
+	ProjectName string
+}
+
 type LaggingProjectRow struct {
 	Project        Project
 	OverallPercent int
@@ -59,6 +72,7 @@ type DashboardStats struct {
 	OpenIssues              []DashboardIssueRow
 	OverdueVendorMilestones []DashboardMilestoneRow
 	IncompletePayments      []DashboardPaymentRow
+	IncompleteVenuePayments []DashboardVenuePaymentRow
 	NearDDayProjects        []Project
 	LaggingProjects         []LaggingProjectRow
 	UpcomingProjects        []Project
