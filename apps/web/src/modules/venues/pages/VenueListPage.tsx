@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, CheckCircle2, Ban, Download, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Pencil, CheckCircle2, Ban, Upload } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
+import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
@@ -12,7 +13,7 @@ import { VenueFormModal } from "@/modules/venues/components/VenueFormModal";
 import { VenueStatusBadge } from "@/modules/venues/components/VenueStatusBadge";
 import type { VenueFormValues, VenueCreateFormValues } from "@/modules/venues/schemas/venue.schema";
 import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
-import type { Venue, VenueImportResult } from "@/modules/venues/types";
+import type { Venue } from "@/modules/venues/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
 
@@ -31,9 +32,7 @@ export default function VenueListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVenue, setEditingVenue] = useState<Venue | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<VenueImportResult | null>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   useEffect(() => {
     setPage(1);
@@ -83,36 +82,10 @@ export default function VenueListPage() {
     }
   }
 
-  async function handleDownloadTemplate() {
-    setActionError(null);
-    try {
-      const blob = await downloadVenueTemplate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "template-venue.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengunduh template"));
-    }
-  }
-
-  async function handleImportFile(file: File | undefined) {
-    if (!file) return;
-    setActionError(null);
-    setImportResult(null);
-    setImporting(true);
-    try {
-      const result = await importVenues(file);
-      setImportResult(result);
-      await fetchVenuePage(page, query);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengimpor berkas venue"));
-    } finally {
-      setImporting(false);
-      if (importInputRef.current) importInputRef.current.value = "";
-    }
+  async function handleImportVenues(file: File) {
+    const result = await importVenues(file);
+    await fetchVenuePage(page, query);
+    return result;
   }
 
   return (
@@ -123,27 +96,9 @@ export default function VenueListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola direktori gedung/lokasi acara yang bekerja sama dengan WO.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleDownloadTemplate()}>
-            Download Template
+          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
+            Import Bulk
           </Button>
-          <label>
-            <Button
-              type="button"
-              variant="secondary"
-              icon={<Upload className="h-4 w-4" />}
-              disabled={importing}
-              onClick={() => importInputRef.current?.click()}
-            >
-              {importing ? "Mengimpor..." : "Import Excel"}
-            </Button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".xlsx"
-              className="hidden"
-              onChange={(e) => void handleImportFile(e.target.files?.[0])}
-            />
-          </label>
           <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
             Tambah Venue
           </Button>
@@ -152,27 +107,6 @@ export default function VenueListPage() {
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
-      )}
-
-      {importResult && (
-        <Card className="flex flex-col gap-2 p-4">
-          <p className="text-[13.5px] font-semibold text-text-primary">
-            {importResult.insertedCount} venue baru ditambahkan, {importResult.updatedCount} venue diperbarui (nama+kota sudah ada sebelumnya).
-          </p>
-          {importResult.errors.length > 0 && (
-            <div className="mt-1 flex flex-col gap-1">
-              <p className="text-[12.5px] font-semibold text-danger">{importResult.errors.length} baris gagal diproses:</p>
-              <ul className="flex flex-col gap-0.5 text-[12.5px] text-text-secondary">
-                {importResult.errors.map((e, idx) => (
-                  <li key={idx}>
-                    {e.row > 0 ? `Baris ${e.row}: ` : ""}
-                    {e.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </Card>
       )}
 
       <div className="flex flex-wrap gap-3">
@@ -267,6 +201,20 @@ export default function VenueListPage() {
         onSubmitEdit={(values) => void handleSubmit(values)}
         initialVenue={editingVenue}
       />
+
+      {importModalOpen && (
+        <ImportBulkModal
+          open={importModalOpen}
+          onClose={() => setImportModalOpen(false)}
+          title="Import Bulk Venue"
+          description="Download template Excel, isi datanya, lalu unggah kembali untuk menambah atau memperbarui banyak venue sekaligus."
+          templateFileName="template-venue.xlsx"
+          entityLabel="venue"
+          matchCriteriaLabel="nama+kota"
+          onDownloadTemplate={downloadVenueTemplate}
+          onImport={handleImportVenues}
+        />
+      )}
     </div>
   );
 }

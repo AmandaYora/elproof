@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Pencil, CheckCircle2, Ban, Eye, Download, Upload } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
+import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
@@ -16,7 +17,7 @@ import { VendorFormModal } from "@/modules/vendors/components/VendorFormModal";
 import { VendorStatusBadge } from "@/modules/vendors/components/VendorStatusBadge";
 import type { VendorFormValues, VendorCreateFormValues } from "@/modules/vendors/schemas/vendor.schema";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import type { Vendor, VendorProjectHistoryItem, VendorImportResult } from "@/modules/vendors/types";
+import type { Vendor, VendorProjectHistoryItem } from "@/modules/vendors/types";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -44,9 +45,7 @@ export default function VendorListPage() {
   const [history, setHistory] = useState<VendorProjectHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<VendorImportResult | null>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   useEffect(() => {
     void fetchCategories();
@@ -111,36 +110,10 @@ export default function VendorListPage() {
     }
   }
 
-  async function handleDownloadTemplate() {
-    setActionError(null);
-    try {
-      const blob = await downloadVendorTemplate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "template-vendor.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengunduh template"));
-    }
-  }
-
-  async function handleImportFile(file: File | undefined) {
-    if (!file) return;
-    setActionError(null);
-    setImportResult(null);
-    setImporting(true);
-    try {
-      const result = await importVendors(file);
-      setImportResult(result);
-      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengimpor berkas vendor"));
-    } finally {
-      setImporting(false);
-      if (importInputRef.current) importInputRef.current.value = "";
-    }
+  async function handleImportVendors(file: File) {
+    const result = await importVendors(file);
+    await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
+    return result;
   }
 
   return (
@@ -151,27 +124,9 @@ export default function VendorListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh vendor yang bekerja sama dengan WO.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleDownloadTemplate()}>
-            Download Template
+          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
+            Import Bulk
           </Button>
-          <label>
-            <Button
-              type="button"
-              variant="secondary"
-              icon={<Upload className="h-4 w-4" />}
-              disabled={importing}
-              onClick={() => importInputRef.current?.click()}
-            >
-              {importing ? "Mengimpor..." : "Import Excel"}
-            </Button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".xlsx"
-              className="hidden"
-              onChange={(e) => void handleImportFile(e.target.files?.[0])}
-            />
-          </label>
           <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
             Tambah Vendor
           </Button>
@@ -180,28 +135,6 @@ export default function VendorListPage() {
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
-      )}
-
-      {importResult && (
-        <Card className="flex flex-col gap-2 p-4">
-          <p className="text-[13.5px] font-semibold text-text-primary">
-            {importResult.insertedCount} vendor baru ditambahkan, {importResult.updatedCount} vendor diperbarui (nama+kota+kategori
-            sudah ada sebelumnya).
-          </p>
-          {importResult.errors.length > 0 && (
-            <div className="mt-1 flex flex-col gap-1">
-              <p className="text-[12.5px] font-semibold text-danger">{importResult.errors.length} baris gagal diproses:</p>
-              <ul className="flex flex-col gap-0.5 text-[12.5px] text-text-secondary">
-                {importResult.errors.map((e, idx) => (
-                  <li key={idx}>
-                    {e.row > 0 ? `Baris ${e.row}: ` : ""}
-                    {e.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </Card>
       )}
 
       <div className="flex flex-wrap gap-3">
@@ -352,6 +285,20 @@ export default function VendorListPage() {
           </ul>
         )}
       </Modal>
+
+      {importModalOpen && (
+        <ImportBulkModal
+          open={importModalOpen}
+          onClose={() => setImportModalOpen(false)}
+          title="Import Bulk Vendor"
+          description="Download template Excel, isi datanya, lalu unggah kembali untuk menambah atau memperbarui banyak vendor sekaligus."
+          templateFileName="template-vendor.xlsx"
+          entityLabel="vendor"
+          matchCriteriaLabel="nama+kota+kategori"
+          onDownloadTemplate={downloadVendorTemplate}
+          onImport={handleImportVendors}
+        />
+      )}
     </div>
   );
 }
