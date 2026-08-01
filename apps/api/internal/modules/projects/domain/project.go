@@ -27,16 +27,27 @@ type Project struct {
 	// directory (ADR-0016) -- resolved via a module contract, never a SQL
 	// foreign key. nil means no structured venue is attached yet; Venue
 	// (the free-text field above) stays as the fallback display in that case.
-	VenueID       *int64
-	PrepStartDate time.Time
-	PackageName   string
-	ContractValue int64
-	Status        ProjectStatus
-	PICStaffID    int64
-	Description   string
-	IsArchived    bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	VenueID *int64
+	// VenueRentalPrice/VenueCharge are a per-project SNAPSHOT of the
+	// attached venue's cost, captured (and freely editable) at attach time
+	// -- never a live join against venues' own current price. This mirrors
+	// project_vendors.contract_value's exact lifecycle and exists so a
+	// completed project's recorded Margin can never drift just because
+	// venue master data changed later. Both nil whenever VenueID is nil;
+	// ProjectService.Update force-clears both on detach regardless of what
+	// the request body contains -- see PLAN.md "Financial Calculation
+	// Correctness".
+	VenueRentalPrice *int64
+	VenueCharge      *int64
+	PrepStartDate    time.Time
+	PackageName      string
+	ContractValue    int64
+	Status           ProjectStatus
+	PICStaffID       int64
+	Description      string
+	IsArchived       bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type MilestoneStatus string

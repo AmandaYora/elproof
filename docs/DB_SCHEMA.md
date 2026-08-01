@@ -253,8 +253,9 @@ old `project_vendors` history (fuzzy-matching risk — see ADR-0016).
 | event_date, prep_start_date | DATE | |
 | venue | VARCHAR(255) | free-text location — kept as a fallback for projects that never get a structured `venue_id` below (ADR-0016); not touched by attaching one |
 | venue_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.venues.id` (ADR-0016) — at most one venue per project; resolved via `vendors.Contracts` (`VenueResolver`), never a SQL join. `NULL` means no structured venue attached yet |
+| venue_rental_price, venue_charge | BIGINT UNSIGNED NULL | per-project cost **snapshot**, captured (and freely editable) the moment `venue_id` is attached/changed — never a live join against `venues.rental_price`/`charge`. Both `NULL` whenever `venue_id` is `NULL`; force-cleared to `NULL` on detach regardless of what a request sends. Exists so a completed project's recorded Margin can never drift just because venue master data changed later — see PLAN.md "Financial Calculation Correctness" |
 | package_name | VARCHAR(150) | |
-| contract_value | BIGINT UNSIGNED | the WO's own price quoted to the client for the whole event — a distinct figure from any vendor's or the venue's own cost (see `project_vendors.contract_value` and `venues.rental_price`/`charge`); the frontend derives a "Margin/Keuntungan" figure as this value minus those costs, computed client-side, never stored |
+| contract_value | BIGINT UNSIGNED | the WO's own price quoted to the client for the whole event — a distinct figure from any vendor's or the venue's own cost (see `project_vendors.contract_value` and this table's own `venue_rental_price`/`venue_charge`); the frontend derives a "Margin/Keuntungan" figure as this value minus those costs, computed client-side, never stored |
 | status | ENUM('Draft','Preparation','Ready','Completed','Cancelled') | |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` — reassignable only by Owner/Admin, never by the "Staff" (Wedding Planner) role itself, see ADR-0017 |
 | description | TEXT NULL | |
@@ -314,9 +315,15 @@ mirroring `vendors.SeedDefaultCategories`).
 | pricing_tier | VARCHAR(20) NOT NULL DEFAULT 'Akad' | `Akad` \| `AkadResepsi` — which of the vendor's own two preset prices (`vendors.price_akad`/`price_akad_resepsi`) this engagement's `contract_value` was auto-filled from when created/last edited; purely an informational label, not backend-validated against the two-value set (same lax convention as `engagement_status`) |
 | engagement_status | ENUM(...) | see `EngagementStatus` |
 | booking_date, event_date, due_date | DATE NULL | |
-| dp_amount, paid_amount | BIGINT UNSIGNED | |
+| dp_amount | BIGINT UNSIGNED | plain reference figure ("what DP was agreed at booking") — never summed into any total |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
 | notes | TEXT NULL | |
+
+No `paid_amount` column (removed, migration `000028`) — "Total Sudah Dibayar" is **computed**, summing
+this engagement's own `vendor_payments` rows (`Refund` netted as a subtraction) in the presentation
+layer, never a stored/manually-typed value. This was a real bug: the old manual field and the actual
+`vendor_payments` ledger were two independently-maintained numbers that could silently contradict each
+other on the same tab — see PLAN.md "Financial Calculation Correctness".
 
 ### `vendor_milestones`
 | Column | Type | Notes |

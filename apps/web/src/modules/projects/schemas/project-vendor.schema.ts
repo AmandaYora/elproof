@@ -22,7 +22,6 @@ export const projectVendorSchema = z.object({
   engagementStatus: z.enum(ENGAGEMENT_STATUS_OPTIONS),
   bookingDate: z.string().optional().default(""),
   dpAmount: z.coerce.number().min(0, "Jumlah DP tidak valid"),
-  paidAmount: z.coerce.number().min(0, "Jumlah pembayaran tidak valid"),
   dueDate: z.string().optional().default(""),
   picStaffId: z.string().min(1, "PIC internal WO wajib dipilih"),
   notes: z.string().optional().default(""),

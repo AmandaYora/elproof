@@ -35,9 +35,16 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
     void fetchVendors();
   }, [projectId, fetchPayments, fetchVendorSection, fetchVendors]);
 
-  const totalContractValue = vendorEngagements.reduce((sum, pv) => sum + pv.contractValue, 0);
-  const totalPaid = vendorEngagements.reduce((sum, pv) => sum + pv.paidAmount, 0);
-  const totalRemaining = vendorEngagements.reduce((sum, pv) => sum + (pv.contractValue - pv.paidAmount), 0);
+  // Excludes Cancelled engagements, same as Margin/Keuntungan's own
+  // vendorCost already does — a cancelled engagement's contract value isn't
+  // still owed to anyone. Individual payment history rows below are NOT
+  // filtered by this: a payment that already happened stays a historical
+  // fact regardless of the engagement's current status. See PLAN.md
+  // "Financial Calculation Correctness".
+  const activeEngagements = vendorEngagements.filter((pv) => pv.engagementStatus !== "Cancelled");
+  const totalContractValue = activeEngagements.reduce((sum, pv) => sum + pv.contractValue, 0);
+  const totalPaid = activeEngagements.reduce((sum, pv) => sum + pv.paidAmount, 0);
+  const totalRemaining = totalContractValue - totalPaid;
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(payments);
 
   async function handleAddPayment(values: PaymentFormValues) {

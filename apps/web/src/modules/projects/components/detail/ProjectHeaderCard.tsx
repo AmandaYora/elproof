@@ -10,8 +10,6 @@ import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
-import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
-import type { Venue } from "@/modules/venues/types";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
@@ -28,7 +26,6 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
-  const fetchVenue = useVenueStore((s) => s.fetchVenue);
   const updateProject = useProjectStore((s) => s.updateProject);
   const cancelProject = useProjectStore((s) => s.cancelProject);
   const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
@@ -42,12 +39,11 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   // section); the backend already rejects this role's POST .../duplicate.
   const canDuplicate = useAuthStore((s) => s.session?.role) !== "Staff";
   // Margin/Keuntungan reveals vendor-cost/venue-cost business data — Wedding
-  // Planner is not supposed to access Vendor/Venue data at all (confirmed
-  // RBAC rule), even though the underlying GET /venues/{id} this feature
-  // calls happens to stay staff-wide open for picker use elsewhere. Gating
-  // this specifically (not just hiding the InfoField) also skips the venue
-  // fetch below entirely for this role, so the cost figures never even
-  // reach a Wedding Planner's browser.
+  // Planner is not supposed to see this specific computed figure (confirmed
+  // RBAC rule), even though the underlying vendor engagements and venue cost
+  // snapshot it's derived from are already visible to every role via the
+  // Vendor/Venue tabs themselves (no separate fetch to gate here anymore —
+  // both now come from data already loaded for this project).
   const canSeeMargin = useAuthStore((s) => s.session?.role) !== "Staff";
 
   const [editOpen, setEditOpen] = useState(false);
@@ -56,7 +52,6 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [venue, setVenue] = useState<Venue | null>(null);
 
   useEffect(() => {
     void fetchMilestones(projectId);
@@ -64,24 +59,6 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     void fetchClientPayments(projectId);
     void fetchStaff();
   }, [projectId, fetchMilestones, fetchVendorSection, fetchClientPayments, fetchStaff]);
-
-  // Fetched purely for the Margin/Keuntungan figure below (rentalPrice/charge
-  // are never part of the cross-module VenueSummary the Client Portal's own
-  // Venue tab uses, to avoid leaking WO cost data there — see PLAN.md) —
-  // mirrors ProjectVenueTabPage's own direct staff-only venue fetch.
-  useEffect(() => {
-    let cancelled = false;
-    if (!canSeeMargin || !project?.venueId) {
-      setVenue(null);
-      return;
-    }
-    void fetchVenue(project.venueId).then((v) => {
-      if (!cancelled) setVenue(v);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canSeeMargin, project?.venueId, fetchVenue]);
 
   if (!project) {
     return <div className="text-sm text-text-secondary">Project tidak ditemukan.</div>;
@@ -93,7 +70,11 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const vendorCost = vendorEngagements
     .filter((v) => v.engagementStatus !== "Cancelled")
     .reduce((sum, v) => sum + v.contractValue, 0);
-  const venueCost = venue ? (venue.rentalPrice ?? 0) + (venue.charge ?? 0) : 0;
+  // Read directly off the project's own cost snapshot — never a live venue
+  // fetch (see PLAN.md "Financial Calculation Correctness"): a completed
+  // project's recorded Margin must never drift just because venue master
+  // data changed later.
+  const venueCost = (project.venueRentalPrice ?? 0) + (project.venueCharge ?? 0);
   const margin = project.contractValue - vendorCost - venueCost;
 
   // Sisa Tagihan Client (PLAN.md §1.7/§3.9) — day-to-day operational status

@@ -72,6 +72,13 @@ type projectInputBody struct {
 	// reads it (ADR-0016: attaching a venue is a separate, post-creation
 	// action).
 	VenueID *int64 `json:"venueId"`
+	// VenueRentalPrice/VenueCharge ride along with VenueID whenever it's
+	// present at all -- the per-project cost snapshot (PLAN.md "Financial
+	// Calculation Correctness"). Meaningless (and ignored by
+	// ProjectService.Update) when VenueID itself is nil or the detach
+	// sentinel 0.
+	VenueRentalPrice *int64 `json:"venueRentalPrice"`
+	VenueCharge      *int64 `json:"venueCharge"`
 }
 
 func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
@@ -88,6 +95,7 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
 		Venue: body.Venue, PrepStartDate: prepStartDate, PackageName: body.PackageName,
 		ContractValue: body.ContractValue, Status: domain.ProjectStatus(body.Status),
 		PICStaffID: body.PICStaffID, Description: body.Description, VenueID: body.VenueID,
+		VenueRentalPrice: body.VenueRentalPrice, VenueCharge: body.VenueCharge,
 	}, nil
 }
 

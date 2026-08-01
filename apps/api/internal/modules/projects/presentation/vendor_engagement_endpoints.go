@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -10,15 +11,42 @@ import (
 	"elproof/internal/shared/response"
 )
 
+// vendorPaidAmounts sums each project_vendor's own vendor_payments rows
+// (Refund netted as a subtraction) into a map keyed by ProjectVendorID —
+// the "Total Sudah Dibayar" figure is derived entirely from this ledger,
+// never a stored/manually-typed column. See PLAN.md "Financial Calculation
+// Correctness". A missing key correctly defaults to Go's int64 zero value
+// (no payments recorded yet).
+func (h *Handler) vendorPaidAmounts(ctx context.Context, projectID int64) (map[int64]int64, error) {
+	payments, err := h.payments.List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	paid := make(map[int64]int64, len(payments))
+	for _, p := range payments {
+		if p.Type == domain.PaymentRefund {
+			paid[p.ProjectVendorID] -= p.Amount
+		} else {
+			paid[p.ProjectVendorID] += p.Amount
+		}
+	}
+	return paid, nil
+}
+
 func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, projectID int64) {
 	list, err := h.vendors.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
+	paid, err := h.vendorPaidAmounts(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
 	result := make([]projectVendorResponse, 0, len(list))
 	for _, pv := range list {
-		result = append(result, toProjectVendorResponse(pv))
+		result = append(result, toProjectVendorResponse(pv, paid[pv.ID]))
 	}
 	response.OK(w, "ok", result)
 }
@@ -33,7 +61,6 @@ type vendorEngagementInputBody struct {
 	BookingDate      string `json:"bookingDate"`
 	EventDate        string `json:"eventDate"`
 	DPAmount         int64  `json:"dpAmount"`
-	PaidAmount       int64  `json:"paidAmount"`
 	DueDate          string `json:"dueDate"`
 	PICStaffID       int64  `json:"picStaffId"`
 	Notes            string `json:"notes"`
@@ -50,7 +77,7 @@ func toVendorEngagementInput(body vendorEngagementInputBody) (application.Vendor
 		VendorID: body.VendorID, CategoryID: body.CategoryID, Scope: body.Scope, ContractValue: body.ContractValue,
 		PricingTier:      domain.VendorPricingTier(body.PricingTier),
 		EngagementStatus: domain.EngagementStatus(body.EngagementStatus), BookingDate: bookingDate, EventDate: eventDate,
-		DPAmount: body.DPAmount, PaidAmount: body.PaidAmount, DueDate: dueDate, PICStaffID: body.PICStaffID, Notes: body.Notes,
+		DPAmount: body.DPAmount, DueDate: dueDate, PICStaffID: body.PICStaffID, Notes: body.Notes,
 	}, nil
 }
 
@@ -81,7 +108,9 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Vendor berhasil ditambahkan ke project", toProjectVendorResponse(*pv))
+	// A freshly created engagement has no vendor_payments rows yet — 0 paid,
+	// no ledger lookup needed.
+	response.Created(w, "Vendor berhasil ditambahkan ke project", toProjectVendorResponse(*pv, 0))
 }
 
 func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
@@ -105,7 +134,12 @@ func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kerja sama vendor berhasil diperbarui", toProjectVendorResponse(*pv))
+	paid, err := h.vendorPaidAmounts(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Kerja sama vendor berhasil diperbarui", toProjectVendorResponse(*pv, paid[pv.ID]))
 }
 
 func (h *Handler) cancelVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
@@ -119,7 +153,12 @@ func (h *Handler) cancelVendorEngagement(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kerja sama vendor dibatalkan", toProjectVendorResponse(*pv))
+	paid, err := h.vendorPaidAmounts(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Kerja sama vendor dibatalkan", toProjectVendorResponse(*pv, paid[pv.ID]))
 }
 
 // --- Vendor milestones ---

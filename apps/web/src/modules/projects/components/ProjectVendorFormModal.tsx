@@ -29,7 +29,6 @@ function toFormValues(pv?: ProjectVendor, defaults?: { vendorId: string; staffId
       engagementStatus: "Planned",
       bookingDate: "",
       dpAmount: 0,
-      paidAmount: 0,
       dueDate: "",
       picStaffId: defaults?.staffId ?? "",
       notes: "",
@@ -43,7 +42,6 @@ function toFormValues(pv?: ProjectVendor, defaults?: { vendorId: string; staffId
     engagementStatus: pv.engagementStatus,
     bookingDate: pv.bookingDate ?? "",
     dpAmount: pv.dpAmount,
-    paidAmount: pv.paidAmount,
     dueDate: pv.dueDate ?? "",
     picStaffId: pv.picStaffId,
     notes: pv.notes,
@@ -188,9 +186,6 @@ export function ProjectVendorFormModal({ open, onClose, onSubmit, initialProject
         </Field>
         <Field label="Jumlah DP (Rp)" hint={errors.dpAmount}>
           <Input type="number" min={0} value={values.dpAmount} onChange={(e) => set("dpAmount", Number(e.target.value))} />
-        </Field>
-        <Field label="Total Sudah Dibayarkan (Rp)" hint={errors.paidAmount}>
-          <Input type="number" min={0} value={values.paidAmount} onChange={(e) => set("paidAmount", Number(e.target.value))} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Catatan">

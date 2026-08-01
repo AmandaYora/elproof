@@ -17,16 +17,17 @@ func NewMySQLProjectRepository(db *sql.DB) *MySQLProjectRepository {
 	return &MySQLProjectRepository{db: db}
 }
 
-const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, prep_start_date,
-	package_name, contract_value, status, pic_staff_id, description, is_archived, created_at, updated_at`
+const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, venue_rental_price, venue_charge,
+	prep_start_date, package_name, contract_value, status, pic_staff_id, description, is_archived, created_at, updated_at`
 
 func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) {
 	var p domain.Project
 	var status string
 	var description sql.NullString
 	var venueID sql.NullInt64
-	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &venueID, &p.PrepStartDate,
-		&p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
+	var venueRentalPrice, venueCharge sql.NullInt64
+	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &venueID, &venueRentalPrice, &venueCharge,
+		&p.PrepStartDate, &p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -37,6 +38,12 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	p.Description = description.String
 	if venueID.Valid {
 		p.VenueID = &venueID.Int64
+	}
+	if venueRentalPrice.Valid {
+		p.VenueRentalPrice = &venueRentalPrice.Int64
+	}
+	if venueCharge.Valid {
+		p.VenueCharge = &venueCharge.Int64
 	}
 	return &p, nil
 }
@@ -147,10 +154,11 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 
 func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, venue_id = ?, prep_start_date = ?,
-		 package_name = ?, contract_value = ?, status = ?, pic_staff_id = ?, description = ? WHERE tenant_id = ? AND id = ?`,
-		p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.PrepStartDate,
-		p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.Description, p.TenantID, p.ID,
+		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, venue_id = ?, venue_rental_price = ?,
+		 venue_charge = ?, prep_start_date = ?, package_name = ?, contract_value = ?, status = ?, pic_staff_id = ?, description = ?
+		 WHERE tenant_id = ? AND id = ?`,
+		p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.VenueRentalPrice,
+		p.VenueCharge, p.PrepStartDate, p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.Description, p.TenantID, p.ID,
 	)
 	return err
 }

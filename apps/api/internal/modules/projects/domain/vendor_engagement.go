@@ -38,11 +38,16 @@ type ProjectVendor struct {
 	EngagementStatus EngagementStatus
 	BookingDate      *time.Time
 	EventDate        time.Time
-	DPAmount         int64
-	PaidAmount       int64
-	DueDate          *time.Time
-	PICStaffID       int64
-	Notes            string
+	// DPAmount is a plain reference figure ("what DP was agreed at
+	// booking") -- never summed into any total. How much has actually been
+	// paid is derived entirely from vendor_payments (see
+	// projectVendorResponse.PaidAmount, computed in the presentation
+	// layer) -- ProjectVendor deliberately has no stored PaidAmount field
+	// of its own anymore; see PLAN.md "Financial Calculation Correctness".
+	DPAmount   int64
+	DueDate    *time.Time
+	PICStaffID int64
+	Notes      string
 }
 
 // VendorEngagementHistoryRow is one row of a vendor's engagement history

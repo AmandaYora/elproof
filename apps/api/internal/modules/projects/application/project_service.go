@@ -182,6 +182,14 @@ type ProjectInput struct {
 	// explicitly detaches; a positive ID attaches that venue. Venue IDs are
 	// AUTO_INCREMENT starting at 1, so `0` is never a real one.
 	VenueID *int64
+	// VenueRentalPrice/VenueCharge ride along with VenueID whenever it's
+	// present at all (see Update below) -- the per-project cost snapshot,
+	// PLAN.md "Financial Calculation Correctness". Only meaningful when
+	// VenueID is a positive attach/change; ignored on detach (force-cleared
+	// regardless) and left nil-safe when VenueID itself is nil (every other
+	// project edit that never touches venue attachment at all).
+	VenueRentalPrice *int64
+	VenueCharge      *int64
 }
 
 func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffID int64, input ProjectInput) (*domain.Project, error) {
@@ -228,9 +236,16 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorSt
 	p.Description = input.Description
 	if input.VenueID != nil {
 		if *input.VenueID == 0 {
+			// Detach always force-clears the cost snapshot too, regardless of
+			// whatever the request body happened to send for these two
+			// fields -- there is no cost without a venue.
 			p.VenueID = nil
+			p.VenueRentalPrice = nil
+			p.VenueCharge = nil
 		} else {
 			p.VenueID = input.VenueID
+			p.VenueRentalPrice = input.VenueRentalPrice
+			p.VenueCharge = input.VenueCharge
 		}
 	}
 	if err := s.repo.Update(ctx, p); err != nil {
@@ -394,7 +409,7 @@ func (s *ProjectService) cloneVendorEngagementsFrom(ctx context.Context, sourceP
 		clone := &domain.ProjectVendor{
 			ProjectID: newProjectID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope,
 			ContractValue: pv.ContractValue, PricingTier: pv.PricingTier, EngagementStatus: domain.EngagementPlanned,
-			BookingDate: pv.BookingDate, EventDate: newEventDate, DPAmount: 0, PaidAmount: 0,
+			BookingDate: pv.BookingDate, EventDate: newEventDate, DPAmount: 0,
 			DueDate: pv.DueDate, PICStaffID: pv.PICStaffID, Notes: pv.Notes,
 		}
 		if err := s.vendorEngagements.Create(ctx, clone); err != nil {

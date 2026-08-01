@@ -91,6 +91,12 @@ export interface Project {
   // (ADR-0016) — null means no structured venue attached yet; `venue`
   // (free text) stays the fallback display in that case.
   venueId: string | null;
+  // Per-project cost SNAPSHOT captured at attach time (freely editable
+  // afterward, same lifecycle as a vendor engagement's own contractValue)
+  // — never the venue's live master-data price. Both null whenever
+  // venueId is null. See PLAN.md "Financial Calculation Correctness".
+  venueRentalPrice: number | null;
+  venueCharge: number | null;
   prepStartDate: string;
   packageName: string;
   contractValue: number;

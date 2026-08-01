@@ -16,7 +16,7 @@ func NewMySQLVendorEngagementRepository(db *sql.DB) *MySQLVendorEngagementReposi
 }
 
 const projectVendorColumns = `id, project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
-	booking_date, event_date, dp_amount, paid_amount, due_date, pic_staff_id, notes`
+	booking_date, event_date, dp_amount, due_date, pic_staff_id, notes`
 
 func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVendor, error) {
 	var pv domain.ProjectVendor
@@ -24,7 +24,7 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 	var bookingDate, dueDate sql.NullTime
 	var notes sql.NullString
 	err := scan(&pv.ID, &pv.ProjectID, &pv.VendorID, &pv.CategoryID, &pv.Scope, &pv.ContractValue, &pricingTier, &status,
-		&bookingDate, &pv.EventDate, &pv.DPAmount, &pv.PaidAmount, &dueDate, &pv.PICStaffID, &notes)
+		&bookingDate, &pv.EventDate, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -69,10 +69,10 @@ func (r *MySQLVendorEngagementRepository) FindByID(ctx context.Context, projectI
 func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain.ProjectVendor) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO project_vendors (project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
-		 booking_date, event_date, dp_amount, paid_amount, due_date, pic_staff_id, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 booking_date, event_date, dp_amount, due_date, pic_staff_id, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		pv.ProjectID, pv.VendorID, pv.CategoryID, pv.Scope, pv.ContractValue, string(pv.PricingTier), string(pv.EngagementStatus),
-		pv.BookingDate, pv.EventDate, pv.DPAmount, pv.PaidAmount, pv.DueDate, pv.PICStaffID, pv.Notes,
+		pv.BookingDate, pv.EventDate, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes,
 	)
 	if err != nil {
 		return err
@@ -88,10 +88,10 @@ func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain
 func (r *MySQLVendorEngagementRepository) Update(ctx context.Context, pv *domain.ProjectVendor) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE project_vendors SET vendor_id = ?, category_id = ?, scope = ?, contract_value = ?, pricing_tier = ?, engagement_status = ?,
-		 booking_date = ?, event_date = ?, dp_amount = ?, paid_amount = ?, due_date = ?, pic_staff_id = ?, notes = ?
+		 booking_date = ?, event_date = ?, dp_amount = ?, due_date = ?, pic_staff_id = ?, notes = ?
 		 WHERE id = ?`,
 		pv.VendorID, pv.CategoryID, pv.Scope, pv.ContractValue, string(pv.PricingTier), string(pv.EngagementStatus),
-		pv.BookingDate, pv.EventDate, pv.DPAmount, pv.PaidAmount, pv.DueDate, pv.PICStaffID, pv.Notes, pv.ID,
+		pv.BookingDate, pv.EventDate, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes, pv.ID,
 	)
 	return err
 }

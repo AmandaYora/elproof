@@ -2432,3 +2432,338 @@ Nilai Kontrak (including Wedding Planner, §1.6) — not gated behind `canSeeMar
   title string — same fields, same totals, same known evidence-completeness gap from §2 (deliberately
   not fixed here).
 
+# PLAN — Financial Calculation Correctness (Venue cost snapshot, Vendor paid-amount reconciliation, Cancelled-filter consistency)
+
+## 0. Goal
+
+A full audit of every money calculation under the Project menu (Nilai Kontrak, Margin/Keuntungan,
+biaya vendor, biaya venue, uang client masuk, sisa tagihan) found three real correctness problems —
+two of them capable of showing the user contradictory or silently-drifting numbers on data that's
+already live in production. This plan fixes all three, precisely and conservatively, because this is
+financial reporting and getting it wrong is worse than leaving it alone. Confirmed with the user
+before writing this plan:
+
+1. Venue cost becomes a **per-project snapshot, editable afterward** — same lifecycle as vendor's
+   own `contractValue` (§1.1).
+2. Vendor "Total Sudah Dibayar" becomes **fully derived from the `vendor_payments` ledger**, no more
+   manually-typed `paidAmount` field (§1.2).
+3. The Cancelled-engagement filter is made **consistent everywhere** money is summed for vendors —
+   Margin already excludes Cancelled; `ProjectPaymentsSection`'s summary stats will too (§1.3).
+
+## 1. Decisions confirmed
+
+### 1.1 Venue cost: snapshot at attach time, freely editable afterward (mirrors Vendor exactly)
+
+**The asymmetry found**: a `ProjectVendor` row has its own `contract_value` column — copied once from
+the vendor's own master-data preset price (`vendors.priceAkad`/`priceAkadResepsi`) the moment a vendor
+is picked, then completely independent from that point on (confirmed: no JOIN, no live recompute —
+editing a vendor's preset price later never touches any existing `project_vendors.contract_value`
+row). A `Project`, by contrast, stores only `venue_id` — a bare reference. Every render of Margin/
+Keuntungan re-fetches `GET /venues/{id}` and uses **whatever the venue's rental price/charge say
+right now**. Two concrete failures follow directly from this:
+
+- **Historical drift**: editing a venue's `rentalPrice`/`charge` in venue master data today silently
+  changes the recorded Margin of every project — including ones whose wedding already happened months
+  ago — the next time that project's page is opened. A completed project's financial record should
+  never change on its own.
+- **No per-project negotiation**: there is no field anywhere to record "we agreed a discounted price
+  with this venue for this particular wedding" — Margin always uses the venue's generic listed price,
+  never what was actually negotiated. Two different projects using the same venue always show
+  identical venue cost in their Margin, even if the real deals differed.
+
+**Fix**: add `venue_rental_price`/`venue_charge` columns directly on `projects` (not a join table —
+a project has at most one venue, matching the existing one-venue-per-project shape). Populate them
+the moment a venue is attached (auto-filled from that venue's *current* rental price/charge, exactly
+mirroring `ProjectVendorFormModal`'s auto-fill-once-then-freely-editable pattern for `contractValue`),
+then let staff edit them freely afterward, same lifecycle as vendor's own `contractValue`. Detaching a
+venue always clears both back to `NULL` — there's no cost without a venue. This is enforced
+**server-side** in `ProjectService.Update` (not just a frontend convention): whenever `VenueID` is set
+to the detach sentinel (`0`), `VenueRentalPrice`/`VenueCharge` are force-cleared regardless of what the
+request body happened to contain.
+
+No new RBAC concern here, confirmed by re-reading `protected.routes.tsx`: every project-detail
+sub-tab (`vendor`, `venue`, `pembayaran`, ...) has **no** `RequireRole` wrapper — a Wedding Planner
+already reaches `ProjectVenueTabPage` and already sees `venue.rentalPrice`/`charge` displayed plainly
+there today (and already reaches `ProjectVendorTabPage`, seeing every vendor's `contractValue` too).
+`canSeeMargin` only ever hid the *computed* Margin figure on `ProjectHeaderCard`, never the underlying
+inputs — so moving those same numbers from "live-fetched venue" to "project's own snapshot fields" in
+the general project response changes *where* the number comes from, not *who* can already see it.
+
+### 1.2 Vendor "Total Sudah Dibayar": derive from `vendor_payments`, remove the manual field
+
+**The bug found**: `project_vendors.paid_amount` is a plain manually-typed number in "Ubah Vendor
+Project" ("Total Sudah Dibayarkan"). Recording a real transaction via "Tambah Pembayaran"
+(`PaymentService.Create`) only ever inserts into `vendor_payments` — confirmed by reading
+`payment_service.go` line by line — it never touches `paid_amount`. These are two independently
+maintained numbers on the *same tab*: the summary card at the top (`ProjectPaymentsSection`'s "Total
+Sudah Dibayar", summed from `paid_amount`) can flatly contradict the payment history table right
+below it (the real `vendor_payments` rows), because nothing keeps them in sync.
+
+**Fix**: stop treating `paid_amount` as a stored, user-editable value. "Total Sudah Dibayar" for a
+vendor engagement becomes **computed** by summing that engagement's own `vendor_payments` rows
+(non-`Refund` amounts added, `Refund` subtracted — the exact same net formula already used correctly
+for Client Payments' "Total Diterima"). `dpAmount` is **not** touched by this change — it stays a
+separate, manually-typed reference field ("what DP was agreed at booking"), a genuinely different
+concept from "how much has actually been paid to date," and nothing in the codebase ever sums it into
+any total today.
+
+**Production data safety** (this is the part that needs the most care): dropping `paid_amount`
+outright would silently erase any already-recorded "total paid" that was only ever entered as that
+manual field and never mirrored into individual `vendor_payments` rows — a real undercounting risk on
+live data. The migration must **backfill** first: for every `project_vendors` row where `paid_amount`
+exceeds what its `vendor_payments` rows currently net out to, insert one reconciling `vendor_payments`
+row for exactly the difference (type `Tambahan`, a clearly-marked reference number and note), *before*
+dropping the column — mirroring migration `000026`'s own precedent of a clearly-labeled synthetic
+backfill row. Only ever backfill the shortfall (`paid_amount − ledger_net`) when it's positive; if the
+ledger already nets out to the same or more than `paid_amount`, the ledger is already the more
+complete number and nothing is inserted.
+
+### 1.3 Cancelled-engagement filter: exclude everywhere, consistently
+
+`ProjectHeaderCard.tsx`'s Margin already excludes `engagementStatus === "Cancelled"` vendor
+engagements from `vendorCost`. `ProjectPaymentsSection.tsx`'s own "Total Nilai Kerja Sama"/"Total Sudah
+Dibayar"/"Sisa Pembayaran" sum **every** engagement with no status filter at all — so a cancelled
+vendor's contract value (and, after §1.2, its ledger-derived paid amount) still counts toward "what's
+still owed to vendors" on the very same project, even though that engagement is no longer active.
+Fix: the three summary stats apply the same `engagementStatus !== "Cancelled"` filter Margin already
+uses. The **individual payment history rows** in the table below are *not* filtered by this — a
+payment that already happened is a historical fact regardless of the engagement's current status;
+only the roll-up *summary* changes.
+
+## 2. Current state (what exists today, verified precisely — not assumed)
+
+- `project_vendors.contract_value` (`migrations/000008...:40`) is a real, independent column, written
+  only via `VendorEngagementService.Create`/`Update` (`vendor_engagement_service.go`) — confirmed no
+  JOIN or live dependency on `vendors.price_akad`/`price_akad_resepsi` anywhere in
+  `mysql_vendor_engagement_repository.go`.
+- `projects` has no venue-cost column at all — only `venue_id` (`migrations/000021...:5`,
+  `domain/project.go:30`). `ProjectHeaderCard.tsx:96` computes `venueCost` from a live
+  `fetchVenue(project.venueId)` call every render (`ProjectHeaderCard.tsx:72-84`,
+  `useVenueStore.ts:98-101` → `GET /venues/{id}`, no caching).
+- `ProjectVenueTabPage.tsx`'s "Pilih Venue" modal (`:200-228`) has no price input of any kind — only a
+  venue picker. `setProjectVenue` (`useProjectStore.ts`) PATCHes only `venueId`.
+- `PaymentService.Create` (`payment_service.go:39-50`) never writes `project_vendors.paid_amount`. A
+  repo-wide search for every write of `PaidAmount`/`paid_amount` found it set only by
+  `VendorEngagementService.Create`/`Update` (the manually-typed form field) and
+  `ProjectService.Duplicate` (resets to 0 on clone).
+- `ProjectHeaderCard.tsx:93-95` filters out `Cancelled` engagements for `vendorCost`;
+  `ProjectPaymentsSection.tsx:38-40`'s `totalContractValue`/`totalPaid`/`totalRemaining` do not filter
+  at all — confirmed divergence between the two.
+- Client Payments' own "Total Diterima" formula (`sum non-Refund − sum Refund`, identical across
+  `ClientPaymentsSection.tsx`, `ProjectHeaderCard.tsx`, and Client Portal's `PembayaranTabPage.tsx`) is
+  already correct and consistent — not touched by this plan, just reused as the template for §1.2's
+  vendor-side fix.
+- No RBAC gap is introduced or exists here: every project-detail sub-tab is open to every staff role
+  (`protected.routes.tsx:33-51`, no `RequireRole` wrapper) — Wedding Planner already sees venue
+  rental price/charge (`ProjectVenueTabPage.tsx`) and vendor contract values
+  (`ProjectVendorTabPage`/`ProjectVendorFormModal.tsx`) directly today; `canSeeMargin` only ever hid
+  the *computed* Margin figure on `ProjectHeaderCard`, never these underlying inputs.
+
+## 3. Design
+
+### 3.1 Database
+
+New migration `apps/api/migrations/000028_venue_cost_snapshot_and_vendor_paid_reconciliation.up.sql`:
+
+```sql
+-- Part 1: per-project venue cost snapshot (§1.1) — mirrors project_vendors'
+-- own contract_value column; a project has at most one venue, so these live
+-- directly on `projects`, not a join table.
+ALTER TABLE projects
+  ADD COLUMN venue_rental_price BIGINT UNSIGNED NULL AFTER venue_id,
+  ADD COLUMN venue_charge BIGINT UNSIGNED NULL AFTER venue_rental_price;
+
+-- Backfill: every project that already has a venue attached gets that
+-- venue's CURRENT price copied in as its starting snapshot -- otherwise
+-- every already-attached venue would show venueCost = 0 in Margin the
+-- moment this ships, until someone happens to re-open and re-save it.
+-- This is the one deliberate, one-time cross-module JOIN in this codebase
+-- (projects <-> venues, normally forbidden per .claude/rules/database.md) --
+-- acceptable here because it's a single backfill migration, not a live
+-- application-code query path; going forward the snapshot is populated by
+-- ProjectService.Update alone, never a join at read time. Same precedent as
+-- migration 000022/000026's own one-time cross-module backfills.
+UPDATE projects p
+JOIN venues v ON v.id = p.venue_id
+SET p.venue_rental_price = v.rental_price,
+    p.venue_charge = v.charge
+WHERE p.venue_id IS NOT NULL;
+
+-- Part 2: reconcile vendor "paid amount" before dropping the manual field
+-- (§1.2) -- backfill only the shortfall where the old manual field claims
+-- MORE was paid than the real ledger accounts for; never invents a negative
+-- adjustment when the ledger already has more recorded than the old field.
+INSERT INTO vendor_payments (project_id, project_vendor_id, type, amount, payment_date, method, reference_number, notes)
+SELECT
+  pv.project_id,
+  pv.id,
+  'Tambahan',
+  (pv.paid_amount - COALESCE(vp.net_paid, 0)),
+  CURDATE(),
+  'Migrasi data',
+  'MIGRASI-000028',
+  'Backfill otomatis dari field paid_amount lama (migrasi 000028) -- selisih yang belum tercatat sebagai transaksi individual di vendor_payments.'
+FROM project_vendors pv
+LEFT JOIN (
+  SELECT project_vendor_id,
+         SUM(CASE WHEN type = 'Refund' THEN -amount ELSE amount END) AS net_paid
+  FROM vendor_payments
+  GROUP BY project_vendor_id
+) vp ON vp.project_vendor_id = pv.id
+WHERE pv.paid_amount > COALESCE(vp.net_paid, 0);
+
+ALTER TABLE project_vendors DROP COLUMN paid_amount;
+```
+
+`.down.sql`: re-add `project_vendors.paid_amount BIGINT UNSIGNED NOT NULL DEFAULT 0` (data loss
+accepted — matches this repo's existing down-migration convention of not being defensive about
+reversing backfills, see `000014`/`000026`'s own down migrations) and drop
+`venue_rental_price`/`venue_charge` from `projects`.
+
+**Before writing the final backfill SQL for real**: query production once to see how many
+`project_vendors` rows actually have a `paid_amount`/`vendor_payments` mismatch and by how much —
+confirm the numbers look sane (no absurd outliers suggesting a different root cause) before this ever
+runs against live data, exactly like migration `000026`'s own local-test-then-verify discipline.
+
+### 3.2 Backend — domain
+
+`apps/api/internal/modules/projects/domain/project.go`: add `VenueRentalPrice *int64`,
+`VenueCharge *int64` to `Project`.
+
+`apps/api/internal/modules/projects/domain/vendor_engagement.go` (or wherever `ProjectVendor` lives):
+remove `PaidAmount` as a stored field set via Create/Update — see §3.4 for where it's computed instead.
+
+### 3.3 Backend — repository
+
+`mysql_project_repository.go`: add `venue_rental_price`, `venue_charge` to `projectColumns`,
+`scanProject` (nullable `sql.NullInt64`, same pattern as `venueID`), the `Create`/`Update` SQL (`Create`
+never sets them — matches `VenueID`'s own "never set at creation, only via a later Update" rule, ADR-0016).
+
+`mysql_vendor_engagement_repository.go`: drop `paid_amount` from `projectVendorColumns`,
+`scanProjectVendor`, `Create`, `Update`.
+
+### 3.4 Backend — application
+
+`ProjectService.Update` (`project_service.go`): when `input.VenueID != nil`:
+- `*input.VenueID == 0` (detach): force `p.VenueRentalPrice = nil`, `p.VenueCharge = nil` — always,
+  regardless of whatever the request body sent for these two fields.
+- `*input.VenueID` positive (attach/change): set `p.VenueRentalPrice = input.VenueRentalPrice`,
+  `p.VenueCharge = input.VenueCharge` from the request body.
+When `input.VenueID == nil` (omitted key — every *other* project edit, e.g. changing bride/groom
+name), leave both untouched — exactly mirroring how `VenueID` itself is already left untouched in
+that case.
+
+`VendorEngagementService`: `VendorEngagementInput` drops `PaidAmount`. `ProjectVendor.PaidAmount` is no
+longer part of `Create`/`Update`'s write path at all.
+
+New computation, done in the **presentation** layer (mirrors exactly how Client Payments'
+`evidenceComplete` is already computed by cross-referencing a related table, §3.4 of that plan —
+not a new backend concept): `listVendorEngagements`'s handler fetches this project's `vendor_payments`
+via the already-existing `h.payments.List(ctx, projectID)` once, groups by `ProjectVendorID`, nets
+`Refund` as a subtraction, and attaches the result as each `projectVendorResponse`'s `paidAmount` field
+— the wire shape (`paidAmount: number` in the JSON) stays identical, so no frontend type changes are
+needed; only its *provenance* changes, from a stored column to a computed sum.
+
+### 3.5 Backend — presentation
+
+`dto.go`: `projectResponse` gains `venueRentalPrice *int64`, `venueCharge *int64`
+(`toProjectResponse` reads them straight off the domain `Project`, same pattern as `venueId`).
+`projectVendorResponse` keeps its existing `paidAmount int64` field — value now comes from §3.4's
+computed sum, not `pv.PaidAmount`.
+
+`project_endpoints.go`: `updateProjectBody`/`toProjectInput` gain `venueRentalPrice`/`venueCharge`
+(plain `*int64`, following the same "pointer, nil means omitted" pattern already used for `venueId`
+in the request body, not the response's tri-state-via-sentinel-zero convention — the *request* already
+uses `venueId: 0` as the detach sentinel, and these two new fields simply ride along whenever
+`venueId` is present in the body at all).
+
+`vendor_engagement_endpoints.go`: `vendorEngagementInputBody` drops `paidAmount` from the request
+body entirely (no longer accepted, even if a client sends it — silently ignored, matching how extra
+JSON fields are already ignored by `encoding/json` decode).
+
+### 3.6 Frontend — data layer
+
+- `apps/web/src/modules/projects/types.ts`: `Project` gains `venueRentalPrice: number | null`,
+  `venueCharge: number | null`. `ProjectVendor.paidAmount` stays exactly as-is (still
+  `number` — only the backend's provenance changed, nothing here).
+- `apps/web/src/modules/projects/schemas/project-vendor.schema.ts`: remove `paidAmount` from
+  `projectVendorSchema`/`ProjectVendorFormValues` — it's no longer part of the create/update form.
+- `useProjectStore.ts`: `RawProject`/`toProject` gain the two new fields. `setProjectVenue`'s
+  signature changes to also take `rentalPrice: number | null`/`charge: number | null`, included in
+  the PATCH body alongside `venueId` (both omitted/null together whenever `venueId` is the detach
+  sentinel `0`, matching the backend's own force-clear rule in §3.4 — belt-and-suspenders, not a
+  substitute for the server-side guarantee).
+
+### 3.7 Frontend — `ProjectVenueTabPage.tsx`
+
+- The displayed "Harga Sewa"/"Charge" info-grid fields switch from `venue.rentalPrice`/`venue.charge`
+  (the live master-data fetch, kept only for the venue's *other* fields: address, city, capacity, PIC,
+  phones, email, facilities, social media, attachment — none of which are financial, so they correctly
+  stay live) to `currentProject.venueRentalPrice`/`venueCharge` (the project's own snapshot) — for the
+  same reason Margin does: the number shown on this tab and the number Margin uses must always agree.
+- "Pilih Venue"/"Ubah Venue" modal gains two new number fields, "Harga Sewa (untuk project ini)" and
+  "Charge (untuk project ini)": on first attach or on switching to a *different* venue in the dropdown,
+  auto-fill from that venue's current master price (same auto-fill-unless-touched pattern as
+  `ProjectVendorFormModal`'s `contractValueTouched`); on re-opening the modal for the *already*-attached
+  venue (no venue change), prefill from the *project's own existing snapshot* instead of re-fetching
+  the venue's current master price — so merely opening the modal to look, then cancelling, can never
+  silently overwrite a historical figure.
+- "Lepas" (detach) sends `venueId: 0` with rental price/charge omitted — the backend force-clears them
+  regardless (§3.4).
+
+### 3.8 Frontend — `ProjectHeaderCard.tsx`
+
+`venueCost` becomes `(project.venueRentalPrice ?? 0) + (project.venueCharge ?? 0)`, read directly off
+the already-loaded `currentProject` — the entire `useVenueStore`/`fetchVenue`/`venue` state and its
+`canSeeMargin`-gated `useEffect` are removed from this component, since Margin no longer needs a
+separate venue fetch at all. `canSeeMargin` still gates the Margin/Keuntungan `InfoField` itself,
+unchanged (§1.1 already established this was never actually hiding the underlying inputs, just the
+computed figure).
+
+### 3.9 Frontend — `ProjectVendorFormModal.tsx`
+
+Remove the "Total Sudah Dibayarkan (Rp)" `Input` field entirely. "Jumlah DP (Rp)" stays, unchanged —
+still a plain reference figure, not summed into anything.
+
+### 3.10 Frontend — `ProjectPaymentsSection.tsx`
+
+`totalContractValue`/`totalPaid`/`totalRemaining` (currently unfiltered `.reduce()` over
+`vendorEngagements`) add the same `.filter((v) => v.engagementStatus !== "Cancelled")` Margin already
+applies. The payment history table below (`pageItems`, from `payments` — real `vendor_payments` rows)
+is **not** filtered by this — every recorded transaction stays visible regardless of the engagement's
+current status.
+
+## 4. Order of implementation
+
+1. Migration `000028` — schema + backfills. Apply locally first; hand-verify the backfill's actual
+   row-by-row math against a handful of real `project_vendors` rows (old `paid_amount` vs. new
+   ledger-derived sum) before trusting it, then verify the venue-price backfill similarly.
+2. Backend domain/repo/application/presentation changes (§3.2-3.5). `go build`/`go vet`.
+3. Frontend data layer + `ProjectVenueTabPage`/`ProjectHeaderCard`/`ProjectVendorFormModal`/
+   `ProjectPaymentsSection` (§3.6-3.10). `tsc --noEmit`, `npm run build`.
+4. Manual pass (§5) — including specifically re-computing Margin/Sisa Pembayaran by hand against 2-3
+   real projects before and after, to confirm the fix actually converges on the *correct* number, not
+   just *a different* one.
+
+## 5. Verification
+
+- Re-run the exact production discrepancy query from step 1 of §4 after the migration — confirm the
+  reconciling `vendor_payments` rows (`reference_number = 'MIGRASI-000028'`) bring every engagement's
+  ledger-derived total back in line with what `paid_amount` used to say, with no row left short.
+- Confirm every already-attached venue's `projects.venue_rental_price`/`venue_charge` matches that
+  venue's price *as it was at migration time* (spot-check against `activity_log`/known history if any
+  venue price was recently changed).
+- Attach a venue to a fresh project, confirm the price fields auto-fill from that venue's current
+  master price; edit the price before saving; confirm `ProjectVenueTabPage` and `ProjectHeaderCard`'s
+  Margin both reflect the *edited* number, not the venue's master price.
+- Edit that same venue's master `rentalPrice` afterward; reload the project; confirm Margin and the
+  Venue tab's display are **unchanged** — this is the entire point of the fix.
+- Detach the venue; confirm both snapshot fields clear to null/zero in Margin.
+- Record a vendor payment via "Tambah Pembayaran"; confirm `ProjectPaymentsSection`'s "Total Sudah
+  Dibayar" updates immediately to match, with no separate manual field left to fall out of sync.
+- Cancel a vendor engagement with an existing contract value and recorded payments; confirm both
+  Margin and `ProjectPaymentsSection`'s summary stats now exclude it identically, while its individual
+  payment rows remain visible in the history table below.
+- `go build ./...`, `go vet ./...`, `npx tsc --noEmit -p apps/web/tsconfig.json`,
+  `npm run build -w apps/web`.
+

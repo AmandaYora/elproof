@@ -18,27 +18,30 @@ func formatDatePtr(t *time.Time) *string {
 }
 
 type projectResponse struct {
-	ID            int64             `json:"id"`
-	Name          string            `json:"name"`
-	BrideName     string            `json:"brideName"`
-	GroomName     string            `json:"groomName"`
-	EventDate     string            `json:"eventDate"`
-	Venue         string            `json:"venue"`
-	VenueID       *int64            `json:"venueId"`
-	PrepStartDate string            `json:"prepStartDate"`
-	PackageName   string            `json:"packageName"`
-	ContractValue int64             `json:"contractValue"`
-	Status        string            `json:"status"`
-	PICStaffID    int64             `json:"picStaffId"`
-	Description   string            `json:"description"`
-	IsArchived    bool              `json:"isArchived"`
-	Progress      *progressResponse `json:"progress,omitempty"`
+	ID               int64             `json:"id"`
+	Name             string            `json:"name"`
+	BrideName        string            `json:"brideName"`
+	GroomName        string            `json:"groomName"`
+	EventDate        string            `json:"eventDate"`
+	Venue            string            `json:"venue"`
+	VenueID          *int64            `json:"venueId"`
+	VenueRentalPrice *int64            `json:"venueRentalPrice"`
+	VenueCharge      *int64            `json:"venueCharge"`
+	PrepStartDate    string            `json:"prepStartDate"`
+	PackageName      string            `json:"packageName"`
+	ContractValue    int64             `json:"contractValue"`
+	Status           string            `json:"status"`
+	PICStaffID       int64             `json:"picStaffId"`
+	Description      string            `json:"description"`
+	IsArchived       bool              `json:"isArchived"`
+	Progress         *progressResponse `json:"progress,omitempty"`
 }
 
 func toProjectResponse(p domain.Project) projectResponse {
 	return projectResponse{
 		ID: p.ID, Name: p.Name, BrideName: p.BrideName, GroomName: p.GroomName,
 		EventDate: p.EventDate.Format(dateLayout), Venue: p.Venue, VenueID: p.VenueID,
+		VenueRentalPrice: p.VenueRentalPrice, VenueCharge: p.VenueCharge,
 		PrepStartDate: p.PrepStartDate.Format(dateLayout),
 		PackageName:   p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
 		PICStaffID: p.PICStaffID, Description: p.Description, IsArchived: p.IsArchived,
@@ -139,11 +142,17 @@ type projectVendorResponse struct {
 	Notes            string  `json:"notes"`
 }
 
-func toProjectVendorResponse(pv domain.ProjectVendor) projectVendorResponse {
+// toProjectVendorResponse takes paidAmount explicitly rather than reading it
+// off domain.ProjectVendor -- there is no such stored field anymore. The
+// caller (listVendorEngagements) computes it by summing this engagement's
+// own vendor_payments rows (Refund netted as a subtraction), the same
+// derivation Client Payments' own "Total Diterima" already uses correctly —
+// see PLAN.md "Financial Calculation Correctness".
+func toProjectVendorResponse(pv domain.ProjectVendor, paidAmount int64) projectVendorResponse {
 	return projectVendorResponse{
 		ID: pv.ID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope, ContractValue: pv.ContractValue,
 		PricingTier: string(pv.PricingTier), EngagementStatus: string(pv.EngagementStatus), BookingDate: formatDatePtr(pv.BookingDate),
-		EventDate: pv.EventDate.Format(dateLayout), DPAmount: pv.DPAmount, PaidAmount: pv.PaidAmount,
+		EventDate: pv.EventDate.Format(dateLayout), DPAmount: pv.DPAmount, PaidAmount: paidAmount,
 		DueDate: formatDatePtr(pv.DueDate), PICStaffID: pv.PICStaffID, Notes: pv.Notes,
 	}
 }

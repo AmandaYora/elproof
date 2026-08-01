@@ -60,7 +60,6 @@ type VendorEngagementInput struct {
 	BookingDate      *time.Time
 	EventDate        time.Time
 	DPAmount         int64
-	PaidAmount       int64
 	DueDate          *time.Time
 	PICStaffID       int64
 	Notes            string
@@ -70,7 +69,7 @@ func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, a
 	pv := &domain.ProjectVendor{
 		ProjectID: projectID, VendorID: input.VendorID, CategoryID: input.CategoryID, Scope: input.Scope,
 		ContractValue: input.ContractValue, PricingTier: input.PricingTier, EngagementStatus: input.EngagementStatus, BookingDate: input.BookingDate,
-		EventDate: input.EventDate, DPAmount: input.DPAmount, PaidAmount: input.PaidAmount, DueDate: input.DueDate,
+		EventDate: input.EventDate, DPAmount: input.DPAmount, DueDate: input.DueDate,
 		PICStaffID: input.PICStaffID, Notes: input.Notes,
 	}
 	if err := s.repo.Create(ctx, pv); err != nil {
@@ -95,7 +94,6 @@ func (s *VendorEngagementService) Update(ctx context.Context, projectID, id int6
 	pv.BookingDate = input.BookingDate
 	pv.EventDate = input.EventDate
 	pv.DPAmount = input.DPAmount
-	pv.PaidAmount = input.PaidAmount
 	pv.DueDate = input.DueDate
 	pv.PICStaffID = input.PICStaffID
 	pv.Notes = input.Notes

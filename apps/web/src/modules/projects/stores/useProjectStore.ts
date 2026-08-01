@@ -68,6 +68,8 @@ export interface RawProject {
   eventDate: string;
   venue: string;
   venueId: number | null;
+  venueRentalPrice: number | null;
+  venueCharge: number | null;
   prepStartDate: string;
   packageName: string;
   contractValue: number;
@@ -100,6 +102,8 @@ export function toProject(raw: RawProject): Project {
     eventDate: raw.eventDate,
     venue: raw.venue,
     venueId: raw.venueId !== null ? String(raw.venueId) : null,
+    venueRentalPrice: raw.venueRentalPrice,
+    venueCharge: raw.venueCharge,
     prepStartDate: raw.prepStartDate,
     packageName: raw.packageName,
     contractValue: raw.contractValue,
@@ -213,7 +217,6 @@ function vendorEngagementInputBody(values: ProjectVendorFormValues) {
     bookingDate: values.bookingDate || "",
     eventDate: "",
     dpAmount: values.dpAmount,
-    paidAmount: values.paidAmount,
     dueDate: values.dueDate || "",
     picStaffId: Number(values.picStaffId),
     notes: values.notes,
@@ -433,7 +436,15 @@ interface ProjectState {
   // null to detach. Sends a full-replace PATCH body sourced from the
   // already-loaded currentProject (same wire shape as updateProject), since
   // the backend's Update endpoint doesn't support a true partial patch.
-  setProjectVenue: (id: string, venueId: string | null) => Promise<Project>;
+  // rentalPrice/charge are the per-project cost snapshot (PLAN.md
+  // "Financial Calculation Correctness") -- omitted/ignored on detach
+  // (venueId: null), since the backend force-clears them regardless.
+  setProjectVenue: (
+    id: string,
+    venueId: string | null,
+    rentalPrice?: number | null,
+    charge?: number | null
+  ) => Promise<Project>;
   // Public-safe summary (ADR-0016) — not cached in store state, same
   // "return directly, don't stash" convention as fetchVendorProjectHistory,
   // since it's only ever needed by whichever single tab is currently open.
@@ -565,7 +576,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return project;
   },
 
-  setProjectVenue: async (id, venueId) => {
+  setProjectVenue: async (id, venueId, rentalPrice, charge) => {
     const current = get().currentProject;
     if (!current || current.id !== id) {
       throw new Error("Project belum dimuat");
@@ -583,8 +594,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       picStaffId: Number(current.picStaffId),
       description: current.description,
       // 0 is never a real venue id (AUTO_INCREMENT starts at 1) — the
-      // backend's sentinel for "detach" (see ADR-0016).
+      // backend's sentinel for "detach" (see ADR-0016). The backend also
+      // force-clears venueRentalPrice/venueCharge on detach regardless of
+      // what's sent here — these are just the belt-and-suspenders mirror.
       venueId: venueId !== null ? Number(venueId) : 0,
+      venueRentalPrice: venueId !== null ? rentalPrice ?? null : null,
+      venueCharge: venueId !== null ? charge ?? null : null,
     });
     const project = toProject(res.data.data as RawProject);
     set((state) => ({

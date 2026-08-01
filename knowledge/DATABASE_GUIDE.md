@@ -13,6 +13,12 @@ tables. No other module's repository touches it directly, and no SQL `JOIN` ever
 modules' tables — a cross-module reference is always just a stored ID, resolved by calling the
 owning module's contract function when the display layer needs the related data.
 
+The one deliberate exception: a **one-time migration backfill** may cross module tables directly in
+raw SQL (`000022`, `000026`, `000028`) — this is a DBA-level, run-once operation, never a live
+application-code query path, so it doesn't reintroduce the coupling the rule above exists to
+prevent. Going forward, the same data is always maintained by ordinary in-module repository code,
+never a live join.
+
 ## Conventions
 
 - Primary keys: `BIGINT UNSIGNED AUTO_INCREMENT`.

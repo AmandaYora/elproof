@@ -3,7 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { Building2, ExternalLink } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { Select, Field } from "@/shared/components/ui/Input";
+import { Select, Field, Input } from "@/shared/components/ui/Input";
 import { Modal } from "@/shared/components/ui/Modal";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
@@ -31,6 +31,15 @@ export default function ProjectVenueTabPage() {
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedVenueId, setSelectedVenueId] = useState("");
+  // Per-project cost snapshot being edited in the picker — prefilled from
+  // the project's own existing snapshot when reopening for the
+  // already-attached venue, or from the newly-picked venue's current
+  // master price when switching to a different one (see
+  // handleVenueSelect) — never silently overwritten by re-fetching master
+  // data just because the modal was opened. See PLAN.md "Financial
+  // Calculation Correctness".
+  const [rentalPrice, setRentalPrice] = useState(0);
+  const [charge, setCharge] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -60,8 +69,27 @@ export default function ProjectVenueTabPage() {
 
   function openPicker() {
     setSelectedVenueId(currentProject?.venueId ?? "");
+    setRentalPrice(currentProject?.venueRentalPrice ?? 0);
+    setCharge(currentProject?.venueCharge ?? 0);
     setActionError(null);
     setPickerOpen(true);
+  }
+
+  // Switching to a different venue than the one already attached suggests
+  // that venue's own current master price as a starting point; re-selecting
+  // the SAME venue that's already attached keeps showing the project's
+  // existing snapshot instead (so merely opening the picker and clicking
+  // around never silently discards an already-agreed price).
+  function handleVenueSelect(newVenueId: string) {
+    setSelectedVenueId(newVenueId);
+    if (newVenueId === (currentProject?.venueId ?? "")) {
+      setRentalPrice(currentProject?.venueRentalPrice ?? 0);
+      setCharge(currentProject?.venueCharge ?? 0);
+      return;
+    }
+    const picked = venues.find((v) => v.id === newVenueId);
+    setRentalPrice(picked?.rentalPrice ?? 0);
+    setCharge(picked?.charge ?? 0);
   }
 
   async function handleSave() {
@@ -69,7 +97,7 @@ export default function ProjectVenueTabPage() {
     setSaving(true);
     setActionError(null);
     try {
-      await setProjectVenue(projectId, selectedVenueId);
+      await setProjectVenue(projectId, selectedVenueId, rentalPrice, charge);
       setPickerOpen(false);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menyimpan venue"));
@@ -144,12 +172,14 @@ export default function ProjectVenueTabPage() {
             <div>
               <p className="text-[11.5px] text-text-secondary">Harga Sewa</p>
               <p className="text-[13.5px] font-semibold text-text-primary">
-                {venue.rentalPrice ? formatCurrency(venue.rentalPrice) : "Belum diisi"}
+                {currentProject?.venueRentalPrice ? formatCurrency(currentProject.venueRentalPrice) : "Belum diisi"}
               </p>
             </div>
             <div>
               <p className="text-[11.5px] text-text-secondary">Charge</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">{venue.charge ? formatCurrency(venue.charge) : "-"}</p>
+              <p className="text-[13.5px] font-semibold text-text-primary">
+                {currentProject?.venueCharge ? formatCurrency(currentProject.venueCharge) : "-"}
+              </p>
             </div>
             <div>
               <p className="text-[11.5px] text-text-secondary">Kapasitas</p>
@@ -214,18 +244,26 @@ export default function ProjectVenueTabPage() {
           </>
         }
       >
-        <Field label="Venue">
-          <Select value={selectedVenueId} onChange={(e) => setSelectedVenueId(e.target.value)}>
-            <option value="">Pilih venue...</option>
-            {venues
-              .filter((v) => v.isActive)
-              .map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.city ? `${v.name} — ${v.city}` : v.name}
-                </option>
-              ))}
-          </Select>
-        </Field>
+        <div className="flex flex-col gap-4">
+          <Field label="Venue">
+            <Select value={selectedVenueId} onChange={(e) => handleVenueSelect(e.target.value)}>
+              <option value="">Pilih venue...</option>
+              {venues
+                .filter((v) => v.isActive)
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.city ? `${v.name} — ${v.city}` : v.name}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          <Field label="Harga Sewa (untuk project ini)" hint="Terisi dari harga master venue, bisa diubah sesuai kesepakatan project ini.">
+            <Input type="number" min={0} value={rentalPrice} onChange={(e) => setRentalPrice(Number(e.target.value))} />
+          </Field>
+          <Field label="Charge (untuk project ini)">
+            <Input type="number" min={0} value={charge} onChange={(e) => setCharge(Number(e.target.value))} />
+          </Field>
+        </div>
       </Modal>
     </div>
   );
