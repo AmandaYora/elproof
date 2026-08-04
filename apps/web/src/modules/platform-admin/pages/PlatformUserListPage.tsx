@@ -25,6 +25,7 @@ import type {
 } from "@/modules/platform-admin/schemas/platform-admin.schema";
 import { PLATFORM_ADMIN_ROLE_OPTIONS } from "@/modules/platform-admin/schemas/platform-admin.schema";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 type CredentialReveal =
   | { kind: "create"; admin: PlatformAdmin; username: string; password: string }
@@ -41,6 +42,7 @@ export default function PlatformUserListPage() {
   const resetPlatformAdminPassword = usePlatformAdminStore((s) => s.resetPlatformAdminPassword);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [roleFilter, setRoleFilter] = useState<"Semua" | PlatformAdmin["role"]>("Semua");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -51,14 +53,14 @@ export default function PlatformUserListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, roleFilter]);
+  }, [debouncedQuery, roleFilter]);
 
   useEffect(() => {
-    void fetchPlatformAdminPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
-  }, [fetchPlatformAdminPage, page, query, roleFilter]);
+    void fetchPlatformAdminPage(page, debouncedQuery, roleFilter === "Semua" ? "" : roleFilter);
+  }, [fetchPlatformAdminPage, page, debouncedQuery, roleFilter]);
 
   function refetch() {
-    return fetchPlatformAdminPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
+    return fetchPlatformAdminPage(page, debouncedQuery, roleFilter === "Semua" ? "" : roleFilter);
   }
 
   function openCreateModal() {

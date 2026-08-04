@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { StatCard } from "@/shared/components/ui/StatCard";
 import { AttentionQueue } from "@/modules/dashboard/components/AttentionQueue";
 import { UpcomingEvents } from "@/modules/dashboard/components/UpcomingEvents";
 import { RecentActivity } from "@/modules/dashboard/components/RecentActivity";
 import { ProjectTrendChart } from "@/modules/dashboard/components/ProjectTrendChart";
 import { RevenueTrendChart } from "@/modules/dashboard/components/RevenueTrendChart";
-import { buildAttentionItems } from "@/modules/dashboard/lib/attention";
+import { buildAttentionItems, type AttentionItem } from "@/modules/dashboard/lib/attention";
 import { useDashboardStore } from "@/modules/dashboard/stores/useDashboardStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { formatCurrencyCompact } from "@/shared/lib/formatters";
@@ -22,11 +22,15 @@ export default function DashboardPage() {
     void fetchVendors();
   }, [fetchDashboard, fetchVendors]);
 
+  const { items, counts } = useMemo(
+    () => (stats ? buildAttentionItems(stats, vendors) : { items: [] as AttentionItem[], counts: {} as Record<string, number> }),
+    [stats, vendors]
+  );
+
   if (!stats) {
     return <div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>;
   }
 
-  const { items, counts } = buildAttentionItems(stats, vendors);
   const revenue = stats.revenue;
   const revenueSublabel =
     revenue.deltaPercent === null

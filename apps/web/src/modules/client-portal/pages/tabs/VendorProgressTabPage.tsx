@@ -180,6 +180,7 @@ function VendorCard({
                   onViewEvidence={onViewEvidence}
                   showVendorName={false}
                   vendorName={vendorName}
+                  milestoneName={milestones.find((m) => m.id === issue.vendorMilestoneId)?.name}
                 />
               ))}
             </div>

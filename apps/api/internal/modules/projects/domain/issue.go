@@ -22,9 +22,12 @@ const (
 )
 
 type VendorIssue struct {
-	ID                   int64
-	ProjectID            int64
-	ProjectVendorID      int64
+	ID              int64
+	ProjectID       int64
+	ProjectVendorID int64
+	// VendorMilestoneID is nil when the issue is general to the vendor
+	// engagement rather than about one specific deliverable.
+	VendorMilestoneID    *int64
 	Title                string
 	Description          string
 	Impact               IssueImpact

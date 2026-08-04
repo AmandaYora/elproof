@@ -163,7 +163,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:
 		h.createIssue(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "issues" && r.Method == http.MethodPatch:
-		h.updateIssueStatus(w, r, claims, projectID, rest[1])
+		h.updateIssue(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodGet:
 		h.listEvidence(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodPost:

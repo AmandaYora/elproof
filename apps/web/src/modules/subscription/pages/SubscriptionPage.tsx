@@ -10,6 +10,7 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { usePlatformAdminStore, type PaymentCharge } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { APP_NAME } from "@/shared/constants/brand";
@@ -26,6 +27,7 @@ function today(): string {
 
 export default function SubscriptionPage() {
   const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  const businessName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
 
   const plans = useSubscriptionPlanStore((s) => s.plans);
   const fetchPlans = useSubscriptionPlanStore((s) => s.fetchPlans);
@@ -187,7 +189,7 @@ export default function SubscriptionPage() {
       <div className="flex flex-col gap-5">
         <div>
           <h1 className="text-xl font-bold text-text-primary">Langganan</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola langganan aplikasi {APP_NAME} untuk tim WO Console.</p>
+          <p className="mt-1 text-[13px] text-text-secondary">Kelola langganan aplikasi {APP_NAME} untuk tim {businessName}.</p>
         </div>
         <Card className="max-w-md">
           <CardContent className="py-5">
@@ -243,7 +245,7 @@ export default function SubscriptionPage() {
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-xl font-bold text-text-primary">Langganan</h1>
-        <p className="mt-1 text-[13px] text-text-secondary">Kelola langganan aplikasi {APP_NAME} untuk tim WO Console.</p>
+        <p className="mt-1 text-[13px] text-text-secondary">Kelola langganan aplikasi {APP_NAME} untuk tim {businessName}.</p>
       </div>
 
       {actionError && (

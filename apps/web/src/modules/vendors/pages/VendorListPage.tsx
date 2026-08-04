@@ -22,6 +22,7 @@ import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVe
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatDate } from "@/shared/lib/formatters";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 export default function VendorListPage() {
   const vendors = useVendorStore((s) => s.vendorPage);
@@ -37,6 +38,7 @@ export default function VendorListPage() {
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [categoryFilter, setCategoryFilter] = useState<string>("Semua");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,11 +55,11 @@ export default function VendorListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, categoryFilter]);
+  }, [debouncedQuery, categoryFilter]);
 
   useEffect(() => {
-    void fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
-  }, [fetchVendorPage, page, query, categoryFilter]);
+    void fetchVendorPage(page, debouncedQuery, categoryFilter === "Semua" ? "" : categoryFilter);
+  }, [fetchVendorPage, page, debouncedQuery, categoryFilter]);
 
   useEffect(() => {
     if (!historyVendor) {

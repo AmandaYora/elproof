@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/utils"
 )
 
 type MySQLVenuePaymentRepository struct {
@@ -35,6 +36,31 @@ func scanVenuePayment(scan func(dest ...interface{}) error) (*domain.VenuePaymen
 
 func (r *MySQLVenuePaymentRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.VenuePayment, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? ORDER BY payment_date DESC, id DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.VenuePayment
+	for rows.Next() {
+		p, err := scanVenuePayment(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *p)
+	}
+	return list, rows.Err()
+}
+
+// ListByProjects backs ComputeProgressBatch — one query across every id in
+// projectIDs instead of one query per project (PLAN.md "Performance
+// remediation").
+func (r *MySQLVenuePaymentRepository) ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.VenuePayment, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	query := `SELECT ` + venuePaymentColumns + ` FROM venue_payments WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, payment_date DESC, id DESC`
+	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}

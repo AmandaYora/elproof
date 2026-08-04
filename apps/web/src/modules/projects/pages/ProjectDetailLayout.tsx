@@ -15,7 +15,6 @@ const TABS = [
   { to: "milestone", label: "Timeline" },
   { to: "client", label: "Client" },
   { to: "pembayaran", label: "Pembayaran" },
-  { to: "kendala", label: "Kendala" },
   { to: "dokumen", label: "Dokumen" },
   { to: "aktivitas", label: "Aktivitas" },
 ];

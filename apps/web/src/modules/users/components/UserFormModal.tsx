@@ -11,6 +11,8 @@ import {
   type UserCreateFormValues,
 } from "@/modules/users/schemas/user.schema";
 import { ROLE_LABELS, type StaffMember } from "@/modules/users/types";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { APP_NAME } from "@/shared/constants/brand";
 
 interface FormState extends UserFormValues {
   username: string;
@@ -43,6 +45,7 @@ interface UserFormModalProps {
 }
 
 export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSubmitEdit }: UserFormModalProps) {
+  const businessName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
   const isEditing = Boolean(initialUser);
   const [values, setValues] = useState<FormState>(() => toFormState(initialUser));
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -92,7 +95,7 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
       open={open}
       onClose={handleClose}
       title={isEditing ? "Ubah Pengguna" : "Tambah Pengguna Baru"}
-      description="Kelola akun staff internal WO yang dapat mengakses WO Console."
+      description={`Kelola akun staff internal yang dapat mengakses ${businessName}.`}
       footer={
         <>
           <Button variant="secondary" onClick={handleClose}>Batal</Button>

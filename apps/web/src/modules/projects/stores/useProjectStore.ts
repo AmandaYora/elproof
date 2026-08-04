@@ -192,6 +192,10 @@ interface RawProjectVendor {
   dueDate: string | null;
   picStaffId: number;
   notes: string;
+  // Only populated by GET .../vendors (listVendorEngagements) — see
+  // fetchVendorSection, which reads this instead of issuing its own
+  // per-engagement GET .../milestones request.
+  milestones?: RawVendorMilestone[];
 }
 
 function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
@@ -345,6 +349,7 @@ function toVenuePayment(raw: RawVenuePayment): VenuePayment {
 interface RawIssue {
   id: number;
   projectVendorId: number;
+  vendorMilestoneId: number | null;
   title: string;
   description: string;
   impact: VendorIssue["impact"];
@@ -361,6 +366,7 @@ function toIssue(raw: RawIssue): VendorIssue {
   return {
     id: String(raw.id),
     projectVendorId: String(raw.projectVendorId),
+    vendorMilestoneId: raw.vendorMilestoneId !== null ? String(raw.vendorMilestoneId) : null,
     title: raw.title,
     description: raw.description,
     impact: raw.impact,
@@ -371,6 +377,25 @@ function toIssue(raw: RawIssue): VendorIssue {
     targetResolutionDate: raw.targetResolutionDate,
     resolvedDate: raw.resolvedDate,
     resolutionNotes: raw.resolutionNotes,
+  };
+}
+
+// toIssueUpdateFields lets the vendor accordion's quick status-change
+// dropdown reuse the same full-overwrite updateIssue action -- spread every
+// existing field, override just status -- mirroring
+// toMilestoneUpdateFields's role for vendor milestones.
+export function toIssueUpdateFields(issue: VendorIssue): IssueFormValues {
+  return {
+    projectVendorId: issue.projectVendorId,
+    vendorMilestoneId: issue.vendorMilestoneId ?? "",
+    title: issue.title,
+    description: issue.description,
+    impact: issue.impact,
+    foundDate: issue.foundDate,
+    resolutionPlan: issue.resolutionPlan,
+    picStaffId: issue.picStaffId,
+    targetResolutionDate: issue.targetResolutionDate ?? "",
+    status: issue.status,
   };
 }
 
@@ -529,7 +554,7 @@ interface ProjectState {
 
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
-  updateIssueStatus: (projectId: string, issueId: string, status: IssueStatus) => Promise<void>;
+  updateIssue: (projectId: string, issueId: string, values: IssueFormValues) => Promise<void>;
 
   fetchEvidence: (projectId: string) => Promise<void>;
   uploadEvidence: (projectId: string, values: UploadEvidenceInput) => Promise<void>;
@@ -560,19 +585,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   fetchProjects: async () => {
     const res = await httpClient.get(API.projects.base, { params: { all: true } });
     const list = (res.data.data as RawProject[]).map(toProject);
-    // The list endpoint doesn't include progress — fetch it per project so
-    // cards can show percent/condition (small dataset; acceptable N+1).
-    const withProgress = await Promise.all(
-      list.map(async (p) => {
-        try {
-          const detail = await httpClient.get(API.projects.item(p.id));
-          return toProject(detail.data.data as RawProject);
-        } catch {
-          return p;
-        }
-      })
-    );
-    set({ projects: withProgress });
+    set({ projects: list });
   },
 
   fetchProjectPage: async (page, search, status, showArchived = false) => {
@@ -580,19 +593,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       params: { page, search: search || undefined, status: status || undefined, archived: showArchived || undefined },
     });
     const list = (res.data.data as RawProject[]).map(toProject);
-    // Same per-row progress enrichment as fetchProjects, bounded to just this
-    // page's rows instead of the whole tenant roster.
-    const withProgress = await Promise.all(
-      list.map(async (p) => {
-        try {
-          const detail = await httpClient.get(API.projects.item(p.id));
-          return toProject(detail.data.data as RawProject);
-        } catch {
-          return p;
-        }
-      })
-    );
-    set({ projectPage: withProgress, projectPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta) });
+    set({ projectPage: list, projectPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta) });
   },
 
   createProject: async (values) => {
@@ -746,13 +747,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchVendorSection: async (projectId) => {
     const res = await httpClient.get(API.projects.vendors(projectId));
-    const engagements = (res.data.data as RawProjectVendor[]).map(toProjectVendor);
-    const milestoneLists = await Promise.all(
-      engagements.map((pv) => httpClient.get(API.projects.vendorMilestones(projectId, pv.id)))
-    );
-    const allMilestones = milestoneLists.flatMap((r, i) =>
-      (r.data.data as RawVendorMilestone[]).map((m) => toVendorMilestone(m, engagements[i].id))
-    );
+    const raw = res.data.data as RawProjectVendor[];
+    const engagements = raw.map(toProjectVendor);
+    const allMilestones = raw.flatMap((pv) => (pv.milestones ?? []).map((m) => toVendorMilestone(m, String(pv.id))));
     set({ vendorEngagements: engagements, vendorMilestones: allMilestones });
   },
 
@@ -988,13 +985,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await httpClient.post(API.projects.issues(projectId), {
       ...values,
       projectVendorId: Number(values.projectVendorId),
+      vendorMilestoneId: values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
       picStaffId: Number(values.picStaffId),
     });
     await get().fetchIssues(projectId);
   },
 
-  updateIssueStatus: async (projectId, issueId, status) => {
-    await httpClient.patch(API.projects.issue(projectId, issueId), { status });
+  updateIssue: async (projectId, issueId, values) => {
+    await httpClient.patch(API.projects.issue(projectId, issueId), {
+      ...values,
+      projectVendorId: Number(values.projectVendorId),
+      vendorMilestoneId: values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
+      picStaffId: Number(values.picStaffId),
+    });
     await get().fetchIssues(projectId);
   },
 

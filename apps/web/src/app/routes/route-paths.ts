@@ -5,7 +5,6 @@ export type ProjectDetailTab =
   | "pembayaran/client"
   | "pembayaran/vendor"
   | "pembayaran/venue"
-  | "kendala"
   | "dokumen"
   | "aktivitas"
   | "venue";

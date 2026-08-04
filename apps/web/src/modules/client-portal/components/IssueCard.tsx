@@ -9,9 +9,12 @@ interface IssueCardProps {
   onViewEvidence: (evidence: Evidence) => void;
   showVendorName?: boolean;
   vendorName?: string;
+  // Name of the specific vendor timeline this kendala is about, if any --
+  // omitted/undefined shows "Kendala Umum" (general to the vendor).
+  milestoneName?: string;
 }
 
-export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = true, vendorName }: IssueCardProps) {
+export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = true, vendorName, milestoneName }: IssueCardProps) {
   const isResolved = issue.status === "Resolved" || issue.status === "Closed";
 
   return (
@@ -25,6 +28,8 @@ export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = tr
           <p className="mt-1 text-[12.5px] font-medium text-text-secondary sm:text-[13px] bg-surface-muted inline-block px-2.5 py-1 rounded-md">
             {showVendorName && <span className="text-navy-700 font-semibold">{vendorName ?? "Vendor tidak diketahui"}</span>}
             {showVendorName && <span className="mx-1.5 text-border">|</span>}
+            <span className="font-semibold text-navy-700">{milestoneName ?? "Kendala Umum"}</span>
+            <span className="mx-1.5 text-border">|</span>
             Ditemukan {formatDate(issue.foundDate)}
           </p>
         </div>

@@ -194,6 +194,9 @@ export interface VenuePayment {
 export interface VendorIssue {
   id: string;
   projectVendorId: string;
+  // Null when the kendala is general to the vendor engagement, not tied to
+  // one specific deliverable.
+  vendorMilestoneId: string | null;
   title: string;
   description: string;
   impact: IssueImpact;

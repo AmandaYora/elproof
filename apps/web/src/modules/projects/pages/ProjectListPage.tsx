@@ -12,6 +12,7 @@ import type { ProjectFormValues } from "@/modules/projects/schemas/project.schem
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 export default function ProjectListPage() {
   // Wedding Planner ("Staff" role) never creates a project — only Owner/Admin
@@ -25,6 +26,7 @@ export default function ProjectListPage() {
   const createProject = useProjectStore((s) => s.createProject);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [statusFilter, setStatusFilter] = useState<string>("Semua");
   const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1);
@@ -33,18 +35,18 @@ export default function ProjectListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, statusFilter, showArchived]);
+  }, [debouncedQuery, statusFilter, showArchived]);
 
   useEffect(() => {
-    void fetchProjectPage(page, query, statusFilter === "Semua" ? "" : statusFilter, showArchived);
-  }, [fetchProjectPage, page, query, statusFilter, showArchived]);
+    void fetchProjectPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter, showArchived);
+  }, [fetchProjectPage, page, debouncedQuery, statusFilter, showArchived]);
 
   async function handleCreate(values: ProjectFormValues) {
     setActionError(null);
     try {
       await createProject(values);
       setModalOpen(false);
-      await fetchProjectPage(page, query, statusFilter === "Semua" ? "" : statusFilter, showArchived);
+      await fetchProjectPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter, showArchived);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal membuat project"));
     }

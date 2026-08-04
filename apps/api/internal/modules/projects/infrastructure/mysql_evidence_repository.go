@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/utils"
 )
 
 type MySQLEvidenceRepository struct {
@@ -42,6 +43,32 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 
 func (r *MySQLEvidenceRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? ORDER BY uploaded_at DESC, id DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.Evidence
+	for rows.Next() {
+		e, err := scanEvidence(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *e)
+	}
+	return list, rows.Err()
+}
+
+// ListByProjects backs ComputeProgressBatch — one query across every id in
+// projectIDs instead of one query per project (PLAN.md "Performance
+// remediation"); evidence.project_id is already denormalized on every row
+// (DB_SCHEMA.md), so this applies the same batching shape here too.
+func (r *MySQLEvidenceRepository) ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.Evidence, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	query := `SELECT ` + evidenceColumns + ` FROM evidence WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, uploaded_at DESC, id DESC`
+	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}

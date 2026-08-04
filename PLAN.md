@@ -1,323 +1,264 @@
-# PLAN — Venue Payments + Pembayaran tab restructuring into sub-tabs
+# PLAN — Retire the standalone "Kendala" tab; move issues into Vendor/timeline context
 
 ## 0. Goal
 
-Add a third payment ledger, "Pembayaran ke Venue" — venue costs today are only a static per-project
-snapshot (`venueRentalPrice`/`venueCharge`), with no transaction history at all, the same gap vendor
-payments had before being fixed. Stacking a third section vertically on the "Pembayaran" tab would be
-unwieldy, so that tab is restructured into three sub-tabs — "Uang Masuk dari Client" / "Pembayaran ke
-Vendor" / "Pembayaran ke Venue" — each its own URL, reusing the app's existing tab-navigation pattern
-rather than inventing a new one.
+Remove "Kendala" (Issue) as its own top-level tab in the Project detail page, and
+instead let a kendala be recorded directly against a specific vendor engagement
+and, optionally, one specific milestone of that vendor's own timeline —
+eliminating the duplicate/disconnected experience where the same data is
+today shown twice (a flat cross-vendor table on its own tab, and a read-only
+mini-list repeated inside the Vendor tab's accordion) with no way to tell
+*which* milestone a kendala is actually blocking.
 
-## 1. Decisions confirmed
+## 1. Current state, confirmed precisely
 
-1. **Venue payments follow Vendor's evidence model, not Client's.** Two optional slots (Invoice,
-   Bukti Transfer) — a `Refund` needs only Bukti Transfer, every other type needs both — because
-   money going out to a venue has the same two-sided paper trail as money going out to a vendor
-   (what they invoiced, proof the WO paid it). This is also a return to an earlier reality: before
-   ADR-0016, Venue *was* a vendor category, so this isn't inventing a new pattern, it's restoring the
-   one Venue already had.
-2. **`venue_payments` mirrors `client_payments`' shape, not `vendor_payments`' — no intermediate
-   engagement table.** A project has at most one venue (`project.venue_id`), so a venue payment ties
-   directly to `project_id`, the same way a client payment does (no `project_vendor_id`-equivalent
-   column needed).
-3. **Sub-tabs are real nested routes** (`/pembayaran/client`, `/pembayaran/vendor`,
-   `/pembayaran/venue`), reusing the existing `TabNav` component as-is — confirmed by reading it that
-   it's hard-wired to react-router-dom (`NavLink`-based active state, not a controlled/local-state
-   prop), and confirmed there is no existing precedent anywhere in this codebase for a
-   non-URL-driven sub-tab. Matching the app's own established "every view is a URL" convention was
-   judged more valuable than a smaller, one-off local-state tab widget.
-4. **Dashboard's "incomplete payments" widget merges vendor and venue candidates**, labeled by
-   source, rather than staying vendor-only or becoming two separate widgets.
-5. **`ComputeProgress`'s `incompleteEvidenceCount`** (feeds the project's On Track/Attention/At Risk
-   condition) **also folds in venue payments**, for the same consistency reason — the two ledgers are
-   now identically modeled, so one counting toward project health and the other not would be an
-   arbitrary inconsistency.
-6. **Margin/Keuntungan and Client Portal are untouched.** Margin already derives venue cost from the
-   static snapshot, never from a payment ledger (matches how it never used vendor's `paidAmount`
-   either) — no change needed. Client Portal shows neither vendor nor venue payment data today
-   (business-confidential WO cost management) — venue payments don't change that boundary.
+**Tabs** (`ProjectDetailLayout.tsx:12-21`): Vendor → Venue → Timeline → Client →
+Pembayaran → **Kendala** → Dokumen → Aktivitas. Each is a real route
+(`/projects/{id}/{tab}`), not an in-page anchor — `ProjectIssuesTabPage.tsx`
+just renders `<ProjectIssuesSection projectId={projectId} />`.
 
-## 2. Current state (verified precisely)
+**Two unrelated "timeline" concepts already exist** and this matters for where
+a kendala can sensibly attach:
+- `ProjectMilestone` — the WO's own internal prep checklist (Timeline tab,
+  `ProjectMilestonesSection.tsx`). **Has no vendor reference at all.**
+- `VendorMilestone` — a specific vendor engagement's own deliverable timeline
+  (`vendor_milestones` table, `project_vendor_id` FK), rendered inside the
+  **Vendor** tab's per-vendor accordion (`ProjectVendorsSection.tsx:486-561`,
+  a real `<tr key={m.id}>` per milestone with Timeline/Status/Target/Selesai/
+  Evidence/Aksi columns).
 
-- `ProjectPaymentsTabPage.tsx` (17 lines) stacks `<ClientPaymentsSection>` then
-  `<ProjectPaymentsSection>` vertically inside one `<div>` — no sub-navigation, no venue reference at
-  all today.
-- `TabNav.tsx`: `items: {to, label, end?}[]`, renders `NavLink`s — active state is computed
-  internally by react-router-dom matching the URL, not a prop this component exposes. Used in exactly
-  two places today (`ProjectDetailLayout.tsx`'s top-level project tabs, `ClientPortalLayout.tsx`'s own
-  top tabs) — both are single-level, page-top, URL-routed tab bars. No sub-tab precedent exists.
-- `protected.routes.tsx`'s `/projects/:projectId` children: `pembayaran` is a single flat route
-  entry (`{ path: "pembayaran", element: <ProjectPaymentsTabPage /> }`) with no children of its own.
-- `domain/payment.go`'s `PaymentEvidenceStatus(evidences []Evidence)` and
-  `IsPaymentEvidenceComplete(p VendorPayment, hasInvoice, hasProof map[int64]bool)` — both currently
-  hardcoded to `RelatedPayment` (the vendor kind) and to the `VendorPayment` struct type respectively.
-  Three call sites depend on this exact signature today: `payment_endpoints.go`'s `listPayments`,
-  `project_service.go`'s `ComputeProgress`, `dashboard_service.go`'s `Get`.
-- `mysql_dashboard_repository.go`'s `ListPaymentCandidates` queries only `vendor_payments` (JOIN
-  `projects` + `project_vendors`) into `domain.DashboardPaymentRow{Payment VendorPayment, ProjectName
-  string, VendorID int64}` — `DashboardStats.IncompletePayments []DashboardPaymentRow` is the one
-  field the dashboard's widget reads today.
-- `evidence.related_kind` (5 values today): `vendorMilestone`, `payment`, `projectVendor`, `issue`,
-  `clientPayment`. A new venue payment cannot reuse `payment` — `venue_payments.id` and
-  `vendor_payments.id` are independent `AUTO_INCREMENT` sequences that can collide in value, so
-  sharing a `relatedKind` would make `relatedId` ambiguous between the two tables.
-- `api-endpoints.ts`'s `projects` group already has `payments`/`clientPayments`/`evidence` as
-  `(id) => `/api/v1/projects/${id}/<segment>`` functions — a `venuePayments` entry fits the same
-  convention directly.
+`VendorIssue` (`apps/api/internal/modules/projects/domain/issue.go:24-38`)
+already has `ProjectVendorID` — a kendala is already conceptually a
+vendor-scoped thing, never a project-milestone-scoped thing. It has **no**
+milestone-level linkage of any kind today.
 
-## 3. Design
+**Duplication that already exists**: `ProjectVendorsSection.tsx:582-599`
+renders a read-only "Kendala" mini-list per vendor (title + impact/status
+badge only), right next to a "Pembayaran" mini-list, filtered by
+`issues.filter(i => i.projectVendorId === pv.id)` — the exact same data the
+standalone tab shows, just without found-date/PIC/plan and with no way to
+add/edit from here.
 
-### 3.1 Database
+**Kendala tab today** (`ProjectIssuesSection.tsx`) supports only **Create**
+(`AddIssueModal`) and **status change** (a `<Select>` per row calling
+`updateIssueStatus`) — there is no full edit and no delete. Create requires
+picking a vendor (`projectVendorId`, required) but has no milestone field at
+all (`issue.schema.ts:6-15`).
 
-New migration `apps/api/migrations/000030_create_venue_payments_table.up.sql`:
+**Backend mutation surface**: `issue_endpoints.go` exposes `POST
+.../issues` (create, all fields) and `PATCH .../issues/{id}` → `updateIssueStatus`
+→ `IssueService.UpdateStatus`, which only ever touches `status`/`resolved_date`
+(auto-stamped once) — the repository's `Update()` (`mysql_issue_repository.go:115-121`)
+literally only writes `status, resolved_date, resolution_notes`, nothing else.
+There is no service/repo method today that updates title/description/impact/
+vendor/PIC/target-date after creation.
 
+**`vendor_issues` schema** (`000008_create_project_tables.up.sql:89-108`):
+`id, project_id, project_vendor_id, title, description, impact, found_date,
+status, resolution_plan, pic_staff_id, target_resolution_date, resolved_date,
+resolution_notes` — no milestone column.
+
+**Consumers beyond the tab itself** (blast radius of removing the route):
+- **Dashboard attention queue** (`attention.ts:28-37`) hard-links every open
+  kendala card to `ROUTE_PATHS.projectDetail(issue.projectId, "kendala")`.
+- **`ProjectEvidenceSection.tsx`** lets evidence be attached with
+  `relatedKind: "issue"`, picking from a dropdown built from `issues` — this
+  is unaffected by *where* issues are created/edited, only by the `issues`
+  list continuing to exist, which it will.
+- **Client Portal** has the *exact same duplication*, one layer further:
+  a standalone `KendalaTabPage.tsx` (`/portal/kendala`, read-only `IssueCard`
+  list) **and** `VendorProgressTabPage.tsx:73,115,166-179` already renders the
+  same per-vendor issue cards inline, plus `RingkasanTabPage.tsx:31,55-62`
+  shows just an open-issue *count* banner. This is a different portal/menu
+  than what was asked about, so it's tracked as an explicit, separate
+  decision (Phase H) rather than folded silently into this plan.
+- **`ComputeProjectProgress`** (`domain/progress.go:89-140`) aggregates
+  `openIssues` at the whole-project level only (count, critical/high count,
+  feeding the On Track/Attention/At Risk condition) — this is untouched by
+  everything in this plan; milestone linkage is purely descriptive metadata,
+  it does not change scoring.
+
+**Design decisions already confirmed with the user**:
+1. Milestone link is **optional** (nullable) — a kendala can be "umum" (general
+   to the vendor) or tied to one specific `VendorMilestone`. Forcing every
+   kendala to pick a milestone would break the common "vendor tidak
+   responsif" / "minta ubah termin" case that has nothing to do with any one
+   deliverable.
+2. Full **edit** capability is added now (not just status change) — since the
+   whole create/status-only flow is being touched anyway, and "mudah
+   mengelola" implies being able to fix a wrongly-picked vendor/milestone
+   later without going to the DB directly.
+
+## 2. Design
+
+### Phase A — Migration: nullable milestone link
+
+New `apps/api/migrations/000032_add_vendor_milestone_id_to_vendor_issues.up.sql`:
 ```sql
-CREATE TABLE venue_payments (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  project_id BIGINT UNSIGNED NOT NULL,
-  type ENUM('DP','Termin','Pelunasan','Tambahan','Refund') NOT NULL,
-  amount BIGINT UNSIGNED NOT NULL,
-  payment_date DATE NOT NULL,
-  method VARCHAR(100) NOT NULL,
-  reference_number VARCHAR(100) NOT NULL,
-  notes TEXT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_venue_payments_project FOREIGN KEY (project_id) REFERENCES projects (id),
-  INDEX idx_venue_payments_project (project_id)
-);
-
-ALTER TABLE evidence MODIFY COLUMN related_kind
-  ENUM('vendorMilestone', 'payment', 'projectVendor', 'issue', 'clientPayment', 'venuePayment') NOT NULL;
+ALTER TABLE vendor_issues
+  ADD COLUMN vendor_milestone_id BIGINT UNSIGNED NULL,
+  ADD KEY idx_vendor_issues_vendor_milestone (vendor_milestone_id),
+  ADD CONSTRAINT fk_vendor_issues_vendor_milestone
+    FOREIGN KEY (vendor_milestone_id) REFERENCES vendor_milestones (id);
 ```
+Same module (`projects` owns both `vendor_issues` and `vendor_milestones`), so
+this FK is allowed under the modular-monolith rule. Existing rows backfill to
+`NULL` automatically — no data migration needed, no behavior change for
+existing kendala until a user explicitly links one.
+`.down.sql` drops the FK/key/column in reverse order.
 
-No `invoice_evidence_id`/`proof_evidence_id` columns on `venue_payments` itself — same lesson already
-learned from `vendor_payments`' now-removed dead columns: evidence-completeness is computed via the
-polymorphic `evidence` table from day one here, never a direct stored FK.
+### Phase B — Backend domain + repository
 
-`.down.sql`: narrow `related_kind` back to 5 values, then `DROP TABLE venue_payments`.
+- `domain.VendorIssue`: add `VendorMilestoneID *int64`.
+- `mysql_issue_repository.go`: add `vendor_milestone_id` to `issueColumns`,
+  `scanIssue` (nullable int64 scan), `Create` (insert the new column), and
+  **broaden `Update`** to persist every editable field instead of just
+  status/resolved_date/resolution_notes:
+  ```go
+  UPDATE vendor_issues SET title=?, description=?, project_vendor_id=?,
+    vendor_milestone_id=?, impact=?, target_resolution_date=?, pic_staff_id=?,
+    resolution_plan=?, status=?, resolved_date=?, resolution_notes=? WHERE id=?
+  ```
 
-### 3.2 Backend — domain
+### Phase C — Backend application service
 
-`domain/payment.go`: add
-```go
-type VenuePayment struct {
-	ID              int64
-	ProjectID       int64
-	Type            PaymentType
-	Amount          int64
-	PaymentDate     time.Time
-	Method          string
-	ReferenceNumber string
-	Notes           string
-}
-```
-(identical shape to `ClientPayment` — no per-vendor column, same reasoning as §1.2).
+- `IssueInput` gains `VendorMilestoneID *int64`.
+- New **ownership validation**: if `VendorMilestoneID` is set, fetch it via
+  the already-existing `VendorMilestoneRepository.FindByID(ctx, projectVendorID, id)`
+  (same ownership-check idiom already used everywhere else in this module)
+  and reject with a validation error if it doesn't belong to the issue's own
+  `ProjectVendorID` — this is the one rule that must never be skippable,
+  otherwise a kendala could be silently misattributed to a different
+  vendor's milestone.
+- Replace `IssueService.UpdateStatus` with a general
+  `IssueService.Update(ctx, projectID, id, actorStaffID int64, input IssueInput) (*domain.VendorIssue, error)`
+  that overwrites every field from `input` (mirroring how
+  `VendorEngagementService.Update`/`UpdateMilestone` already work — full
+  overwrite, not a partial patch) — the frontend's "quick status dropdown"
+  will just call this with every existing field spread plus the new status,
+  exactly like `ProjectVendorsSection.tsx`'s existing `quickStatusChange` /
+  `toMilestoneUpdateFields` pattern for vendor milestones. One endpoint,
+  one code path, no special-cased "status-only" branch to keep in sync.
+- `resolvedDate` auto-stamp-once logic (`shouldStamp`, current
+  `UpdateStatus:79-82`) moves into this new `Update`, unchanged in behavior.
 
-**Generalize the two shared helpers** so both `vendor_payments` and `venue_payments` reuse one
-definition instead of a third copy-pasted variant:
-```go
-func PaymentEvidenceStatus(evidences []Evidence, kind EvidenceRelatedKind) (hasInvoice, hasProof map[int64]bool) {
-	...
-	if e.RelatedKind != kind { continue }
-	...
-}
+### Phase D — Backend presentation
 
-func IsPaymentEvidenceComplete(paymentType PaymentType, paymentID int64, hasInvoice, hasProof map[int64]bool) bool {
-	if paymentType == PaymentRefund { return hasProof[paymentID] }
-	return hasInvoice[paymentID] && hasProof[paymentID]
-}
-```
-Note `IsPaymentEvidenceComplete` now takes the two primitives (`Type`, `ID`) rather than a
-`VendorPayment` struct — `VenuePayment` is a different Go type, and passing the primitives avoids
-introducing an interface just to satisfy two field reads. **All three existing call sites must be
-updated** to pass `domain.RelatedPayment` explicitly and `p.Type, p.ID` instead of `p`:
-`payment_endpoints.go:listPayments`, `project_service.go:ComputeProgress`,
-`dashboard_service.go:Get`.
+- `issueInputBody`/response DTOs: add `vendorMilestoneId *int64` (create) and
+  to `issueResponse`/`toIssueResponse` (nullable int in JSON).
+- Replace `updateIssueStatus` handler with `updateIssue`, decoding the full
+  `issueInputBody` shape (same body shape as create, since it's a full
+  overwrite) — same `PATCH /projects/{id}/issues/{issueId}` route, just a
+  richer body and a richer response. `handler.go:165-166`'s dispatch line
+  changes its target function only, not its route pattern.
 
-`domain/evidence.go`: add `RelatedVenuePayment EvidenceRelatedKind = "venuePayment"`.
+### Phase E — Frontend types, schema, store
 
-`domain/dashboard.go`: add, additively (existing `DashboardPaymentRow`/`IncompletePayments` stay
-exactly as they are — no change to the vendor path)
-```go
-type DashboardVenuePaymentRow struct {
-	Payment     VenuePayment
-	ProjectName string
-}
-```
-and a new `DashboardStats.IncompleteVenuePayments []DashboardVenuePaymentRow` field alongside the
-existing `IncompletePayments`. Kept as two separate slices (not one merged/discriminated array) so
-the already-working vendor path is untouched — the frontend widget merges the two into one labeled
-list at render time (§3.9).
+- `types.ts`: `VendorIssue.vendorMilestoneId: string | null`.
+- `issue.schema.ts`: add `vendorMilestoneId: z.string().optional()` (empty
+  string / omitted = "umum", not tied to any milestone).
+- `useProjectStore.ts`: `RawIssue`/`toIssue` add the field; replace
+  `updateIssueStatus` action with `updateIssue(projectId, issueId, values: IssueFormValues)`
+  (full body); add a `toIssueUpdateFields(issue): IssueFormValues` helper next
+  to the existing `toMilestoneUpdateFields`, used by the quick-status dropdown
+  to spread-then-override `status` only, keeping today's one-click UX
+  identical from the user's point of view.
 
-### 3.3 Backend — repository
+### Phase F — Frontend UI: fold Kendala into the Vendor tab
 
-New `mysql_venue_payment_repository.go` — `ListByProject`, `FindByID`, `Create` — same shape as
-`mysql_client_payment_repository.go` (the closest existing sibling), reading/writing
-`venue_payments`.
+All of this lands inside `ProjectVendorsSection.tsx` (no new top-level file):
 
-`mysql_dashboard_repository.go`: new `ListVenuePaymentCandidates(ctx, tenantID)
-([]domain.DashboardVenuePaymentRow, error)` — mirrors `ListPaymentCandidates` exactly, minus the
-`project_vendors` JOIN and `VendorID` column (venue payments have no vendor):
-```sql
-SELECT vp.id, vp.project_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number, vp.notes, p.name
-FROM venue_payments vp
-JOIN projects p ON p.id = vp.project_id
-WHERE p.tenant_id = ?
-ORDER BY vp.payment_date DESC, vp.id DESC
-```
+1. **Per-milestone "+Kendala"**: add an icon action to each milestone row's
+   existing "Aksi" cell (alongside Edit/Cancel) that opens the issue form
+   modal with `projectVendorId` and `vendorMilestoneId` **pre-filled and
+   locked** from row context — zero extra picking for the common case.
+2. **Vendor-level "+Kendala"**: keep one add-entry-point at the vendor's
+   "Kendala" mini-list header (where the section already lives) for the
+   general/not-tied-to-one-milestone case — same modal, milestone field left
+   as an explicit "Umum / tidak terikat ke timeline" option instead of being
+   hidden.
+3. **Read affordance** (the actual "mudah membaca" ask): a small "⚠ N"
+   badge on any milestone row that has ≥1 open kendala tied to it (same visual
+   slot as the existing Evidence badge), so a blocked deliverable is visible
+   without opening anything. The vendor-level mini-list keeps showing every
+   kendala for that vendor (both milestone-tied and general) but now also
+   shows which milestone each one belongs to, or "Umum" if none.
+4. **Edit**: add a pencil icon per row in the mini-list opening the same
+   form component pre-filled with every field (title/description/impact/
+   vendor/milestone/PIC/target date/resolution plan) — mirrors the existing
+   create/edit dual-mode pattern already used by `ProjectVendorFormModal`
+   (an optional `initial*` prop switches the same component between modes).
+5. Remove the tab: delete the `{ to: "kendala", label: "Kendala" }` entry
+   from `ProjectDetailLayout.tsx:18`, delete the `kendala` route from
+   `protected.routes.tsx:58`, delete `ProjectIssuesTabPage.tsx`. Fold whatever
+   of `ProjectIssuesSection.tsx` is still needed (the modal, mostly) into
+   `ProjectVendorsSection.tsx` and delete the rest.
+6. `route-paths.ts`: drop `"kendala"` from `ProjectDetailTab`.
 
-### 3.4 Backend — application
+### Phase G — Dashboard link fix
 
-New `venue_payment_service.go` — `VenuePaymentRepository` interface, `VenuePaymentService` (`List`,
-`Create`), `VenuePaymentInput` — copies `client_payment_service.go`'s exact shape. `Create` logs
-activity reusing `domain.ActivityPaymentRecorded` with `entityType: "venue_payment"`, description
-"Pembayaran venue dicatat" — same reuse pattern `client_payment_service.go` already established (no
-new `ActivityType` value needed).
+`attention.ts:35` — change the open-kendala attention card's `to` from
+`ROUTE_PATHS.projectDetail(issue.projectId, "kendala")` to
+`ROUTE_PATHS.projectDetail(issue.projectId, "vendor")`, matching how the
+existing "Timeline Terlambat" attention card (`attention.ts:46`) already links
+to the `"vendor"` tab for the same reason. No deep-link-to-specific-vendor-row
+mechanism exists anywhere else in the app today (the overdue-milestone card
+doesn't have one either) — not introducing one here either, to stay
+consistent and avoid scope creep.
 
-`project_service.go`'s `ComputeProgress`: after the existing vendor-payments block, add the same
-shape for venue payments —
-```go
-venuePayments, err := s.venuePayments.ListByProject(ctx, projectID)
-if err != nil { return nil, err }
-vHasInvoice, vHasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
-for _, p := range venuePayments {
-	if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, vHasInvoice, vHasProof) {
-		incompleteCount++
-	}
-}
-```
-(the `evidences` slice is already fetched once for the project; reused for both kinds, just filtered
-differently per call — no second `s.evidence.List` call needed). `ProjectService` gains a
-`venuePayments VenuePaymentRepository` constructor dependency, wired the same way `payments
-PaymentRepository` already is.
+### Phase H — Client Portal (explicit decision point, not auto-applied)
 
-`dashboard_service.go`'s `Get`: after the existing vendor-payments block, fetch
-`s.repo.ListVenuePaymentCandidates(ctx, tenantID)`, cross-reference the same way (per-distinct-project
-evidence fetch, `domain.RelatedVenuePayment` this time), and append incomplete rows to the new
-`stats.IncompleteVenuePayments`. `DashboardService` needs no new constructor dependency — it already
-holds `evidence *EvidenceService` and `repo DashboardRepository`.
+`KendalaTabPage.tsx` (`/portal/kendala`) is read-only and duplicates
+`VendorProgressTabPage.tsx`'s own per-vendor `IssueCard` list — the identical
+redundancy this whole plan removes on the WO Console side. Recommended
+mirror treatment: drop `"kendala"` from `client-portal.routes.tsx` and
+`ClientPortalTab`, delete `KendalaTabPage.tsx`, and have
+`VendorProgressTabPage.tsx`'s existing per-vendor issue cards show the
+milestone name (Phase I) so the client sees the same "which deliverable is
+this about" context. **This is scoped separately from "menu Project" that was
+asked about — confirm before implementing**, since it touches the
+client-facing portal, a different audience than the WO Console.
 
-### 3.5 Backend — presentation
+### Phase I — `IssueCard` / mini-list milestone display
 
-New `venue_payment_endpoints.go`: `listVenuePayments` (mirrors the vendor version's
-evidence-cross-reference-then-map pattern, using `domain.RelatedVenuePayment`), `createVenuePayment`
-— routed in `handler.go`'s existing big `Item` switch as `rest[0] == "venue-payments"`, alongside the
-existing `payments`/`client-payments` cases.
+`IssueCard.tsx` (shared by Client Portal's Kendala tab today and
+`VendorProgressTabPage.tsx`) and the WO Console's vendor mini-list both gain
+a milestone name line — "{vendor} · {milestone name}" or "{vendor} · Kendala
+Umum" when `vendorMilestoneId` is null. Purely additive/display-only, no
+behavior change.
 
-`dto.go`: new `venuePaymentResponse` (identical shape to `clientPaymentResponse`, plus the
-`evidenceComplete bool` computed field like `paymentResponse`), `toVenuePaymentResponse`.
+## 3. Order of implementation
 
-`dashboard_endpoint.go`: extend the response DTO with `incompleteVenuePayments`, alongside the
-existing `incompletePayments` field — read the current file during implementation to match its exact
-existing field-naming/casing convention.
+1. Phase A (migration) — pure schema addition, zero code risk, ship first.
+2. Phase B + C (domain/repo/service) — `go build`/`go vet` before moving on.
+3. Phase D (presentation/DTO) — same endpoint path, richer body; `go build`/`go vet`.
+4. Phase E (frontend types/schema/store) — `tsc --noEmit`.
+5. Phase F (the actual UI move: per-milestone + per-vendor add, edit, badges,
+   tab removal) — the one step users will actually see change.
+6. Phase G (dashboard link) — one-line fix, do right after F so the link is
+   never briefly dangling.
+7. Phase I (milestone name display in IssueCard/mini-list) — small, additive.
+8. Phase H (Client Portal) — **only after explicit confirmation**, since it's
+   a separate portal from what was originally asked about.
 
-### 3.6 Frontend — data layer
+## 4. Verification
 
-- `apps/web/src/modules/projects/schemas/venue-payment.schema.ts` (new) — identical shape to
-  `client-payment.schema.ts` plus the two file fields `payment.schema.ts` has (`invoiceFile?: File`,
-  `proofFile?: File`), importing the shared `PAYMENT_METHOD_OPTIONS` from `payment.schema.ts`.
-- `types.ts`: new `VenuePayment` interface (same shape as `ClientPayment` plus `evidenceComplete:
-  boolean`).
-- `api-endpoints.ts`: `venuePayments: (id: string) => \`/api/v1/projects/${id}/venue-payments\`` next
-  to `payments`/`clientPayments`.
-- `useProjectStore.ts`: `venuePayments: VenuePayment[]` state, `fetchVenuePayments`,
-  `createVenuePayment` — the latter a three-step orchestration identical to the just-fixed
-  `createPayment` (POST payment, then independently-caught Invoice/Bukti Transfer uploads with
-  `relatedKind: "venuePayment"`), throwing a new `VenuePaymentEvidenceError` on partial failure —
-  same shape as `VendorPaymentEvidenceError`.
-
-### 3.7 Frontend — `VenuePaymentsSection.tsx` (new component)
-
-Structurally `ProjectPaymentsSection.tsx` minus the vendor picker (like `ClientPaymentsSection.tsx`
-has no picker) — one venue per project, nothing to choose. Three summary stats: **Nilai Sewa Venue**
-(`project.venueRentalPrice + project.venueCharge`), **Total Sudah Dibayar** (Σ venue_payments, Refund
-subtracted), **Sisa Pembayaran** (difference) — same 3-stat layout as vendor's, relabeled. "Tambah
-Pembayaran" modal has the same fields as vendor's `AddPaymentModal` (Jenis, Nominal, Tanggal, Metode
-dropdown, No. Referensi optional, Invoice + Bukti Transfer, Catatan) minus the Vendor picker.
-
-**No-venue-attached state**: if `project.venueId` is null, render an `EmptyState` ("Belum ada venue
-terpasang untuk project ini — pasang venue terlebih dahulu di tab Venue") instead of the summary
-cards/table — there is nothing to record a payment against.
-
-### 3.8 Frontend — tab restructuring
-
-`ProjectPaymentsTabPage.tsx` becomes a small layout (mirrors `ProjectDetailLayout.tsx`'s own
-`TabNav` + `Outlet` shape, one level deeper): renders a `TabNav` with three items —
-```tsx
-const PEMBAYARAN_TABS = [
-  { to: "client", label: "Dari Client" },
-  { to: "vendor", label: "Ke Vendor" },
-  { to: "venue", label: "Ke Venue" },
-];
-```
-— above an `<Outlet context={{projectId}} />` (re-passing the same `ProjectDetailContext` shape
-through, since `useOutletContext` reads from the nearest ancestor regardless of nesting depth).
-
-`protected.routes.tsx`: `pembayaran` gains children, mirroring the existing top-level shape exactly:
-```tsx
-{
-  path: "pembayaran",
-  element: <ProjectPaymentsTabPage />,
-  children: [
-    { index: true, element: <Navigate to="client" replace /> },
-    { path: "client", element: <PembayaranClientTabPage /> },
-    { path: "vendor", element: <PembayaranVendorTabPage /> },
-    { path: "venue", element: <PembayaranVenueTabPage /> },
-  ],
-},
-```
-Three new thin tab-page files under `pages/tabs/` (`PembayaranClientTabPage.tsx`,
-`PembayaranVendorTabPage.tsx`, `PembayaranVenueTabPage.tsx`), each the same one-line shape as every
-other existing `XxxTabPage.tsx` — pull `projectId` via `useOutletContext`, render exactly one section
-component. Default/index sub-tab is `client`, keeping today's "money in, then money out" top-to-bottom
-reading order as the left-to-right tab order too.
-
-### 3.9 Frontend — Dashboard widget
-
-Wherever `DashboardPage` currently renders `incompletePayments` (to be located precisely during
-implementation — not yet read in this planning pass), extend it to also map over
-`incompleteVenuePayments`, merging both into one list sorted by date, each row labeled by source
-("Vendor: {vendorName}" vs "Venue") rather than kept as two separate visual widgets — satisfying the
-confirmed "gabungkan keduanya... dengan label yang membedakan sumbernya" decision without needing a
-backend-side merge (§3.2 keeps the two arrays separate on purpose).
-
-## 4. Order of implementation
-
-1. Migration `000030` (table + evidence enum widen). Apply locally, confirm.
-2. Backend domain generalization (§3.2) — update all 3 existing call sites for the new
-   `PaymentEvidenceStatus`/`IsPaymentEvidenceComplete` signatures before anything else, so the
-   codebase compiles at every intermediate step.
-3. Backend repository + application + presentation for venue payments (§3.3-3.5). `go build`/`go vet`.
-4. Frontend data layer + `VenuePaymentsSection.tsx` (§3.6-3.7).
-5. Frontend tab restructuring (§3.8) — confirm the existing `ClientPaymentsSection`/
-   `ProjectPaymentsSection` still render correctly once moved one route level deeper (Outlet context
-   propagation).
-6. Frontend Dashboard widget merge (§3.9).
-7. `tsc --noEmit`, `npm run build`.
-8. Manual/smoke-test pass (§5).
-9. Sync `docs/DB_SCHEMA.md` (new `venue_payments` table entry, widened `evidence.related_kind`),
-   `docs/API_CONTRACT.md` (new `venue-payments` endpoint, note the nested `pembayaran/*` routes),
-   `knowledge/MODULE_MAP.md` (projects module's sub-entity table count).
-
-## 5. Verification
-
-- Project with no venue attached: "Pembayaran ke Venue" sub-tab shows the empty state, no crash, no
-  "Tambah Pembayaran" button.
-- Attach a venue, record a venue payment with both Invoice and Bukti Transfer — confirm
-  `evidenceComplete: true`, and that this does NOT flip any *vendor* payment's own completeness (the
-  two ledgers' evidence must stay fully independent despite sharing the generalized helper).
-  Symmetric check the other way (a vendor payment's evidence doesn't leak into venue completeness).
-- Confirm `incompleteEvidenceCount` on the project's progress increases when an incomplete venue
-  payment exists, exactly as it already does for vendor payments.
-- Confirm the Dashboard's incomplete-payments list shows both a vendor and a venue row, each legible
-  as to which is which.
-- Navigate directly to `/projects/{id}/pembayaran/venue` via a fresh page load (not a client-side tab
-  click) — confirm it renders correctly (tests that `Outlet` context propagation and the nested-route
-  lazy-loading both work, not just the happy path of clicking through).
-- Confirm `/projects/{id}/pembayaran` (no sub-segment) redirects to `.../client`, preserving today's
-  default view.
-- Confirm Margin/Keuntungan is completely unchanged before/after this feature ships (still reads only
-  the static snapshot, never the new ledger).
-- `go build ./...`, `go vet ./...`, `npx tsc --noEmit -p apps/web/tsconfig.json`,
-  `npm run build -w apps/web`.
+- `go build ./...` / `go vet ./...` after every backend phase.
+- `npx tsc --noEmit` / `npm run build` after every frontend phase.
+- Manual check: create a kendala from a milestone row → confirm it's
+  pre-filled/locked to that vendor+milestone, appears as a badge on that row,
+  and appears in that vendor's mini-list labeled with the milestone name.
+- Manual check: create a "Kendala Umum" from the vendor-level button →
+  confirm it has no milestone badge anywhere and shows "Kendala Umum" in the
+  mini-list.
+- Manual check: edit an existing kendala (change vendor, change milestone,
+  change impact) → confirm the ownership validation (Phase C) rejects a
+  milestone that doesn't belong to the newly-chosen vendor.
+- Manual check: dashboard's "Kendala Aktif" attention card still navigates
+  successfully (to the Vendor tab, not a 404/blank "kendala" route).
+- Confirm `ComputeProjectProgress`'s On Track/Attention/At Risk output is
+  unchanged for a fixed project before/after — milestone linkage must stay
+  purely descriptive.
+- Regression check on `ProjectEvidenceSection.tsx`'s issue-picker dropdown
+  (evidence attached to a kendala) — still lists every issue correctly by
+  title + vendor regardless of where it was created.

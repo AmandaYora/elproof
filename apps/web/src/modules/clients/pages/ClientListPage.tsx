@@ -42,8 +42,8 @@ interface ModalTarget {
 export default function ClientListPage() {
   const projects = useProjectStore((s) => s.projects);
   const fetchProjects = useProjectStore((s) => s.fetchProjects);
-  const clientsByProject = useClientStore((s) => s.clientsByProject);
-  const fetchClients = useClientStore((s) => s.fetchClients);
+  const allClients = useClientStore((s) => s.allClients);
+  const fetchAllClients = useClientStore((s) => s.fetchAllClients);
   const updateContact = useClientStore((s) => s.updateContact);
   const toggleActive = useClientStore((s) => s.toggleActive);
   const deleteClient = useClientStore((s) => s.deleteClient);
@@ -57,16 +57,8 @@ export default function ClientListPage() {
 
   useEffect(() => {
     void fetchProjects();
-  }, [fetchProjects]);
-
-  useEffect(() => {
-    projects.forEach((p) => void fetchClients(p.id));
-  }, [projects, fetchClients]);
-
-  const allClients = useMemo(
-    () => Object.values(clientsByProject).flat(),
-    [clientsByProject]
-  );
+    void fetchAllClients();
+  }, [fetchProjects, fetchAllClients]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -83,13 +75,14 @@ export default function ClientListPage() {
       .filter((group) => group.clients.length > 0);
   }, [projects, filtered]);
 
-  const activeTarget = modalTarget ? clientsByProject[modalTarget.projectId]?.find((c) => c.id === modalTarget.clientId) ?? null : null;
+  const activeTarget = modalTarget ? allClients.find((c) => c.id === modalTarget.clientId) ?? null : null;
   const { page, setPage, totalPages, totalItems, pageSize, pageItems: pageGroups } = usePagination(groups, 5);
 
   async function handleToggleActive(projectId: string, clientId: string) {
     setActionError(null);
     try {
       await toggleActive(projectId, clientId);
+      await fetchAllClients();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status client"));
     }
@@ -99,6 +92,7 @@ export default function ClientListPage() {
     setActionError(null);
     try {
       await deleteClient(projectId, clientId);
+      await fetchAllClients();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menghapus client"));
     }
@@ -113,6 +107,7 @@ export default function ClientListPage() {
       } else {
         await updateContact(modalTarget.projectId, modalTarget.clientId, values);
       }
+      await fetchAllClients();
       setModalTarget(null);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menyimpan perubahan client"));
@@ -124,6 +119,7 @@ export default function ClientListPage() {
     setActionError(null);
     try {
       await resetCredential(modalTarget.projectId, modalTarget.clientId, password);
+      await fetchAllClients();
       setModalTarget(null);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mereset kredensial client"));

@@ -9,6 +9,9 @@ import (
 
 type VenuePaymentRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.VenuePayment, error)
+	// ListByProjects backs ComputeProgressBatch: every matching row across
+	// the given projects in one query (WHERE project_id IN (...)).
+	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.VenuePayment, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.VenuePayment, error)
 	Create(ctx context.Context, p *domain.VenuePayment) error
 }

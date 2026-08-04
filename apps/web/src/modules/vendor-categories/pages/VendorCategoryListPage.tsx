@@ -15,6 +15,7 @@ import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVe
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import type { VendorCategory } from "@/modules/vendor-categories/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 export default function VendorCategoryListPage() {
   const categories = useVendorCategoryStore((s) => s.categoryPage);
@@ -27,6 +28,7 @@ export default function VendorCategoryListPage() {
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<VendorCategory | undefined>(undefined);
@@ -38,11 +40,11 @@ export default function VendorCategoryListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query]);
+  }, [debouncedQuery]);
 
   useEffect(() => {
-    void fetchCategoryPage(page, query);
-  }, [fetchCategoryPage, page, query]);
+    void fetchCategoryPage(page, debouncedQuery);
+  }, [fetchCategoryPage, page, debouncedQuery]);
 
   function openCreateModal() {
     setEditingCategory(undefined);

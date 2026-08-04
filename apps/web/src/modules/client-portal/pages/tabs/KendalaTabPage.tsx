@@ -13,6 +13,7 @@ export default function KendalaTabPage() {
   const issues = useProjectStore((s) => s.issues);
   const evidence = useProjectStore((s) => s.evidence);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
+  const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
@@ -73,6 +74,7 @@ export default function KendalaTabPage() {
                   evidence={evidence.filter((e) => e.relatedKind === "issue" && e.relatedId === issue.id)}
                   onViewEvidence={setViewingEvidence}
                   vendorName={vendorName}
+                  milestoneName={vendorMilestones.find((m) => m.id === issue.vendorMilestoneId)?.name}
                 />
               );
             })}

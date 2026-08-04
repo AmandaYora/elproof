@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/pagination"
+	"elproof/internal/shared/utils"
 )
 
 type MySQLProjectRepository struct {
@@ -60,6 +62,47 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picSt
 	}
 	query += ` ORDER BY event_date DESC, id DESC`
 	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []domain.Project
+	for rows.Next() {
+		p, err := scanProject(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		projects = append(projects, *p)
+	}
+	return projects, rows.Err()
+}
+
+// CountAll backs the dashboard's TotalProjects stat — a plain COUNT(*)
+// instead of loading every row just to take len() (PLAN.md "Performance
+// remediation").
+func (r *MySQLProjectRepository) CountAll(ctx context.Context, tenantID int64) (int64, error) {
+	var total int64
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE tenant_id = ?`, tenantID).Scan(&total)
+	return total, err
+}
+
+// ListForDashboard backs every other dashboard computation (trends,
+// near-D-day, upcoming, lagging) — bounded to rows that could actually
+// matter for any of them, instead of List's entire unbounded tenant history
+// (PLAN.md "Performance remediation"): a project still open (non-terminal
+// status) regardless of age, or a project whose created_at/event_date falls
+// within the trend window (`since`, the earliest month ProjectTrend/
+// RevenueTrend can ever display). A terminal-status project older than
+// `since` on both dates can't affect any of the four computations, so it's
+// excluded at the query level rather than fetched and then ignored in Go.
+func (r *MySQLProjectRepository) ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+projectColumns+` FROM projects
+		 WHERE tenant_id = ? AND (status NOT IN ('Completed', 'Cancelled') OR created_at >= ? OR event_date >= ?)
+		 ORDER BY event_date DESC, id DESC`,
+		tenantID, since, since,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -258,6 +301,31 @@ func scanMilestone(scan func(dest ...interface{}) error) (*domain.ProjectMilesto
 
 func (r *MySQLMilestoneRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectMilestone, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+milestoneColumns+` FROM project_milestones WHERE project_id = ? ORDER BY sort_order`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var milestones []domain.ProjectMilestone
+	for rows.Next() {
+		m, err := scanMilestone(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		milestones = append(milestones, *m)
+	}
+	return milestones, rows.Err()
+}
+
+// ListByProjects backs ComputeProgressBatch (PLAN.md "Performance
+// remediation"): one query across every id in projectIDs instead of one
+// query per project.
+func (r *MySQLMilestoneRepository) ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.ProjectMilestone, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	query := `SELECT ` + milestoneColumns + ` FROM project_milestones WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, sort_order`
+	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}

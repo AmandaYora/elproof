@@ -10,6 +10,9 @@ import (
 
 type VendorEngagementRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectVendor, error)
+	// ListByProjects backs ComputeProgressBatch: every matching row across
+	// the given projects in one query (WHERE project_id IN (...)).
+	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.ProjectVendor, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectVendor, error)
 	Create(ctx context.Context, pv *domain.ProjectVendor) error
 	Update(ctx context.Context, pv *domain.ProjectVendor) error
@@ -19,6 +22,9 @@ type VendorEngagementRepository interface {
 
 type VendorMilestoneRepository interface {
 	ListByProjectVendor(ctx context.Context, projectVendorID int64) ([]domain.VendorMilestone, error)
+	// ListByProjectVendors backs ComputeProgressBatch: every matching row
+	// across the given engagement ids in one query.
+	ListByProjectVendors(ctx context.Context, projectVendorIDs []int64) ([]domain.VendorMilestone, error)
 	FindByID(ctx context.Context, projectVendorID, id int64) (*domain.VendorMilestone, error)
 	Create(ctx context.Context, m *domain.VendorMilestone) error
 	Update(ctx context.Context, m *domain.VendorMilestone) error
@@ -140,6 +146,23 @@ func (s *VendorEngagementService) ListMilestones(ctx context.Context, projectID,
 		return nil, err
 	}
 	return s.milestones.ListByProjectVendor(ctx, projectVendorID)
+}
+
+// ListMilestonesByProjectVendors backs listVendorEngagements: one query
+// across every given engagement id instead of the frontend's own
+// per-engagement Promise.all loop (PLAN.md "Performance remediation",
+// Phase E). Returns a map so the caller can attach each engagement's own
+// milestones to its response row.
+func (s *VendorEngagementService) ListMilestonesByProjectVendors(ctx context.Context, projectVendorIDs []int64) (map[int64][]domain.VendorMilestone, error) {
+	all, err := s.milestones.ListByProjectVendors(ctx, projectVendorIDs)
+	if err != nil {
+		return nil, err
+	}
+	byEngagement := make(map[int64][]domain.VendorMilestone, len(projectVendorIDs))
+	for _, m := range all {
+		byEngagement[m.ProjectVendorID] = append(byEngagement[m.ProjectVendorID], m)
+	}
+	return byEngagement, nil
 }
 
 func (s *VendorEngagementService) CreateMilestone(ctx context.Context, projectID, projectVendorID int64, actorStaffID int64, input VendorMilestoneInput) (*domain.VendorMilestone, error) {

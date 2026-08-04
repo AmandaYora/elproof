@@ -34,14 +34,26 @@ func NewDashboardService(projects *ProjectService, repo DashboardRepository, evi
 const trendMonthsBack = 12
 
 func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Time) (*domain.DashboardStats, error) {
-	allProjects, err := s.projects.List(ctx, tenantID, nil)
+	totalProjects, err := s.projects.CountAll(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	stats := &domain.DashboardStats{TotalProjects: len(allProjects)}
+	// Bounded to the trend window (see ListForDashboard's doc comment)
+	// instead of List's entire unbounded tenant history — PLAN.md
+	// "Performance remediation". trendMonthsBack-1 months back from the
+	// current month's start is the earliest point buildProjectTrend/
+	// buildRevenueTrend can ever plot.
+	trendWindowStart := time.Date(asOf.Year(), asOf.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -(trendMonthsBack - 1), 0)
+	allProjects, err := s.projects.ListForDashboard(ctx, tenantID, trendWindowStart)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &domain.DashboardStats{TotalProjects: int(totalProjects)}
 
 	var upcoming []domain.Project
+	var openProjectIDs []int64
 	for _, p := range allProjects {
 		isOpenProject := p.Status != domain.StatusCompleted && p.Status != domain.StatusCancelled
 		if p.Status == domain.StatusPreparation || p.Status == domain.StatusReady {
@@ -54,13 +66,7 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 			upcoming = append(upcoming, p)
 		}
 		if isOpenProject {
-			progress, err := s.projects.ComputeProgress(ctx, tenantID, p.ID, asOf)
-			if err != nil {
-				return nil, err
-			}
-			if domain.IsLagging(p.PrepStartDate, p.EventDate, asOf, progress.OverallPercent) {
-				stats.LaggingProjects = append(stats.LaggingProjects, domain.LaggingProjectRow{Project: p, OverallPercent: progress.OverallPercent})
-			}
+			openProjectIDs = append(openProjectIDs, p.ID)
 		}
 	}
 	sort.Slice(upcoming, func(i, j int) bool { return upcoming[i].EventDate.Before(upcoming[j].EventDate) })
@@ -68,6 +74,24 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 		upcoming = upcoming[:5]
 	}
 	stats.UpcomingProjects = upcoming
+
+	// One batched progress computation over every open project instead of a
+	// ComputeProgress call per project inside the loop above — PLAN.md
+	// "Performance remediation".
+	progressByID, err := s.projects.ComputeProgressBatch(ctx, tenantID, openProjectIDs, asOf)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range allProjects {
+		isOpenProject := p.Status != domain.StatusCompleted && p.Status != domain.StatusCancelled
+		if !isOpenProject {
+			continue
+		}
+		progress := progressByID[p.ID]
+		if domain.IsLagging(p.PrepStartDate, p.EventDate, asOf, progress.OverallPercent) {
+			stats.LaggingProjects = append(stats.LaggingProjects, domain.LaggingProjectRow{Project: p, OverallPercent: progress.OverallPercent})
+		}
+	}
 
 	activeVendorCount, err := s.repo.CountActiveVendors(ctx, tenantID)
 	if err != nil {

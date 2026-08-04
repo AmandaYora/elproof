@@ -16,6 +16,7 @@ import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
 import type { Venue } from "@/modules/venues/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 export default function VenueListPage() {
   const venues = useVenueStore((s) => s.venuePage);
@@ -28,6 +29,7 @@ export default function VenueListPage() {
   const importVenues = useVenueStore((s) => s.importVenues);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVenue, setEditingVenue] = useState<Venue | undefined>(undefined);
@@ -36,11 +38,11 @@ export default function VenueListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query]);
+  }, [debouncedQuery]);
 
   useEffect(() => {
-    void fetchVenuePage(page, query);
-  }, [fetchVenuePage, page, query]);
+    void fetchVenuePage(page, debouncedQuery);
+  }, [fetchVenuePage, page, debouncedQuery]);
 
   function openCreateModal() {
     setEditingVenue(undefined);

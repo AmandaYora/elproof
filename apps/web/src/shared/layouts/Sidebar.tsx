@@ -109,11 +109,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="flex items-center justify-between gap-2 px-5 py-6">
           <div className="flex min-w-0 flex-col gap-0.5">
             {logoUrl ? (
-              <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-7 w-auto max-w-[160px] object-contain" />
+              <>
+                <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-7 w-auto max-w-[160px] object-contain" />
+                <span className="truncate text-[12px] font-medium text-white/55">{brandName ?? APP_NAME}</span>
+              </>
             ) : (
               <span className="truncate text-[15px] font-bold tracking-tight">{brandName ?? APP_NAME}</span>
             )}
-            <span className="text-[12px] font-medium text-white/55">WO Console</span>
           </div>
           <button
             onClick={onClose}

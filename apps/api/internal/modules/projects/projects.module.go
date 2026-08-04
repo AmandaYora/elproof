@@ -43,7 +43,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 	paymentService := application.NewPaymentService(paymentRepo, activityService)
 	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, activityService)
 	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, activityService)
-	issueService := application.NewIssueService(issueRepo, activityService)
+	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo, evidenceService)
 
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService)

@@ -13,6 +13,13 @@ import (
 
 type ProjectRepository interface {
 	List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error)
+	// CountAll backs the dashboard's TotalProjects stat.
+	CountAll(ctx context.Context, tenantID int64) (int64, error)
+	// ListForDashboard backs the dashboard's trend/near-D-day/upcoming/lagging
+	// computations — bounded to rows that could matter for any of them
+	// instead of List's entire unbounded tenant history. See the
+	// infrastructure implementation's doc comment for `since`'s exact meaning.
+	ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error)
 	ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
@@ -52,6 +59,9 @@ type VenueResolver interface {
 
 type MilestoneRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectMilestone, error)
+	// ListByProjects backs ComputeProgressBatch: every matching row across
+	// the given projects in one query (WHERE project_id IN (...)).
+	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.ProjectMilestone, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectMilestone, error)
 	Create(ctx context.Context, m *domain.ProjectMilestone) error
 	Update(ctx context.Context, m *domain.ProjectMilestone) error
@@ -132,6 +142,17 @@ func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64
 // project in the tenant (see MySQLProjectRepository.List's own doc comment).
 func (s *ProjectService) List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error) {
 	return s.repo.List(ctx, tenantID, picStaffID)
+}
+
+// CountAll backs the dashboard's TotalProjects stat.
+func (s *ProjectService) CountAll(ctx context.Context, tenantID int64) (int64, error) {
+	return s.repo.CountAll(ctx, tenantID)
+}
+
+// ListForDashboard backs every other dashboard computation — see
+// ProjectRepository.ListForDashboard's doc comment.
+func (s *ProjectService) ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error) {
+	return s.repo.ListForDashboard(ctx, tenantID, since)
 }
 
 // ListPaginated backs the real project list page — showArchived splits the
@@ -604,6 +625,121 @@ func (s *ProjectService) ComputeProgress(ctx context.Context, tenantID, projectI
 
 	progress := domain.ComputeProjectProgress(projectStats, vendorStats, openIssues, incompleteCount)
 	return &progress, nil
+}
+
+// ComputeProgressBatch computes progress for every id in projectIDs using
+// ONE query per data source (WHERE project_id IN (...)) instead of
+// ComputeProgress's ~7 queries repeated per project — see PLAN.md
+// "Performance remediation". Every project in projectIDs is assumed to
+// already belong to tenantID (callers fetch the roster themselves), so,
+// unlike ComputeProgress, this does not re-verify each id via s.Get.
+func (s *ProjectService) ComputeProgressBatch(ctx context.Context, tenantID int64, projectIDs []int64, asOf time.Time) (map[int64]domain.ProjectProgress, error) {
+	result := make(map[int64]domain.ProjectProgress, len(projectIDs))
+	if len(projectIDs) == 0 {
+		return result, nil
+	}
+
+	allMilestones, err := s.milestones.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	milestonesByProject := make(map[int64][]domain.ProjectMilestone)
+	for _, m := range allMilestones {
+		milestonesByProject[m.ProjectID] = append(milestonesByProject[m.ProjectID], m)
+	}
+
+	allEngagements, err := s.vendorEngagements.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	engagementsByProject := make(map[int64][]domain.ProjectVendor)
+	engagementIDs := make([]int64, 0, len(allEngagements))
+	for _, pv := range allEngagements {
+		engagementsByProject[pv.ProjectID] = append(engagementsByProject[pv.ProjectID], pv)
+		engagementIDs = append(engagementIDs, pv.ID)
+	}
+
+	allVendorMilestones, err := s.vendorMilestones.ListByProjectVendors(ctx, engagementIDs)
+	if err != nil {
+		return nil, err
+	}
+	vendorMilestonesByEngagement := make(map[int64][]domain.VendorMilestone)
+	for _, vm := range allVendorMilestones {
+		vendorMilestonesByEngagement[vm.ProjectVendorID] = append(vendorMilestonesByEngagement[vm.ProjectVendorID], vm)
+	}
+
+	allIssues, err := s.issues.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	issuesByProject := make(map[int64][]domain.VendorIssue)
+	for _, i := range allIssues {
+		issuesByProject[i.ProjectID] = append(issuesByProject[i.ProjectID], i)
+	}
+
+	allPayments, err := s.payments.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	paymentsByProject := make(map[int64][]domain.VendorPayment)
+	for _, p := range allPayments {
+		paymentsByProject[p.ProjectID] = append(paymentsByProject[p.ProjectID], p)
+	}
+
+	allVenuePayments, err := s.venuePayments.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	venuePaymentsByProject := make(map[int64][]domain.VenuePayment)
+	for _, p := range allVenuePayments {
+		venuePaymentsByProject[p.ProjectID] = append(venuePaymentsByProject[p.ProjectID], p)
+	}
+
+	allEvidence, err := s.evidence.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	evidenceByProject := make(map[int64][]domain.Evidence)
+	for _, e := range allEvidence {
+		evidenceByProject[e.ProjectID] = append(evidenceByProject[e.ProjectID], e)
+	}
+
+	for _, projectID := range projectIDs {
+		projectStats := domain.ComputeMilestoneStats(toMilestoneLikes(milestonesByProject[projectID]), asOf)
+
+		var vendorMilestonesForProject []domain.VendorMilestone
+		for _, pv := range engagementsByProject[projectID] {
+			vendorMilestonesForProject = append(vendorMilestonesForProject, vendorMilestonesByEngagement[pv.ID]...)
+		}
+		vendorStats := domain.ComputeMilestoneStats(toVendorMilestoneLikes(vendorMilestonesForProject), asOf)
+
+		var openIssues []domain.VendorIssue
+		for _, i := range issuesByProject[projectID] {
+			if i.Status.IsOpen() {
+				openIssues = append(openIssues, i)
+			}
+		}
+
+		evidences := evidenceByProject[projectID]
+		hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
+		incompleteCount := 0
+		for _, p := range paymentsByProject[projectID] {
+			if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof) {
+				incompleteCount++
+			}
+		}
+
+		vHasInvoice, vHasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
+		for _, p := range venuePaymentsByProject[projectID] {
+			if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, vHasInvoice, vHasProof) {
+				incompleteCount++
+			}
+		}
+
+		result[projectID] = domain.ComputeProjectProgress(projectStats, vendorStats, openIssues, incompleteCount)
+	}
+
+	return result, nil
 }
 
 func toMilestoneLikes(ms []domain.ProjectMilestone) []domain.MilestoneLike {

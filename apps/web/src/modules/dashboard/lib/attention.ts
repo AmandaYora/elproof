@@ -32,7 +32,7 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
       category: "Kendala Aktif",
       title: `Kendala ${issue.impact}: ${issue.title}`,
       description: `${issue.projectName}${vendorName(issue.vendorId) ? ` — ${vendorName(issue.vendorId)}` : ""}`,
-      to: ROUTE_PATHS.projectDetail(issue.projectId, "kendala"),
+      to: ROUTE_PATHS.projectDetail(issue.projectId, "vendor"),
     });
   }
 

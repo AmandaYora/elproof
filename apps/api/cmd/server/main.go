@@ -194,8 +194,8 @@ func serve(cfg config.Config) {
 	// Started only after every App internal's consumer is registered above —
 	// a sweep tick may need to dispatch to one right away. Runs for the
 	// lifetime of the process; no separate shutdown signal exists anywhere
-	// else in this server either (see log.Fatal(http.ListenAndServe(...))
-	// below), so this goroutine simply ends when the process does.
+	// else in this server either (see server.ListenAndServe() below), so this
+	// goroutine simply ends when the process does.
 	paymentModule.StartReconciler(context.Background(), cfg.PaymentReconcileInterval)
 
 	paymentModule.RegisterRoutes(mux, authed)
@@ -214,7 +214,17 @@ func serve(cfg config.Config) {
 	handler := middleware.CORS(cfg.AppEnv == "development")(mux)
 
 	log.Printf("%s api listening on :%s (%s)", cfg.AppName, cfg.AppPort, cfg.AppEnv)
-	log.Fatal(http.ListenAndServe(":"+cfg.AppPort, handler))
+	server := &http.Server{
+		Addr:    ":" + cfg.AppPort,
+		Handler: handler,
+		// WriteTimeout is looser than ReadTimeout so it doesn't clip legitimate
+		// large evidence-upload responses.
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	log.Fatal(server.ListenAndServe())
 }
 
 // spaFileServer serves static assets from root, falling back to

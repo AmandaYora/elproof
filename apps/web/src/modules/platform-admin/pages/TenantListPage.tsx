@@ -24,6 +24,7 @@ import type { ActivateSubscriptionFormValues } from "@/modules/platform-admin/sc
 import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 const STATUS_FILTERS: TenantSubscriptionStatus[] = ["active", "expiring_soon", "expired", "pending_payment"];
 
@@ -45,6 +46,7 @@ export default function TenantListPage() {
   const activateTenantSubscription = usePlatformAdminStore((s) => s.activateTenantSubscription);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [statusFilter, setStatusFilter] = useState<string>("Semua");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -61,14 +63,14 @@ export default function TenantListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, statusFilter]);
+  }, [debouncedQuery, statusFilter]);
 
   useEffect(() => {
-    void fetchTenantPage(page, query, statusFilter === "Semua" ? "" : statusFilter);
-  }, [fetchTenantPage, page, query, statusFilter]);
+    void fetchTenantPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter);
+  }, [fetchTenantPage, page, debouncedQuery, statusFilter]);
 
   function refetch() {
-    return fetchTenantPage(page, query, statusFilter === "Semua" ? "" : statusFilter);
+    return fetchTenantPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter);
   }
 
   function planName(planId: string | null) {

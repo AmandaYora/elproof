@@ -117,6 +117,10 @@ func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Conte
 	return list, rows.Err()
 }
 
+// ListPaymentCandidates excludes Cancelled projects (PLAN.md "Performance
+// remediation" Phase D) -- a cancelled project's missing evidence is never
+// actionable, so it shouldn't cost a row here or an evidence lookup in the
+// caller's cross-reference pass.
 func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardPaymentRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT vp.id, vp.project_id, vp.project_vendor_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number,
@@ -124,7 +128,7 @@ func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, te
 		FROM vendor_payments vp
 		JOIN projects p ON p.id = vp.project_id
 		JOIN project_vendors pv ON pv.id = vp.project_vendor_id
-		WHERE p.tenant_id = ?
+		WHERE p.tenant_id = ? AND p.status != 'Cancelled'
 		ORDER BY vp.payment_date DESC, vp.id DESC`,
 		tenantID,
 	)
@@ -150,12 +154,14 @@ func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, te
 	return list, rows.Err()
 }
 
+// ListVenuePaymentCandidates excludes Cancelled projects for the same reason
+// ListPaymentCandidates does — see its doc comment.
 func (r *MySQLDashboardRepository) ListVenuePaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardVenuePaymentRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT vp.id, vp.project_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number, vp.notes, p.name
 		FROM venue_payments vp
 		JOIN projects p ON p.id = vp.project_id
-		WHERE p.tenant_id = ?
+		WHERE p.tenant_id = ? AND p.status != 'Cancelled'
 		ORDER BY vp.payment_date DESC, vp.id DESC`,
 		tenantID,
 	)

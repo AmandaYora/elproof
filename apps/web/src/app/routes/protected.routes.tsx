@@ -15,7 +15,6 @@ const ProjectPaymentsTabPage = lazy(() => import("@/modules/projects/pages/tabs/
 const PembayaranClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranClientTabPage"));
 const PembayaranVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVendorTabPage"));
 const PembayaranVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVenueTabPage"));
-const ProjectIssuesTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectIssuesTabPage"));
 const ProjectEvidenceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectEvidenceTabPage"));
 const ProjectActivityTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectActivityTabPage"));
 const ProjectVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectVenueTabPage"));
@@ -55,7 +54,6 @@ export const protectedRoutes: RouteObject = {
                 { path: "venue", element: <PembayaranVenueTabPage /> },
               ],
             },
-            { path: "kendala", element: <ProjectIssuesTabPage /> },
             { path: "dokumen", element: <ProjectEvidenceTabPage /> },
             { path: "aktivitas", element: <ProjectActivityTabPage /> },
             { path: "venue", element: <ProjectVenueTabPage /> },

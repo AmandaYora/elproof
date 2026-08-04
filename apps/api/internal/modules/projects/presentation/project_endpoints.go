@@ -31,9 +31,10 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims st
 			writeAppError(w, err)
 			return
 		}
-		result := make([]projectResponse, 0, len(projects))
-		for _, p := range projects {
-			result = append(result, toProjectResponse(p))
+		result, err := h.toProjectResponsesWithProgress(r, claims.tenantID, projects)
+		if err != nil {
+			writeAppError(w, err)
+			return
 		}
 		response.OK(w, "ok", result)
 		return
@@ -47,11 +48,39 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims st
 		writeAppError(w, err)
 		return
 	}
-	result := make([]projectResponse, 0, len(projects))
-	for _, p := range projects {
-		result = append(result, toProjectResponse(p))
+	result, err := h.toProjectResponsesWithProgress(r, claims.tenantID, projects)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
 	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+}
+
+// toProjectResponsesWithProgress sets `.Progress` on every returned row using
+// one ComputeProgressBatch call over exactly this page's project ids —
+// PLAN.md "Performance remediation": the list endpoint now returns
+// progress-complete rows in one round trip (the same contract shape GET
+// /projects/{id} already has), instead of the frontend enriching each row
+// with its own GET /projects/{id} call.
+func (h *Handler) toProjectResponsesWithProgress(r *http.Request, tenantID int64, projects []domain.Project) ([]projectResponse, error) {
+	ids := make([]int64, len(projects))
+	for i, p := range projects {
+		ids[i] = p.ID
+	}
+	progressByID, err := h.projects.ComputeProgressBatch(r.Context(), tenantID, ids, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]projectResponse, 0, len(projects))
+	for _, p := range projects {
+		resp := toProjectResponse(p)
+		if progress, ok := progressByID[p.ID]; ok {
+			progressResp := toProgressResponse(progress)
+			resp.Progress = &progressResp
+		}
+		result = append(result, resp)
+	}
+	return result, nil
 }
 
 type projectInputBody struct {

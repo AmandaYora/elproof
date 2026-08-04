@@ -23,6 +23,9 @@ const maxDecodedSize = 15 * 1024 * 1024
 
 type EvidenceRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error)
+	// ListByProjects backs ComputeProgressBatch: every matching row across
+	// the given projects in one query (WHERE project_id IN (...)).
+	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.Evidence, error)
 	ListByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) ([]domain.Evidence, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error)
 	Create(ctx context.Context, e *domain.Evidence) error
@@ -50,6 +53,11 @@ func NewEvidenceService(repo EvidenceRepository, storage ObjectStorage, buildKey
 
 func (s *EvidenceService) List(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
 	return s.repo.ListByProject(ctx, projectID)
+}
+
+// ListByProjects backs ComputeProgressBatch — see EvidenceRepository.
+func (s *EvidenceService) ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.Evidence, error) {
+	return s.repo.ListByProjects(ctx, projectIDs)
 }
 
 // DeleteStorageObjects best-effort deletes each evidence's file from object

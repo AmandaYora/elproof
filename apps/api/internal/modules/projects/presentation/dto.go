@@ -126,20 +126,25 @@ func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 }
 
 type projectVendorResponse struct {
-	ID               int64   `json:"id"`
-	VendorID         int64   `json:"vendorId"`
-	CategoryID       int64   `json:"categoryId"`
-	Scope            string  `json:"scope"`
-	ContractValue    int64   `json:"contractValue"`
-	PricingTier      string  `json:"pricingTier"`
-	EngagementStatus string  `json:"engagementStatus"`
-	BookingDate      *string `json:"bookingDate"`
-	EventDate        string  `json:"eventDate"`
-	DPAmount         int64   `json:"dpAmount"`
-	PaidAmount       int64   `json:"paidAmount"`
-	DueDate          *string `json:"dueDate"`
-	PICStaffID       int64   `json:"picStaffId"`
-	Notes            string  `json:"notes"`
+	ID               int64                     `json:"id"`
+	VendorID         int64                     `json:"vendorId"`
+	CategoryID       int64                     `json:"categoryId"`
+	Scope            string                    `json:"scope"`
+	ContractValue    int64                     `json:"contractValue"`
+	PricingTier      string                    `json:"pricingTier"`
+	EngagementStatus string                    `json:"engagementStatus"`
+	BookingDate      *string                   `json:"bookingDate"`
+	EventDate        string                    `json:"eventDate"`
+	DPAmount         int64                     `json:"dpAmount"`
+	PaidAmount       int64                     `json:"paidAmount"`
+	DueDate          *string                   `json:"dueDate"`
+	PICStaffID       int64                     `json:"picStaffId"`
+	Notes            string                    `json:"notes"`
+	// Milestones is only populated by listVendorEngagements (PLAN.md
+	// "Performance remediation" Phase E) — omitted (nil) from
+	// create/update/cancel responses, which have no batch to draw from and
+	// whose callers already re-fetch the vendor section afterward anyway.
+	Milestones []vendorMilestoneResponse `json:"milestones,omitempty"`
 }
 
 // toProjectVendorResponse takes paidAmount explicitly rather than reading it
@@ -244,8 +249,12 @@ func toVenuePaymentResponse(p domain.VenuePayment, evidenceComplete bool) venueP
 }
 
 type issueResponse struct {
-	ID                   int64   `json:"id"`
-	ProjectVendorID      int64   `json:"projectVendorId"`
+	ID              int64 `json:"id"`
+	ProjectVendorID int64 `json:"projectVendorId"`
+	// VendorMilestoneID is null when the kendala is general to the vendor
+	// engagement, not tied to one specific deliverable (PLAN.md "Retire the
+	// standalone Kendala tab").
+	VendorMilestoneID    *int64  `json:"vendorMilestoneId"`
 	Title                string  `json:"title"`
 	Description          string  `json:"description"`
 	Impact               string  `json:"impact"`
@@ -260,7 +269,7 @@ type issueResponse struct {
 
 func toIssueResponse(i domain.VendorIssue) issueResponse {
 	return issueResponse{
-		ID: i.ID, ProjectVendorID: i.ProjectVendorID, Title: i.Title, Description: i.Description,
+		ID: i.ID, ProjectVendorID: i.ProjectVendorID, VendorMilestoneID: i.VendorMilestoneID, Title: i.Title, Description: i.Description,
 		Impact: string(i.Impact), FoundDate: i.FoundDate.Format(dateLayout), Status: string(i.Status),
 		ResolutionPlan: i.ResolutionPlan, PICStaffID: i.PICStaffID,
 		TargetResolutionDate: formatDatePtr(i.TargetResolutionDate), ResolvedDate: formatDatePtr(i.ResolvedDate),

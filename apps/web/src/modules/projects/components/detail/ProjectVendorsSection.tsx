@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, Pencil, FileWarning, Ban, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -12,7 +12,6 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import {
   EngagementStatusBadge,
   IssueImpactBadge,
-  IssueStatusBadge,
 } from "@/modules/projects/components/StatusBadges";
 import { ProjectVendorFormModal } from "@/modules/projects/components/ProjectVendorFormModal";
 import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project-vendor.schema";
@@ -24,13 +23,16 @@ import {
   type MilestoneHistoryEntry,
   type NewEvidenceMeta,
 } from "@/modules/projects/components/detail/VendorMilestoneEditModal";
-import { useProjectStore, type VendorMilestoneUpdateFields } from "@/modules/projects/stores/useProjectStore";
+import { IssueFormModal } from "@/modules/projects/components/IssueFormModal";
+import { ISSUE_STATUS_OPTIONS } from "@/modules/projects/schemas/issue.schema";
+import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
+import { useProjectStore, toIssueUpdateFields, type VendorMilestoneUpdateFields } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { getMilestoneEvidenceCompleteness, todayISO } from "@/modules/projects/lib/dates";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
-import type { ProjectVendor, VendorMilestone, VendorPayment, VendorIssue, MilestoneStatus } from "@/modules/projects/types";
+import type { ProjectVendor, VendorMilestone, VendorPayment, VendorIssue, MilestoneStatus, IssueStatus } from "@/modules/projects/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { cn } from "@/shared/lib/cn";
@@ -73,6 +75,8 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   const createVendorMilestone = useProjectStore((s) => s.createVendorMilestone);
   const updateVendorMilestone = useProjectStore((s) => s.updateVendorMilestone);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
+  const createIssue = useProjectStore((s) => s.createIssue);
+  const updateIssue = useProjectStore((s) => s.updateIssue);
 
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
@@ -86,6 +90,12 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<ProjectVendor | null>(null);
   const [editingMilestone, setEditingMilestone] = useState<{ milestone: VendorMilestone; vendorName: string; total: number } | null>(null);
   const [addMilestoneFor, setAddMilestoneFor] = useState<{ projectVendorId: string; vendorName: string } | null>(null);
+  const [issueModal, setIssueModal] = useState<{
+    mode: "create" | "edit";
+    issueId?: string;
+    milestoneLocked: boolean;
+    initialValues: IssueFormValues;
+  } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -210,6 +220,71 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
     });
   }
 
+  function defaultIssueValues(projectVendorId: string, vendorMilestoneId: string): IssueFormValues {
+    return {
+      projectVendorId,
+      vendorMilestoneId,
+      title: "",
+      description: "",
+      impact: "Low",
+      foundDate: todayISO(),
+      resolutionPlan: "",
+      picStaffId: staff[0]?.id ?? "",
+      targetResolutionDate: "",
+      status: "Open",
+    };
+  }
+
+  function openAddIssue(pv: ProjectVendor, milestone?: VendorMilestone) {
+    setIssueModal({
+      mode: "create",
+      milestoneLocked: Boolean(milestone),
+      initialValues: defaultIssueValues(pv.id, milestone?.id ?? ""),
+    });
+  }
+
+  function openEditIssue(issue: VendorIssue) {
+    setIssueModal({ mode: "edit", issueId: issue.id, milestoneLocked: false, initialValues: toIssueUpdateFields(issue) });
+  }
+
+  async function handleIssueSubmit(values: IssueFormValues) {
+    if (!issueModal) return;
+    setActionError(null);
+    try {
+      if (issueModal.mode === "edit" && issueModal.issueId) {
+        await updateIssue(projectId, issueModal.issueId, values);
+      } else {
+        await createIssue(projectId, values);
+      }
+      setIssueModal(null);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menyimpan kendala"));
+    }
+  }
+
+  async function quickIssueStatusChange(issue: VendorIssue, status: IssueStatus) {
+    setActionError(null);
+    try {
+      await updateIssue(projectId, issue.id, { ...toIssueUpdateFields(issue), status });
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal memperbarui status kendala"));
+    }
+  }
+
+  const rows = useMemo(
+    () =>
+      sortVendorsForDisplay(vendorEngagements).map((pv) => ({
+        pv,
+        vendorName: vendors.find((v) => v.id === pv.vendorId)?.name ?? "Vendor tidak dikenal",
+        categoryName: categories.find((c) => c.id === pv.categoryId)?.name ?? "-",
+        picName: staff.find((s) => s.id === pv.picStaffId)?.name ?? "-",
+        milestones: vendorMilestones.filter((m) => m.projectVendorId === pv.id),
+        payments: payments.filter((p) => p.projectVendorId === pv.id),
+        issues: issues.filter((i) => i.projectVendorId === pv.id),
+      })),
+    [vendorEngagements, vendors, categories, staff, vendorMilestones, payments, issues]
+  );
+
   function historyFor(milestoneId: string): MilestoneHistoryEntry[] {
     return activity
       .filter((a) => a.entityType === "vendor_milestone" && a.entityId === milestoneId)
@@ -240,31 +315,31 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
             <EmptyState title="Belum ada vendor" description="Tambahkan vendor yang terlibat pada project ini." />
           ) : (
             <ul className="divide-y divide-border-light">
-              {sortVendorsForDisplay(vendorEngagements).map((pv) => {
-                const vendor = vendors.find((v) => v.id === pv.vendorId) ?? null;
-                return (
-                  <VendorAccordionRow
-                    key={pv.id}
-                    pv={pv}
-                    vendorName={vendor?.name ?? "Vendor tidak dikenal"}
-                    categoryName={categories.find((c) => c.id === pv.categoryId)?.name ?? "-"}
-                    picName={staff.find((s) => s.id === pv.picStaffId)?.name ?? "-"}
-                    milestones={vendorMilestones.filter((m) => m.projectVendorId === pv.id)}
-                    payments={payments.filter((p) => p.projectVendorId === pv.id)}
-                    issues={issues.filter((i) => i.projectVendorId === pv.id)}
-                    isOpen={expanded.has(pv.id)}
-                    onToggle={() => toggle(pv.id)}
-                    onEditVendor={() => setEditing(pv)}
-                    onQuickStatusChange={(m, status) => void quickStatusChange(m, status)}
-                    onEditMilestone={(m, vendorNameLabel, total) => setEditingMilestone({ milestone: m, vendorName: vendorNameLabel, total })}
-                    onAddMilestone={() => setAddMilestoneFor({ projectVendorId: pv.id, vendorName: vendor?.name ?? "Vendor" })}
-                    onToggleCancelMilestone={(m) => void toggleVendorMilestoneCancelled(m)}
-                    onCancelVendor={() => void handleCancelVendor(pv.id)}
-                    hasEvidence={(m) => evidenceFor(m).length > 0}
-                    evidenceComplete={(m) => getMilestoneEvidenceCompleteness(m.name, evidenceFor(m))}
-                  />
-                );
-              })}
+              {rows.map(({ pv, vendorName, categoryName, picName, milestones, payments: pvPayments, issues: pvIssues }) => (
+                <VendorAccordionRow
+                  key={pv.id}
+                  pv={pv}
+                  vendorName={vendorName}
+                  categoryName={categoryName}
+                  picName={picName}
+                  milestones={milestones}
+                  payments={pvPayments}
+                  issues={pvIssues}
+                  isOpen={expanded.has(pv.id)}
+                  onToggle={() => toggle(pv.id)}
+                  onEditVendor={() => setEditing(pv)}
+                  onQuickStatusChange={(m, status) => void quickStatusChange(m, status)}
+                  onEditMilestone={(m, vendorNameLabel, total) => setEditingMilestone({ milestone: m, vendorName: vendorNameLabel, total })}
+                  onAddMilestone={() => setAddMilestoneFor({ projectVendorId: pv.id, vendorName })}
+                  onToggleCancelMilestone={(m) => void toggleVendorMilestoneCancelled(m)}
+                  onCancelVendor={() => void handleCancelVendor(pv.id)}
+                  hasEvidence={(m) => evidenceFor(m).length > 0}
+                  evidenceComplete={(m) => getMilestoneEvidenceCompleteness(m.name, evidenceFor(m))}
+                  onAddIssue={(m) => openAddIssue(pv, m)}
+                  onEditIssue={(issue) => openEditIssue(issue)}
+                  onIssueStatusChange={(issue, status) => void quickIssueStatusChange(issue, status)}
+                />
+              ))}
             </ul>
           )}
         </CardContent>
@@ -300,6 +375,20 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
           vendorName={addMilestoneFor.vendorName}
         />
       )}
+      {issueModal && (
+        <IssueFormModal
+          open={Boolean(issueModal)}
+          onClose={() => setIssueModal(null)}
+          onSubmit={(values) => void handleIssueSubmit(values)}
+          initialValues={issueModal.initialValues}
+          mode={issueModal.mode}
+          milestoneLocked={issueModal.milestoneLocked}
+          vendorEngagements={vendorEngagements}
+          vendors={vendors}
+          vendorMilestones={vendorMilestones}
+          staff={staff}
+        />
+      )}
     </div>
   );
 }
@@ -322,6 +411,9 @@ interface VendorAccordionRowProps {
   onCancelVendor: () => void;
   hasEvidence: (milestone: VendorMilestone) => boolean;
   evidenceComplete: (milestone: VendorMilestone) => { requiresEvidence: boolean; complete: boolean };
+  onAddIssue: (milestone?: VendorMilestone) => void;
+  onEditIssue: (issue: VendorIssue) => void;
+  onIssueStatusChange: (issue: VendorIssue, status: IssueStatus) => void;
 }
 
 function VendorAccordionRow({
@@ -340,6 +432,9 @@ function VendorAccordionRow({
   onAddMilestone,
   onToggleCancelMilestone,
   onCancelVendor,
+  onAddIssue,
+  onEditIssue,
+  onIssueStatusChange,
   hasEvidence,
   evidenceComplete,
 }: VendorAccordionRowProps) {
@@ -348,6 +443,10 @@ function VendorAccordionRow({
   const sortedMilestones = sortVendorMilestones(milestones);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(sortedMilestones);
   const vendorCancelled = pv.engagementStatus === "Cancelled";
+
+  function openIssueCountFor(milestoneId: string) {
+    return issues.filter((i) => i.vendorMilestoneId === milestoneId && i.status !== "Resolved" && i.status !== "Closed").length;
+  }
 
   const actionIcons = (
     <>
@@ -488,10 +587,16 @@ function VendorAccordionRow({
                   {pageItems.map((m) => {
                     const evidenceCheck = evidenceComplete(m);
                     const milestoneCancelled = m.status === "Cancelled";
+                    const openIssueCount = openIssueCountFor(m.id);
                     return (
                       <tr key={m.id} className={milestoneCancelled ? "opacity-50" : undefined}>
                         <td className={cn("px-3 py-2 font-medium text-text-primary", milestoneCancelled && "line-through")}>
                           {m.order}. {m.name}
+                          {openIssueCount > 0 && (
+                            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-danger">
+                              <AlertTriangle className="h-3 w-3" /> {openIssueCount}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <Select
@@ -538,6 +643,12 @@ function VendorAccordionRow({
                                 onClick={() => onToggleCancelMilestone(m)}
                               />
                             )}
+                            <IconActionButton
+                              icon={AlertTriangle}
+                              label="Tambah Kendala"
+                              tone="info"
+                              onClick={() => onAddIssue(m)}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -569,18 +680,43 @@ function VendorAccordionRow({
               )}
             </div>
             <div className="rounded-md border border-border bg-white p-3">
-              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Kendala</p>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Kendala</p>
+                <button
+                  type="button"
+                  onClick={() => onAddIssue()}
+                  className="text-[12px] font-semibold text-navy-900 hover:underline"
+                >
+                  + Kendala
+                </button>
+              </div>
               {issues.length === 0 ? (
                 <p className="text-[13px] text-text-secondary">Tidak ada kendala tercatat.</p>
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="flex flex-col gap-2.5">
                   {issues.map((i) => (
-                    <li key={i.id} className="flex items-center justify-between gap-2 text-[13px]">
-                      <span className="truncate">{i.title}</span>
-                      <span className={cn("flex shrink-0 gap-1.5")}>
-                        <IssueImpactBadge impact={i.impact} />
-                        <IssueStatusBadge status={i.status} />
-                      </span>
+                    <li key={i.id} className="flex flex-col gap-1.5 border-b border-border-light pb-2.5 last:border-b-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="block truncate text-[13px] font-medium text-text-primary">{i.title}</span>
+                          <span className="block text-[11.5px] text-text-secondary">
+                            {milestones.find((m) => m.id === i.vendorMilestoneId)?.name ?? "Kendala Umum"}
+                          </span>
+                        </div>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          <IssueImpactBadge impact={i.impact} />
+                          <IconActionButton icon={Pencil} label="Ubah Kendala" tone="neutral" onClick={() => onEditIssue(i)} />
+                        </span>
+                      </div>
+                      <Select
+                        value={i.status}
+                        onChange={(e) => onIssueStatusChange(i, e.target.value as IssueStatus)}
+                        className="h-8 w-full text-[12.5px]"
+                      >
+                        {ISSUE_STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </Select>
                     </li>
                   ))}
                 </ul>

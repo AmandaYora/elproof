@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/utils"
 )
 
 type MySQLVendorEngagementRepository struct {
@@ -45,6 +46,31 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 
 func (r *MySQLVendorEngagementRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectVendor, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? ORDER BY id`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.ProjectVendor
+	for rows.Next() {
+		pv, err := scanProjectVendor(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *pv)
+	}
+	return list, rows.Err()
+}
+
+// ListByProjects backs ComputeProgressBatch — one query across every id in
+// projectIDs instead of one query per project (PLAN.md "Performance
+// remediation").
+func (r *MySQLVendorEngagementRepository) ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.ProjectVendor, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	query := `SELECT ` + projectVendorColumns + ` FROM project_vendors WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, id`
+	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +193,31 @@ func scanVendorMilestone(scan func(dest ...interface{}) error) (*domain.VendorMi
 
 func (r *MySQLVendorMilestoneRepository) ListByProjectVendor(ctx context.Context, projectVendorID int64) ([]domain.VendorMilestone, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+vendorMilestoneColumns+` FROM vendor_milestones WHERE project_vendor_id = ? ORDER BY sort_order`, projectVendorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.VendorMilestone
+	for rows.Next() {
+		m, err := scanVendorMilestone(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *m)
+	}
+	return list, rows.Err()
+}
+
+// ListByProjectVendors backs ComputeProgressBatch — one query across every
+// project_vendor_id in the batch instead of one query per engagement
+// (PLAN.md "Performance remediation").
+func (r *MySQLVendorMilestoneRepository) ListByProjectVendors(ctx context.Context, projectVendorIDs []int64) ([]domain.VendorMilestone, error) {
+	if len(projectVendorIDs) == 0 {
+		return nil, nil
+	}
+	query := `SELECT ` + vendorMilestoneColumns + ` FROM vendor_milestones WHERE project_vendor_id IN (` + utils.Placeholders(len(projectVendorIDs)) + `) ORDER BY project_vendor_id, sort_order`
+	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectVendorIDs)...)
 	if err != nil {
 		return nil, err
 	}

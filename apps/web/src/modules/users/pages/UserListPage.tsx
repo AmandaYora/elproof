@@ -17,8 +17,11 @@ import { UserFormModal } from "@/modules/users/components/UserFormModal";
 import { STAFF_ROLE_OPTIONS, type UserFormValues, type UserCreateFormValues } from "@/modules/users/schemas/user.schema";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { APP_NAME } from "@/shared/constants/brand";
 import type { StaffMember, StaffRole } from "@/modules/users/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 interface CredentialReveal {
   name: string;
@@ -28,6 +31,7 @@ interface CredentialReveal {
 
 export default function UserListPage() {
   const currentStaffId = useAuthStore((s) => s.currentStaffId);
+  const businessName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
   const users = useStaffStore((s) => s.staffPage);
   const meta = useStaffStore((s) => s.staffPageMeta);
   const fetchStaffPage = useStaffStore((s) => s.fetchStaffPage);
@@ -36,6 +40,7 @@ export default function UserListPage() {
   const toggleStaffActive = useStaffStore((s) => s.toggleStaffActive);
 
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query);
   const [roleFilter, setRoleFilter] = useState<"Semua" | StaffRole>("Semua");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -45,11 +50,11 @@ export default function UserListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, roleFilter]);
+  }, [debouncedQuery, roleFilter]);
 
   useEffect(() => {
-    void fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
-  }, [fetchStaffPage, page, query, roleFilter]);
+    void fetchStaffPage(page, debouncedQuery, roleFilter === "Semua" ? "" : roleFilter);
+  }, [fetchStaffPage, page, debouncedQuery, roleFilter]);
 
   function openCreateModal() {
     setEditingUser(undefined);
@@ -105,7 +110,7 @@ export default function UserListPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-text-primary">Pengguna</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola akun staff internal yang dapat mengakses WO Console.</p>
+          <p className="mt-1 text-[13px] text-text-secondary">Kelola akun staff internal yang dapat mengakses {businessName}.</p>
         </div>
         <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
           Tambah Pengguna
@@ -245,7 +250,7 @@ export default function UserListPage() {
         open={credentialReveal !== null}
         onClose={() => setCredentialReveal(null)}
         title="Pengguna Berhasil Ditambahkan"
-        description={credentialReveal ? `${credentialReveal.name} kini dapat masuk ke WO Console dengan kredensial berikut.` : undefined}
+        description={credentialReveal ? `${credentialReveal.name} kini dapat masuk ke ${businessName} dengan kredensial berikut.` : undefined}
         size="sm"
         footer={<Button onClick={() => setCredentialReveal(null)}>Selesai</Button>}
       >
