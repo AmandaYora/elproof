@@ -443,6 +443,15 @@ func (h *VenueHandler) Template(w http.ResponseWriter, r *http.Request) {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		f.SetCellValue(sheet, cell, header)
 	}
+	// Kota must be one of domain.AllowedCities (same rule Create/Update
+	// enforce via domain.IsValidCity) -- a dropdown here catches that in
+	// Excel itself, not just after uploading.
+	if err := addTemplateDropdowns(f, sheet, venueTemplateHeaders, []templateDropdown{
+		{header: "Kota", values: domain.AllowedCities},
+	}); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", `attachment; filename="template-venue.xlsx"`)

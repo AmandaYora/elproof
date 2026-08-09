@@ -473,7 +473,8 @@ var vendorTemplateHeaders = []string{
 }
 
 func (h *VendorHandler) Template(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireStaffTenant(w, r); !ok {
+	tenantID, ok := requireStaffTenant(w, r)
+	if !ok {
 		return
 	}
 	if !requireManagerRole(w, r) {
@@ -484,12 +485,34 @@ func (h *VendorHandler) Template(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	categories, err := h.categories.List(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	categoryNames := make([]string, 0, len(categories))
+	for _, c := range categories {
+		categoryNames = append(categoryNames, c.Name)
+	}
+
 	f := excelize.NewFile()
 	defer f.Close()
 	sheet := f.GetSheetName(0)
 	for i, header := range vendorTemplateHeaders {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		f.SetCellValue(sheet, cell, header)
+	}
+	// Kategori must be one of this tenant's own registered categories (an
+	// import row otherwise fails with "Kategori tidak ditemukan"); Kota must
+	// be one of domain.AllowedCities (same rule Create/Update enforce via
+	// domain.IsValidCity) -- both are dropdowns here so that's caught in
+	// Excel itself, not just after uploading.
+	if err := addTemplateDropdowns(f, sheet, vendorTemplateHeaders, []templateDropdown{
+		{header: "Kategori", values: categoryNames},
+		{header: "Kota", values: domain.AllowedCities},
+	}); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
