@@ -514,6 +514,10 @@ func (h *VendorHandler) Template(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
 		return
 	}
+	if err := styleTemplateSheet(f, sheet, vendorTemplateHeaders, []string{"Harga Akad", "Harga Akad+Resepsi"}); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", `attachment; filename="template-vendor.xlsx"`)
@@ -560,7 +564,7 @@ func parseVendorImportRow(cells []string) application.VendorImportRow {
 		if s == "" {
 			return nil
 		}
-		n, err := strconv.ParseInt(s, 10, 64)
+		n, err := strconv.ParseInt(stripThousandsSeparators(s), 10, 64)
 		if err != nil {
 			return nil
 		}

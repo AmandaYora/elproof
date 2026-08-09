@@ -452,6 +452,10 @@ func (h *VenueHandler) Template(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
 		return
 	}
+	if err := styleTemplateSheet(f, sheet, venueTemplateHeaders, []string{"Harga Sewa", "Charge"}); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", `attachment; filename="template-venue.xlsx"`)
@@ -498,7 +502,7 @@ func parseVenueImportRow(cells []string) application.VenueImportRow {
 		if s == "" {
 			return nil
 		}
-		n, err := strconv.ParseInt(s, 10, 64)
+		n, err := strconv.ParseInt(stripThousandsSeparators(s), 10, 64)
 		if err != nil {
 			return nil
 		}

@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useNavigate } from "react-router-dom";
-import { Heart, LogOut } from "lucide-react";
+import { Heart, Loader2, LogOut } from "lucide-react";
 import { TabNav } from "@/shared/components/ui/TabNav";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
@@ -35,6 +35,7 @@ export default function ClientPortalLayout() {
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
+  const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
   const [status, setStatus] = useState<"loading" | "ready" | "denied">("loading");
 
   useEffect(() => {
@@ -59,8 +60,17 @@ export default function ClientPortalLayout() {
     return <Navigate to={ROUTE_PATHS.login} replace />;
   }
 
-  if (status === "loading" || !project) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-text-secondary">Memuat...</div>;
+  if (status === "loading" || !project || !brandingHydrated) {
+    // Also waits on brandingHydrated, not just fetchMyProject -- the header
+    // below reads logoUrl/brandName and `text-navy-950` (a live
+    // --brand-navy-* CSS var) straight off useTenantBrandingStore; painting
+    // it before hydrate() resolves would show ElProof's own generic
+    // Heart-icon/navy look first, then swap to the tenant's real one.
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <Loader2 className="h-6 w-6 animate-spin text-text-secondary" />
+      </div>
+    );
   }
 
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";

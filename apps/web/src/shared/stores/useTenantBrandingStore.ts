@@ -22,6 +22,15 @@ interface TenantBrandingState {
    * "ElProof" wherever no logo is configured yet (Sidebar, ClientPortalLayout),
    * so an unbranded tenant still sees its own name, never the platform's. */
   businessName: string | null;
+  /** False from the moment a fresh session mounts (AppLayout/ClientPortalLayout)
+   * until `hydrate()` settles (match, 404, or failure) at least once. Every
+   * `bg-navy-*`/`text-navy-*` class in the app reads live off the
+   * `--brand-navy-*` CSS vars `hydrate()` overwrites — painting the chrome
+   * before that resolves shows ElProof's own navy default first, then a
+   * visible color swap once the tenant's real preset lands. Layouts hold off
+   * rendering their branded chrome while this is false (see AppLayout,
+   * ClientPortalLayout) so only the final color is ever painted. */
+  hydrated: boolean;
   /** Fetches the caller's own tenant's branding (GET /tenants/me/branding,
    * self-service — open to any staff role or client, unlike GET /tenants/me
    * which stays Owner-only) and applies it by overriding the app's brand CSS
@@ -49,6 +58,7 @@ export const useTenantBrandingStore = create<TenantBrandingState>((set, get) => 
   colorPreset: "navy",
   logoUrl: null,
   businessName: null,
+  hydrated: false,
 
   hydrate: async (consoleLabel) => {
     const token = ++hydrateToken;
@@ -68,11 +78,15 @@ export const useTenantBrandingStore = create<TenantBrandingState>((set, get) => 
       applyBrandColorPreset(colorPreset);
       applyTabIdentity(raw.businessName, logoUrl, consoleLabel);
       const previousLogoUrl = get().logoUrl;
-      set({ colorPreset, logoUrl, businessName: raw.businessName });
+      set({ colorPreset, logoUrl, businessName: raw.businessName, hydrated: true });
       if (previousLogoUrl) URL.revokeObjectURL(previousLogoUrl);
     } catch {
       // No tenant to brand (e.g. platform_admin) or a transient failure —
-      // the app keeps rendering with its default navy look.
+      // the app keeps rendering with its default navy look. Still unblocks
+      // whichever layout is waiting on `hydrated` (AppLayout/
+      // ClientPortalLayout) -- a real failure here must never hang the app
+      // on its loading screen forever.
+      if (token === hydrateToken) set({ hydrated: true });
     }
   },
 
@@ -82,6 +96,6 @@ export const useTenantBrandingStore = create<TenantBrandingState>((set, get) => 
     resetTabIdentity();
     const previousLogoUrl = get().logoUrl;
     if (previousLogoUrl) URL.revokeObjectURL(previousLogoUrl);
-    set({ colorPreset: "navy", logoUrl: null, businessName: null });
+    set({ colorPreset: "navy", logoUrl: null, businessName: null, hydrated: false });
   },
 }));
