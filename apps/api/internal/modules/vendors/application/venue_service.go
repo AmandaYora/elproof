@@ -13,6 +13,7 @@ import (
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
 
@@ -39,13 +40,19 @@ var allowedVenueAttachmentMimeTypes = map[string]bool{
 
 type VenueRepository interface {
 	List(ctx context.Context, tenantID int64) ([]domain.Venue, error)
-	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Venue, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, city string) ([]domain.Venue, int64, error)
+	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
+	ListFiltered(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Venue, error)
 	Create(ctx context.Context, venue *domain.Venue) error
 	CreateBatch(ctx context.Context, venues []domain.Venue) error
 	Update(ctx context.Context, venue *domain.Venue) error
 	SetActive(ctx context.Context, tenantID, id int64, isActive bool) error
 	UpdateAttachment(ctx context.Context, tenantID, id int64, path, mimeType *string) error
+	// Delete is a deliberate, guarded exception to this codebase's soft-state
+	// convention (PLAN.md's hard-delete plan) -- reached only via
+	// VenueService.Delete's Owner-only, informed-consent flow.
+	Delete(ctx context.Context, tenantID, id int64) error
 }
 
 // VenueObjectStorage is the narrow slice of internal/shared/storage.Client
@@ -71,8 +78,14 @@ func (s *VenueService) List(ctx context.Context, tenantID int64) ([]domain.Venue
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *VenueService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Venue, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, params, search)
+func (s *VenueService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, city string) ([]domain.Venue, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, params, search, city)
+}
+
+// Export backs "Export Excel" -- same filters as ListPaginated (so "filter
+// then export" works), unpaginated.
+func (s *VenueService) Export(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error) {
+	return s.repo.ListFiltered(ctx, tenantID, search, city)
 }
 
 func (s *VenueService) Get(ctx context.Context, tenantID, id int64) (*domain.Venue, error) {
@@ -177,6 +190,28 @@ func (s *VenueService) SetActive(ctx context.Context, tenantID, id int64, isActi
 	}
 	venue.IsActive = isActive
 	return venue, nil
+}
+
+// Delete permanently removes a venue -- an explicit, guarded exception to
+// this codebase's soft-state convention (PLAN.md's hard-delete plan).
+// Owner-only and informed-consent are enforced by the caller; this method
+// performs no reference check and never blocks. The venue's object-storage
+// attachment (if any) is deleted best-effort, after the row itself is gone,
+// mirroring ADR-0013's EvidenceService.DeleteStorageObjects.
+func (s *VenueService) Delete(ctx context.Context, tenantID, id int64) error {
+	venue, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+		return err
+	}
+	if venue.AttachmentPath != nil {
+		if err := s.storage.Delete(ctx, *venue.AttachmentPath); err != nil {
+			logger.Error("failed to delete object storage attachment %q for deleted venue %d: %v", *venue.AttachmentPath, id, err)
+		}
+	}
+	return nil
 }
 
 // --- Attachment (single slot per venue -- document or photo) ---

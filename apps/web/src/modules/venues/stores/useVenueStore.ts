@@ -6,6 +6,7 @@ import type { VenueFormValues, VenueCreateFormValues } from "@/modules/venues/sc
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
+import { toAffectedProjects, type AffectedProject, type RawDeleteImpact } from "@/shared/types/delete-impact";
 
 interface RawVenue {
   id: number;
@@ -59,7 +60,7 @@ interface VenueState {
   venuePage: Venue[];
   venuePageMeta: PaginationMeta;
   fetchVenues: () => Promise<void>;
-  fetchVenuePage: (page: number, search: string) => Promise<void>;
+  fetchVenuePage: (page: number, search: string, city: string) => Promise<void>;
   // Full staff-only record (rental price, charge, PIC contact) — used by
   // Project Detail's Venue tab once it knows which venue is attached, never
   // by Client Portal (see ADR-0016).
@@ -70,6 +71,12 @@ interface VenueState {
   uploadVenueAttachment: (id: string, file: CompressedFilePayload) => Promise<void>;
   downloadVenueTemplate: () => Promise<Blob>;
   importVenues: (file: File) => Promise<VenueImportResult>;
+  // Exports the currently filtered set (search/city) as .xlsx — same column
+  // order as the import template, plus a Status column.
+  exportVenues: (search: string, city: string) => Promise<Blob>;
+  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
+  fetchVenueDeleteImpact: (id: string) => Promise<AffectedProject[]>;
+  deleteVenue: (id: string) => Promise<void>;
 }
 
 // Backed by the `vendors` module's Venue directory (ADR-0016) — tenant-scoped.
@@ -87,8 +94,8 @@ export const useVenueStore = create<VenueState>((set, get) => ({
 
   // Backs VenueListPage's table — real server-side pagination + search,
   // separate from the `venues` full-roster cache above.
-  fetchVenuePage: async (page, search) => {
-    const res = await httpClient.get(API.venues.base, { params: { page, search: search || undefined } });
+  fetchVenuePage: async (page, search, city) => {
+    const res = await httpClient.get(API.venues.base, { params: { page, search: search || undefined, city: city || undefined } });
     set({
       venuePage: (res.data.data as RawVenue[]).map(toVenue),
       venuePageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
@@ -131,5 +138,23 @@ export const useVenueStore = create<VenueState>((set, get) => ({
     const compressed = await compressFileForUpload(file);
     const res = await httpClient.post(API.venues.import, { base64Data: compressed.base64Data });
     return toVenueImportResult(res.data.data as RawVenueImportResult);
+  },
+
+  exportVenues: async (search, city) => {
+    const res = await httpClient.get(API.venues.export, {
+      params: { search: search || undefined, city: city || undefined },
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
+
+  fetchVenueDeleteImpact: async (id) => {
+    const res = await httpClient.get(API.venues.deleteImpact(id));
+    return toAffectedProjects(res.data.data as RawDeleteImpact);
+  },
+
+  deleteVenue: async (id) => {
+    await httpClient.delete(API.venues.item(id));
+    await get().fetchVenues();
   },
 }));

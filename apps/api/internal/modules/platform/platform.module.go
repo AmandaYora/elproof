@@ -22,9 +22,10 @@ import (
 )
 
 type Module struct {
-	tenantHandler *presentation.TenantHandler
-	adminHandler  *presentation.PlatformAdminHandler
-	tenantService *application.TenantService
+	tenantHandler      *presentation.TenantHandler
+	adminHandler       *presentation.PlatformAdminHandler
+	loginSlidesHandler *presentation.LoginSlidesHandler
+	tenantService      *application.TenantService
 }
 
 func NewModule(
@@ -45,9 +46,10 @@ func NewModule(
 	adminService := application.NewPlatformAdminService(adminRepo, identity)
 
 	return &Module{
-		tenantHandler: presentation.NewTenantHandler(tenantService),
-		adminHandler:  presentation.NewPlatformAdminHandler(adminService),
-		tenantService: tenantService,
+		tenantHandler:      presentation.NewTenantHandler(tenantService),
+		adminHandler:       presentation.NewPlatformAdminHandler(adminService),
+		loginSlidesHandler: presentation.NewLoginSlidesHandler(storageClient),
+		tenantService:      tenantService,
 	}
 }
 
@@ -81,6 +83,8 @@ func (m *Module) ApplyWebhookEvent(ctx context.Context, orderRef string, event p
 func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/public/branding", httpx.Method(http.MethodGet, m.tenantHandler.PublicBranding))
 	mux.Handle("/api/v1/public/logo", httpx.Method(http.MethodGet, m.tenantHandler.PublicLogo))
+	mux.Handle("/api/v1/public/login-slides", httpx.Method(http.MethodGet, m.loginSlidesHandler.List))
+	mux.Handle("/api/v1/public/login-slides/", httpx.Method(http.MethodGet, m.loginSlidesHandler.Slide))
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {

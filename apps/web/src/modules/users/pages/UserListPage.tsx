@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, UserCheck, UserX, KeyRound } from "lucide-react";
+import { Plus, Pencil, UserCheck, UserX, KeyRound, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -22,6 +22,7 @@ import { APP_NAME } from "@/shared/constants/brand";
 import type { StaffMember, StaffRole } from "@/modules/users/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import type { AffectedProject } from "@/shared/types/delete-impact";
 
 interface CredentialReveal {
   name: string;
@@ -38,6 +39,8 @@ export default function UserListPage() {
   const createStaff = useStaffStore((s) => s.createStaff);
   const updateStaff = useStaffStore((s) => s.updateStaff);
   const toggleStaffActive = useStaffStore((s) => s.toggleStaffActive);
+  const fetchStaffDeleteImpact = useStaffStore((s) => s.fetchStaffDeleteImpact);
+  const deleteStaff = useStaffStore((s) => s.deleteStaff);
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
@@ -47,6 +50,10 @@ export default function UserListPage() {
   const [editingUser, setEditingUser] = useState<StaffMember | undefined>(undefined);
   const [credentialReveal, setCredentialReveal] = useState<CredentialReveal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setPage(1);
@@ -102,6 +109,42 @@ export default function UserListPage() {
       await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status pengguna"));
+    }
+  }
+
+  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
+  // The Owner row never reaches this (no "Hapus Permanen" button is ever
+  // rendered for it, matching the backend's absolute, non-skippable rule).
+  async function openDeleteConfirm(user: StaffMember) {
+    setDeleteTarget(user);
+    setDeleteImpact(null);
+    setImpactLoading(true);
+    try {
+      setDeleteImpact(await fetchStaffDeleteImpact(user.id));
+    } catch {
+      setDeleteImpact([]);
+    } finally {
+      setImpactLoading(false);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteStaff(deleteTarget.id);
+      closeDeleteConfirm();
+      await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus pengguna"));
+      closeDeleteConfirm();
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -173,6 +216,9 @@ export default function UserListPage() {
                       ) : (
                         <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
                       ))}
+                      {!isOwner && (
+                        <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(user)} />
+                      )}
                     </div>
                   )}
                 </>
@@ -223,6 +269,9 @@ export default function UserListPage() {
                         ) : (
                           <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
                         ))}
+                        {!isOwner && (
+                          <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(user)} />
+                        )}
                       </div>
                     )}
                   </TD>
@@ -267,6 +316,41 @@ export default function UserListPage() {
             <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
               <span className="text-text-secondary">Password</span>
               <span className="font-mono font-semibold text-text-primary">{credentialReveal.password}</span>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDeleteConfirm}
+        title={deleteTarget ? `Hapus Pengguna — ${deleteTarget.name}` : "Hapus Pengguna"}
+        size="sm"
+      >
+        {impactLoading ? (
+          <p className="text-[13px] text-text-secondary">Memeriksa penugasan...</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+              {deleteImpact && deleteImpact.length > 0 ? (
+                <span>
+                  Pengguna ini masih ditugaskan sebagai PIC pada project berikut:{" "}
+                  <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, penugasan
+                  PIC pada project tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
+                  menghapus pengguna ini secara permanen?
+                </span>
+              ) : (
+                <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+                Batal
+              </Button>
+              <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
+                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+              </Button>
             </div>
           </div>
         )}

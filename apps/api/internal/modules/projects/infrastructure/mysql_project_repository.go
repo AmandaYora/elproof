@@ -78,6 +78,70 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picSt
 	return projects, rows.Err()
 }
 
+// ListByVenueID backs the hard-delete "impact" endpoint for Venue (PLAN.md) —
+// every project this venue is currently attached to (projects.venue_id has no
+// SQL FK, cross-module by design, so this is the one place that can answer
+// "what still points at this venue").
+func (r *MySQLProjectRepository) ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name FROM projects WHERE tenant_id = ? AND venue_id = ?`, tenantID, venueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []domain.ProjectRef
+	for rows.Next() {
+		var ref domain.ProjectRef
+		if err := rows.Scan(&ref.ID, &ref.Name); err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	return refs, rows.Err()
+}
+
+// ListByStaffPIC backs the hard-delete "impact" endpoint for Staff (PLAN.md)
+// — every project this staff member is a live PIC assignment on, across the
+// four columns that represent an active "responsible person" role
+// (projects.pic_staff_id, project_vendors.pic_staff_id,
+// vendor_milestones.pic_staff_id, vendor_issues.pic_staff_id). Deliberately
+// excludes activity_log.actor_staff_id/evidence.uploaded_by_staff_id — those
+// are immutable historical audit trail, not a live assignment, so a staff
+// member who merely triggered one of those years ago must not block their
+// own deletion (see PLAN.md's reasoning). UNION already de-duplicates a
+// project referenced through more than one of the four columns.
+func (r *MySQLProjectRepository) ListByStaffPIC(ctx context.Context, tenantID, staffID int64) ([]domain.ProjectRef, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT p.id, p.name FROM projects p WHERE p.tenant_id = ? AND p.pic_staff_id = ?
+		 UNION
+		 SELECT p.id, p.name FROM project_vendors pv JOIN projects p ON p.id = pv.project_id
+		   WHERE p.tenant_id = ? AND pv.pic_staff_id = ?
+		 UNION
+		 SELECT p.id, p.name FROM vendor_milestones vm
+		   JOIN project_vendors pv ON pv.id = vm.project_vendor_id
+		   JOIN projects p ON p.id = pv.project_id
+		   WHERE p.tenant_id = ? AND vm.pic_staff_id = ?
+		 UNION
+		 SELECT p.id, p.name FROM vendor_issues vi JOIN projects p ON p.id = vi.project_id
+		   WHERE p.tenant_id = ? AND vi.pic_staff_id = ?`,
+		tenantID, staffID, tenantID, staffID, tenantID, staffID, tenantID, staffID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []domain.ProjectRef
+	for rows.Next() {
+		var ref domain.ProjectRef
+		if err := rows.Scan(&ref.ID, &ref.Name); err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	return refs, rows.Err()
+}
+
 // CountAll backs the dashboard's TotalProjects stat — a plain COUNT(*)
 // instead of loading every row just to take len() (PLAN.md "Performance
 // remediation").

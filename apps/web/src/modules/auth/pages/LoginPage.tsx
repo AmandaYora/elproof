@@ -11,6 +11,7 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { applyBrandColorPreset, resetBrandColorPreset, isBrandColorPresetKey } from "@/theme/brandPresets";
 import { applyTabIdentity, resetTabIdentity } from "@/theme/tabIdentity";
+import { LoginPhotoSlider } from "@/modules/auth/components/LoginPhotoSlider";
 
 interface DomainBranding {
   businessName: string;
@@ -32,8 +33,6 @@ const PANEL_CLASSES = {
   neutral: "bg-gradient-to-br from-slate-900 to-slate-800",
   branded: "bg-gradient-to-br from-navy-950 to-navy-900",
 };
-const BLUR_1_CLASSES = { neutral: "bg-slate-700/40", branded: "bg-navy-800/40" };
-const BLUR_2_CLASSES = { neutral: "bg-slate-700/30", branded: "bg-navy-800/30" };
 const ICON_BOX_CLASSES = { neutral: "bg-slate-800", branded: "bg-navy-900" };
 
 // Fetches branding for the current request's Host header (ADR-0015) — only
@@ -140,15 +139,11 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen">
       <div
-        className={`relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-center lg:px-16 ${branding ? PANEL_CLASSES.branded : PANEL_CLASSES.neutral}`}
+        className={`relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-end lg:px-16 lg:pb-16 ${branding ? PANEL_CLASSES.branded : PANEL_CLASSES.neutral}`}
       >
-        <div
-          className={`pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full blur-3xl ${branding ? BLUR_1_CLASSES.branded : BLUR_1_CLASSES.neutral}`}
-        />
-        <div
-          className={`pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full blur-3xl ${branding ? BLUR_2_CLASSES.branded : BLUR_2_CLASSES.neutral}`}
-        />
-        <div className="relative">
+        <LoginPhotoSlider />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent" />
+        <div className="relative z-10">
           <h1 className="text-[40px] font-bold leading-[1.15] text-white">
             Transparansi Persiapan Pernikahan,
             <br />

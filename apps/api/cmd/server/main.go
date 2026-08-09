@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"elproof/internal/adminseed"
+	"elproof/internal/loginslides"
 	"elproof/internal/migrator"
 	"elproof/internal/modules/billing"
 	"elproof/internal/modules/clients"
@@ -21,6 +22,7 @@ import (
 	"elproof/internal/modules/platform"
 	"elproof/internal/modules/projects"
 	"elproof/internal/modules/staff"
+	staffcontracts "elproof/internal/modules/staff/contracts"
 	"elproof/internal/modules/vendors"
 	"elproof/internal/shared/config"
 	"elproof/internal/shared/database"
@@ -28,6 +30,30 @@ import (
 	"elproof/internal/shared/response"
 	"elproof/internal/shared/storage"
 )
+
+// staffNameResolver adapts staffcontracts.Contracts to
+// projects/application.StaffNameResolver's narrow, primitive-typed
+// interface. Kept here (not in either module) to avoid an import cycle:
+// staff/application already imports projects/contracts (for its own
+// hard-delete impact-lookup bridge), so projects/application importing
+// staff/contracts back would close the loop
+// (projects/application -> staff/contracts -> staff/application ->
+// projects/contracts -> projects/application) — see
+// application.StaffNameResolver's own doc comment.
+type staffNameResolver struct {
+	contracts staffcontracts.Contracts
+}
+
+func (r staffNameResolver) GetName(ctx context.Context, tenantID, staffID int64) (string, bool, error) {
+	summary, err := r.contracts.GetSummary(ctx, tenantID, staffID)
+	if err != nil {
+		return "", false, err
+	}
+	if summary == nil {
+		return "", false, nil
+	}
+	return summary.Name, true, nil
+}
 
 // main dispatches on an optional subcommand so the one compiled binary this
 // project ships as its deploy image (see infra/docker/Dockerfile) is
@@ -40,6 +66,8 @@ import (
 //	./api migrate force <version> clear a "dirty" migration state without running SQL
 //	./api seed                   reset to the minimal clean-slate dataset
 //	./api healthcheck             exit 0/1 for Docker's HEALTHCHECK (self GET /api/v1/health)
+//	./api upload-login-slides <dir>  compress+upload the login page's fixed
+//	                                  marketing photos to object storage
 func main() {
 	cfg := config.Load()
 
@@ -53,6 +81,9 @@ func main() {
 			return
 		case "healthcheck":
 			runHealthcheck(cfg)
+			return
+		case "upload-login-slides":
+			runUploadLoginSlides(cfg, os.Args[2:])
 			return
 		}
 	}
@@ -99,6 +130,27 @@ func runSeed(cfg config.Config) {
 	if err := adminseed.Run(context.Background(), db); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// runUploadLoginSlides is a one-off, re-runnable operator command (not part
+// of serve()'s request path) — see internal/loginslides for what it does.
+func runUploadLoginSlides(cfg config.Config, args []string) {
+	if len(args) != 1 {
+		log.Fatal("usage: api upload-login-slides <source-dir>")
+	}
+
+	storageClient, err := storage.New(storage.Config{
+		Endpoint: cfg.S3Endpoint, Bucket: cfg.S3Bucket,
+		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL,
+	})
+	if err != nil {
+		log.Fatalf("failed to create object storage client: %v", err)
+	}
+
+	if err := loginslides.Run(context.Background(), storageClient, args[0]); err != nil {
+		log.Fatalf("upload-login-slides: %v", err)
+	}
+	log.Println("upload-login-slides: done")
 }
 
 func runHealthcheck(cfg config.Config) {
@@ -161,12 +213,16 @@ func serve(cfg config.Config) {
 	// projects is built before vendors — vendors' "Lihat Project" resolves a
 	// vendor's cross-project engagement history through projects.Contracts()
 	// (project_vendors is owned by projects, not vendors).
-	projectsModule := projects.NewModule(db, storageClient)
+	projectsModule := projects.NewModule(db, storageClient, staffNameResolver{contracts: staffModule.Contracts()})
 	// Two-phase wiring: platform needs projects' contract (seed a newly
 	// registered tenant's Timeline Default template, PLAN.md) but
 	// platformModule is built above, before projectsModule exists — same
 	// bridging pattern as SetVendors below.
 	platformModule.SetProjects(projectsModule.Contracts())
+	// Two-phase wiring: staff needs projects' contract (hard-delete "impact"
+	// lookup, PLAN.md) but staffModule is built above, before projectsModule
+	// exists — same bridging pattern as SetProjects above.
+	staffModule.SetProjectReferenceLookup(projectsModule.Contracts())
 	vendorsModule := vendors.NewModule(db, projectsModule.Contracts(), storageClient)
 	// Two-phase wiring: platform needs vendors' contract (seed default vendor
 	// categories on tenant registration) but platformModule is built above,

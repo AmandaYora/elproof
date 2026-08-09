@@ -21,7 +21,7 @@ type Module struct {
 	projectService           *application.ProjectService
 }
 
-func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
+func NewModule(db *sql.DB, storageClient *storage.Client, staff application.StaffNameResolver) *Module {
 	projectRepo := infrastructure.NewMySQLProjectRepository(db)
 	milestoneRepo := infrastructure.NewMySQLMilestoneRepository(db)
 	milestoneTemplateRepo := infrastructure.NewMySQLMilestoneTemplateRepository(db)
@@ -37,7 +37,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client) *Module {
 
 	activityService := application.NewActivityService(activityRepo)
 	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
-	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, venuePaymentRepo, evidenceService, activityService)
+	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, venuePaymentRepo, evidenceService, activityService, staff)
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
 	paymentService := application.NewPaymentService(paymentRepo, activityService)

@@ -8,7 +8,9 @@ export const projectSchema = z.object({
   groomName: z.string().min(2, "Nama mempelai pria wajib diisi"),
   eventDate: z.string().min(1, "Tanggal acara wajib diisi"),
   venue: z.string().min(2, "Venue wajib diisi"),
-  prepStartDate: z.string().min(1, "Tanggal mulai persiapan wajib diisi"),
+  // Field name stays prepStartDate (display-text-only rename to "Tanggal
+  // Booking" — see DOMAIN_GLOSSARY.md and PLAN.md).
+  prepStartDate: z.string().min(1, "Tanggal booking wajib diisi"),
   packageName: z.string().min(2, "Paket/layanan wajib diisi"),
   contractValue: z.coerce.number().min(0, "Nilai kontrak tidak valid"),
   status: z.enum(PROJECT_STATUS_OPTIONS),

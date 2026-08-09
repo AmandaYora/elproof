@@ -8,7 +8,10 @@ export type ProjectDetailTab =
   | "dokumen"
   | "aktivitas"
   | "venue";
-export type ClientPortalTab = "ringkasan" | "vendor" | "pembayaran" | "kendala" | "venue";
+// "ringkasan" removed (PLAN.md's Client Portal restructure) — that content
+// is now the persistent header, not a tab; "timeline" added, completing
+// parity with WO Console's own tab set.
+export type ClientPortalTab = "vendor" | "pembayaran" | "kendala" | "venue" | "timeline";
 
 export const ROUTE_PATHS = {
   home: "/",
@@ -30,7 +33,7 @@ export const ROUTE_PATHS = {
   users: "/pengguna",
   subscription: "/langganan",
   milestoneTemplates: "/timeline-default",
-  portal: (tab: ClientPortalTab = "ringkasan") => `/portal/${tab}`,
+  portal: (tab: ClientPortalTab = "vendor") => `/portal/${tab}`,
   platformDashboard: "/platform/dashboard",
   platformTenants: "/platform/tenant",
   platformPlans: "/platform/paket",

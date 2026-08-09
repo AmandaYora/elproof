@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
@@ -15,14 +16,27 @@ type VendorCategoryRepository interface {
 	Create(ctx context.Context, category *domain.VendorCategory) error
 	Update(ctx context.Context, category *domain.VendorCategory) error
 	SetActive(ctx context.Context, tenantID, id int64, isActive bool) error
+	// Delete is a deliberate, guarded exception to this codebase's soft-state
+	// convention (PLAN.md's hard-delete plan) -- only ever reached after
+	// VendorCategoryService.Delete confirms zero vendors reference the row.
+	Delete(ctx context.Context, tenantID, id int64) error
+}
+
+// VendorCategoryUsageChecker is the narrow slice of VendorRepository this
+// service needs to guard hard delete -- same-module (no cross-module call
+// needed, unlike Vendor/Venue/Staff's hard delete, since vendors.category_id
+// is a real same-module SQL FK, see PLAN.md).
+type VendorCategoryUsageChecker interface {
+	CountByCategoryID(ctx context.Context, tenantID, categoryID int64) (int64, error)
 }
 
 type VendorCategoryService struct {
-	repo VendorCategoryRepository
+	repo    VendorCategoryRepository
+	vendors VendorCategoryUsageChecker
 }
 
-func NewVendorCategoryService(repo VendorCategoryRepository) *VendorCategoryService {
-	return &VendorCategoryService{repo: repo}
+func NewVendorCategoryService(repo VendorCategoryRepository, vendors VendorCategoryUsageChecker) *VendorCategoryService {
+	return &VendorCategoryService{repo: repo, vendors: vendors}
 }
 
 func (s *VendorCategoryService) List(ctx context.Context, tenantID int64) ([]domain.VendorCategory, error) {
@@ -103,6 +117,26 @@ func (s *VendorCategoryService) SeedDefaultCategories(ctx context.Context, tenan
 		}
 	}
 	return nil
+}
+
+// Delete permanently removes a vendor category -- an explicit, guarded
+// exception to this codebase's soft-state convention (PLAN.md's hard-delete
+// plan). Unlike Vendor/Venue/Staff, this is a hard BLOCK, never a
+// confirm-and-proceed dialog: vendors.category_id is a real, same-module SQL
+// FK on a NOT NULL column, so a vendor row cannot exist without a category --
+// there's no "orphaned but readable" state to let the user opt into.
+func (s *VendorCategoryService) Delete(ctx context.Context, tenantID, id int64) error {
+	if _, err := s.Get(ctx, tenantID, id); err != nil {
+		return err
+	}
+	count, err := s.vendors.CountByCategoryID(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return apperror.Conflict(fmt.Sprintf("Kategori masih digunakan oleh %d vendor dan tidak dapat dihapus. Ubah kategori pada vendor tersebut terlebih dahulu.", count))
+	}
+	return s.repo.Delete(ctx, tenantID, id)
 }
 
 func (s *VendorCategoryService) SetActive(ctx context.Context, tenantID, id int64, isActive bool) (*domain.VendorCategory, error) {

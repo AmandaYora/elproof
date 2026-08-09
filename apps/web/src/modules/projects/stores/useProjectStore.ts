@@ -84,6 +84,7 @@ export interface RawProject {
   contractValue: number;
   status: Project["status"];
   picStaffId: number;
+  picName: string;
   description: string;
   isArchived: boolean;
   progress?: RawProgress;
@@ -118,6 +119,7 @@ export function toProject(raw: RawProject): Project {
     contractValue: raw.contractValue,
     status: raw.status,
     picStaffId: String(raw.picStaffId),
+    picName: raw.picName,
     description: raw.description,
     isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,

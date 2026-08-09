@@ -61,7 +61,11 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims st
 // PLAN.md "Performance remediation": the list endpoint now returns
 // progress-complete rows in one round trip (the same contract shape GET
 // /projects/{id} already has), instead of the frontend enriching each row
-// with its own GET /projects/{id} call.
+// with its own GET /projects/{id} call. `.PICName` is deliberately left ""
+// here (unlike the single-project handlers below) -- nothing reads it off a
+// list row today (the list page resolves PIC names client-side via
+// /staff/summary instead), and resolving it per-row would reintroduce the
+// exact N+1 this batching was written to avoid.
 func (h *Handler) toProjectResponsesWithProgress(r *http.Request, tenantID int64, projects []domain.Project) ([]projectResponse, error) {
 	ids := make([]int64, len(projects))
 	for i, p := range projects {
@@ -151,7 +155,9 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims s
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Project berhasil dibuat", toProjectResponse(*p))
+	resp := toProjectResponse(*p)
+	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	response.Created(w, "Project berhasil dibuat", resp)
 }
 
 // me is the Client Portal's entry point (Fase 6) — a client principal has no
@@ -201,6 +207,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	resp := toProjectResponse(*p)
 	progressResp := toProgressResponse(*progress)
 	resp.Progress = &progressResp
+	resp.PICName = h.projects.ResolvePICName(r.Context(), tenantID, p.PICStaffID)
 	response.OK(w, "ok", resp)
 }
 
@@ -220,7 +227,9 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Project berhasil diperbarui", toProjectResponse(*p))
+	resp := toProjectResponse(*p)
+	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	response.OK(w, "Project berhasil diperbarui", resp)
 }
 
 // getProjectVenue backs GET /projects/{id}/venue (ADR-0016) -- reachable by
@@ -248,7 +257,9 @@ func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims s
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Project dibatalkan", toProjectResponse(*p))
+	resp := toProjectResponse(*p)
+	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	response.OK(w, "Project dibatalkan", resp)
 }
 
 // toggleArchiveProject is a single toggle (flips the current is_archived
@@ -265,7 +276,9 @@ func (h *Handler) toggleArchiveProject(w http.ResponseWriter, r *http.Request, c
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Status arsip project diperbarui", toProjectResponse(*p))
+	resp := toProjectResponse(*p)
+	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	response.OK(w, "Status arsip project diperbarui", resp)
 }
 
 // deleteProject is the hard-delete endpoint (ADR-0013) — Owner-only, checked
@@ -316,7 +329,9 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Project berhasil diduplikasi", toProjectResponse(*p))
+	resp := toProjectResponse(*p)
+	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	response.Created(w, "Project berhasil diduplikasi", resp)
 }
 
 // --- Project milestones ---

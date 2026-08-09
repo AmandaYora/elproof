@@ -19,12 +19,13 @@ import (
 )
 
 type VendorHandler struct {
-	vendors  *application.VendorService
-	projects projectscontracts.Contracts
+	vendors    *application.VendorService
+	categories *application.VendorCategoryService
+	projects   projectscontracts.Contracts
 }
 
-func NewVendorHandler(vendors *application.VendorService, projects projectscontracts.Contracts) *VendorHandler {
-	return &VendorHandler{vendors: vendors, projects: projects}
+func NewVendorHandler(vendors *application.VendorService, categories *application.VendorCategoryService, projects projectscontracts.Contracts) *VendorHandler {
+	return &VendorHandler{vendors: vendors, categories: categories, projects: projects}
 }
 
 type vendorResponse struct {
@@ -88,7 +89,8 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		}
 		params := pagination.FromRequest(r)
 		search := r.URL.Query().Get("search")
-		vendors, total, err := h.vendors.ListPaginated(r.Context(), tenantID, categoryID, params, search)
+		city := r.URL.Query().Get("city")
+		vendors, total, err := h.vendors.ListPaginated(r.Context(), tenantID, categoryID, params, search, city)
 		if err != nil {
 			writeAppError(w, err)
 			return
@@ -106,6 +108,105 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 	}
+}
+
+// Export streams every vendor matching the same filters Collection's list
+// view accepts (categoryId/search/city) as an .xlsx workbook, unpaginated —
+// "filter then export" (PLAN.md's Export design). Column order matches
+// vendorTemplateHeaders exactly, plus an appended Status column, so the file
+// round-trips through Import unmodified.
+func (h *VendorHandler) Export(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := requireStaffTenant(w, r)
+	if !ok {
+		return
+	}
+	if !requireManagerRole(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
+		return
+	}
+
+	var categoryID *int64
+	if raw := r.URL.Query().Get("categoryId"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "categoryId tidak valid", nil)
+			return
+		}
+		categoryID = &id
+	}
+	search := r.URL.Query().Get("search")
+	city := r.URL.Query().Get("city")
+
+	vendors, err := h.vendors.Export(r.Context(), tenantID, categoryID, search, city)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	categories, err := h.categories.List(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	categoryNames := make(map[int64]string, len(categories))
+	for _, c := range categories {
+		categoryNames[c.ID] = c.Name
+	}
+
+	f := buildVendorExportWorkbook(vendors, categoryNames)
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", `attachment; filename="vendors-export.xlsx"`)
+	if _, err := f.WriteTo(w); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas export", nil)
+	}
+}
+
+func stringPtrValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func int64PtrValue(n *int64) interface{} {
+	if n == nil {
+		return ""
+	}
+	return *n
+}
+
+func activeStatusLabel(isActive bool) string {
+	if isActive {
+		return "Aktif"
+	}
+	return "Nonaktif"
+}
+
+func buildVendorExportWorkbook(vendors []domain.Vendor, categoryNames map[int64]string) *excelize.File {
+	f := excelize.NewFile()
+	sheet := f.GetSheetName(0)
+	headers := append(append([]string{}, vendorTemplateHeaders...), "Status")
+	for i, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, cell, header)
+	}
+	for rowIdx, v := range vendors {
+		row := rowIdx + 2
+		values := []interface{}{
+			v.Name, categoryNames[v.CategoryID], v.PICName, v.Phone, stringPtrValue(v.Email),
+			stringPtrValue(v.SocialMedia), stringPtrValue(v.City), stringPtrValue(v.Address),
+			int64PtrValue(v.PriceAkad), int64PtrValue(v.PriceAkadResepsi), v.Notes,
+			activeStatusLabel(v.IsActive),
+		}
+		for i, val := range values {
+			cell, _ := excelize.CoordinatesToCellName(i+1, row)
+			f.SetCellValue(sheet, cell, val)
+		}
+	}
+	return f
 }
 
 type vendorInputBody struct {
@@ -204,9 +305,52 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 		h.uploadAttachment(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodGet:
 		h.downloadAttachment(w, r, tenantID, id)
+	case len(rest) == 1 && rest[0] == "delete-impact" && r.Method == http.MethodGet:
+		if !requireOwnerRole(w, r) {
+			return
+		}
+		h.deleteImpact(w, r, tenantID, id)
+	case len(rest) == 0 && r.Method == http.MethodDelete:
+		if !requireOwnerRole(w, r) {
+			return
+		}
+		if err := h.vendors.Delete(r.Context(), tenantID, id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Vendor berhasil dihapus", nil)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
+}
+
+type deleteImpactResponse struct {
+	AffectedProjects []deleteImpactProjectRef `json:"affectedProjects"`
+}
+
+type deleteImpactProjectRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// deleteImpact backs the hard-delete confirmation dialog (PLAN.md) -- names
+// exactly which projects would lose this vendor's data source, so the
+// frontend can show a concrete warning instead of a generic one.
+func (h *VendorHandler) deleteImpact(w http.ResponseWriter, r *http.Request, tenantID, vendorID int64) {
+	if _, err := h.vendors.Get(r.Context(), tenantID, vendorID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	refs, err := h.projects.ListAffectedProjectsForVendor(r.Context(), tenantID, vendorID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result := make([]deleteImpactProjectRef, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, deleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
+	}
+	response.OK(w, "ok", deleteImpactResponse{AffectedProjects: result})
 }
 
 type vendorProjectHistoryResponse struct {

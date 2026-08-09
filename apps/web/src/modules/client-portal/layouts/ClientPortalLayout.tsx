@@ -8,15 +8,22 @@ import { APP_NAME } from "@/shared/constants/brand";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { ClientProjectHeaderCard } from "@/modules/client-portal/components/ClientProjectHeaderCard";
 
 export interface ClientPortalContext {
   projectId: string;
 }
 
+// "Ringkasan" no longer exists as its own tab (PLAN.md's Client Portal
+// restructure) — its compact summary now lives in the persistent
+// ClientProjectHeaderCard below, always visible above these tabs; its
+// detailed milestone stepper lives in the new "Timeline" tab, completing the
+// parity with WO Console's own Vendor/Venue/Timeline/Pembayaran tab set
+// (minus Client/Aktivitas/Dokumen, which have no client-safe equivalent).
 const TABS = [
-  { to: ROUTE_PATHS.portal("ringkasan"), label: "Ringkasan" },
   { to: ROUTE_PATHS.portal("vendor"), label: "Vendor & Progress" },
   { to: ROUTE_PATHS.portal("venue"), label: "Venue" },
+  { to: ROUTE_PATHS.portal("timeline"), label: "Timeline" },
   { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran" },
   { to: ROUTE_PATHS.portal("kendala"), label: "Kendala" },
 ];
@@ -118,7 +125,8 @@ export default function ClientPortalLayout() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 relative z-10">
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10 sm:gap-8 relative z-10">
+        <ClientProjectHeaderCard projectId={project.id} />
         <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary animate-pulse">Memuat...</div>}>
           <Outlet context={{ projectId: project.id } satisfies ClientPortalContext} />
         </Suspense>

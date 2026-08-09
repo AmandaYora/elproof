@@ -59,10 +59,15 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 // Vendor tab (any role, to display a vendor's category name) both need it —
 // nothing about those two read paths is a "Pengaturan" management action, so
 // Collection's GET below deliberately stays on plain requireTenant.
+//
+// Also reused verbatim (PLAN.md's hard-delete plan) by Vendor's and Venue's
+// new Delete/delete-impact routes, which need the same Owner-only gate —
+// hence the generic message rather than one naming "kategori vendor"
+// specifically.
 func requireOwnerRole(w http.ResponseWriter, r *http.Request) bool {
 	claims, _ := middleware.FromContext(r.Context())
 	if !claims.HasRole("Owner") {
-		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat mengelola kategori vendor", nil)
+		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat melakukan aksi ini", nil)
 		return false
 	}
 	return true
@@ -176,6 +181,12 @@ func (h *VendorCategoryHandler) Item(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.OK(w, "Status kategori vendor diperbarui", toVendorCategoryResponse(*category))
+	case len(segments) == 1 && r.Method == http.MethodDelete:
+		if err := h.categories.Delete(r.Context(), tenantID, id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Kategori vendor berhasil dihapus", nil)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}

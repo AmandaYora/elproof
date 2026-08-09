@@ -31,14 +31,14 @@ func NewModule(db *sql.DB, projects projectscontracts.Contracts, storageClient *
 	vendorRepo := infrastructure.NewMySQLVendorRepository(db)
 	venueRepo := infrastructure.NewMySQLVenueRepository(db)
 
-	categoryService := application.NewVendorCategoryService(categoryRepo)
+	categoryService := application.NewVendorCategoryService(categoryRepo, vendorRepo)
 	vendorService := application.NewVendorService(vendorRepo, categoryRepo, storageClient, storage.BuildKey)
 	venueService := application.NewVenueService(venueRepo, storageClient, storage.BuildKey)
 
 	return &Module{
 		categoryHandler: presentation.NewVendorCategoryHandler(categoryService),
-		vendorHandler:   presentation.NewVendorHandler(vendorService, projects),
-		venueHandler:    presentation.NewVenueHandler(venueService),
+		vendorHandler:   presentation.NewVendorHandler(vendorService, categoryService, projects),
+		venueHandler:    presentation.NewVenueHandler(venueService, projects),
 		contracts:       vendorscontracts.New(categoryService, venueService),
 	}
 }
@@ -59,10 +59,12 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/vendors", authed(http.HandlerFunc(m.vendorHandler.Collection)))
 	mux.Handle("/api/v1/vendors/template", authed(http.HandlerFunc(m.vendorHandler.Template)))
 	mux.Handle("/api/v1/vendors/import", authed(http.HandlerFunc(m.vendorHandler.Import)))
+	mux.Handle("/api/v1/vendors/export", authed(http.HandlerFunc(m.vendorHandler.Export)))
 	mux.Handle("/api/v1/vendors/summary", authed(http.HandlerFunc(m.vendorHandler.Summary)))
 	mux.Handle("/api/v1/vendors/", authed(http.HandlerFunc(m.vendorHandler.Item)))
 	mux.Handle("/api/v1/venues", authed(http.HandlerFunc(m.venueHandler.Collection)))
 	mux.Handle("/api/v1/venues/template", authed(http.HandlerFunc(m.venueHandler.Template)))
 	mux.Handle("/api/v1/venues/import", authed(http.HandlerFunc(m.venueHandler.Import)))
+	mux.Handle("/api/v1/venues/export", authed(http.HandlerFunc(m.venueHandler.Export)))
 	mux.Handle("/api/v1/venues/", authed(http.HandlerFunc(m.venueHandler.Item)))
 }

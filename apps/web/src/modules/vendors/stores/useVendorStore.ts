@@ -6,6 +6,7 @@ import type { VendorFormValues, VendorCreateFormValues } from "@/modules/vendors
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
+import { toAffectedProjects, type AffectedProject, type RawDeleteImpact } from "@/shared/types/delete-impact";
 
 interface RawVendor {
   id: number;
@@ -79,7 +80,7 @@ interface VendorState {
   vendorPageMeta: PaginationMeta;
   vendorSummaries: VendorSummary[];
   fetchVendors: () => Promise<void>;
-  fetchVendorPage: (page: number, search: string, categoryId: string) => Promise<void>;
+  fetchVendorPage: (page: number, search: string, categoryId: string, city: string) => Promise<void>;
   // Public-safe {id, name} list — the only vendor data Client Portal is
   // allowed to fetch directly now that commercial fields exist (see
   // vendor_handler.go's Summary handler doc comment).
@@ -95,6 +96,16 @@ interface VendorState {
   uploadVendorAttachment: (id: string, file: CompressedFilePayload) => Promise<void>;
   downloadVendorTemplate: () => Promise<Blob>;
   importVendors: (file: File) => Promise<VendorImportResult>;
+  // Exports the currently filtered set (search/categoryId/city) as .xlsx —
+  // same column order as the import template, plus a Status column, so the
+  // file round-trips through Import unmodified.
+  exportVendors: (search: string, categoryId: string, city: string) => Promise<Blob>;
+  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition:
+  // fetchVendorDeleteImpact names every project that would lose this
+  // vendor's data source, for the confirmation dialog; deleteVendor performs
+  // the actual (unconditional, Owner-only) delete.
+  fetchVendorDeleteImpact: (id: string) => Promise<AffectedProject[]>;
+  deleteVendor: (id: string) => Promise<void>;
 }
 
 // Backed by the real `vendors` module (Fase 3) — tenant-scoped. Also the
@@ -114,9 +125,9 @@ export const useVendorStore = create<VendorState>((set, get) => ({
 
   // Backs VendorListPage's table — real server-side pagination + search/
   // category filtering, separate from the `vendors` full-roster cache above.
-  fetchVendorPage: async (page, search, categoryId) => {
+  fetchVendorPage: async (page, search, categoryId, city) => {
     const res = await httpClient.get(API.vendors.base, {
-      params: { page, search: search || undefined, categoryId: categoryId || undefined },
+      params: { page, search: search || undefined, categoryId: categoryId || undefined, city: city || undefined },
     });
     set({
       vendorPage: (res.data.data as RawVendor[]).map(toVendor),
@@ -165,5 +176,23 @@ export const useVendorStore = create<VendorState>((set, get) => ({
     const compressed = await compressFileForUpload(file);
     const res = await httpClient.post(API.vendors.import, { base64Data: compressed.base64Data });
     return toVendorImportResult(res.data.data as RawVendorImportResult);
+  },
+
+  exportVendors: async (search, categoryId, city) => {
+    const res = await httpClient.get(API.vendors.export, {
+      params: { search: search || undefined, categoryId: categoryId || undefined, city: city || undefined },
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
+
+  fetchVendorDeleteImpact: async (id) => {
+    const res = await httpClient.get(API.vendors.deleteImpact(id));
+    return toAffectedProjects(res.data.data as RawDeleteImpact);
+  },
+
+  deleteVendor: async (id) => {
+    await httpClient.delete(API.vendors.item(id));
+    await get().fetchVendors();
   },
 }));

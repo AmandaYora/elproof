@@ -198,9 +198,46 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.update(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
 		h.toggleActive(w, r, tenantID, id)
+	case len(segments) == 2 && segments[1] == "delete-impact" && r.Method == http.MethodGet:
+		h.deleteImpact(w, r, tenantID, id)
+	case len(segments) == 1 && r.Method == http.MethodDelete:
+		if err := h.staff.Delete(r.Context(), tenantID, id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Pengguna berhasil dihapus", nil)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
+}
+
+type staffDeleteImpactResponse struct {
+	AffectedProjects []staffDeleteImpactProjectRef `json:"affectedProjects"`
+}
+
+type staffDeleteImpactProjectRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// deleteImpact backs the hard-delete confirmation dialog (PLAN.md) -- names
+// exactly which projects still have this staff member as a live PIC
+// assignment.
+func (h *Handler) deleteImpact(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	if _, err := h.staff.Get(r.Context(), tenantID, id); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	refs, err := h.staff.ListAffectedProjects(r.Context(), tenantID, id)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result := make([]staffDeleteImpactProjectRef, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, staffDeleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
+	}
+	response.OK(w, "ok", staffDeleteImpactResponse{AffectedProjects: result})
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

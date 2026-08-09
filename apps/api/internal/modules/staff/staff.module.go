@@ -18,6 +18,7 @@ import (
 type Module struct {
 	contracts contracts.Contracts
 	handler   *presentation.Handler
+	service   *application.StaffService
 }
 
 func NewModule(db *sql.DB, identity identitycontracts.Contracts) *Module {
@@ -26,11 +27,20 @@ func NewModule(db *sql.DB, identity identitycontracts.Contracts) *Module {
 	return &Module{
 		contracts: contracts.New(service),
 		handler:   presentation.NewHandler(service),
+		service:   service,
 	}
 }
 
 func (m *Module) Contracts() contracts.Contracts {
 	return m.contracts
+}
+
+// SetProjectReferenceLookup completes the two-phase wiring described on
+// application.ProjectReferenceLookup — main.go calls this right after
+// projectsModule is built (staff is built first, so this can't be a
+// constructor argument).
+func (m *Module) SetProjectReferenceLookup(lookup application.ProjectReferenceLookup) {
+	m.service.SetProjectReferenceLookup(lookup)
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {

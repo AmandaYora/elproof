@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	identitycontracts "elproof/internal/modules/identity/contracts"
+	projectscontracts "elproof/internal/modules/projects/contracts"
 
 	"elproof/internal/modules/staff/domain"
 	"elproof/internal/shared/apperror"
@@ -24,13 +25,32 @@ type StaffRepository interface {
 	Delete(ctx context.Context, tenantID, id int64) error
 }
 
+// ProjectReferenceLookup is the narrow shape StaffService needs from
+// `projects` to check whether a staff member is still a live PIC assignment
+// anywhere -- deliberately a narrow local interface (not the whole
+// projects.Contracts), same idiom as ProjectService's own ClientCleaner/
+// VenueResolver. Bridged from main.go via SetProjectReferenceLookup --
+// needed because `staff` is built before `projects` in main.go, so `staff`
+// can't take this as a constructor argument.
+type ProjectReferenceLookup interface {
+	ListAffectedProjectsForStaff(ctx context.Context, tenantID, staffID int64) ([]projectscontracts.ProjectRef, error)
+}
+
 type StaffService struct {
 	repo     StaffRepository
 	identity identitycontracts.Contracts
+	projects ProjectReferenceLookup
 }
 
 func NewStaffService(repo StaffRepository, identity identitycontracts.Contracts) *StaffService {
 	return &StaffService{repo: repo, identity: identity}
+}
+
+// SetProjectReferenceLookup completes the two-phase wiring described on
+// ProjectReferenceLookup above. main.go calls this right after projectsModule
+// is built.
+func (s *StaffService) SetProjectReferenceLookup(lookup ProjectReferenceLookup) {
+	s.projects = lookup
 }
 
 // CreateOwner is called by `platform`'s tenant-registration orchestration —
@@ -170,6 +190,42 @@ func (s *StaffService) SetActive(ctx context.Context, tenantID, id int64, isActi
 	}
 	member.IsActive = isActive
 	return member, nil
+}
+
+// ListAffectedProjects backs the hard-delete confirmation dialog (PLAN.md) --
+// every project this staff member is a live PIC assignment on. Returns
+// (nil, nil) if the two-phase SetProjectReferenceLookup bridge hasn't been
+// wired yet (should never happen once main.go finishes constructing every
+// module, but avoids a nil-pointer panic if this is ever called before that).
+func (s *StaffService) ListAffectedProjects(ctx context.Context, tenantID, id int64) ([]projectscontracts.ProjectRef, error) {
+	if s.projects == nil {
+		return nil, nil
+	}
+	return s.projects.ListAffectedProjectsForStaff(ctx, tenantID, id)
+}
+
+// Delete permanently removes a staff member -- an explicit, guarded exception
+// to this codebase's soft-state convention (PLAN.md's hard-delete plan).
+// Unlike Vendor/Venue, this carries one absolute, non-skippable rule that is
+// NOT about orphaning and is NOT part of the confirm-and-proceed dialog: the
+// tenant's Owner account can never be hard-deleted (a tenant losing its only
+// Owner is a structural break, not a "some data goes stale" tradeoff a user
+// can knowingly accept). Every other role is deletable directly, informed by
+// ListAffectedProjects, mirroring Vendor/Venue's Owner-only, no-precondition
+// design. The identity credential is deactivated best-effort before the row
+// itself is removed, same pattern as clients.ClientService.Delete.
+func (s *StaffService) Delete(ctx context.Context, tenantID, id int64) error {
+	member, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if member.Role == domain.RoleOwner {
+		return apperror.Forbidden("Akun Owner tidak dapat dihapus")
+	}
+	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(member.ID, 10), false); err != nil {
+		logger.Error("failed to deactivate credential for staff %d before delete: %v", member.ID, err)
+	}
+	return s.repo.Delete(ctx, tenantID, id)
 }
 
 // computeInitials mirrors the frontend's own initials-from-name convention

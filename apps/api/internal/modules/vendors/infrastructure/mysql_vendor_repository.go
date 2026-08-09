@@ -80,7 +80,7 @@ func (r *MySQLVendorRepository) List(ctx context.Context, tenantID int64, catego
 // ListPaginated backs the real `GET /vendors` list page — List above stays
 // as-is for the vendor-picker dropdowns and the bulk import's prefetch, both
 // of which need the full roster in one call.
-func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search string) ([]domain.Vendor, int64, error) {
+func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search, city string) ([]domain.Vendor, int64, error) {
 	countQuery := `SELECT COUNT(*) FROM vendors WHERE tenant_id = ?`
 	listQuery := `SELECT ` + vendorColumns + ` FROM vendors WHERE tenant_id = ?`
 	args := []interface{}{tenantID}
@@ -94,6 +94,11 @@ func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int6
 		listQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
 		like := "%" + search + "%"
 		args = append(args, like, like, like)
+	}
+	if city != "" {
+		countQuery += ` AND city = ?`
+		listQuery += ` AND city = ?`
+		args = append(args, city)
 	}
 
 	var total int64
@@ -117,6 +122,55 @@ func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int6
 		vendors = append(vendors, *v)
 	}
 	return vendors, total, rows.Err()
+}
+
+// ListFiltered backs Export -- the same category/search/city filters as
+// ListPaginated, but unpaginated (Export always returns the whole matching
+// set, per PLAN.md's Export design).
+func (r *MySQLVendorRepository) ListFiltered(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error) {
+	query := `SELECT ` + vendorColumns + ` FROM vendors WHERE tenant_id = ?`
+	args := []interface{}{tenantID}
+	if categoryID != nil {
+		query += ` AND category_id = ?`
+		args = append(args, *categoryID)
+	}
+	if search != "" {
+		query += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
+		like := "%" + search + "%"
+		args = append(args, like, like, like)
+	}
+	if city != "" {
+		query += ` AND city = ?`
+		args = append(args, city)
+	}
+	query += ` ORDER BY id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var vendors []domain.Vendor
+	for rows.Next() {
+		v, err := scanVendor(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		vendors = append(vendors, *v)
+	}
+	return vendors, rows.Err()
+}
+
+// CountByCategoryID backs Vendor Category's hard-delete guard (PLAN.md) --
+// `vendors.category_id` is a real same-module SQL FK (RESTRICT by default,
+// NOT NULL column), so a category still assigned to any vendor can never be
+// hard-deleted; this turns that into a friendly count-based message instead
+// of a raw FK-violation error.
+func (r *MySQLVendorRepository) CountByCategoryID(ctx context.Context, tenantID, categoryID int64) (int64, error) {
+	var count int64
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vendors WHERE tenant_id = ? AND category_id = ?`, tenantID, categoryID).Scan(&count)
+	return count, err
 }
 
 func (r *MySQLVendorRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Vendor, error) {
@@ -183,5 +237,17 @@ func (r *MySQLVendorRepository) SetActive(ctx context.Context, tenantID, id int6
 
 func (r *MySQLVendorRepository) UpdateAttachment(ctx context.Context, tenantID, id int64, path, mimeType *string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE vendors SET attachment_path = ?, attachment_mime_type = ? WHERE tenant_id = ? AND id = ?`, path, mimeType, tenantID, id)
+	return err
+}
+
+// Delete permanently removes a vendor -- a deliberate, guarded exception to
+// this codebase's soft-state convention (PLAN.md's hard-delete plan:
+// informed-consent, not a blocking precondition). Never touches
+// project_vendors or any other row that might reference this vendor --
+// those are cross-module, no SQL FK, and are left to degrade gracefully via
+// the frontend's existing "Vendor tidak dikenal" fallback, exactly the
+// tradeoff the confirmation dialog exists to make explicit.
+func (r *MySQLVendorRepository) Delete(ctx context.Context, tenantID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM vendors WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }

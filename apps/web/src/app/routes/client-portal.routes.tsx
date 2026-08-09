@@ -3,12 +3,16 @@ import { Navigate, type RouteObject } from "react-router-dom";
 import { RequireAuth } from "@/shared/components/RequireAuth";
 
 const ClientPortalLayout = lazy(() => import("@/modules/client-portal/layouts/ClientPortalLayout"));
-const RingkasanTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/RingkasanTabPage"));
 const VendorProgressTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/VendorProgressTabPage"));
 const VenueTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/VenueTabPage"));
+const TimelineTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/TimelineTabPage"));
 const PembayaranTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/PembayaranTabPage"));
 const KendalaTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/KendalaTabPage"));
 
+// "ringkasan" no longer exists (PLAN.md's Client Portal restructure — its
+// summary content is now the persistent ClientProjectHeaderCard, visible on
+// every tab). /portal and /portal/ringkasan both land on "vendor" now,
+// matching the reference screenshot's default-active tab.
 export const clientPortalRoutes: RouteObject = {
   path: "/portal",
   element: <RequireAuth allow={["client"]} />,
@@ -16,10 +20,11 @@ export const clientPortalRoutes: RouteObject = {
     {
       element: <ClientPortalLayout />,
       children: [
-        { index: true, element: <Navigate to="ringkasan" replace /> },
-        { path: "ringkasan", element: <RingkasanTabPage /> },
+        { index: true, element: <Navigate to="vendor" replace /> },
+        { path: "ringkasan", element: <Navigate to="../vendor" replace /> },
         { path: "vendor", element: <VendorProgressTabPage /> },
         { path: "venue", element: <VenueTabPage /> },
+        { path: "timeline", element: <TimelineTabPage /> },
         { path: "pembayaran", element: <PembayaranTabPage /> },
         { path: "kendala", element: <KendalaTabPage /> },
       ],

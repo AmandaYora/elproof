@@ -98,6 +98,8 @@ func IsNearDDay(eventDate, asOf time.Time) bool {
 
 // IsLagging mirrors the mock's getDashboardStats laggingProjects rule:
 // elapsed-vs-total prep time outpacing actual milestone completion by >15pp.
+// prepStartDate displays in the UI as "Tanggal Booking" (PLAN.md,
+// display-text-only rename) -- the field and this math are unchanged.
 func IsLagging(prepStartDate, eventDate, asOf time.Time, overallPercent int) bool {
 	totalDays := daysBetween(prepStartDate, eventDate)
 	elapsedDays := daysBetween(prepStartDate, asOf)

@@ -228,7 +228,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             value={isOpenProject ? (d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`) : project.status === "Completed" ? "Selesai" : "Dibatalkan"}
             emphasize
           />
-          <InfoField label="Mulai Persiapan" value={formatDate(project.prepStartDate)} />
+          <InfoField label="Tanggal Booking" value={formatDate(project.prepStartDate)} />
           <InfoField label="Paket / Layanan" value={project.packageName} />
           <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
           <InfoField label="Sisa Tagihan Client" value={formatCurrency(outstanding)} />

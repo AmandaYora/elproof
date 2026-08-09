@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
+import { Combobox } from "@/shared/components/ui/Combobox";
+import { CITIES } from "@/shared/constants/cities";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
 import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
@@ -23,6 +25,8 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatDate } from "@/shared/lib/formatters";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
+import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VendorListPage() {
   const vendors = useVendorStore((s) => s.vendorPage);
@@ -34,12 +38,17 @@ export default function VendorListPage() {
   const fetchVendorProjectHistory = useVendorStore((s) => s.fetchVendorProjectHistory);
   const downloadVendorTemplate = useVendorStore((s) => s.downloadVendorTemplate);
   const importVendors = useVendorStore((s) => s.importVendors);
+  const exportVendors = useVendorStore((s) => s.exportVendors);
+  const fetchVendorDeleteImpact = useVendorStore((s) => s.fetchVendorDeleteImpact);
+  const deleteVendor = useVendorStore((s) => s.deleteVendor);
+  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
   const categories = useVendorCategoryStore((s) => s.categories);
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
   const [categoryFilter, setCategoryFilter] = useState<string>("Semua");
+  const [cityFilter, setCityFilter] = useState<string>("Semua");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | undefined>(undefined);
@@ -48,6 +57,11 @@ export default function VendorListPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Vendor | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     void fetchCategories();
@@ -55,11 +69,16 @@ export default function VendorListPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, categoryFilter]);
+  }, [debouncedQuery, categoryFilter, cityFilter]);
 
   useEffect(() => {
-    void fetchVendorPage(page, debouncedQuery, categoryFilter === "Semua" ? "" : categoryFilter);
-  }, [fetchVendorPage, page, debouncedQuery, categoryFilter]);
+    void fetchVendorPage(
+      page,
+      debouncedQuery,
+      categoryFilter === "Semua" ? "" : categoryFilter,
+      cityFilter === "Semua" ? "" : cityFilter
+    );
+  }, [fetchVendorPage, page, debouncedQuery, categoryFilter, cityFilter]);
 
   useEffect(() => {
     if (!historyVendor) {
@@ -96,7 +115,7 @@ export default function VendorListPage() {
         await createVendor(values as VendorCreateFormValues);
       }
       closeModal();
-      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
+      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menyimpan vendor"));
     }
@@ -106,7 +125,7 @@ export default function VendorListPage() {
     setActionError(null);
     try {
       await toggleVendorActive(vendor.id);
-      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
+      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status vendor"));
     }
@@ -114,8 +133,62 @@ export default function VendorListPage() {
 
   async function handleImportVendors(file: File) {
     const result = await importVendors(file);
-    await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter);
+    await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
     return result;
+  }
+
+  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition:
+  // fetch exactly which projects would lose this vendor's data source before
+  // the confirmation dialog renders, so its wording can name them.
+  async function openDeleteConfirm(vendor: Vendor) {
+    setDeleteTarget(vendor);
+    setDeleteImpact(null);
+    setImpactLoading(true);
+    try {
+      setDeleteImpact(await fetchVendorDeleteImpact(vendor.id));
+    } catch {
+      setDeleteImpact([]);
+    } finally {
+      setImpactLoading(false);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteVendor(deleteTarget.id);
+      closeDeleteConfirm();
+      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus vendor"));
+      closeDeleteConfirm();
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  async function handleExportVendors() {
+    setActionError(null);
+    setIsExporting(true);
+    try {
+      const blob = await exportVendors(query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vendors-export.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal mengekspor data vendor"));
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -128,6 +201,9 @@ export default function VendorListPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
             Import Bulk
+          </Button>
+          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVendors()} disabled={isExporting}>
+            {isExporting ? "Mengekspor..." : "Export Excel"}
           </Button>
           <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
             Tambah Vendor
@@ -154,6 +230,14 @@ export default function VendorListPage() {
             </option>
           ))}
         </Select>
+        <Combobox className="w-52" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} placeholder="Cari kota...">
+          <option value="Semua">Semua Kota</option>
+          {CITIES.map((city) => (
+            <option key={city} value={city}>
+              {city}
+            </option>
+          ))}
+        </Combobox>
       </div>
 
       <Card>
@@ -187,6 +271,9 @@ export default function VendorListPage() {
                       <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
                     )}
                     <IconActionButton icon={Eye} label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
+                    {isOwner && (
+                      <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />
+                    )}
                   </div>
                 </>
               );
@@ -230,6 +317,9 @@ export default function VendorListPage() {
                           <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
                         )}
                         <IconActionButton icon={Eye} label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
+                        {isOwner && (
+                          <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -285,6 +375,41 @@ export default function VendorListPage() {
               </li>
             ))}
           </ul>
+        )}
+      </Modal>
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDeleteConfirm}
+        title={deleteTarget ? `Hapus Vendor — ${deleteTarget.name}` : "Hapus Vendor"}
+        size="sm"
+      >
+        {impactLoading ? (
+          <p className="text-[13px] text-text-secondary">Memeriksa penggunaan...</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+              {deleteImpact && deleteImpact.length > 0 ? (
+                <span>
+                  Vendor ini masih digunakan oleh project berikut:{" "}
+                  <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, data
+                  vendor pada project tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
+                  menghapus vendor ini secara permanen?
+                </span>
+              ) : (
+                <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+                Batal
+              </Button>
+              <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
+                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
 

@@ -1,264 +1,472 @@
-# PLAN — Retire the standalone "Kendala" tab; move issues into Vendor/timeline context
+# PLAN — Export to Excel, hard delete (Vendor/Venue/Pengguna/Kategori Vendor), city filter
 
 ## 0. Goal
 
-Remove "Kendala" (Issue) as its own top-level tab in the Project detail page, and
-instead let a kendala be recorded directly against a specific vendor engagement
-and, optionally, one specific milestone of that vendor's own timeline —
-eliminating the duplicate/disconnected experience where the same data is
-today shown twice (a flat cross-vendor table on its own tab, and a read-only
-mini-list repeated inside the Vendor tab's accordion) with no way to tell
-*which* milestone a kendala is actually blocking.
+Three additions to the `vendors` (Vendor, Venue, Vendor Category) and `staff` (Pengguna) areas:
+
+1. **Export to Excel**, next to the existing "Import Bulk" flow, for Vendor and Venue.
+2. **Hard delete** (permanent, not the existing deactivate) for Vendor, Venue, Pengguna, and Kategori
+   Vendor — gated by an **informed-consent confirmation dialog** that names exactly what will lose
+   its data source, not by a "must be inactive first" precondition.
+3. **Filter by Kota (city)** on the Vendor and Venue list pages.
+4. **Rename "Tanggal Mulai Persiapan" to "Tanggal Booking"** on the Project form/detail — same date
+   field, new label and framing, not a new field.
+5. **Restructure Client Portal's project view** to match the WO Console's `ProjectHeaderCard` layout
+   (persistent header: name/status, info grid, progress bar) — read-only, internal-only fields
+   dropped, folding the current standalone "Ringkasan" tab into that persistent header plus a new
+   "Timeline" tab.
 
 ## 1. Current state, confirmed precisely
 
-**Tabs** (`ProjectDetailLayout.tsx:12-21`): Vendor → Venue → Timeline → Client →
-Pembayaran → **Kendala** → Dokumen → Aktivitas. Each is a real route
-(`/projects/{id}/{tab}`), not an in-page anchor — `ProjectIssuesTabPage.tsx`
-just renders `<ProjectIssuesSection projectId={projectId} />`.
+### Import/Template (the pattern Export must sit next to)
+`apps/api/internal/modules/vendors/presentation/vendor_handler.go` and `venue_handler.go` already
+implement **Template** (blank `.xlsx` header download) and **Import** (base64-JSON upload, parsed
+with `github.com/xuri/excelize/v2`, capped at 1000 rows, batched inserts of 200) — see
+`vendorTemplateHeaders`/`venueTemplateHeaders` (fixed column order), `ImportVendors`/`ImportVenues`
+in `application/vendor_service.go` / `venue_service.go`. **No export capability exists anywhere in
+the backend today** — confirmed via a full-repo grep for `excelize|xlsx|Export`; `excelize` is
+already a dependency, so Export needs no new library.
 
-**Two unrelated "timeline" concepts already exist** and this matters for where
-a kendala can sensibly attach:
-- `ProjectMilestone` — the WO's own internal prep checklist (Timeline tab,
-  `ProjectMilestonesSection.tsx`). **Has no vendor reference at all.**
-- `VendorMilestone` — a specific vendor engagement's own deliverable timeline
-  (`vendor_milestones` table, `project_vendor_id` FK), rendered inside the
-  **Vendor** tab's per-vendor accordion (`ProjectVendorsSection.tsx:486-561`,
-  a real `<tr key={m.id}>` per milestone with Timeline/Status/Target/Selesai/
-  Evidence/Aksi columns).
+Frontend: a single domain-agnostic `apps/web/src/shared/components/ui/ImportBulkModal.tsx` powers
+both pages' "Import Bulk" button (`VendorListPage.tsx`, `VenueListPage.tsx`). Template download is a
+plain `httpClient.get(url, { responseType: "blob" })` → `URL.createObjectURL` → synthetic
+`<a download>` click, done inline inside that modal — the exact mechanic an Export button reuses.
 
-`VendorIssue` (`apps/api/internal/modules/projects/domain/issue.go:24-38`)
-already has `ProjectVendorID` — a kendala is already conceptually a
-vendor-scoped thing, never a project-milestone-scoped thing. It has **no**
-milestone-level linkage of any kind today.
+### City — already a real column, not a new field
+Both `Vendor` (`domain/vendor.go:14`) and `Venue` (`domain/venue.go:20`) already have `City *string`,
+validated against a fixed 128-entry enum: `domain/city.go`'s `AllowedCities`/`IsValidCity`, mirrored
+on the frontend at `shared/constants/cities.ts`. Import already **requires** a valid city per row.
+Columns exist since `000023_alter_vendors_add_fields.up.sql` (vendors) and from creation
+(`000020_create_venue_tables.up.sql`, venues) — **no migration needed for the field**, only
+(optionally) an index. Neither table currently has an index on `city`.
 
-**Duplication that already exists**: `ProjectVendorsSection.tsx:582-599`
-renders a read-only "Kendala" mini-list per vendor (title + impact/status
-badge only), right next to a "Pembayaran" mini-list, filtered by
-`issues.filter(i => i.projectVendorId === pv.id)` — the exact same data the
-standalone tab shows, just without found-date/PIC/plan and with no way to
-add/edit from here.
+List/filter today: `VendorHandler.Collection` / `VenueHandler.Collection` already thread a
+`categoryId` (vendor only) and free-text `search` through to `ListPaginated` in
+`mysql_vendor_repository.go` / `mysql_venue_repository.go`, which append `AND category_id = ?` /
+`AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)` conditionally. A `city` filter is a mechanical
+repeat of this exact pattern.
 
-**Kendala tab today** (`ProjectIssuesSection.tsx`) supports only **Create**
-(`AddIssueModal`) and **status change** (a `<Select>` per row calling
-`updateIssueStatus`) — there is no full edit and no delete. Create requires
-picking a vendor (`projectVendorId`, required) but has no milestone field at
-all (`issue.schema.ts:6-15`).
+### Delete — today only `SetActive` exists; the house rule this plan deliberately overrides
+Vendor, Venue, and Vendor Category each have only a `SetActive` (deactivate/reactivate) service +
+repo method — **no `Delete` anywhere in any of the three**. Staff's repository does have a `Delete`
+(`mysql_staff_repository.go:138`), but it is explicitly documented and only ever called as an
+internal rollback when credential creation fails mid-`Create` — never reachable via HTTP.
 
-**Backend mutation surface**: `issue_endpoints.go` exposes `POST
-.../issues` (create, all fields) and `PATCH .../issues/{id}` → `updateIssueStatus`
-→ `IssueService.UpdateStatus`, which only ever touches `status`/`resolved_date`
-(auto-stamped once) — the repository's `Update()` (`mysql_issue_repository.go:115-121`)
-literally only writes `status, resolved_date, resolution_notes`, nothing else.
-There is no service/repo method today that updates title/description/impact/
-vendor/PIC/target-date after creation.
+This repo has an explicit, named house rule against exactly what's being asked for —
+`knowledge/DATABASE_GUIDE.md` "Conventions": *"Soft state over hard delete... vendors, venues,
+clients, staff, plans all 'deactivate' instead of delete... don't introduce hard deletes the frontend
+never asks for."* It names exactly three sanctioned exceptions (`clients.Delete`, `projects.Delete`
+— ADR-0013 —, `MilestoneTemplateService.Delete`) and **explicitly calls out this plan's own risk
+scenario by name**: *"deleting a `vendors`/`venues` row referenced by `project_vendors`/
+`projects.venue_id` would [orphan it]."* This plan is the deliberate, explicit fourth exception the
+rule anticipates (recorded here, same as ADR-0013 was) — not a silent deviation.
 
-**`vendor_issues` schema** (`000008_create_project_tables.up.sql:89-108`):
-`id, project_id, project_vendor_id, title, description, impact, found_date,
-status, resolution_plan, pic_staff_id, target_resolution_date, resolved_date,
-resolution_notes` — no milestone column.
+Unlike ADR-0013 (which *blocks* the delete via a precondition), the user has explicitly chosen a
+different guardrail here: **inform, don't block** — show the person deleting exactly what will be
+left sourceless, by name, and let them decide. §2 designs that.
 
-**Consumers beyond the tab itself** (blast radius of removing the route):
-- **Dashboard attention queue** (`attention.ts:28-37`) hard-links every open
-  kendala card to `ROUTE_PATHS.projectDetail(issue.projectId, "kendala")`.
-- **`ProjectEvidenceSection.tsx`** lets evidence be attached with
-  `relatedKind: "issue"`, picking from a dropdown built from `issues` — this
-  is unaffected by *where* issues are created/edited, only by the `issues`
-  list continuing to exist, which it will.
-- **Client Portal** has the *exact same duplication*, one layer further:
-  a standalone `KendalaTabPage.tsx` (`/portal/kendala`, read-only `IssueCard`
-  list) **and** `VendorProgressTabPage.tsx:73,115,166-179` already renders the
-  same per-vendor issue cards inline, plus `RingkasanTabPage.tsx:31,55-62`
-  shows just an open-issue *count* banner. This is a different portal/menu
-  than what was asked about, so it's tracked as an explicit, separate
-  decision (Phase H) rather than folded silently into this plan.
-- **`ComputeProjectProgress`** (`domain/progress.go:89-140`) aggregates
-  `openIssues` at the whole-project level only (count, critical/high count,
-  feeding the On Track/Attention/At Risk condition) — this is untouched by
-  everything in this plan; milestone linkage is purely descriptive metadata,
-  it does not change scoring.
+**What would actually break if a row just vanished** (cross-module, all primitive-ID references, no
+SQL FK — per the modular-monolith rule):
+- `project_vendors.vendor_id` (no FK) — a deleted vendor would silently disappear from
+  `vendors/summary` (already deliberately includes inactive vendors so engaged-vendor names don't
+  vanish); the frontend already degrades this gracefully in half a dozen places (`?? "Vendor tidak
+  dikenal"` etc. in `ProjectVendorsSection.tsx`, `ProjectEvidenceSection.tsx`,
+  `VendorProgressTabPage.tsx`, `IssueFormModal.tsx`, `ProjectVendorFormModal.tsx`,
+  `ProjectPaymentsSection.tsx`) — this existing fallback UI is exactly what will render after a
+  confirmed delete goes through; it's the reason a "confirm and proceed" design (rather than a hard
+  block) is safe to ship at all.
+- `projects.venue_id` (no FK) **is** resolved by a real backend contract call —
+  `vendors.Contracts.GetVenueSummary` → `VenueService.Get`, consumed by
+  `ProjectService.GetVenue` (`project_service.go:126-139`). Today a missing venue there propagates as
+  a real `NotFound` error, not a graceful "no venue attached" — **this is a required fix, not
+  optional**, since after this plan ships, a confirmed venue delete is a real, reachable path that
+  will hit this exact code (see §2/§3).
+- `pic_staff_id` — six distinct reference points, four are **live "responsible person" assignments**
+  (`projects.pic_staff_id`, `project_vendors.pic_staff_id`, `vendor_milestones.pic_staff_id`,
+  `vendor_issues.pic_staff_id`) and two are **immutable historical audit trail**
+  (`activity_log.actor_staff_id`, `evidence.uploaded_by_staff_id`) — see §2 for why only the first
+  four inform the confirmation dialog.
+- `vendors.category_id → vendor_categories.id` **does** have a real SQL FK
+  (`000006_create_vendor_tables.up.sql:29`, same-module, RESTRICT by default, column is `NOT NULL`).
+  This is structurally different from the three above — see §2's explicit carve-out for Vendor
+  Category.
 
-**Design decisions already confirmed with the user**:
-1. Milestone link is **optional** (nullable) — a kendala can be "umum" (general
-   to the vendor) or tied to one specific `VendorMilestone`. Forcing every
-   kendala to pick a milestone would break the common "vendor tidak
-   responsif" / "minta ubah termin" case that has nothing to do with any one
-   deliverable.
-2. Full **edit** capability is added now (not just status change) — since the
-   whole create/status-only flow is being touched anyway, and "mudah
-   mengelola" implies being able to fix a wrongly-picked vendor/milestone
-   later without going to the DB directly.
+### "Mulai Persiapan" → "Tanggal Booking" — this is a label change on a field with real behavior behind it
+`prepStartDate`/`PrepStartDate`/`prep_start_date` is not decorative — it's a `NOT NULL DATE` column
+(`000008_create_project_tables.up.sql:9`) feeding two real calculations, both in
+`apps/api/internal/modules/projects/domain/dashboard.go` and `application/default_milestones.go`:
+- **`IsLagging`** (`dashboard.go:99-114`) — a project's "Progress Tertinggal" dashboard flag compares
+  `elapsed / total` days **since `prepStartDate`** against actual Timeline completion %.
+- **`seedDefaultMilestones`** (`default_milestones.go:17-26`) — a new project's auto-seeded Timeline
+  items are clamped so no default due date falls before `prepStartDate`.
 
-## 2. Design
+There is already a **direct precedent in this exact codebase** for "the UI should call this something
+different than what the code models it as," recorded in `knowledge/DOMAIN_GLOSSARY.md`'s **Timeline**
+and **Vendor Milestone** entries: *"display label only; the underlying identifier, DB table, and API
+shape are still 'milestone' everywhere (deliberate, display-text-only rename)."* That precedent is
+followed here rather than reinvented — see §2.
 
-### Phase A — Migration: nullable milestone link
+**Reusable wiring already in place** (no new cross-module dependency needs to be invented):
+- `vendors.NewModule(db, projectsModule.Contracts(), storageClient)` — `vendors` **already** holds a
+  reference to `projects.Contracts()` at construction time (`cmd/server/main.go`). Adding new methods
+  to that interface for the Vendor/Venue impact lookups needs **zero new wiring** — no bridge, no
+  two-phase setter.
+- `staff.NewModule(db, identityModule.Contracts())` — `staff` is built **before** `projectsModule` in
+  `main.go`, so a Staff→`projects.Contracts()` impact lookup needs the same two-phase
+  setter-after-construction bridge already used twice (`ClientCleaner`, `VenueResolver`): a new
+  `StaffService.SetProjectReferenceLookup(lookup)`, called from `main.go` right after
+  `projectsModule` exists.
+- `ProjectHeaderCard.tsx` (ADR-0013's frontend half) is the closest existing confirm-then-delete UX,
+  though it confirms a *known, static* consequence ("this project and everything in it"). This
+  plan's dialogs need one more step first — fetching the *specific* impact (which projects, by name)
+  before the confirmation text can be written — so the pattern is extended, not copied verbatim (see
+  §2's frontend flow). No shared `ConfirmDialog` component exists in this codebase — inline local
+  state per page remains the right call, not a new shared modal.
+- `requireOwnerRole` already exists (`vendor_category_handler.go:62`, same `presentation` package as
+  `vendor_handler.go`/`venue_handler.go`) — reusable as-is for Vendor/Venue's new Delete handlers,
+  no duplicate helper needed.
 
-New `apps/api/migrations/000032_add_vendor_milestone_id_to_vendor_issues.up.sql`:
-```sql
-ALTER TABLE vendor_issues
-  ADD COLUMN vendor_milestone_id BIGINT UNSIGNED NULL,
-  ADD KEY idx_vendor_issues_vendor_milestone (vendor_milestone_id),
-  ADD CONSTRAINT fk_vendor_issues_vendor_milestone
-    FOREIGN KEY (vendor_milestone_id) REFERENCES vendor_milestones (id);
-```
-Same module (`projects` owns both `vendor_issues` and `vendor_milestones`), so
-this FK is allowed under the modular-monolith rule. Existing rows backfill to
-`NULL` automatically — no data migration needed, no behavior change for
-existing kendala until a user explicitly links one.
-`.down.sql` drops the FK/key/column in reverse order.
+### Client Portal restructure — current state
+`ProjectHeaderCard.tsx` (WO Console, 283 lines) has four internal-only action buttons (Ubah/
+Duplikat/Arsipkan/Batalkan/Hapus Permanen — all mutations, none applicable read-only), an info grid
+(Tanggal Acara, Countdown, Mulai Persiapan, Paket/Layanan, Nilai Kontrak, Sisa Tagihan Client,
+Margin/Keuntungan, Penanggung Jawab), and a progress section (`{overallPercent}%`, a condition badge,
+a compact `ProgressMeter`, and a "project X/Y · vendor X/Y · N terlambat" caption) fed entirely by
+`project.progress` (`ComputeProjectProgress`, `domain/progress.go:89-140` — already delivered whole
+on the same `GET /projects/{id}` / `GET /projects/me` payload Client Portal already fetches; nothing
+in this section needs new backend work). Margin is **already** documented and gated as sensitive
+even for internal staff (`DOMAIN_GLOSSARY.md`: "shown only to Owner/Admin... hidden from Wedding
+Planner") — the precedent this plan extends one step further to "hidden from client entirely."
 
-### Phase B — Backend domain + repository
+Client Portal today: `ClientPortalLayout.tsx` has only a thin header (branding, names, a countdown
+pill computed independently via the same `daysUntil` helper) above a 5-tab strip (`ringkasan`,
+`vendor`, `venue`, `pembayaran`, `kendala`). The **`ringkasan` tab** (`RingkasanTabPage.tsx`) is the
+closest existing analog to the header card's progress section, but computes its own milestone count
+client-side (project milestones only, no vendor-milestone weighting) rather than reusing
+`progress.projectMilestoneStats`/`.vendorMilestoneStats` directly, and additionally renders an
+open-issues banner and a much richer vertical "Perjalanan Persiapan" milestone stepper that has no
+equivalent in the WO header card at all (the WO header's `ProgressMeter` is compact; the WO
+equivalent of a full milestone list is its own separate **Timeline** tab).
 
-- `domain.VendorIssue`: add `VendorMilestoneID *int64`.
-- `mysql_issue_repository.go`: add `vendor_milestone_id` to `issueColumns`,
-  `scanIssue` (nullable int64 scan), `Create` (insert the new column), and
-  **broaden `Update`** to persist every editable field instead of just
-  status/resolved_date/resolution_notes:
-  ```go
-  UPDATE vendor_issues SET title=?, description=?, project_vendor_id=?,
-    vendor_milestone_id=?, impact=?, target_resolution_date=?, pic_staff_id=?,
-    resolution_plan=?, status=?, resolved_date=?, resolution_notes=? WHERE id=?
-  ```
+**No response-shape split by principal type exists anywhere in the `projects` module** — confirmed by
+reading `project_endpoints.go`'s `me()` (client) handler: it calls the exact same `getProject`/
+`toProjectResponse` staff's `GET /projects/{id}` uses. `VenueRentalPrice`/`VenueCharge`/`PICStaffID`
+already ride along in the JSON sent to a client principal today; only the frontend chooses not to
+render them. This mirrors the already-accepted Margin-hidden-from-Staff pattern (also UI-only, since
+`vendorEngagements`/venue cost fields are independently visible via the Vendor/Venue tabs) — not a
+new gap this plan introduces, just the same shape of caveat one layer further out.
 
-### Phase C — Backend application service
+**"Penanggung Jawab" (PIC name) is currently unreachable by a client principal**: WO Console resolves
+it client-side against `GET /staff/summary`, which is hard-gated staff-only
+(`requireTenant`, `staff/presentation/*.go:68-70` rejects any non-`"staff"` principal). Showing it to
+Client Portal needs a small, real backend addition (see §2) — everything else in the info grid is
+already present in the payload today.
 
-- `IssueInput` gains `VendorMilestoneID *int64`.
-- New **ownership validation**: if `VendorMilestoneID` is set, fetch it via
-  the already-existing `VendorMilestoneRepository.FindByID(ctx, projectVendorID, id)`
-  (same ownership-check idiom already used everywhere else in this module)
-  and reject with a validation error if it doesn't belong to the issue's own
-  `ProjectVendorID` — this is the one rule that must never be skippable,
-  otherwise a kendala could be silently misattributed to a different
-  vendor's milestone.
-- Replace `IssueService.UpdateStatus` with a general
-  `IssueService.Update(ctx, projectID, id, actorStaffID int64, input IssueInput) (*domain.VendorIssue, error)`
-  that overwrites every field from `input` (mirroring how
-  `VendorEngagementService.Update`/`UpdateMilestone` already work — full
-  overwrite, not a partial patch) — the frontend's "quick status dropdown"
-  will just call this with every existing field spread plus the new status,
-  exactly like `ProjectVendorsSection.tsx`'s existing `quickStatusChange` /
-  `toMilestoneUpdateFields` pattern for vendor milestones. One endpoint,
-  one code path, no special-cased "status-only" branch to keep in sync.
-- `resolvedDate` auto-stamp-once logic (`shouldStamp`, current
-  `UpdateStatus:79-82`) moves into this new `Update`, unchanged in behavior.
+**"Client" and "Aktivitas" WO Console tabs have no client-safe equivalent** and are out of scope
+here: "Client" is pure credential/account management (reset password, reassign representative) —
+nonsensical inside the portal that credential controls; "Aktivitas" is a raw staff-attributed system
+log (actor names, every field-level edit) that would need new curation/filtering work to be
+client-appropriate, which nothing today provides.
 
-### Phase D — Backend presentation
+## 2. Design decisions
 
-- `issueInputBody`/response DTOs: add `vendorMilestoneId *int64` (create) and
-  to `issueResponse`/`toIssueResponse` (nullable int in JSON).
-- Replace `updateIssueStatus` handler with `updateIssue`, decoding the full
-  `issueInputBody` shape (same body shape as create, since it's a full
-  overwrite) — same `PATCH /projects/{id}/issues/{issueId}` route, just a
-  richer body and a richer response. `handler.go:165-166`'s dispatch line
-  changes its target function only, not its route pattern.
+### Export to Excel (Vendor, Venue)
+- New `GET /api/v1/vendors/export`, `GET /api/v1/venues/export`, same `requireManagerRole`
+  (Owner/Admin) gate as Template/Import — same handler family, same risk level (bulk data egress).
+- **Accepts the same filter params as the list endpoint** (`search`, `categoryId`, and the new `city`
+  from below) and exports the matching set, unpaginated — so "filter then export" works, matching
+  what a WO staff member actually wants ("export vendor kategori Catering di Bandung"), not just a
+  full-roster-only dump. At this app's real data volumes (SMB wedding-organizer rosters, not
+  thousands of rows) an unpaginated in-memory export is safely proportionate — no streaming/async-job
+  machinery needed.
+- **Column order matches the import template exactly**, with one appended `Status` column
+  (Aktif/Nonaktif) at the end — `parseVendorImportRow`/`parseVenueImportRow` read fixed columns by
+  index and never validate a max column count, so this file **round-trips through Import unmodified**
+  (a real, useful property: export, edit in Excel, re-import).
+- Implementation: a new `application.VendorService.Export(ctx, tenantID, filters) ([]domain.Vendor,
+  error)` (reuses the existing filtered query path, no pagination arguments) and a presentation-layer
+  `buildVendorWorkbook([]domain.Vendor) *excelize.File` sibling to the existing template-building
+  code — same library, same response headers/content-type as `Template`, different filename
+  (`vendors-export-{date}.xlsx`) and populated rows instead of a blank sheet.
+- Frontend: one "Export Excel" button placed beside the existing "Import Bulk" button on both list
+  pages (no modal — direct blob download on click, mirroring the Template download's own
+  no-modal-needed simplicity), passing the page's *currently active* filters as query params.
 
-### Phase E — Frontend types, schema, store
+### City filter (Vendor, Venue)
+- Query param `city` (exact string match against the closed `AllowedCities` enum — not `LIKE`, since
+  it's a closed set), threaded through `Collection` handler → service → `ListPaginated` repository
+  method exactly like `categoryId` is today, appended as `AND city = ?` conditioned on non-empty.
+- Frontend: a `cityFilter` state (`"Semua"` sentinel, same convention as the category dropdown) on
+  both `VendorListPage.tsx` and `VenueListPage.tsx`. Given 128 options, use the existing `Combobox`
+  (already used in `VendorFormModal.tsx:158` for the same city enum) instead of a plain `<Select>`,
+  so it's searchable rather than a 128-row scroll.
+- Optional, low-priority migration: composite index `(tenant_id, city)` on both `vendors` and
+  `venues` — cheap to add now while touching this area, not required at current data volumes (a plain
+  tenant-scoped table scan is fine today; this just avoids revisiting the schema later once it isn't).
 
-- `types.ts`: `VendorIssue.vendorMilestoneId: string | null`.
-- `issue.schema.ts`: add `vendorMilestoneId: z.string().optional()` (empty
-  string / omitted = "umum", not tied to any milestone).
-- `useProjectStore.ts`: `RawIssue`/`toIssue` add the field; replace
-  `updateIssueStatus` action with `updateIssue(projectId, issueId, values: IssueFormValues)`
-  (full body); add a `toIssueUpdateFields(issue): IssueFormValues` helper next
-  to the existing `toMilestoneUpdateFields`, used by the quick-status dropdown
-  to spread-then-override `status` only, keeping today's one-click UX
-  identical from the user's point of view.
+### "Mulai Persiapan" → "Tanggal Booking" (display-text-only rename)
+Mirrors the Timeline/Vendor Milestone precedent exactly (§1): **change the label everywhere a human
+reads it, change nothing a machine reads it as.**
+- `prepStartDate` / `PrepStartDate` / `prep_start_date` stay **completely unchanged** — column name,
+  Go struct field, JSON key, Zod schema key, store field, request/response DTOs. No migration, no
+  API contract change, no risk to `IsLagging`/`seedDefaultMilestones` (both keep working exactly as
+  before — "days since booking" is, if anything, a more defensible progress baseline than "days since
+  an operationally-fuzzy prep-start date," since a booking date is a concrete event every project
+  unambiguously has).
+- Three display-string edits only:
+  - `apps/web/src/modules/projects/components/ProjectFormModal.tsx:136` —
+    `<Field label="Tanggal Mulai Persiapan" ...>` → `<Field label="Tanggal Booking" ...>`.
+  - `apps/web/src/modules/projects/schemas/project.schema.ts:11` — validation message
+    `"Tanggal mulai persiapan wajib diisi"` → `"Tanggal booking wajib diisi"`.
+  - `apps/web/src/modules/projects/components/detail/ProjectHeaderCard.tsx:231` —
+    `<InfoField label="Mulai Persiapan" .../>` → `<InfoField label="Tanggal Booking" .../>`.
+- `knowledge/DOMAIN_GLOSSARY.md`: add one line for **Tanggal Booking**, same shape as the existing
+  Timeline/Vendor Milestone entries — "display label only; underlying identifier/column/API field is
+  still `prepStartDate` everywhere — see PLAN.md" — so a future reader who greps the backend for
+  "booking" and finds nothing isn't left confused.
+- One-line doc-comment touch-up (not a behavior change) on `IsLagging` and `seedDefaultMilestones`
+  noting the field now displays as "Tanggal Booking," so the "prep time"/"short-notice" phrasing in
+  their existing comments isn't read as contradicting the UI.
+- **Explicitly not doing**, and why: renaming the identifier itself (`booking_date` column, etc.) or
+  changing what the date is validated/used for (e.g., allowing it to sit further from the event than
+  today, or decoupling it from the milestone-clamp/lagging math). Nothing about the request asks for
+  new date semantics — only a different name for the one that exists — so the smallest-blast-radius
+  option that already has a codebase precedent is the right one. If a genuine semantic change is
+  wanted later (e.g., a separate real "booking date" distinct from "prep start," tracked
+  independently), that's a new field and a bigger, separate decision — flag it explicitly rather than
+  smuggling it into a rename.
 
-### Phase F — Frontend UI: fold Kendala into the Vendor tab
+### Client Portal restructure — confirmed with the user before designing further
+1. **The standalone "Ringkasan" tab is absorbed into a persistent header**, not kept alongside an
+   enriched header (the user's explicit choice over the lower-risk "keep both, accept duplication"
+   option) — this is a real structural change, not just new header content:
+   - New `apps/web/src/modules/client-portal/components/ClientProjectHeaderCard.tsx` — read-only
+     sibling of `ProjectHeaderCard.tsx`, rendered once inside `ClientPortalLayout.tsx` above `TabNav`
+     (replacing that layout's current thin branding/countdown header), so it stays visible across
+     every tab exactly like the WO Console screenshot.
+   - Contains: branding (existing), title + `ProjectStatusBadge` (new for Client Portal, reused
+     verbatim from `projects`'s components — cross-module frontend imports between `client-portal`
+     and `projects` are already an established pattern, e.g. `IssueCard`/`EngagementStatusBadge`),
+     info grid (below), and the progress section reusing `project.progress` directly —
+     `overallPercent`, a condition badge, and the "project X/Y · vendor X/Y · N terlambat" caption —
+     **keeping Client Portal's existing softer `CLIENT_CONDITION_COPY` wording** ("Berjalan sesuai
+     rencana"/"Ada beberapa hal yang sedang kami tangani"/"Membutuhkan perhatian lebih dari tim
+     kami"), not WO Console's blunter "Perlu Perhatian"/"Berisiko" labels — that softer copy was
+     already a deliberate client-facing design choice and this restructure doesn't reverse it.
+   - The open-issues banner (currently `RingkasanTabPage.tsx` lines 55-72) **moves into this
+     persistent header too** — strictly more visible than being one tab away, which is an
+     improvement, not a regression, and needs no new data (same `kendala` count already fetched).
+   - The richer vertical "Perjalanan Persiapan" milestone stepper — which has no equivalent in the WO
+     header card at all (WO's own compact meter is the header's version; WO's *detailed* list lives
+     in its own separate **Timeline** tab) — **becomes a new "Timeline" tab** in Client Portal
+     (`apps/web/src/modules/client-portal/pages/tabs/TimelineTabPage.tsx`, replacing
+     `RingkasanTabPage.tsx`), completing the tab-parity with WO Console's own Vendor/Venue/Timeline/
+     Pembayaran set (minus Client/Aktivitas/Dokumen, per §1's "no client-safe equivalent" finding).
+   - Resulting tab strip: **Vendor, Venue, Timeline, Pembayaran, Kendala** (drops "Ringkasan" as a
+     name entirely). `client-portal.routes.tsx`, `ClientPortalTab` (`route-paths.ts`), and the
+     index-route redirect all need updating — land on `vendor` (matching the reference screenshot's
+     default-active tab), not the now-removed `ringkasan`.
+2. **Margin/Keuntungan, Mulai Persiapan, and all five action buttons are dropped, not just
+   unrendered-but-present** — the new `ClientProjectHeaderCard.tsx` never receives or reads
+   `venueRentalPrice`/`venueCharge`/`vendorEngagements` cost fields at all (unlike
+   `ProjectHeaderCard.tsx`, which fetches them specifically to compute Margin), so there's no
+   client-side margin math to accidentally leak in this component even though the raw fields still
+   ride along elsewhere in the shared `projectResponse` payload (§1's existing caveat, unchanged by
+   this plan). "Mulai Persiapan" (now "Tanggal Booking," §2 above) is simply not one of the six info
+   grid fields shown to a client — confirmed as the user's choice, not an oversight.
+3. **"Penanggung Jawab" is shown, resolved server-side** (the user's explicit choice over hiding it,
+   since it's a real new backend addition, not free): `staff` is already constructed *before*
+   `projects` in `cmd/server/main.go`, so `projects.NewModule` can take a narrow new interface —
+   `type StaffNameResolver interface { GetSummary(ctx, tenantID, staffID int64) (*Summary, error) }`
+   (same narrow-local-interface convention as `VenueResolver`/`ClientCleaner`) — as a **direct
+   constructor argument**, no two-phase setter bridge needed (no circular build order exists here,
+   unlike those two). `projectResponse` (`dto.go`) gains a `picName string` field, populated once
+   server-side in `toProjectResponse`/`getProject` for **both** principal types (simplest option —
+   no principal-type branching needed inside the DTO builder; staff already gets the same name via
+   `/staff/summary` client-side today, so this is redundant-but-harmless for them, not a new
+   exposure). Client Portal's header simply reads `project.picName` — no new client-side fetch, no
+   dependency on the staff-only summary endpoint at all.
+4. **`project.description` is shown, confirmed with the user.** The screenshot's "CLIENT CONCERN
+   MAKANAN" banner turned out under investigation to be `project.description` (a free-text field WO
+   staff fill in) rendered inline, not a computed concern indicator — `ProjectHeaderCard.tsx` has no
+   dedicated "client-concern" mechanism today; it's just this one field, shown verbatim. Confirmed:
+   this field is written with the client as an intended reader, so `ClientProjectHeaderCard.tsx`
+   renders it the same way `ProjectHeaderCard.tsx` does — a plain note below the info grid, shown only
+   when non-empty (no special "concern" styling/label beyond what WO Console itself already uses,
+   since it's the same field, not a distinct feature).
 
-All of this lands inside `ProjectVendorsSection.tsx` (no new top-level file):
+### Hard delete (Vendor, Venue, Pengguna, Kategori Vendor)
+Explicit exception to `DATABASE_GUIDE.md`'s soft-state rule. Two axes, both server-side:
 
-1. **Per-milestone "+Kendala"**: add an icon action to each milestone row's
-   existing "Aksi" cell (alongside Edit/Cancel) that opens the issue form
-   modal with `projectVendorId` and `vendorMilestoneId` **pre-filled and
-   locked** from row context — zero extra picking for the common case.
-2. **Vendor-level "+Kendala"**: keep one add-entry-point at the vendor's
-   "Kendala" mini-list header (where the section already lives) for the
-   general/not-tied-to-one-milestone case — same modal, milestone field left
-   as an explicit "Umum / tidak terikat ke timeline" option instead of being
-   hidden.
-3. **Read affordance** (the actual "mudah membaca" ask): a small "⚠ N"
-   badge on any milestone row that has ≥1 open kendala tied to it (same visual
-   slot as the existing Evidence badge), so a blocked deliverable is visible
-   without opening anything. The vendor-level mini-list keeps showing every
-   kendala for that vendor (both milestone-tied and general) but now also
-   shows which milestone each one belongs to, or "Umum" if none.
-4. **Edit**: add a pencil icon per row in the mini-list opening the same
-   form component pre-filled with every field (title/description/impact/
-   vendor/milestone/PIC/target date/resolution plan) — mirrors the existing
-   create/edit dual-mode pattern already used by `ProjectVendorFormModal`
-   (an optional `initial*` prop switches the same component between modes).
-5. Remove the tab: delete the `{ to: "kendala", label: "Kendala" }` entry
-   from `ProjectDetailLayout.tsx:18`, delete the `kendala` route from
-   `protected.routes.tsx:58`, delete `ProjectIssuesTabPage.tsx`. Fold whatever
-   of `ProjectIssuesSection.tsx` is still needed (the modal, mostly) into
-   `ProjectVendorsSection.tsx` and delete the rest.
-6. `route-paths.ts`: drop `"kendala"` from `ProjectDetailTab`.
+1. **Owner-only**, every entity — stricter than these entities' existing `SetActive` gate
+   (Vendor/Venue today allow Owner **and** Admin to deactivate; Staff's whole module and Vendor
+   Category's `SetActive` are already Owner-only). Delete is irreversible, so it gets the strictest
+   gate uniformly. Reuses the existing `requireOwnerRole`/`requireOwnerTenant` helpers verbatim.
+2. **Informed-consent confirmation, not a precondition.** There is no "must be inactive first" gate —
+   an active row can be hard-deleted directly, as long as the person deleting it has been shown,
+   concretely, what will lose its data source as a result. This shifts the safety mechanism from
+   *server-enforced blocking* to *server-provided information, user-driven decision* — the server's
+   job is to make sure the dialog can never lie by omission, not to refuse the action.
 
-### Phase G — Dashboard link fix
+   **New read-only "impact" endpoints**, called by the frontend the moment "Hapus" is clicked
+   (before any dialog renders), never gating the delete itself:
+   - `GET /api/v1/vendors/{id}/delete-impact` → `{ "affectedProjects": [{"id","name"}, ...] }`
+     (project rows where `project_vendors.vendor_id = id`).
+   - `GET /api/v1/venues/{id}/delete-impact` → same shape (`projects.venue_id = id`).
+   - `GET /api/v1/staff/{id}/delete-impact` → same shape, deduplicated across the four **live
+     PIC-assignment** columns only: `projects.pic_staff_id`, `project_vendors.pic_staff_id`,
+     `vendor_milestones.pic_staff_id`, `vendor_issues.pic_staff_id`. The two **audit-trail** columns
+     (`activity_log.actor_staff_id`, `evidence.uploaded_by_staff_id`) are deliberately **excluded** —
+     audit history must stay immutable and readable-by-fallback, and a staff member who merely
+     uploaded one evidence file years ago must not show up as "still in use" for a role they no
+     longer hold. (Follow-up, in scope: confirm activity-log/evidence author-name rendering already
+     tolerates a staff ID with no matching row, same "tidak dikenal" convention vendors/venues have;
+     add the fallback if missing — this is the first time a staff row can actually disappear.)
 
-`attention.ts:35` — change the open-kendala attention card's `to` from
-`ROUTE_PATHS.projectDetail(issue.projectId, "kendala")` to
-`ROUTE_PATHS.projectDetail(issue.projectId, "vendor")`, matching how the
-existing "Timeline Terlambat" attention card (`attention.ts:46`) already links
-to the `"vendor"` tab for the same reason. No deep-link-to-specific-vendor-row
-mechanism exists anywhere else in the app today (the overdue-milestone card
-doesn't have one either) — not introducing one here either, to stay
-consistent and avoid scope creep.
+   Backed by new methods on `projects.Contracts()` — `ListAffectedProjectsForVendor`,
+   `ListAffectedProjectsForVenue`, `ListAffectedProjectsForStaff` (each `(ctx, tenantID, id)
+   ([]ProjectRef, error)`, `ProjectRef{ID, Name}`) — same-module queries inside `projects`' own
+   repositories, exposed through the interface `vendors` **already** depends on (zero new wiring for
+   Vendor/Venue) and bridged into `staff` via the two-phase `SetProjectReferenceLookup` setter (§1).
 
-### Phase H — Client Portal (explicit decision point, not auto-applied)
+   **Frontend dialog copy** (fills in the specific names from the impact call — exact Indonesian
+   wording, not a placeholder):
+   - *Venue, referenced:* "Venue ini masih digunakan oleh project berikut: **{daftar nama project}**.
+     Jika dihapus, data venue pada project tersebut akan kehilangan sumber datanya dan tidak dapat
+     ditelusuri lagi. Apakah Anda yakin ingin menghapus venue ini secara permanen?"
+   - *Vendor, referenced:* "Vendor ini masih digunakan oleh project berikut: **{daftar nama
+     project}**. Jika dihapus, data vendor pada project tersebut akan kehilangan sumber datanya dan
+     tidak dapat ditelusuri lagi. Apakah Anda yakin ingin menghapus vendor ini secara permanen?"
+   - *Pengguna, referenced:* "Pengguna ini masih ditugaskan sebagai PIC pada project berikut:
+     **{daftar nama project}**. Jika dihapus, penugasan PIC pada project tersebut akan kehilangan
+     sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin menghapus pengguna ini
+     secara permanen?"
+   - *Any entity, not referenced (`affectedProjects` empty):* "Data ini akan dihapus secara permanen
+     dan tidak dapat dikembalikan. Apakah Anda yakin?" — no manufactured urgency when there's
+     genuinely nothing at stake.
+   - Both branches end in the same Batal / **Ya, Hapus Permanen** button pair, `isDeleting` disabling
+     both mid-request — same mechanics `ProjectHeaderCard.tsx` already uses.
 
-`KendalaTabPage.tsx` (`/portal/kendala`) is read-only and duplicates
-`VendorProgressTabPage.tsx`'s own per-vendor `IssueCard` list — the identical
-redundancy this whole plan removes on the WO Console side. Recommended
-mirror treatment: drop `"kendala"` from `client-portal.routes.tsx` and
-`ClientPortalTab`, delete `KendalaTabPage.tsx`, and have
-`VendorProgressTabPage.tsx`'s existing per-vendor issue cards show the
-milestone name (Phase I) so the client sees the same "which deliverable is
-this about" context. **This is scoped separately from "menu Project" that was
-asked about — confirm before implementing**, since it touches the
-client-facing portal, a different audience than the WO Console.
+   The actual `DELETE` call carries no confirmation flag and performs no reference check — by the
+   time it fires, informed consent has already happened client-side. This keeps the delete endpoints
+   themselves simple (Owner check, then delete) and puts 100% of the "what does this affect" logic in
+   one place (the impact endpoint), rather than duplicating it into a blocking check too.
 
-### Phase I — `IssueCard` / mini-list milestone display
+3. **One absolute, separate rule that is *not* about orphaning and is *not* skippable by any
+   dialog**: **the tenant's Owner-role staff account can never be hard-deleted.** This used to fall
+   out as a side effect of the old "must be inactive first" precondition (Owner can never be
+   deactivated); now that precondition is gone, this must be its own explicit, unconditional check in
+   `StaffService.Delete` — a tenant losing its only Owner account is a structural break (no one left
+   who can perform Owner-only actions), categorically different from "a project's PIC label goes
+   stale," so it stays a hard 403, never a confirm-and-proceed dialog.
 
-`IssueCard.tsx` (shared by Client Portal's Kendala tab today and
-`VendorProgressTabPage.tsx`) and the WO Console's vendor mini-list both gain
-a milestone name line — "{vendor} · {milestone name}" or "{vendor} · Kendala
-Umum" when `vendorMilestoneId` is null. Purely additive/display-only, no
-behavior change.
+4. **Vendor Category is a deliberate carve-out, kept fully blocked — not given a confirm-and-proceed
+   dialog.** Unlike Vendor/Venue/Staff, `vendors.category_id → vendor_categories.id` is a real,
+   same-module SQL foreign key on a `NOT NULL` column (§1) — there is no "orphaned but readable via
+   ID" state a vendor row can be left in the way a project's stale `vendor_id` can; the vendor row
+   itself cannot exist in the database without a category. Deleting a category still assigned to any
+   vendor is therefore kept as a hard block: `VendorRepository.ExistsByCategoryID(ctx, tenantID,
+   categoryID) (bool, error)` (same-module, no cross-module call needed) returns `apperror.Conflict`
+   with **"Kategori masih digunakan oleh {N} vendor dan tidak dapat dihapus. Ubah kategori pada
+   vendor tersebut terlebih dahulu."** — an inline error, not a dialog, since there is no "proceed
+   anyway" option that wouldn't either violate the FK or require a separate, out-of-scope decision
+   (making `category_id` nullable and defining what an "uncategorized" vendor means everywhere it's
+   displayed/filtered/imported). Flagging this now so it isn't mistaken for an inconsistency: the
+   other three entities get the informed-consent treatment because their references are already
+   soft/nullable-in-spirit cross-module IDs; this one is a hard schema constraint on a column that
+   isn't optional today.
+5. **No cross-module cleanup, no cascade.** A confirmed delete removes exactly the one row (plus,
+   best-effort and non-blocking, its object-storage attachment for Vendor/Venue — same
+   log-and-continue pattern as `EvidenceService.DeleteStorageObjects` in ADR-0013). Nothing that
+   referenced it is touched, updated, or cleaned up — the whole point of the dialog is that the user
+   is choosing to accept those references going stale.
+- Routes: `DELETE /api/v1/vendors/{id}`, `DELETE /api/v1/venues/{id}`, `DELETE
+  /api/v1/vendor-categories/{id}`, `DELETE /api/v1/staff/{id}`, plus the four `GET .../delete-impact`
+  reads above. `DELETE` is already in the dev CORS allow-list (confirmed unchanged since ADR-0013).
+- Frontend: "Hapus" is available on **every** row (active or inactive) for an Owner, unlike the
+  original design — clicking it fires the impact fetch, then renders the appropriate dialog copy
+  above inline (same local-state convention as `ProjectHeaderCard.tsx`, replicated per page rather
+  than extracted into a shared component, matching this codebase's existing convention).
+
+### Required fix riding along with this plan: graceful venue-not-found
+Because a confirmed venue delete is now a real, reachable path (no precondition blocking it),
+`ProjectService.GetVenue` (`project_service.go:126-139`) must be updated so a `NotFound` from
+`vendors.Contracts.GetVenueSummary` is treated the same as `p.VenueID == nil` (i.e., "no venue
+attached / no longer resolvable") rather than propagated as a real error — otherwise the Project
+Detail "Venue" tab and Client Portal's Venue tab would break for any project whose venue was deleted.
+This was already a latent gap (§1); this plan is what makes it reachable, so fixing it is in scope,
+not a nice-to-have.
 
 ## 3. Order of implementation
 
-1. Phase A (migration) — pure schema addition, zero code risk, ship first.
-2. Phase B + C (domain/repo/service) — `go build`/`go vet` before moving on.
-3. Phase D (presentation/DTO) — same endpoint path, richer body; `go build`/`go vet`.
-4. Phase E (frontend types/schema/store) — `tsc --noEmit`.
-5. Phase F (the actual UI move: per-milestone + per-vendor add, edit, badges,
-   tab removal) — the one step users will actually see change.
-6. Phase G (dashboard link) — one-line fix, do right after F so the link is
-   never briefly dangling.
-7. Phase I (milestone name display in IssueCard/mini-list) — small, additive.
-8. Phase H (Client Portal) — **only after explicit confirmation**, since it's
-   a separate portal from what was originally asked about.
+1. **City filter** (smallest, no new cross-module surface) — handler + repository + frontend filter
+   for Vendor and Venue. `go build`/`go vet`, `tsc --noEmit`, manual check: filtering by a city with
+   known seed data returns only matching rows, "Semua" clears it.
+2. **Export to Excel** (depends on the filter params from step 1 being available, but builds
+   independently otherwise) — service `Export` methods, presentation workbook builders + routes,
+   frontend buttons. `go build`/`go vet`, `tsc --noEmit`, manual check: exported file opens correctly,
+   column order matches Import's template, and the exported file re-imports cleanly with zero
+   diffs against the original rows.
+3. **`GetVenue` graceful-not-found fix** — small, isolated, and a prerequisite for venue delete being
+   safe to ship at all; do it before any delete route exists.
+4. **Hard delete — impact-lookup plumbing**: add `ListAffectedProjectsForVendor/Venue/Staff` to
+   `projects.Contracts()` and their backing repository queries, wire
+   `StaffService.SetProjectReferenceLookup` in `main.go`. `go build`/`go vet` (no new route exposed
+   yet at this step).
+5. **Hard delete — per-entity `delete-impact` + `Delete` service/repository/handler/route**, one
+   entity at a time, simplest first: Vendor Category (blocked-only, same-module, no impact endpoint
+   needed) → Vendor → Venue → Staff (needs the step-4 bridge, plus the standalone Owner-account
+   guard). `go build`/`go vet` after each.
+6. **Hard delete — frontend**, one page at a time, same order: impact fetch on click → dynamic dialog
+   copy → confirm → delete call → refetch list. `tsc --noEmit` after each.
+7. **Audit pass**: confirm `activity_log`/`evidence` actor/uploader name resolution tolerates a
+   deleted staff ID; add the "tidak dikenal" fallback if missing.
+8. **"Tanggal Booking" rename** — independent of everything above, safe to do in any order relative
+   to it: the three display-string edits + glossary entry + doc-comment touch-up. `tsc --noEmit`.
+9. **Client Portal restructure — backend first**: add `StaffNameResolver`, wire it as a direct
+   constructor argument on `projects.NewModule` (`main.go` — `staffModule` is already built earlier,
+   no reordering needed), add `picName` to `projectResponse`. `go build`/`go vet`; manual check:
+   `GET /projects/me` as a client principal now includes a real `picName`, not blocked by any
+   staff-only guard.
+10. **Client Portal restructure — frontend**: build `ClientProjectHeaderCard.tsx`, wire it into
+    `ClientPortalLayout.tsx`, extract the milestone stepper into the new `TimelineTabPage.tsx`,
+    update `client-portal.routes.tsx`/`ClientPortalTab`/index redirect, delete the old
+    `RingkasanTabPage.tsx`. `tsc --noEmit`.
 
 ## 4. Verification
 
-- `go build ./...` / `go vet ./...` after every backend phase.
-- `npx tsc --noEmit` / `npm run build` after every frontend phase.
-- Manual check: create a kendala from a milestone row → confirm it's
-  pre-filled/locked to that vendor+milestone, appears as a badge on that row,
-  and appears in that vendor's mini-list labeled with the milestone name.
-- Manual check: create a "Kendala Umum" from the vendor-level button →
-  confirm it has no milestone badge anywhere and shows "Kendala Umum" in the
-  mini-list.
-- Manual check: edit an existing kendala (change vendor, change milestone,
-  change impact) → confirm the ownership validation (Phase C) rejects a
-  milestone that doesn't belong to the newly-chosen vendor.
-- Manual check: dashboard's "Kendala Aktif" attention card still navigates
-  successfully (to the Vendor tab, not a 404/blank "kendala" route).
-- Confirm `ComputeProjectProgress`'s On Track/Attention/At Risk output is
-  unchanged for a fixed project before/after — milestone linkage must stay
-  purely descriptive.
-- Regression check on `ProjectEvidenceSection.tsx`'s issue-picker dropdown
-  (evidence attached to a kendala) — still lists every issue correctly by
-  title + vendor regardless of where it was created.
+- `go build ./...` / `go vet ./...` after every backend step; `npx tsc --noEmit` after every frontend
+  step (existing repo convention).
+- City filter: filter Vendor and Venue lists by a city with known rows, confirm exact-match results
+  and pagination/count stay correct; confirm Export honors the same filter.
+- Export: download, open in Excel, confirm column headers/order match the Import template plus the
+  appended Status column; re-import the exported file unmodified and confirm zero new/updated rows
+  (a true round-trip).
+- Hard delete, per entity, both via the UI and a direct API call:
+  - Delete action is genuinely unavailable (not just disabled) for a non-Owner.
+  - Deleting a vendor/venue/staff member that **is** referenced shows the correct dialog with the
+    actual affected project name(s), proceeds to a real delete on confirmation, and the referencing
+    rows are confirmed to degrade gracefully afterward (existing "tidak dikenal" fallback for
+    vendor/venue; the Venue tab specifically, per the §2 fix, shows "tidak ada venue" rather than an
+    error; new fallback for staff if the audit step in §3.7 found a gap).
+  - Deleting an unreferenced row of each type shows the plain "tidak dapat dikembalikan" dialog,
+    succeeds, and is confirmed gone from the DB; Vendor/Venue's object-storage attachment is confirmed
+    deleted with no error logged.
+  - Attempting to hard-delete the tenant's Owner staff account is rejected outright (403), with no
+    dialog offered at all, regardless of role-check bypass attempts via direct API call.
+  - Vendor Category deletion while any vendor still references it is rejected with the count-based
+    message above; no dialog is ever shown for this entity when in use.
+- Regression: existing Import Bulk flow for Vendor/Venue still works unchanged after the service-layer
+  refactor needed to share filtering logic with Export.
+- "Tanggal Booking" rename: Project create/edit form and Project header both show "Tanggal Booking"
+  nowhere still says "Mulai Persiapan"; dashboard's "Progress Tertinggal" flag and a newly created
+  project's seeded Timeline dates are numerically unchanged before/after (same field, same value,
+  same math) — confirms this really was label-only.
+- Client Portal restructure: log in as a client, confirm the header (name/status/info grid/progress)
+  stays visible while switching between Vendor/Venue/Timeline/Pembayaran/Kendala; confirm no Margin,
+  no Mulai Persiapan, and no Ubah/Duplikat/Arsipkan/Batalkan/Hapus action ever renders anywhere in the
+  portal; confirm Penanggung Jawab shows a real name (not blank/error); confirm the moved "Perjalanan
+  Persiapan" stepper renders correctly under the new Timeline tab; confirm `/portal/ringkasan` no
+  longer 404s ungracefully (redirects to `vendor` or an equivalent valid tab); confirm a project with
+  a non-empty `description` shows it in the client header, and a project with an empty `description`
+  shows no stray empty note element.

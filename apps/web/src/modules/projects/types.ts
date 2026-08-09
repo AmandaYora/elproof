@@ -102,6 +102,11 @@ export interface Project {
   contractValue: number;
   status: ProjectStatus;
   picStaffId: string;
+  // Resolved server-side (PLAN.md's Client Portal restructure) — "" when
+  // unresolved (e.g. the staff row was hard-deleted). Lets Client Portal
+  // show "Penanggung Jawab" without depending on the staff-only
+  // /staff/summary endpoint.
+  picName: string;
   description: string;
   isArchived: boolean;
   progress?: ProjectProgress;

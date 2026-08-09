@@ -10,6 +10,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
+	projectscontracts "elproof/internal/modules/projects/contracts"
 	"elproof/internal/modules/vendors/application"
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/httpx"
@@ -56,11 +57,12 @@ func requireManagerRole(w http.ResponseWriter, r *http.Request) bool {
 }
 
 type VenueHandler struct {
-	venues *application.VenueService
+	venues   *application.VenueService
+	projects projectscontracts.Contracts
 }
 
-func NewVenueHandler(venues *application.VenueService) *VenueHandler {
-	return &VenueHandler{venues: venues}
+func NewVenueHandler(venues *application.VenueService, projects projectscontracts.Contracts) *VenueHandler {
+	return &VenueHandler{venues: venues, projects: projects}
 }
 
 type venueResponse struct {
@@ -117,7 +119,8 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		}
 		params := pagination.FromRequest(r)
 		search := r.URL.Query().Get("search")
-		venues, total, err := h.venues.ListPaginated(r.Context(), tenantID, params, search)
+		city := r.URL.Query().Get("city")
+		venues, total, err := h.venues.ListPaginated(r.Context(), tenantID, params, search, city)
 		if err != nil {
 			writeAppError(w, err)
 			return
@@ -135,6 +138,71 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 	}
+}
+
+// Export streams every venue matching the same filters Collection's list view
+// accepts (search/city) as an .xlsx workbook, unpaginated -- mirrors Vendor's
+// Export exactly. Column order matches venueTemplateHeaders plus an appended
+// Status column, so the file round-trips through Import unmodified.
+func (h *VenueHandler) Export(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := requireStaffTenant(w, r)
+	if !ok {
+		return
+	}
+	if !requireManagerRole(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
+		return
+	}
+
+	search := r.URL.Query().Get("search")
+	city := r.URL.Query().Get("city")
+	venues, err := h.venues.Export(r.Context(), tenantID, search, city)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+
+	f := buildVenueExportWorkbook(venues)
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", `attachment; filename="venues-export.xlsx"`)
+	if _, err := f.WriteTo(w); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas export", nil)
+	}
+}
+
+func intPtrValue(n *int) interface{} {
+	if n == nil {
+		return ""
+	}
+	return *n
+}
+
+func buildVenueExportWorkbook(venues []domain.Venue) *excelize.File {
+	f := excelize.NewFile()
+	sheet := f.GetSheetName(0)
+	headers := append(append([]string{}, venueTemplateHeaders...), "Status")
+	for i, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, cell, header)
+	}
+	for rowIdx, v := range venues {
+		row := rowIdx + 2
+		values := []interface{}{
+			v.Name, v.PICName, v.PhonePIC, stringPtrValue(v.PhoneVenue), stringPtrValue(v.Email),
+			stringPtrValue(v.Address), stringPtrValue(v.City), int64PtrValue(v.RentalPrice),
+			int64PtrValue(v.Charge), intPtrValue(v.Capacity), stringPtrValue(v.Facilities),
+			stringPtrValue(v.SocialMedia), v.Notes, activeStatusLabel(v.IsActive),
+		}
+		for i, val := range values {
+			cell, _ := excelize.CoordinatesToCellName(i+1, row)
+			f.SetCellValue(sheet, cell, val)
+		}
+	}
+	return f
 }
 
 type venueInputBody struct {
@@ -224,9 +292,42 @@ func (h *VenueHandler) Item(w http.ResponseWriter, r *http.Request) {
 		h.uploadAttachment(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodGet:
 		h.downloadAttachment(w, r, tenantID, id)
+	case len(rest) == 1 && rest[0] == "delete-impact" && r.Method == http.MethodGet:
+		if !requireOwnerRole(w, r) {
+			return
+		}
+		h.deleteImpact(w, r, tenantID, id)
+	case len(rest) == 0 && r.Method == http.MethodDelete:
+		if !requireOwnerRole(w, r) {
+			return
+		}
+		if err := h.venues.Delete(r.Context(), tenantID, id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Venue berhasil dihapus", nil)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
+}
+
+// deleteImpact backs the hard-delete confirmation dialog (PLAN.md) -- names
+// exactly which projects would lose this venue's data source.
+func (h *VenueHandler) deleteImpact(w http.ResponseWriter, r *http.Request, tenantID, venueID int64) {
+	if _, err := h.venues.Get(r.Context(), tenantID, venueID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	refs, err := h.projects.ListAffectedProjectsForVenue(r.Context(), tenantID, venueID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result := make([]deleteImpactProjectRef, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, deleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
+	}
+	response.OK(w, "ok", deleteImpactResponse{AffectedProjects: result})
 }
 
 func (h *VenueHandler) get(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

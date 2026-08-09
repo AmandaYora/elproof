@@ -133,7 +133,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
         <Field label="Tanggal Acara" required hint={errors.eventDate}>
           <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} />
         </Field>
-        <Field label="Tanggal Mulai Persiapan" required hint={errors.prepStartDate}>
+        <Field label="Tanggal Booking" required hint={errors.prepStartDate}>
           <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} />
         </Field>
         <Field label="Lokasi / Venue" required hint={errors.venue}>

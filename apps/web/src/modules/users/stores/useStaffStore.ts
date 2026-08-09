@@ -4,6 +4,7 @@ import { API } from "@/shared/services/api-endpoints";
 import type { StaffMember, StaffSummary } from "@/modules/users/types";
 import type { UserFormValues, UserCreateFormValues } from "@/modules/users/schemas/user.schema";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
+import { toAffectedProjects, type AffectedProject, type RawDeleteImpact } from "@/shared/types/delete-impact";
 
 interface RawStaffMember {
   id: number;
@@ -52,6 +53,11 @@ interface StaffState {
   createStaff: (values: UserCreateFormValues) => Promise<CreateStaffResult>;
   updateStaff: (id: string, values: UserFormValues) => Promise<void>;
   toggleStaffActive: (id: string) => Promise<void>;
+  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
+  // The tenant's Owner account is rejected server-side unconditionally
+  // (403), never reaching a confirmation dialog.
+  fetchStaffDeleteImpact: (id: string) => Promise<AffectedProject[]>;
+  deleteStaff: (id: string) => Promise<void>;
 }
 
 // Backed by the real `staff` module (Fase 3) — tenant-scoped, fetch-then-set
@@ -97,6 +103,16 @@ export const useStaffStore = create<StaffState>((set, get) => ({
 
   toggleStaffActive: async (id) => {
     await httpClient.post(API.staff.toggleActive(id));
+    await get().fetchStaff();
+  },
+
+  fetchStaffDeleteImpact: async (id) => {
+    const res = await httpClient.get(API.staff.deleteImpact(id));
+    return toAffectedProjects(res.data.data as RawDeleteImpact);
+  },
+
+  deleteStaff: async (id) => {
+    await httpClient.delete(API.staff.item(id));
     await get().fetchStaff();
   },
 }));

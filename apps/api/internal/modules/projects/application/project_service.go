@@ -21,6 +21,10 @@ type ProjectRepository interface {
 	// infrastructure implementation's doc comment for `since`'s exact meaning.
 	ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error)
 	ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
+	// ListByVenueID/ListByStaffPIC back the hard-delete "impact" endpoints
+	// (PLAN.md) -- see their infrastructure implementations' doc comments.
+	ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error)
+	ListByStaffPIC(ctx context.Context, tenantID, staffID int64) ([]domain.ProjectRef, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
 	Update(ctx context.Context, p *domain.Project) error
@@ -57,6 +61,26 @@ type VenueResolver interface {
 	GetVenueSummary(ctx context.Context, tenantID, venueID int64) (vendorscontracts.VenueSummary, error)
 }
 
+// StaffNameResolver is the narrow shape ProjectService needs from `staff` to
+// embed a project's PIC name directly in its own response (PLAN.md's Client
+// Portal restructure). Deliberately typed with primitives only (not
+// staffcontracts.Summary) -- staff/application already imports
+// projects/contracts (for its own hard-delete impact-lookup bridge), so
+// projects/application importing staff/contracts back would create an
+// import cycle (projects/application -> staff/contracts -> staff/application
+// -> projects/contracts -> projects/application). main.go bridges the real
+// staffcontracts.Contracts into this shape with a small adapter instead.
+// Unlike ClientCleaner/VenueResolver, `staff` is already built before
+// `projects` in main.go, so this is a direct constructor argument, no
+// two-phase setter needed.
+type StaffNameResolver interface {
+	// GetName resolves a staff member's name. ok is false when the ID
+	// doesn't resolve (e.g. the staff row was hard-deleted, PLAN.md's Staff
+	// hard delete) -- never an error, so a stale pic_staff_id degrades to
+	// "no name available" rather than breaking the whole project response.
+	GetName(ctx context.Context, tenantID, staffID int64) (name string, ok bool, err error)
+}
+
 type MilestoneRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectMilestone, error)
 	// ListByProjects backs ComputeProgressBatch: every matching row across
@@ -82,6 +106,7 @@ type ProjectService struct {
 	activity           *ActivityService
 	clients            ClientCleaner
 	venues             VenueResolver
+	staff              StaffNameResolver
 }
 
 func NewProjectService(
@@ -95,12 +120,28 @@ func NewProjectService(
 	venuePayments VenuePaymentRepository,
 	evidence *EvidenceService,
 	activity *ActivityService,
+	staff StaffNameResolver,
 ) *ProjectService {
 	return &ProjectService{
 		repo: repo, milestones: milestones, milestoneTemplates: milestoneTemplates, vendorEngagements: vendorEngagements,
 		vendorMilestones: vendorMilestones, issues: issues, payments: payments, venuePayments: venuePayments,
-		evidence: evidence, activity: activity,
+		evidence: evidence, activity: activity, staff: staff,
 	}
+}
+
+// ResolvePICName backs the `picName` field on a project's response (PLAN.md's
+// Client Portal restructure) -- returns "" on any failure (unresolved ID,
+// nil resolver) rather than erroring, since this is display-only metadata,
+// never a required field.
+func (s *ProjectService) ResolvePICName(ctx context.Context, tenantID, staffID int64) string {
+	if s.staff == nil {
+		return ""
+	}
+	name, ok, err := s.staff.GetName(ctx, tenantID, staffID)
+	if err != nil || !ok {
+		return ""
+	}
+	return name
 }
 
 // SetClientCleaner completes the two-phase wiring needed because `clients`
@@ -122,7 +163,10 @@ func (s *ProjectService) SetVenueResolver(resolver VenueResolver) {
 // data via the vendors module's contract. Returns (nil, nil) — not an error
 // — when no venue is attached, so callers (both the WO Console tab and
 // Client Portal's) can render an empty state rather than treat it as a
-// failure.
+// failure. A NotFound from the vendors module (the venue itself has since
+// been hard-deleted — PLAN.md's Vendor/Venue hard delete, which never
+// cleans up this stale reference) is treated exactly the same way: the
+// venue is simply no longer resolvable, not a real error to surface.
 func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64) (*vendorscontracts.VenueSummary, error) {
 	p, err := s.Get(ctx, tenantID, projectID)
 	if err != nil {
@@ -133,6 +177,9 @@ func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64
 	}
 	summary, err := s.venues.GetVenueSummary(ctx, tenantID, *p.VenueID)
 	if err != nil {
+		if appErr, ok := apperror.As(err); ok && appErr.Kind == apperror.KindNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &summary, nil
@@ -142,6 +189,18 @@ func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64
 // project in the tenant (see MySQLProjectRepository.List's own doc comment).
 func (s *ProjectService) List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error) {
 	return s.repo.List(ctx, tenantID, picStaffID)
+}
+
+// ListAffectedProjectsForVenue backs the hard-delete "impact" endpoint for
+// Venue (PLAN.md) -- see ListByVenueID's doc comment.
+func (s *ProjectService) ListAffectedProjectsForVenue(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error) {
+	return s.repo.ListByVenueID(ctx, tenantID, venueID)
+}
+
+// ListAffectedProjectsForStaff backs the hard-delete "impact" endpoint for
+// Staff (PLAN.md) -- see ListByStaffPIC's doc comment.
+func (s *ProjectService) ListAffectedProjectsForStaff(ctx context.Context, tenantID, staffID int64) ([]domain.ProjectRef, error) {
+	return s.repo.ListByStaffPIC(ctx, tenantID, staffID)
 }
 
 // CountAll backs the dashboard's TotalProjects stat.

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, CheckCircle2, Ban } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Badge } from "@/shared/components/ui/Badge";
+import { Modal } from "@/shared/components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
@@ -16,6 +17,7 @@ import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import type { VendorCategory } from "@/modules/vendor-categories/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 
 export default function VendorCategoryListPage() {
   const categories = useVendorCategoryStore((s) => s.categoryPage);
@@ -24,8 +26,10 @@ export default function VendorCategoryListPage() {
   const createCategory = useVendorCategoryStore((s) => s.createCategory);
   const updateCategory = useVendorCategoryStore((s) => s.updateCategory);
   const toggleCategoryActive = useVendorCategoryStore((s) => s.toggleCategoryActive);
+  const deleteCategory = useVendorCategoryStore((s) => s.deleteCategory);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
+  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
@@ -33,6 +37,8 @@ export default function VendorCategoryListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<VendorCategory | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VendorCategory | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     void fetchVendors();
@@ -83,6 +89,25 @@ export default function VendorCategoryListPage() {
       await fetchCategoryPage(page, query);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status kategori"));
+    }
+  }
+
+  // Hard delete (PLAN.md) — deliberate carve-out, no confirm-and-proceed
+  // dialog: a category still assigned to any vendor is a hard block (real
+  // same-module SQL FK), so the vendor count already loaded for this page's
+  // own "Jumlah Vendor" column doubles as the pre-check here too.
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteCategory(deleteTarget.id);
+      setDeleteTarget(null);
+      await fetchCategoryPage(page, query);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus kategori vendor"));
+      setDeleteTarget(null);
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -143,6 +168,9 @@ export default function VendorCategoryListPage() {
                     ) : (
                       <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(category)} />
                     )}
+                    {isOwner && (
+                      <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => setDeleteTarget(category)} />
+                    )}
                   </div>
                 </>
               );
@@ -181,6 +209,9 @@ export default function VendorCategoryListPage() {
                       ) : (
                         <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(category)} />
                       )}
+                      {isOwner && (
+                        <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => setDeleteTarget(category)} />
+                      )}
                     </div>
                   </TD>
                 </TR>
@@ -201,6 +232,52 @@ export default function VendorCategoryListPage() {
         onSubmit={(values) => void handleSubmit(values)}
         initialCategory={editingCategory}
       />
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title={deleteTarget ? `Hapus Kategori — ${deleteTarget.name}` : "Hapus Kategori"}
+        size="sm"
+      >
+        {deleteTarget &&
+          (() => {
+            const inUseCount = vendors.filter((v) => v.categoryId === deleteTarget.id).length;
+            if (inUseCount > 0) {
+              return (
+                <div className="flex flex-col gap-4">
+                  <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                    <span>
+                      Kategori ini masih digunakan oleh <strong className="text-text-primary">{inUseCount} vendor</strong> dan tidak
+                      dapat dihapus. Ubah kategori pada vendor tersebut terlebih dahulu.
+                    </span>
+                  </p>
+                  <div className="flex justify-end">
+                    <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+                      Tutup
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div className="flex flex-col gap-4">
+                <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                  <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+                    Batal
+                  </Button>
+                  <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
+                    {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+      </Modal>
     </div>
   );
 }

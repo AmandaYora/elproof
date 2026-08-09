@@ -101,7 +101,7 @@ func (r *MySQLVenueRepository) List(ctx context.Context, tenantID int64) ([]doma
 // ListPaginated backs the real `GET /venues` list page -- List above stays
 // as-is for the venue-picker (attach-to-project) dropdown and the bulk
 // import's prefetch, both of which need the full roster in one call.
-func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Venue, int64, error) {
+func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, city string) ([]domain.Venue, int64, error) {
 	countQuery := `SELECT COUNT(*) FROM venues WHERE tenant_id = ?`
 	listQuery := `SELECT ` + venueColumns + ` FROM venues WHERE tenant_id = ?`
 	args := []interface{}{tenantID}
@@ -110,6 +110,11 @@ func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64
 		listQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
 		like := "%" + search + "%"
 		args = append(args, like, like, like)
+	}
+	if city != "" {
+		countQuery += ` AND city = ?`
+		listQuery += ` AND city = ?`
+		args = append(args, city)
 	}
 
 	var total int64
@@ -133,6 +138,39 @@ func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64
 		venues = append(venues, *v)
 	}
 	return venues, total, rows.Err()
+}
+
+// ListFiltered backs Export -- same search/city filters as ListPaginated, but
+// unpaginated (Export always returns the whole matching set).
+func (r *MySQLVenueRepository) ListFiltered(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error) {
+	query := `SELECT ` + venueColumns + ` FROM venues WHERE tenant_id = ?`
+	args := []interface{}{tenantID}
+	if search != "" {
+		query += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
+		like := "%" + search + "%"
+		args = append(args, like, like, like)
+	}
+	if city != "" {
+		query += ` AND city = ?`
+		args = append(args, city)
+	}
+	query += ` ORDER BY id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var venues []domain.Venue
+	for rows.Next() {
+		v, err := scanVenue(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		venues = append(venues, *v)
+	}
+	return venues, rows.Err()
 }
 
 func (r *MySQLVenueRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Venue, error) {
@@ -203,5 +241,17 @@ func (r *MySQLVenueRepository) SetActive(ctx context.Context, tenantID, id int64
 
 func (r *MySQLVenueRepository) UpdateAttachment(ctx context.Context, tenantID, id int64, path, mimeType *string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE venues SET attachment_path = ?, attachment_mime_type = ? WHERE tenant_id = ? AND id = ?`, path, mimeType, tenantID, id)
+	return err
+}
+
+// Delete permanently removes a venue -- a deliberate, guarded exception to
+// this codebase's soft-state convention (PLAN.md's hard-delete plan:
+// informed-consent, not a blocking precondition). Never touches
+// `projects.venue_id`, which has no SQL FK to this table (cross-module by
+// design) -- left to degrade gracefully via ProjectService.GetVenue's
+// graceful-not-found handling, exactly the tradeoff the confirmation dialog
+// exists to make explicit.
+func (r *MySQLVenueRepository) Delete(ctx context.Context, tenantID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM venues WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }

@@ -59,6 +59,14 @@ export default function ProjectVenueTabPage() {
       .then((v) => {
         if (!cancelled) setVenue(v);
       })
+      .catch(() => {
+        // The attached venue may have since been hard-deleted (PLAN.md) --
+        // project.venueId is a stale primitive reference with no cleanup, so
+        // a 404 here just means "no longer resolvable," same as no venue
+        // ever having been attached. Falls back to the same EmptyState below
+        // rather than leaving an unhandled rejection.
+        if (!cancelled) setVenue(null);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });

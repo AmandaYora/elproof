@@ -116,3 +116,12 @@ func (r *MySQLVendorCategoryRepository) SetActive(ctx context.Context, tenantID,
 	_, err := r.db.ExecContext(ctx, `UPDATE vendor_categories SET is_active = ? WHERE tenant_id = ? AND id = ?`, isActive, tenantID, id)
 	return err
 }
+
+// Delete is only ever reached after VendorCategoryService.Delete has already
+// confirmed zero vendors reference this category (PLAN.md's hard-delete
+// guard) -- the real fk_vendors_category FK remains as a defense-in-depth
+// backstop regardless.
+func (r *MySQLVendorCategoryRepository) Delete(ctx context.Context, tenantID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM vendor_categories WHERE tenant_id = ? AND id = ?`, tenantID, id)
+	return err
+}

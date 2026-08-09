@@ -50,6 +50,15 @@ type Project struct {
 	UpdatedAt        time.Time
 }
 
+// ProjectRef is a minimal {id, name} projection of a project — backs the
+// hard-delete "impact" endpoints (PLAN.md's Vendor/Venue/Staff hard delete):
+// naming exactly which projects would lose a data source, without exposing
+// the rest of the project record cross-module.
+type ProjectRef struct {
+	ID   int64
+	Name string
+}
+
 type MilestoneStatus string
 
 const (

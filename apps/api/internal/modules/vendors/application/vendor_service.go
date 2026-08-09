@@ -12,6 +12,7 @@ import (
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
 
@@ -34,13 +35,19 @@ var allowedVendorAttachmentMimeTypes = map[string]bool{
 
 type VendorRepository interface {
 	List(ctx context.Context, tenantID int64, categoryID *int64) ([]domain.Vendor, error)
-	ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search string) ([]domain.Vendor, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search, city string) ([]domain.Vendor, int64, error)
+	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
+	ListFiltered(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Vendor, error)
 	Create(ctx context.Context, vendor *domain.Vendor) error
 	CreateBatch(ctx context.Context, vendors []domain.Vendor) error
 	Update(ctx context.Context, vendor *domain.Vendor) error
 	SetActive(ctx context.Context, tenantID, id int64, isActive bool) error
 	UpdateAttachment(ctx context.Context, tenantID, id int64, path, mimeType *string) error
+	// Delete is a deliberate, guarded exception to this codebase's soft-state
+	// convention (PLAN.md's hard-delete plan) -- reached only via
+	// VendorService.Delete's Owner-only, informed-consent flow.
+	Delete(ctx context.Context, tenantID, id int64) error
 }
 
 // VendorObjectStorage is the narrow slice of internal/shared/storage.Client
@@ -67,8 +74,14 @@ func (s *VendorService) List(ctx context.Context, tenantID int64, categoryID *in
 	return s.repo.List(ctx, tenantID, categoryID)
 }
 
-func (s *VendorService) ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search string) ([]domain.Vendor, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, categoryID, params, search)
+func (s *VendorService) ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search, city string) ([]domain.Vendor, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, categoryID, params, search, city)
+}
+
+// Export backs "Export Excel" -- same filters as ListPaginated (so "filter
+// then export" works), unpaginated.
+func (s *VendorService) Export(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error) {
+	return s.repo.ListFiltered(ctx, tenantID, categoryID, search, city)
 }
 
 func (s *VendorService) Get(ctx context.Context, tenantID, id int64) (*domain.Vendor, error) {
@@ -177,6 +190,30 @@ func (s *VendorService) SetActive(ctx context.Context, tenantID, id int64, isAct
 	}
 	vendor.IsActive = isActive
 	return vendor, nil
+}
+
+// Delete permanently removes a vendor -- an explicit, guarded exception to
+// this codebase's soft-state convention (PLAN.md's hard-delete plan).
+// Owner-only and informed-consent are enforced by the caller (handler +
+// frontend confirmation dialog, after fetching this vendor's "delete-impact");
+// this method itself performs no reference check and never blocks. The
+// vendor's object-storage attachment (if any) is deleted best-effort, after
+// the row itself is gone -- a failure here is logged, never propagated,
+// mirroring ADR-0013's EvidenceService.DeleteStorageObjects.
+func (s *VendorService) Delete(ctx context.Context, tenantID, id int64) error {
+	vendor, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+		return err
+	}
+	if vendor.AttachmentPath != nil {
+		if err := s.storage.Delete(ctx, *vendor.AttachmentPath); err != nil {
+			logger.Error("failed to delete object storage attachment %q for deleted vendor %d: %v", *vendor.AttachmentPath, id, err)
+		}
+	}
+	return nil
 }
 
 // --- Attachment (single slot per vendor -- document or photo) ---

@@ -11,7 +11,9 @@ import (
 // tenant's own configurable template (PLAN.md's "Timeline Default Template")
 // instead of a hardcoded list shared by every tenant -- see
 // MilestoneTemplateService. DaysBeforeEvent is clamped to PrepStartDate for
-// short-notice projects, same as before this became configurable. An empty
+// short-notice projects, same as before this became configurable --
+// prepStartDate displays in the UI as "Tanggal Booking" (PLAN.md,
+// display-text-only rename), unchanged here. An empty
 // template is not an error (PLAN.md's decision): the loop simply does nothing
 // and the project's Timeline tab starts empty.
 func (s *ProjectService) seedDefaultMilestones(ctx context.Context, tenantID, projectID int64, eventDate, prepStartDate time.Time) error {

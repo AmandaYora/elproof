@@ -26,6 +26,10 @@ interface VendorCategoryState {
   createCategory: (values: VendorCategoryFormValues) => Promise<void>;
   updateCategory: (id: string, values: VendorCategoryFormValues) => Promise<void>;
   toggleCategoryActive: (id: string) => Promise<void>;
+  // Hard delete (PLAN.md) — no "delete-impact" dialog for this entity: a
+  // category still assigned to any vendor is a hard block (real same-module
+  // SQL FK), surfaced directly as the DELETE call's own error message.
+  deleteCategory: (id: string) => Promise<void>;
 }
 
 // Backed by the real `vendors` module (Fase 3) — tenant-scoped. Also the
@@ -63,6 +67,11 @@ export const useVendorCategoryStore = create<VendorCategoryState>((set, get) => 
 
   toggleCategoryActive: async (id) => {
     await httpClient.post(API.vendors.categoryToggleActive(id));
+    await get().fetchCategories();
+  },
+
+  deleteCategory: async (id) => {
+    await httpClient.delete(API.vendors.category(id));
     await get().fetchCategories();
   },
 }));

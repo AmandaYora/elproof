@@ -18,23 +18,29 @@ func formatDatePtr(t *time.Time) *string {
 }
 
 type projectResponse struct {
-	ID               int64             `json:"id"`
-	Name             string            `json:"name"`
-	BrideName        string            `json:"brideName"`
-	GroomName        string            `json:"groomName"`
-	EventDate        string            `json:"eventDate"`
-	Venue            string            `json:"venue"`
-	VenueID          *int64            `json:"venueId"`
-	VenueRentalPrice *int64            `json:"venueRentalPrice"`
-	VenueCharge      *int64            `json:"venueCharge"`
-	PrepStartDate    string            `json:"prepStartDate"`
-	PackageName      string            `json:"packageName"`
-	ContractValue    int64             `json:"contractValue"`
-	Status           string            `json:"status"`
-	PICStaffID       int64             `json:"picStaffId"`
-	Description      string            `json:"description"`
-	IsArchived       bool              `json:"isArchived"`
-	Progress         *progressResponse `json:"progress,omitempty"`
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	BrideName        string `json:"brideName"`
+	GroomName        string `json:"groomName"`
+	EventDate        string `json:"eventDate"`
+	Venue            string `json:"venue"`
+	VenueID          *int64 `json:"venueId"`
+	VenueRentalPrice *int64 `json:"venueRentalPrice"`
+	VenueCharge      *int64 `json:"venueCharge"`
+	PrepStartDate    string `json:"prepStartDate"`
+	PackageName      string `json:"packageName"`
+	ContractValue    int64  `json:"contractValue"`
+	Status           string `json:"status"`
+	PICStaffID       int64  `json:"picStaffId"`
+	// PICName is populated separately by getProject (PLAN.md's Client Portal
+	// restructure) -- toProjectResponse itself never resolves it, same
+	// pattern as Progress below. Empty string when unresolved (e.g. the
+	// staff row was hard-deleted) rather than omitted, so the frontend never
+	// has to distinguish "not fetched yet" from "no name available".
+	PICName     string            `json:"picName"`
+	Description string            `json:"description"`
+	IsArchived  bool              `json:"isArchived"`
+	Progress    *progressResponse `json:"progress,omitempty"`
 }
 
 func toProjectResponse(p domain.Project) projectResponse {
@@ -126,20 +132,20 @@ func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 }
 
 type projectVendorResponse struct {
-	ID               int64                     `json:"id"`
-	VendorID         int64                     `json:"vendorId"`
-	CategoryID       int64                     `json:"categoryId"`
-	Scope            string                    `json:"scope"`
-	ContractValue    int64                     `json:"contractValue"`
-	PricingTier      string                    `json:"pricingTier"`
-	EngagementStatus string                    `json:"engagementStatus"`
-	BookingDate      *string                   `json:"bookingDate"`
-	EventDate        string                    `json:"eventDate"`
-	DPAmount         int64                     `json:"dpAmount"`
-	PaidAmount       int64                     `json:"paidAmount"`
-	DueDate          *string                   `json:"dueDate"`
-	PICStaffID       int64                     `json:"picStaffId"`
-	Notes            string                    `json:"notes"`
+	ID               int64   `json:"id"`
+	VendorID         int64   `json:"vendorId"`
+	CategoryID       int64   `json:"categoryId"`
+	Scope            string  `json:"scope"`
+	ContractValue    int64   `json:"contractValue"`
+	PricingTier      string  `json:"pricingTier"`
+	EngagementStatus string  `json:"engagementStatus"`
+	BookingDate      *string `json:"bookingDate"`
+	EventDate        string  `json:"eventDate"`
+	DPAmount         int64   `json:"dpAmount"`
+	PaidAmount       int64   `json:"paidAmount"`
+	DueDate          *string `json:"dueDate"`
+	PICStaffID       int64   `json:"picStaffId"`
+	Notes            string  `json:"notes"`
 	// Milestones is only populated by listVendorEngagements (PLAN.md
 	// "Performance remediation" Phase E) — omitted (nil) from
 	// create/update/cancel responses, which have no batch to draw from and

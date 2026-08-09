@@ -52,6 +52,10 @@ export const API = {
   public: {
     branding: "/api/v1/public/branding",
     logo: "/api/v1/public/logo",
+    // LoginPage's left-panel photo slider — a fixed, global set of marketing
+    // photos (not tenant-scoped), unlike branding/logo above.
+    loginSlides: "/api/v1/public/login-slides",
+    loginSlide: (index: number) => `/api/v1/public/login-slides/${index}`,
   },
   staff: {
     base: "/api/v1/staff",
@@ -61,6 +65,10 @@ export const API = {
     // only, powers every PIC picker/label across the `projects` module.
     // `base` above is Owner-only now (Pengguna management).
     summary: "/api/v1/staff/summary",
+    // Hard delete (PLAN.md) — `deleteImpact` names every project this staff
+    // member is still a live PIC assignment on, for the confirmation dialog;
+    // `item(id)` above is reused with the DELETE verb for the delete itself.
+    deleteImpact: (id: string) => `/api/v1/staff/${id}/delete-impact`,
   },
   vendors: {
     categories: "/api/v1/vendor-categories",
@@ -73,10 +81,17 @@ export const API = {
     attachment: (id: string) => `/api/v1/vendors/${id}/attachment`,
     template: "/api/v1/vendors/template",
     import: "/api/v1/vendors/import",
+    export: "/api/v1/vendors/export",
     // Public-safe (staff AND client) — {id, name} only, powers Client
     // Portal's Vendor Progress tab. Every other vendor endpoint above is
     // staff-only now that commercial fields (harga akad, lampiran) exist.
     summary: "/api/v1/vendors/summary",
+    // Hard delete (PLAN.md) — `deleteImpact` names every project this vendor
+    // is still engaged on, for the confirmation dialog; `item(id)` above is
+    // reused with the DELETE verb for the delete itself. Vendor Category's
+    // delete has no impact endpoint — it's a hard block, not a dialog (see
+    // PLAN.md's carve-out reasoning).
+    deleteImpact: (id: string) => `/api/v1/vendors/${id}/delete-impact`,
   },
   // `venues` — its own directory, not a vendor category (ADR-0016). One
   // attachment slot per venue (no more photo gallery), plus a bulk Excel
@@ -86,8 +101,10 @@ export const API = {
     item: (id: string) => `/api/v1/venues/${id}`,
     toggleActive: (id: string) => `/api/v1/venues/${id}/toggle-active`,
     attachment: (id: string) => `/api/v1/venues/${id}/attachment`,
+    deleteImpact: (id: string) => `/api/v1/venues/${id}/delete-impact`,
     template: "/api/v1/venues/template",
     import: "/api/v1/venues/import",
+    export: "/api/v1/venues/export",
   },
   projects: {
     base: "/api/v1/projects",

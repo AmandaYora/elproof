@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, CheckCircle2, Ban, Upload } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
+import { Combobox } from "@/shared/components/ui/Combobox";
+import { CITIES } from "@/shared/constants/cities";
 import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
+import { Modal } from "@/shared/components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
@@ -17,6 +20,8 @@ import type { Venue } from "@/modules/venues/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
+import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
   const venues = useVenueStore((s) => s.venuePage);
@@ -27,22 +32,32 @@ export default function VenueListPage() {
   const toggleVenueActive = useVenueStore((s) => s.toggleVenueActive);
   const downloadVenueTemplate = useVenueStore((s) => s.downloadVenueTemplate);
   const importVenues = useVenueStore((s) => s.importVenues);
+  const exportVenues = useVenueStore((s) => s.exportVenues);
+  const fetchVenueDeleteImpact = useVenueStore((s) => s.fetchVenueDeleteImpact);
+  const deleteVenue = useVenueStore((s) => s.deleteVenue);
+  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
+  const [cityFilter, setCityFilter] = useState<string>("Semua");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVenue, setEditingVenue] = useState<Venue | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery]);
+  }, [debouncedQuery, cityFilter]);
 
   useEffect(() => {
-    void fetchVenuePage(page, debouncedQuery);
-  }, [fetchVenuePage, page, debouncedQuery]);
+    void fetchVenuePage(page, debouncedQuery, cityFilter === "Semua" ? "" : cityFilter);
+  }, [fetchVenuePage, page, debouncedQuery, cityFilter]);
 
   function openCreateModal() {
     setEditingVenue(undefined);
@@ -68,7 +83,7 @@ export default function VenueListPage() {
         await createVenue(values as VenueCreateFormValues);
       }
       closeModal();
-      await fetchVenuePage(page, query);
+      await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menyimpan venue"));
     }
@@ -78,7 +93,7 @@ export default function VenueListPage() {
     setActionError(null);
     try {
       await toggleVenueActive(venue.id);
-      await fetchVenuePage(page, query);
+      await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status venue"));
     }
@@ -86,8 +101,60 @@ export default function VenueListPage() {
 
   async function handleImportVenues(file: File) {
     const result = await importVenues(file);
-    await fetchVenuePage(page, query);
+    await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
     return result;
+  }
+
+  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
+  async function openDeleteConfirm(venue: Venue) {
+    setDeleteTarget(venue);
+    setDeleteImpact(null);
+    setImpactLoading(true);
+    try {
+      setDeleteImpact(await fetchVenueDeleteImpact(venue.id));
+    } catch {
+      setDeleteImpact([]);
+    } finally {
+      setImpactLoading(false);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteVenue(deleteTarget.id);
+      closeDeleteConfirm();
+      await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal menghapus venue"));
+      closeDeleteConfirm();
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  async function handleExportVenues() {
+    setActionError(null);
+    setIsExporting(true);
+    try {
+      const blob = await exportVenues(query, cityFilter === "Semua" ? "" : cityFilter);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "venues-export.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal mengekspor data venue"));
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -101,6 +168,9 @@ export default function VenueListPage() {
           <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
             Import Bulk
           </Button>
+          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVenues()} disabled={isExporting}>
+            {isExporting ? "Mengekspor..." : "Export Excel"}
+          </Button>
           <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
             Tambah Venue
           </Button>
@@ -113,6 +183,14 @@ export default function VenueListPage() {
 
       <div className="flex flex-wrap gap-3">
         <SearchInput className="max-w-xs" placeholder="Cari nama venue atau PIC..." value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Combobox className="w-52" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} placeholder="Cari kota...">
+          <option value="Semua">Semua Kota</option>
+          {CITIES.map((city) => (
+            <option key={city} value={city}>
+              {city}
+            </option>
+          ))}
+        </Combobox>
       </div>
 
       <Card>
@@ -143,6 +221,9 @@ export default function VenueListPage() {
                       <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(venue)} />
                     ) : (
                       <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
+                    )}
+                    {isOwner && (
+                      <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />
                     )}
                   </div>
                 </>
@@ -183,6 +264,9 @@ export default function VenueListPage() {
                           ) : (
                             <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
                           )}
+                          {isOwner && (
+                            <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />
+                          )}
                         </div>
                       </TD>
                     </TR>
@@ -203,6 +287,41 @@ export default function VenueListPage() {
         onSubmitEdit={(values) => void handleSubmit(values)}
         initialVenue={editingVenue}
       />
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDeleteConfirm}
+        title={deleteTarget ? `Hapus Venue — ${deleteTarget.name}` : "Hapus Venue"}
+        size="sm"
+      >
+        {impactLoading ? (
+          <p className="text-[13px] text-text-secondary">Memeriksa penggunaan...</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+              {deleteImpact && deleteImpact.length > 0 ? (
+                <span>
+                  Venue ini masih digunakan oleh project berikut:{" "}
+                  <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, data
+                  venue pada project tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
+                  menghapus venue ini secara permanen?
+                </span>
+              ) : (
+                <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+                Batal
+              </Button>
+              <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
+                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {importModalOpen && (
         <ImportBulkModal

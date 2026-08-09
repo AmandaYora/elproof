@@ -131,9 +131,12 @@ func (r *MySQLStaffRepository) SetActive(ctx context.Context, tenantID, id int64
 	return err
 }
 
-// Delete is only ever called by StaffService.Create as a compensating
-// rollback when identity.CreateCredential fails after this row already
-// committed (mirrors the clients module's Create/Delete pair).
+// Delete permanently removes a staff member. Originally only ever called by
+// StaffService.Create as a compensating rollback when identity.CreateCredential
+// fails after this row already committed; now also reachable via
+// StaffService.Delete's guarded, Owner-only hard-delete flow (PLAN.md's
+// hard-delete plan, an explicit exception to this codebase's soft-state
+// convention).
 func (r *MySQLStaffRepository) Delete(ctx context.Context, tenantID, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM staff_members WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
