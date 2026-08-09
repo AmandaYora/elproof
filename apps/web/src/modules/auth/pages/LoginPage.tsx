@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { loginSchema, type LoginFormValues } from "@/modules/auth/schemas/login.schema";
@@ -35,17 +35,47 @@ const PANEL_CLASSES = {
 };
 const ICON_BOX_CLASSES = { neutral: "bg-slate-800", branded: "bg-navy-900" };
 
+// The platform's own hostname(s) — a request arriving on any of these can
+// never resolve to a tenant (ADR-0015's Host-header lookup 404s), so there's
+// nothing worth waiting for and the page can paint its neutral look on the
+// very first render, exactly as before this fix. Every other hostname is a
+// *candidate* custom domain (it might 404 too, e.g. an unconfigured or
+// decommissioned domain) and is worth a brief wait to avoid painting the
+// wrong identity first. "elproof.elcodelabs.com" is the same platform-domain
+// string already used in contact.ts/tenant_handler.go.
+const PLATFORM_HOSTNAMES = new Set(["elproof.elcodelabs.com", "localhost", "127.0.0.1"]);
+
+// A hung/slow `/public/branding` call must never hold a custom-domain login
+// page hostage forever — past this, fall back to the neutral look exactly as
+// a 404 would. Same-origin/same-VPS in production (ADR-0015), so this is a
+// generous ceiling, not an expected path.
+const BRANDING_LOAD_TIMEOUT_MS = 4000;
+
 // Fetches branding for the current request's Host header (ADR-0015) — only
 // resolves to something when this page is loaded from a tenant's own custom
 // domain; a 404 (the platform's own domain, localhost, anything unconfigured)
 // is swallowed and the page keeps its default neutral look, same convention
 // as useTenantBrandingStore.hydrate().
+//
+// `loading` starts `true` for any non-platform hostname and only flips to
+// `false` once the lookup settles (match, 404, or timeout) — LoginPage holds
+// off painting either the neutral or the branded identity until then, so a
+// matched custom domain never flashes the wrong one first (see the "ngedip"
+// production report this fixed). The platform's own hostname skips the wait
+// entirely since it can never match a tenant.
 function useDomainBranding() {
+  const [loading, setLoading] = useState(() => !PLATFORM_HOSTNAMES.has(window.location.hostname));
   const [branding, setBranding] = useState<DomainBranding | null>(null);
 
   useEffect(() => {
+    // The platform's own hostname never matches a tenant (ADR-0015) — skip
+    // the request entirely rather than firing it just to watch it 404.
+    if (PLATFORM_HOSTNAMES.has(window.location.hostname)) return;
     let cancelled = false;
     let logoObjectUrl: string | null = null;
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, BRANDING_LOAD_TIMEOUT_MS);
 
     async function load() {
       try {
@@ -66,24 +96,27 @@ function useDomainBranding() {
         setBranding({ businessName: raw.businessName, logoUrl });
       } catch {
         // No custom domain match, or a transient failure — keep the default look.
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     void load();
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
       resetBrandColorPreset();
       resetTabIdentity();
       if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
     };
   }, []);
 
-  return branding;
+  return { loading, branding };
 }
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const branding = useDomainBranding();
+  const { loading: brandingLoading, branding } = useDomainBranding();
   const [values, setValues] = useState<LoginFormValues>({ username: "", password: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof LoginFormValues, string>>>({});
   const [authError, setAuthError] = useState<string | null>(null);
@@ -134,6 +167,18 @@ export default function LoginPage() {
     }
     setErrors({});
     void attemptLogin(values.username, values.password);
+  }
+
+  if (brandingLoading) {
+    // Neither the neutral nor the branded identity is safe to paint yet —
+    // showing either one first, then replacing it, is exactly the flash this
+    // guards against (see useDomainBranding). Only reached on a non-platform
+    // hostname, and only for the brief `/public/branding` round trip.
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950">
+        <Loader2 className="h-6 w-6 animate-spin text-white/60" />
+      </div>
+    );
   }
 
   return (
