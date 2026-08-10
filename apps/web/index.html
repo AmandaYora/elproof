@@ -10,6 +10,12 @@
       rel="stylesheet"
     />
     <title>ElProof — Client Transparency Portal</title>
+    <!-- Platform defaults -- swapped server-side per tenant custom domain,
+         see cmd/server/main.go's injectTenantSiteMeta (exact-string match). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ElProof" />
+    <meta property="og:title" content="ElProof — Client Transparency Portal" />
+    <meta property="og:description" content="Transparansi persiapan pernikahan Anda, dari WO hingga hari H." />
   </head>
   <body>
     <div id="root"></div>

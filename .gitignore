@@ -11,6 +11,9 @@ coverage/
 apps/api/tmp/
 apps/api/*.exe
 apps/api/air-console.log
+# apps/web/dist copied here for local prod-style testing of spaFileServer
+# (mirrors infra/docker/Dockerfile's COPY step) -- never committed.
+apps/api/public/
 # Prisma
 apps/api/prisma/*.db
 

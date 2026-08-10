@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 
 	billingcontracts "elproof/internal/modules/billing/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
@@ -75,6 +76,36 @@ func (m *Module) SetProjects(projects projectscontracts.Contracts) {
 // Fase 6's projects<->clients wiring.
 func (m *Module) ApplyWebhookEvent(ctx context.Context, orderRef string, event paymentcontracts.WebhookEvent) error {
 	return m.tenantService.ApplyWebhookEvent(ctx, orderRef, event)
+}
+
+// SiteMeta is the minimal, primitive-typed slice of a tenant's branding
+// needed to render a request's <title>/Open Graph tags at HTML-serve time —
+// deliberately not domain.Tenant itself, same primitive-typed-bridge
+// reasoning as StaffNameResolver (projects/application): main.go's
+// spaFileServer is composition-root code, not another module, but there's
+// still no reason for it to see this module's domain internals for a need
+// this narrow.
+type SiteMeta struct {
+	BusinessName string
+	HasLogo      bool
+}
+
+// SiteMetaForHost resolves a tenant's own display name for injecting into
+// index.html's <title>/Open Graph tags at serve time (spaFileServer in
+// main.go) — same Host-based lookup as PublicBranding (ADR-0015), reused
+// here so a shared link's preview card (WhatsApp/Telegram/etc., which never
+// execute the SPA's JS) shows the tenant's real name instead of the
+// platform's own. ok=false for the platform's own domain or any unmatched
+// Host, exactly like PublicBranding's 404.
+func (m *Module) SiteMetaForHost(ctx context.Context, host string) (meta SiteMeta, ok bool) {
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	tenant, err := m.tenantService.GetBrandingByDomain(ctx, strings.ToLower(host))
+	if err != nil {
+		return SiteMeta{}, false
+	}
+	return SiteMeta{BusinessName: tenant.BusinessName, HasLogo: tenant.LogoStoragePath != nil}, true
 }
 
 // RegisterPublicRoutes registers this module's pre-auth endpoints (ADR-0015)
