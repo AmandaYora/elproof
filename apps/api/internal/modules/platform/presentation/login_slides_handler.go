@@ -18,10 +18,6 @@ var loginSlideKeys = []string{
 	"elproof/marketing/login-slides/slide-01.jpg",
 	"elproof/marketing/login-slides/slide-02.jpg",
 	"elproof/marketing/login-slides/slide-03.jpg",
-	"elproof/marketing/login-slides/slide-04.jpg",
-	"elproof/marketing/login-slides/slide-05.jpg",
-	"elproof/marketing/login-slides/slide-06.jpg",
-	"elproof/marketing/login-slides/slide-07.jpg",
 }
 
 // LoginSlidesHandler serves the login page's fixed marketing photos —

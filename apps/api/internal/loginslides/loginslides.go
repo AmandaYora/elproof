@@ -1,5 +1,5 @@
 // Package loginslides is a one-off, re-runnable operator command that
-// compresses the login page's 7 fixed marketing photos and uploads them to
+// compresses the login page's 3 fixed marketing photos and uploads them to
 // object storage under a stable key per slide. Not request-path code — same
 // "administrative tooling" category as internal/adminseed, invoked from
 // cmd/server's own dispatch rather than a request handler.
@@ -37,13 +37,9 @@ type slide struct {
 }
 
 var slides = []slide{
-	{"024A7421.jpg", keyPrefix + "slide-01.jpg"},
-	{"024A7431.jpg", keyPrefix + "slide-02.jpg"},
-	{"ChatGPT Image Jul 30, 2026 at 03_30_38 PM.png", keyPrefix + "slide-03.jpg"},
-	{"SRNTY-440.jpg", keyPrefix + "slide-04.jpg"},
-	{"SRNTY-465.jpg", keyPrefix + "slide-05.jpg"},
-	{"SRNTY_233.jpg", keyPrefix + "slide-06.jpg"},
-	{"SRNTY_376 (1).jpg", keyPrefix + "slide-07.jpg"},
+	{"ChatGPT Image Jul 30, 2026 at 03_30_38 PM.png", keyPrefix + "slide-01.jpg"},
+	{"SRNTY-440.jpg", keyPrefix + "slide-02.jpg"},
+	{"SRNTY-465.jpg", keyPrefix + "slide-03.jpg"},
 }
 
 // Run reads each fixed source file from dir, compresses it, and uploads it to

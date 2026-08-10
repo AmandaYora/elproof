@@ -189,14 +189,10 @@ export default function LoginPage() {
         <LoginPhotoSlider />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent" />
         <div className="relative z-10">
-          <h1 className="text-[40px] font-bold leading-[1.15] text-white">
-            Transparansi Persiapan Pernikahan,
-            <br />
-            Kini Lebih Terjaga.
-          </h1>
+          <h1 className="text-[40px] font-bold leading-[1.15] text-white">Every Step to Your Perfect Day.</h1>
           <p className="mt-5 max-w-md text-[15px] leading-relaxed text-white/70">
-            Satu pintu masuk untuk semua pihak — tim WO mendokumentasikan setiap progress, vendor, dan pembayaran,
-            sementara pasangan client dapat memantau langsung persiapan hari bahagia mereka.
+            Pantau seluruh perjalanan menuju hari pernikahan Anda dalam satu portal. Mulai dari timeline, desain,
+            pembayaran, hingga progres produksi, semuanya tersusun rapi, transparan, dan dapat diakses kapan saja.
           </p>
         </div>
       </div>
