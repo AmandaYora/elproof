@@ -155,7 +155,7 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
         <Field label="Email" hint={errors.email}>
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="Opsional" />
         </Field>
-        <Field label={`Kota${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.city}>
+        <Field label="Kota" required={!isEditing} hint={errors.city}>
           <Combobox value={values.city} onChange={(e) => set("city", e.target.value)} placeholder="Cari kota/kabupaten...">
             {CITIES.map((city) => (
               <option key={city} value={city}>
@@ -164,10 +164,10 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
             ))}
           </Combobox>
         </Field>
-        <Field label={`Harga Akad (Rp)${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.priceAkad}>
+        <Field label="Harga Akad (Rp)" required={!isEditing} hint={errors.priceAkad}>
           <CurrencyInput value={values.priceAkad} onChange={(n) => set("priceAkad", n)} />
         </Field>
-        <Field label={`Harga Akad+Resepsi (Rp)${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.priceAkadResepsi}>
+        <Field label="Harga Akad+Resepsi (Rp)" required={!isEditing} hint={errors.priceAkadResepsi}>
           <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} />
         </Field>
         <div className="sm:col-span-2">

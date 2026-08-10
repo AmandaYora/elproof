@@ -138,7 +138,7 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
         <Field label="Email" hint={errors.email}>
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="Opsional" />
         </Field>
-        <Field label={`Kota${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.city}>
+        <Field label="Kota" required={!isEditing} hint={errors.city}>
           <Combobox value={values.city} onChange={(e) => set("city", e.target.value)} placeholder="Cari kota/kabupaten...">
             {CITIES.map((city) => (
               <option key={city} value={city}>
@@ -150,7 +150,7 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
         <Field label="Kapasitas (orang)" hint={errors.capacity}>
           <Input type="number" min={0} value={values.capacity} onChange={(e) => set("capacity", Number(e.target.value))} />
         </Field>
-        <Field label={`Harga Sewa (Rp)${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.rentalPrice}>
+        <Field label="Harga Sewa (Rp)" required={!isEditing} hint={errors.rentalPrice}>
           <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} />
         </Field>
         <Field label="Charge (Rp)" hint={errors.charge}>

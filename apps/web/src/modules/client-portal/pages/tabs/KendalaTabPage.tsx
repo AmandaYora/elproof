@@ -17,16 +17,20 @@ export default function KendalaTabPage() {
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
+  // Public-safe {id, name} only (ADR-0016-style split) -- GET /vendors is
+  // staff-only and 403s for a client principal; useVendorStore.vendors'
+  // own doc comment already flags this ("Client Portal must use
+  // fetchVendorSummaries instead"), which this tab wasn't following.
+  const vendors = useVendorStore((s) => s.vendorSummaries);
+  const fetchVendorSummaries = useVendorStore((s) => s.fetchVendorSummaries);
   const [viewingEvidence, setViewingEvidence] = useState<Evidence | null>(null);
 
   useEffect(() => {
     void fetchIssues(projectId);
     void fetchEvidence(projectId);
     void fetchVendorSection(projectId);
-    void fetchVendors();
-  }, [projectId, fetchIssues, fetchEvidence, fetchVendorSection, fetchVendors]);
+    void fetchVendorSummaries();
+  }, [projectId, fetchIssues, fetchEvidence, fetchVendorSection, fetchVendorSummaries]);
 
   const sortedIssues = [...issues].sort((a, b) => {
     const aOpen = a.status !== "Resolved" && a.status !== "Closed";
