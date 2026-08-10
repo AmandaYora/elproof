@@ -64,8 +64,11 @@ settings page later on top of the same backend endpoints if wanted.
   deliberately not tied to `--brand-navy-*`) since showing *ElProof's own* brand color/name there
   undercuts the "feels like the tenant's own app" goal just as much as showing the wrong tenant's
   branding would.
-- **Marketing/homepage pages** and the pre-login browser tab title — both stay ElProof's own
-  identity on purpose (that's their actual purpose); not touched by this feature.
+- **Marketing/homepage pages** stay ElProof's own identity on purpose (that's their actual
+  purpose); not touched by this feature. The pre-login browser tab title followed the same rule
+  originally, but that's since narrowed to "on the platform's own domain only" — see ADR-0015's
+  Revision section for why a matched custom domain's tab title, and even a shared link's preview
+  card, now show the tenant's own name instead.
 
 ### Fallback behavior (no surprises for an unconfigured tenant)
 `brand_color_preset` defaults to `'navy'` (identical hex to the pre-existing hardcoded look) and
@@ -99,3 +102,25 @@ already fetched for the header image — reusing it rather than requiring a sepa
   scoped — see `MODULE_PAYMENT.md` §6), and production already serves the frontend with
   same-origin relative API paths (no `VITE_API_BASE_URL` baked into the prod build), so a second
   domain needs no CORS changes either. Out of scope for this ADR; would be its own ADR if built.
+  (This was built — see ADR-0015.)
+
+## Revision (2026-08-11): eliminating the branding flash (FOUC)
+
+The CSS-variable-override mechanism above has an inherent race: `document.documentElement`'s
+`--brand-navy-*` variables still hold their `theme.css` defaults for however long
+`useTenantBrandingStore.hydrate()`'s network round trip takes, and every `bg-navy-*`-classed
+element (Sidebar, every primary `<Button>`, Client Portal's header) renders immediately on mount
+regardless — so `AppLayout`/`ClientPortalLayout` painted ElProof's own navy default first, then
+visibly swapped to the tenant's real color once `hydrate()` resolved, on every fresh login and
+every hard reload (neither result is cached).
+
+Fixed with a `hydrated: boolean` flag on `useTenantBrandingStore`, false until `hydrate()` settles
+(success *or* failure — a real failure must never hang the app forever) and reset to false by
+`reset()` on logout, so a following login can't briefly reuse the *previous* session's stale
+colors before its own `hydrate()` resolves. `AppLayout` and `ClientPortalLayout` both hold off
+rendering their branded chrome — Sidebar, header, everything under it — while `hydrated` is false,
+showing a plain white loading screen instead (deliberately colorless, so there's nothing left to
+flash away from once the real chrome mounts). `PlatformLayout` is untouched — it never calls
+`hydrate()` at all, so there's no race to guard there. `LoginPage`'s own pre-auth equivalent of
+this same fix is documented in ADR-0015's Revision section, since it also had to solve "which
+hostnames are even worth waiting on" (a platform-domain request can never match a tenant).

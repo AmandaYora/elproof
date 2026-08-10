@@ -5,6 +5,16 @@
 See [PROJECT_BRIEF.md](PROJECT_BRIEF.md) for who uses ElProof and why. This file lists what each
 surface actually does, at the feature level, as already implemented in the frontend.
 
+## Login (`/login`) — shared entry point for every principal type
+
+A full-bleed, auto-advancing photo slider (global marketing images, not tenant-scoped — see
+`MODULE_PLATFORM.md` §9) behind the headline/subtext. Reached via a tenant's own custom domain
+(ADR-0015), the page additionally resolves and applies that tenant's real branding *before* login
+— logo, name, and brand color (including the text scrim's own gradient, ADR-0015's Revision) — and
+a shared link to that domain previews with the tenant's own name/logo too, not ElProof's, since
+link-preview crawlers never execute the page's JS (same Revision). The platform's own domain keeps
+the original neutral look untouched.
+
 ## WO Console (`/dashboard`, `/projects`, `/clients`, `/vendors`, `/venues`, `/pengguna`, `/langganan`, `/vendor-categories`, `/timeline-default`)
 
 **Role-based access (RBAC — see ADR-0017):** Owner sees and can do everything below. Admin sees
@@ -28,21 +38,30 @@ duplicates a project, and never reassigns a project's PIC (Owner/Admin only).
 - **Vendors** (Owner/Admin write, read open to every staff role for pickers): directory with project
   history, each with a pair of preset prices ("Harga Akad" / "Harga Akad + Resepsi") a project
   engagement can auto-fill its own Nilai Kerja Sama from, plus social media/city/a single
-  document-or-photo attachment; bulk Excel import/export.
+  document-or-photo attachment; filterable by Kota; bulk Excel import (dropdown-validated Kategori/
+  Kota columns, styled header/column widths — no free-text typo can reach an import row) and export
+  (same filters as the list, column order matches Import so an exported file round-trips back
+  through it); permanent delete (Owner-only, informed-consent dialog naming affected projects by
+  name — see ADR-0018), alongside the existing deactivate toggle.
 - **Venues** (ADR-0016; Owner/Admin write, read open to every staff role): its own directory,
   separate from Vendors — rental price, a separate charge, capacity, facilities, a single
-  attachment; bulk Excel import/export; attaches to a Project 1:1 from the Project's own Venue tab.
+  attachment; filterable by Kota; bulk Excel import/export and permanent delete, same shape as
+  Vendors above (ADR-0018); attaches to a Project 1:1 from the Project's own Venue tab.
 - **Pengguna** (Users, Owner-only): create/edit Admin and Staff accounts, each provisioned with a
   real login credential (username + password) the same way Clients are. The Owner row is seeded once
   by Platform Console at tenant registration, but the Owner can edit their own name/title/contact
   details here afterward — no other staff member (even Admin) can touch the Owner's row, and
-  nobody can reassign the Owner's role or username from this page.
+  nobody can reassign the Owner's role or username from this page. Permanent delete for Admin/Staff
+  accounts (informed-consent dialog, same pattern as Vendor/Venue — ADR-0018); the tenant's own
+  Owner account can never be deleted, by anyone, under any circumstance.
 - **Langganan** (Subscription, Owner-only): Shows the tenant's current plan, features, expiry, and
   transaction history; "Bayar Sekarang" creates a real QRIS charge through Tripay (`payment` module,
   Fase 9) and polls the transaction status until the gateway confirms it — see
   [MODULE_PAYMENT.md](MODULE_PAYMENT.md).
 - **Kategori Vendor** (Owner-only to manage; the plain list stays readable by every staff role for
-  the Vendor form's category picker and each project's Vendor tab).
+  the Vendor form's category picker and each project's Vendor tab). Permanent delete is blocked
+  (not informed-consent) while any vendor still references the category — a real, same-module SQL
+  foreign key, unlike Vendor/Venue/Staff's soft cross-module references (ADR-0018).
 - **Timeline Default** (Owner-only): configure the per-tenant checklist (name + days-before-event)
   auto-seeded into every new project's own Timeline tab, replacing what used to be one hardcoded
   6-item list shared by every tenant. Editing it never retroactively changes an already-created
@@ -50,9 +69,26 @@ duplicates a project, and never reassigns a project's PIC (Owner/Admin only).
 
 ## Client Portal (`/portal/*`)
 
-Read-only for the logged-in client: ringkasan (summary/condition), vendor progress, payments,
-issues (kendala). No create/update/delete anywhere in this surface — everything scoped to the
-client's own project only.
+Read-only for the logged-in client, everything scoped to their own project only — no
+create/update/delete anywhere in this surface. A persistent header (`ClientProjectHeaderCard.tsx`)
+stays visible above every tab: project name/status, an info grid (Tanggal Acara, Paket/Layanan,
+Nilai Kontrak, Sisa Tagihan, Penanggung Jawab), the free-text project note when non-empty, and a
+compact progress summary (percent, condition badge, open-issues banner) — this absorbed what used
+to be a standalone "Ringkasan" tab. Internal-only fields (Margin/Keuntungan, Tanggal Booking, and
+every WO-side action button) are never sent to this surface at all, not just hidden in the UI.
+
+Four tabs below that header:
+- **Vendor** — every vendor engaged on the project (progress rail, engagement status, open-kendala
+  banner, collapsible tahapan/kendala detail) *plus* the project's venue, pinned as the grid's first
+  card, presentation-merged in client-facing views only (WO Console keeps Vendor and Venue as
+  separate pages/tabs) — see ADR-0016's Revision. The venue card has no progress rail or status
+  badge (nothing backs one), just its public-safe summary (address, capacity, facilities, social
+  media, photo).
+- **Timeline** — the project's own milestone stepper (the detailed view; the header's own progress
+  summary is the compact one).
+- **Pembayaran** — payments received against the project's contract value.
+- **Kendala** — every open/resolved issue across every vendor on the project, in one place (distinct
+  from the per-vendor kendala accordion on the Vendor tab's own cards).
 
 ## Platform Console (`/platform/*`) — ElProof's internal team only
 

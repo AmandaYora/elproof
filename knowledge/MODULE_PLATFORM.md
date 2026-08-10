@@ -146,3 +146,31 @@ lets `LoginPage` render that tenant's own branding *before* login, resolved from
   webhook** (HMAC-trusted, never domain-scoped) — see ADR-0015 for the full reasoning.
 - **Still a manual, per-domain ops step** on the VPS (DNS → nginx `server_name` → `certbot`) — not
   scripted by this repo; see ADR-0015's "Consequences" for the exact steps.
+- **Also backs link-preview metadata** (ADR-0015's Revision): `Module.SiteMetaForHost(ctx, host)`
+  resolves the same way as `PublicBranding` above, but returns a minimal, primitive-typed
+  `SiteMeta{BusinessName, HasLogo}` rather than the full branding response — consumed by
+  `cmd/server/main.go`'s `spaFileServer`, not by any HTTP route of this module's own, to rewrite
+  `index.html`'s `<title>`/Open Graph tags per-Host before serving it. Not registered as a `mux`
+  route; this is a composition-root-only method.
+
+## 9. Login page marketing photos (global, not tenant-scoped)
+
+A small set of fixed marketing photos (currently 3) plays as an auto-advancing slider on
+`LoginPage`'s left panel, for every visitor regardless of tenant or domain — unlike everything
+else in this document, these are **not** tenant data and have no `tenant_id`.
+
+- **Upload**: `api upload-login-slides <source-dir>` (`internal/loginslides`, invoked from
+  `cmd/server`'s subcommand dispatch, not a request handler) reads a small fixed table of
+  `{sourceFile, key}` pairs, compresses each through the same pipeline evidence/logo uploads use
+  (`internal/shared/compress`, ADR-0010), and saves them to object storage under
+  `elproof/marketing/login-slides/slide-0N.jpg`. Re-running is safe — same keys get overwritten.
+- **Served by**: `LoginSlidesHandler` (`platform/presentation`), registered on
+  `RegisterPublicRoutes` alongside `PublicBranding`/`PublicLogo` — `GET /public/login-slides`
+  (count) and `GET /public/login-slides/{index}` (raw JPEG, byte-proxied, `Cache-Control: public,
+  max-age=86400` since these rarely change). The served key list
+  (`login_slides_handler.go`'s `loginSlideKeys`) and the upload table
+  (`loginslides.go`'s `slides`) must stay in sync by hand — no shared source, since one is a
+  request-time read list and the other a one-off operator command.
+- **Why `platform`, not `shared/`**: these are global marketing *content*, not a technical utility
+  — `shared/` is documented as technical-utilities-only (errors, response, logger, validator,
+  pagination). `platform` already owns every other pre-auth endpoint `LoginPage` depends on.

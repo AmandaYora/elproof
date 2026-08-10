@@ -206,6 +206,9 @@ Venue is now its own directory (`venues`, below), not a category.
 | is_active | BOOLEAN DEFAULT TRUE | |
 | created_at, updated_at | TIMESTAMP | |
 
+Composite index `(tenant_id, city)` — migration `000033` — backs the Vendor list page's Kota
+filter.
+
 ### `venues` — **ADR-0016**
 Its own directory inside `vendors` (not a new top-level module — Venue and Vendor are conceptually
 siblings), not a vendor category. Exactly one venue per project, referenced by `projects.venue_id`
@@ -239,6 +242,13 @@ one-time-migrated into this table by `000022_migrate_venue_vendor_data` — new 
 the WO to fill in; the source `vendors` rows are deactivated, not deleted, and never auto-linked to
 old `project_vendors` history (fuzzy-matching risk — see ADR-0016).
 
+Composite index `(tenant_id, city)` — migration `000033` — same shape as `vendors` above, backs the
+Venue list page's Kota filter.
+
+Both `vendors` and `venues` (and `staff`, and `vendor_categories`) can now also be permanently hard-
+deleted (Owner-only, informed-consent — ADR-0018) — no schema change for this, since every
+cross-module reference to these rows was already a primitive, un-enforced ID.
+
 ---
 
 ## Module `projects` (largest module) — **implemented, Fase 4**
@@ -253,7 +263,7 @@ old `project_vendors` history (fuzzy-matching risk — see ADR-0016).
 | event_date, prep_start_date | DATE | |
 | venue | VARCHAR(255) | free-text location — kept as a fallback for projects that never get a structured `venue_id` below (ADR-0016); not touched by attaching one |
 | venue_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.venues.id` (ADR-0016) — at most one venue per project; resolved via `vendors.Contracts` (`VenueResolver`), never a SQL join. `NULL` means no structured venue attached yet |
-| venue_rental_price, venue_charge | BIGINT UNSIGNED NULL | per-project cost **snapshot**, captured (and freely editable) the moment `venue_id` is attached/changed — never a live join against `venues.rental_price`/`charge`. Both `NULL` whenever `venue_id` is `NULL`; force-cleared to `NULL` on detach regardless of what a request sends. Exists so a completed project's recorded Margin can never drift just because venue master data changed later — see PLAN.md "Financial Calculation Correctness" |
+| venue_rental_price, venue_charge | BIGINT UNSIGNED NULL | per-project cost **snapshot**, captured (and freely editable) the moment `venue_id` is attached/changed — never a live join against `venues.rental_price`/`charge`. Both `NULL` whenever `venue_id` is `NULL`; force-cleared to `NULL` on detach regardless of what a request sends. Exists so a completed project's recorded Margin can never drift just because venue master data changed later (or the venue is hard-deleted — ADR-0018) |
 | package_name | VARCHAR(150) | |
 | contract_value | BIGINT UNSIGNED | the WO's own price quoted to the client for the whole event — a distinct figure from any vendor's or the venue's own cost (see `project_vendors.contract_value` and this table's own `venue_rental_price`/`venue_charge`); the frontend derives a "Margin/Keuntungan" figure as this value minus those costs, computed client-side, never stored |
 | status | ENUM('Draft','Preparation','Ready','Completed','Cancelled') | |
@@ -275,10 +285,10 @@ old `project_vendors` history (fuzzy-matching risk — see ADR-0016).
 
 Displayed in the UI as "Timeline" (Project Timeline), not "Milestone" — a display-text-only rename;
 this table, its Go domain type (`ProjectMilestone`), and every internal identifier keep the
-`milestone` name (see `PLAN.md`'s "Terminology: 'Milestone' → 'Timeline'" section for the full
-rationale, including why the DB schema/data was explicitly left alone — a live tenant's
-`evidence.related_kind = 'vendorMilestone'` data made a schema-level rename too risky for a
-display-only ask).
+`milestone` name. A live tenant's `evidence.related_kind = 'vendorMilestone'` data made a
+schema-level rename too risky for what was only ever meant to be a display-only ask — same
+reasoning behind every other display-only rename in this codebase (e.g. "Tanggal Booking," see
+`DOMAIN_GLOSSARY.md`).
 
 ### `project_milestone_templates`
 Per-tenant configurable checklist auto-seeded into a new project's own `project_milestones` at
@@ -295,8 +305,8 @@ hardcoded 6-item list shared by every tenant.
 | created_at, updated_at | TIMESTAMP | |
 
 No `is_active` column (unlike `vendor_categories`/`vendors`/`venues`) — items are hard-deleted, one
-of only three deliberate hard-delete exceptions in this codebase (see
-[`DATABASE_GUIDE.md`](../knowledge/DATABASE_GUIDE.md)): once copied into a project's own
+of four deliberate hard-delete exceptions in this codebase (see
+[`DATABASE_GUIDE.md`](../knowledge/DATABASE_GUIDE.md) and ADR-0018): once copied into a project's own
 `project_milestones` row, a template row is never referenced again, so there's nothing to orphan.
 Migration `000024` also backfilled every already-registered tenant with the previous hardcoded
 6-item list (guarded by `WHERE NOT EXISTS` against a re-run); a brand-new tenant gets the same
@@ -323,7 +333,7 @@ No `paid_amount` column (removed, migration `000028`) — "Total Sudah Dibayar" 
 this engagement's own `vendor_payments` rows (`Refund` netted as a subtraction) in the presentation
 layer, never a stored/manually-typed value. This was a real bug: the old manual field and the actual
 `vendor_payments` ledger were two independently-maintained numbers that could silently contradict each
-other on the same tab — see PLAN.md "Financial Calculation Correctness".
+other on the same tab.
 
 ### `vendor_milestones`
 | Column | Type | Notes |
@@ -361,7 +371,7 @@ presentation-layer derivation pattern already used for `client_payments`' `evide
 vendor paid-amount fix. A `Refund` only needs a `Transfer Proof`; every other type needs both an
 `Invoice` and a `Transfer Proof` attached — the same rule the old (dead) columns encoded, now finally
 collectible since "Tambah Pembayaran" attaches both file slots in the same submit that records the
-payment. See PLAN.md "Payment evidence (Invoice/Bukti Transfer)...".
+payment.
 
 ### `client_payments`
 | Column | Type | Notes |
@@ -376,9 +386,9 @@ payment. See PLAN.md "Payment evidence (Invoice/Bukti Transfer)...".
 | notes | TEXT NULL | |
 | created_at | TIMESTAMP | |
 
-Money coming **in** from the client against the project's own `contract_value` — the opposite
-accounting direction from `vendor_payments` (PLAN.md "Uang Masuk dari Client"), and structurally
-simpler: no invoice/proof evidence-ID columns either, since it only ever has one evidence slot (a
+Money coming **in** from the client against the project's own `contract_value` ("Uang Masuk dari
+Client") — the opposite accounting direction from `vendor_payments`, and structurally simpler: no
+invoice/proof evidence-ID columns either, since it only ever has one evidence slot (a
 transfer proof) resolved via the polymorphic `evidence` table (`related_kind = 'clientPayment'`),
 not a direct FK column.
 
@@ -398,8 +408,7 @@ not a direct FK column.
 Money going **out** to the project's venue — same accounting direction and same two-slot evidence
 rule (Invoice + Transfer Proof, `Refund` needs only proof) as `vendor_payments`, resolved via the
 polymorphic `evidence` table (`related_kind = 'venuePayment'`), never a direct FK column — same
-lesson already learned from `vendor_payments`' now-removed dead columns. See PLAN.md "Venue Payments
-+ Pembayaran tab restructuring".
+lesson already learned from `vendor_payments`' now-removed dead columns.
 
 ### `vendor_issues`
 | Column | Type | Notes |

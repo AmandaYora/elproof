@@ -44,7 +44,7 @@ Everything in `projects`' own 8 sub-entity tables is deleted in one DB transacti
 `.claude/rules/database.md`), so ordering matters: `vendor_payments` references `evidence`
 (`invoice_evidence_id`/`proof_evidence_id`), so it's deleted first; everything referencing
 `project_vendors` goes before it; everything goes before the `projects` row itself. `client_payments`
-(added later, PLAN.md "Uang Masuk dari Client") has its own direct FK straight to `projects` — no
+(added later, "Uang Masuk dari Client") has its own direct FK straight to `projects` — no
 `project_vendor_id`, unlike `vendor_payments` — so it has no ordering dependency on anything else
 here; it just has to go before the final `projects` delete. Full order: `activity_log →
 vendor_payments → client_payments → vendor_issues → vendor_milestones → evidence → project_vendors →

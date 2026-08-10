@@ -27,8 +27,8 @@ Confirmed with the user before implementing (three open questions, not assumed):
   `DPAmount`/`PaidAmount: 0` — and every one of *its* **Vendor Milestones**, reset the same way as
   Project Milestones.
 
-Deliberately **excluded**: `vendor_payments`, `client_payments` (added later, PLAN.md "Uang Masuk
-dari Client" — naturally excluded, since nothing in `Duplicate` ever copies it), `vendor_issues`,
+Deliberately **excluded**: `vendor_payments`, `client_payments` ("Uang Masuk dari Client," added
+later — naturally excluded, since nothing in `Duplicate` ever copies it), `vendor_issues`,
 `evidence`, `activity_log`, and every `clients` row tied to the source project. All six are either
 genuinely historical (what actually happened on the source project) or identity-specific (the source
 couple's own contacts) — neither has any meaning attached to a not-yet-started duplicate. This

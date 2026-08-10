@@ -32,17 +32,20 @@ never a live join.
 - Timestamps: `created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`, `updated_at TIMESTAMP NOT
   NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` where mutation history matters.
 - Soft state over hard delete: the frontend consistently uses `is_active`/status-toggle rather than
-  deleting rows (vendors, venues, clients, staff, plans all "deactivate" instead of delete) — mirror
-  this server-side; don't introduce hard deletes the frontend never asks for. Three deliberate,
-  explicit exceptions exist, each narrowly scoped and guarded rather than general-purpose:
-  `clients.Delete` (one bug-workaround scenario, see its own doc comment), `projects.Delete` (a
-  real, user-requested feature — Owner-only, requires the project already archived/cancelled first,
-  see ADR-0013), and `MilestoneTemplateService.Delete` (Timeline Default Template items, Owner-only
-  — safe here specifically because a template row is only ever *copied* into a project's own
-  `project_milestones` at creation time, never referenced again afterward, so there's nothing to
-  orphan the way deleting a `vendors`/`venues` row referenced by `project_vendors`/`projects.venue_id`
-  would). Don't treat any of these three as license to add more hard deletes without the same
-  explicit reasoning and guardrails.
+  deleting rows (plans still only "deactivate") — mirror this server-side; don't introduce hard
+  deletes the frontend never asks for. Four deliberate, explicit exceptions exist, each narrowly
+  scoped and guarded rather than general-purpose: `clients.Delete` (one bug-workaround scenario,
+  see its own doc comment), `projects.Delete` (Owner-only, requires the project already
+  archived/cancelled first — block-then-cascade, see ADR-0013), `MilestoneTemplateService.Delete`
+  (Timeline Default Template items, Owner-only — safe here specifically because a template row is
+  only ever *copied* into a project's own `project_milestones` at creation time, never referenced
+  again afterward, so there's nothing to orphan), and `vendors.Delete`/`venues.Delete`/
+  `staff.Delete` (Owner-only, **no** precondition — an *informed-consent* confirmation dialog names
+  exactly which projects would be affected, rather than blocking the delete; the tenant's own Owner
+  account is the one absolute non-negotiable exception; Vendor Category stays hard-blocked instead,
+  since its FK is same-module and non-nullable — see ADR-0018 for the full guardrail design and why
+  it deliberately differs from ADR-0013's block-then-cascade model). Don't treat any of these four
+  as license to add more hard deletes without the same explicit reasoning and guardrails.
 
 ## Tooling
 

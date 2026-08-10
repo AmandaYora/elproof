@@ -85,6 +85,27 @@ flight.
   swallowed and the page keeps its original neutral look — the `"neutral"` `Button` variant above
   is untouched either way, since it was never wired to `--brand-navy-*` in the first place.
 
+### Anti-flash render gating (ADR-0012's Revision, ADR-0015's Revision)
+
+Every consumer of the CSS-variable-override mechanism above shares the same race: a `bg-navy-*`-
+classed element renders on mount with whatever the CSS variable currently holds, which is the
+`theme.css` default until an async branding lookup resolves and overrides it — painting the wrong
+identity first, then visibly swapping. Both places this app renders brand-tied chrome hold off
+painting it until the real answer is known, rather than accepting the flash:
+
+- `useTenantBrandingStore` exposes `hydrated: boolean` (false until `hydrate()` settles, reset to
+  false on `reset()`); `AppLayout`/`ClientPortalLayout` render a plain white loading screen while
+  it's false, the real Sidebar/header/chrome only once it's true.
+- `LoginPage`'s own `useDomainBranding()` exposes an equivalent `loading` flag, but only actually
+  waits for hostnames that could plausibly resolve to a tenant (a small `PLATFORM_HOSTNAMES` list
+  is checked synchronously first) — the platform's own domain paints instantly, since a request
+  there can never match a tenant and there's nothing worth waiting on.
+
+Reach for this same pattern (a boolean gate on the *first* real value, not just an initial `null`)
+any time a component renders something whose "empty"/default appearance is visually distinct
+enough from its real one that swapping between them would read as a flash, not a normal loading
+state.
+
 ## Routing
 
 Route guards (`RequireAuth` wrapper components, one per principal type/role combination) wrap the

@@ -90,3 +90,54 @@ session-scoped `useTenantBrandingStore`.
 
   If/when tenant custom domains become common enough to justify automating steps 2–3, that's its
   own future ADR — not assumed here.
+
+## Revision (2026-08-11): link-preview metadata, pre-login flash elimination, tenant-color scrim
+
+Three follow-on gaps found once a real tenant (JWS Wedding, `journey.jwswedding.com`) started
+using this feature, none of which change the Decision above — all additive.
+
+### Gap 1: a shared link's preview card still said "ElProof"
+`LoginPage`'s tab-title/branding swap (§ above) is client-side JS — invisible to link-preview
+crawlers (WhatsApp, Telegram, Messenger, ...), which only ever read the raw HTML `index.html`
+ships, never execute a page's JS. That raw HTML had "ElProof — Client Transparency Portal" and no
+Open Graph tags at all, baked in statically, identical for every Host.
+
+Fixed at the same layer that already serves that file: `spaFileServer` (`cmd/server/main.go`,
+serves the built frontend — see `infra/docker/Dockerfile`) now resolves the request's Host to a
+tenant the same way `PublicBranding` already does, via a new narrow method,
+`platform.Module.SiteMetaForHost(ctx, host) (SiteMeta{BusinessName, HasLogo}, bool)` — same
+primitive-typed-bridge shape as `projects/application`'s `StaffNameResolver`, so `main.go`
+(composition-root code, not another module) never needs `platform`'s domain types. On a match,
+`injectTenantSiteMeta` rewrites `index.html`'s `<title>`/`og:title`/`og:site_name`/
+`og:description` (exact-string replace against the static defaults — `apps/web/index.html` carries
+a comment flagging the coupling) and appends an `og:image` pointing at the tenant's logo when one
+exists, HTML-escaping the business name first (this document is served to unauthenticated
+crawlers, not sanitized by React). Unmatched Hosts (the platform's own domain, local dev — Vite
+serves `index.html` directly there, untouched) fall through to the exact static file, byte-for-
+byte. Covered by `cmd/server/sitemeta_test.go` — matched/unmatched, logo on/off, and that a
+malicious business name can't break out of the document.
+
+### Gap 2: the tenant's own branding flashed in *after* a wrong default painted first
+Both the pre-auth `LoginPage` (this ADR) and the post-auth `AppLayout`/`ClientPortalLayout`
+(ADR-0012) painted a default look (ElProof neutral / navy) on first render, then visibly swapped to
+the tenant's real branding once the async lookup resolved — jarring on every single page load,
+since neither lookup is cached. Root-caused and fixed as a render-order problem, not a data
+problem — see ADR-0012's own Revision section below for the mechanism (a `hydrated`/`loading` gate
+that holds off painting *either* look until the real one is known, rendering a plain white
+loading screen in between). On `LoginPage` specifically, the gate only activates for a
+hostname that could plausibly be a configured custom domain (checked against a small
+`PLATFORM_HOSTNAMES` list) — the platform's own domain still paints instantly, since it can never
+match a tenant and there's nothing worth waiting for.
+
+### Gap 3: the login panel's text scrim never reflected the tenant's own color
+`LoginPage`'s dark gradient behind the headline/subtext (over the photo slider) was a fixed
+`slate-950`, regardless of a matched tenant's brand preset — so a bronze-branded tenant like JWS
+Wedding still got a flat grey-black gradient instead of their own warm tone. Fixed by giving the
+scrim the same `neutral`/`branded` class-pair split the panel background already used: on a
+matched custom domain the scrim now uses `navy-950`/`navy-900`, which — like the panel — resolves
+through the `--brand-navy-*` CSS variables `applyBrandColorPreset` overrides per tenant (ADR-0012),
+so it automatically reads as the tenant's actual color with no per-preset special-casing. The
+platform's own domain keeps the original neutral slate scrim, preserving this ADR's own §6
+reasoning (no tenant is knowable there). A thin translucent-white divider between headline and
+subtext (matching a reference design) rides on top of whichever scrim is active without needing
+its own tenant-color logic — it just reads as tinted by whatever gradient sits behind it.

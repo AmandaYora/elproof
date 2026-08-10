@@ -107,7 +107,7 @@ as today.
 
 ## Consequences
 - New migrations `000020_create_venue_tables`, `000021_add_venue_id_to_projects`,
-  `000022_migrate_venue_vendor_data` (see PLAN.md for exact SQL).
+  `000022_migrate_venue_vendor_data`.
 - New backend files inside `vendors` (domain/application/infrastructure/presentation for Venue +
   VenuePhoto), an extended `vendors/contracts` interface, and a new `projects/application`
   consumer interface + two-phase wiring call in `main.go`.
@@ -150,9 +150,6 @@ susulan di atas data produksi):
   massal, dengan partial success (baris valid tetap masuk, baris error dilaporkan balik nomor+
   alasan agar bisa diperbaiki dan diupload ulang khusus baris itu tanpa mengulang semuanya).
 
-Rencana implementasi konkret hasil revisi ini ada di `PLAN.md`'s "PLAN — Venue Extraction" section
-(ditulis ulang, bukan ditambah di atas rencana lama, supaya tidak ada dua versi yang membingungkan).
-
 ## What actually shipped
 
 Matches the "Revisi" section above, not the original "Decision"/"Consequences" text further up
@@ -162,3 +159,26 @@ Matches the "Revisi" section above, not the original "Decision"/"Consequences" t
 Migrations: `000020_create_venue_tables`, `000021_add_venue_id_to_projects`,
 `000022_migrate_venue_vendor_data`. See `DB_SCHEMA.md`'s `venues` table and `API_CONTRACT.md`'s
 `venues` module section for the exact final column/endpoint list.
+
+## Revision (2026-08-11): Client Portal's Venue tab merges into Vendor — presentation-layer only
+
+The "Client Portal gets a Venue tab" decision above (its own tab, alongside Vendor/Timeline/
+Pembayaran/Kendala) is superseded for Client Portal specifically — **WO Console's own separate
+Vendor/Venue tabs, this ADR's data model, and the public-safe field split are all unchanged.**
+
+Client Portal's Venue tab was always exactly one static informational card (name/address/
+capacity/facilities/social media/photo) — no engagement status, no milestones, no issues, because
+nothing in the data model gives Venue a progress concept the way `project_vendors` gives Vendor
+one. Having it as its own top-level tab read as fragmented for something with that little content,
+so it's now a pinned, full-width card inside the Vendor tab's own grid (`VendorTabPage.tsx`,
+replacing the former `VendorProgressTabPage.tsx` + `VenueTabPage.tsx` pair) — reusing Vendor
+card's outer shell (`rounded-3xl border shadow-sm`) for visual consistency, but never its progress
+rail or status badge, since there's no backing data for either; a "Venue Pernikahan" pill fills the
+slot a vendor card uses for its category badge. Three empty-state combinations are handled
+explicitly: no venue and no vendors (one combined message), vendors but no venue yet (a dashed
+"belum ditentukan" placeholder pinned in the venue slot, not a silently missing card), and venue
+with no vendors (the venue card alone).
+
+`/portal/venue` redirects to `/portal/vendor` (same precedent as the earlier "ringkasan" tab
+retirement, absorbed into `ClientProjectHeaderCard.tsx`); `ClientPortalLayout.tsx`'s tab list and
+`route-paths.ts`'s `ClientPortalTab` both lost the `"venue"` entry.
