@@ -17,12 +17,12 @@ export interface ClientPortalContext {
 // "Ringkasan" no longer exists as its own tab (PLAN.md's Client Portal
 // restructure) — its compact summary now lives in the persistent
 // ClientProjectHeaderCard below, always visible above these tabs; its
-// detailed milestone stepper lives in the new "Timeline" tab, completing the
-// parity with WO Console's own Vendor/Venue/Timeline/Pembayaran tab set
-// (minus Client/Aktivitas/Dokumen, which have no client-safe equivalent).
+// detailed milestone stepper lives in the new "Timeline" tab. "Venue" no
+// longer has its own tab either (client-facing-only Vendor/Venue merge) —
+// Venue is now a pinned card inside "Vendor" itself (VendorTabPage), so this
+// list no longer mirrors WO Console's own separate Vendor/Venue tab split.
 const TABS = [
-  { to: ROUTE_PATHS.portal("vendor"), label: "Vendor & Progress" },
-  { to: ROUTE_PATHS.portal("venue"), label: "Venue" },
+  { to: ROUTE_PATHS.portal("vendor"), label: "Vendor" },
   { to: ROUTE_PATHS.portal("timeline"), label: "Timeline" },
   { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran" },
   { to: ROUTE_PATHS.portal("kendala"), label: "Kendala" },
