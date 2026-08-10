@@ -5,6 +5,7 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
+import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
@@ -259,7 +260,7 @@ function AddClientPaymentModal({
           </Select>
         </Field>
         <Field label="Nominal (Rp)" required hint={errors.amount}>
-          <Input type="number" min={0} value={values.amount} onChange={(e) => set("amount", Number(e.target.value))} />
+          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
         </Field>
         <Field label="Tanggal" required hint={errors.paymentDate}>
           <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />

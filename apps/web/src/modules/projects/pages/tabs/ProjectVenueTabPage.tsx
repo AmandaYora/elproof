@@ -3,7 +3,8 @@ import { useOutletContext } from "react-router-dom";
 import { Building2, ExternalLink } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { Select, Field, Input } from "@/shared/components/ui/Input";
+import { Select, Field } from "@/shared/components/ui/Input";
+import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Modal } from "@/shared/components/ui/Modal";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
@@ -266,10 +267,10 @@ export default function ProjectVenueTabPage() {
             </Select>
           </Field>
           <Field label="Harga Sewa (untuk project ini)" hint="Terisi dari harga master venue, bisa diubah sesuai kesepakatan project ini.">
-            <Input type="number" min={0} value={rentalPrice} onChange={(e) => setRentalPrice(Number(e.target.value))} />
+            <CurrencyInput value={rentalPrice} onChange={setRentalPrice} />
           </Field>
           <Field label="Charge (untuk project ini)">
-            <Input type="number" min={0} value={charge} onChange={(e) => setCharge(Number(e.target.value))} />
+            <CurrencyInput value={charge} onChange={setCharge} />
           </Field>
         </div>
       </Modal>

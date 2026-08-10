@@ -3,6 +3,7 @@ import { FileText, ExternalLink } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Field } from "@/shared/components/ui/Input";
+import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Combobox } from "@/shared/components/ui/Combobox";
 import { venueSchema, venueCreateSchema, type VenueFormValues, type VenueCreateFormValues } from "@/modules/venues/schemas/venue.schema";
 import { CITIES } from "@/shared/constants/cities";
@@ -150,10 +151,10 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
           <Input type="number" min={0} value={values.capacity} onChange={(e) => set("capacity", Number(e.target.value))} />
         </Field>
         <Field label={`Harga Sewa (Rp)${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.rentalPrice}>
-          <Input type="number" min={0} value={values.rentalPrice} onChange={(e) => set("rentalPrice", Number(e.target.value))} />
+          <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} />
         </Field>
         <Field label="Charge (Rp)" hint={errors.charge}>
-          <Input type="number" min={0} value={values.charge} onChange={(e) => set("charge", Number(e.target.value))} />
+          <CurrencyInput value={values.charge} onChange={(n) => set("charge", n)} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Alamat" hint={errors.address}>

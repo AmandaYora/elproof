@@ -3,6 +3,7 @@ import { FileText, ExternalLink } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
+import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Combobox } from "@/shared/components/ui/Combobox";
 import { vendorSchema, vendorCreateSchema, type VendorFormValues, type VendorCreateFormValues } from "@/modules/vendors/schemas/vendor.schema";
 import { CITIES } from "@/shared/constants/cities";
@@ -164,10 +165,10 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
           </Combobox>
         </Field>
         <Field label={`Harga Akad (Rp)${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.priceAkad}>
-          <Input type="number" min={0} value={values.priceAkad} onChange={(e) => set("priceAkad", Number(e.target.value))} />
+          <CurrencyInput value={values.priceAkad} onChange={(n) => set("priceAkad", n)} />
         </Field>
         <Field label={`Harga Akad+Resepsi (Rp)${isEditing ? "" : " *"}`} required={!isEditing} hint={errors.priceAkadResepsi}>
-          <Input type="number" min={0} value={values.priceAkadResepsi} onChange={(e) => set("priceAkadResepsi", Number(e.target.value))} />
+          <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Alamat" hint={errors.address}>

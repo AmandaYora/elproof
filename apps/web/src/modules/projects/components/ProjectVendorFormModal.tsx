@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
+import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import {
   projectVendorSchema,
   ENGAGEMENT_STATUS_OPTIONS,
@@ -161,12 +162,10 @@ export function ProjectVendorFormModal({ open, onClose, onSubmit, initialProject
           </Field>
         </div>
         <Field label="Nilai Kerja Sama (Rp)" required hint={errors.contractValue}>
-          <Input
-            type="number"
-            min={0}
+          <CurrencyInput
             value={values.contractValue}
-            onChange={(e) => {
-              set("contractValue", Number(e.target.value));
+            onChange={(n) => {
+              set("contractValue", n);
               setContractValueTouched(true);
             }}
           />
@@ -185,7 +184,7 @@ export function ProjectVendorFormModal({ open, onClose, onSubmit, initialProject
           <Input type="date" value={values.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
         </Field>
         <Field label="Jumlah DP (Rp)" hint={errors.dpAmount}>
-          <Input type="number" min={0} value={values.dpAmount} onChange={(e) => set("dpAmount", Number(e.target.value))} />
+          <CurrencyInput value={values.dpAmount} onChange={(n) => set("dpAmount", n)} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Catatan">

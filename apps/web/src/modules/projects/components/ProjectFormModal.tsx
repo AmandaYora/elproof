@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
+import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { projectSchema, PROJECT_STATUS_OPTIONS, type ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { Project } from "@/modules/projects/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
@@ -143,12 +144,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
           <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} />
         </Field>
         <Field label="Nilai Kontrak (Rp)" required hint={errors.contractValue}>
-          <Input
-            type="number"
-            min={0}
-            value={values.contractValue}
-            onChange={(e) => set("contractValue", Number(e.target.value))}
-          />
+          <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} />
         </Field>
         <Field label="Penanggung Jawab WO" required hint={errors.picStaffId}>
           {picLocked ? (
