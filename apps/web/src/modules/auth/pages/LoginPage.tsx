@@ -34,6 +34,15 @@ const PANEL_CLASSES = {
   branded: "bg-gradient-to-br from-navy-950 to-navy-900",
 };
 const ICON_BOX_CLASSES = { neutral: "bg-slate-800", branded: "bg-navy-900" };
+// The gradient scrim behind the headline/subtext over the photo slider —
+// same neutral/branded split as PANEL_CLASSES and for the same reason
+// (ADR-0012): a matched custom domain's scrim tints with the tenant's own
+// --brand-navy-* colors (e.g. JWS Wedding's bronze preset), the platform's
+// own domain keeps the original neutral slate.
+const SCRIM_CLASSES = {
+  neutral: "bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent",
+  branded: "bg-gradient-to-t from-navy-950/95 via-navy-900/40 to-transparent",
+};
 
 // The platform's own hostname(s) — a request arriving on any of these can
 // never resolve to a tenant (ADR-0015's Host-header lookup 404s), so there's
@@ -187,10 +196,11 @@ export default function LoginPage() {
         className={`relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-end lg:px-16 lg:pb-16 ${branding ? PANEL_CLASSES.branded : PANEL_CLASSES.neutral}`}
       >
         <LoginPhotoSlider />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent" />
+        <div className={`pointer-events-none absolute inset-0 ${branding ? SCRIM_CLASSES.branded : SCRIM_CLASSES.neutral}`} />
         <div className="relative z-10">
           <h1 className="text-[40px] font-bold leading-[1.15] text-white">Every Step to Your Perfect Day.</h1>
-          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-white/70">
+          <div className="mt-4 h-px w-12 bg-white/40" />
+          <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/70">
             Pantau seluruh perjalanan menuju hari pernikahan Anda dalam satu portal. Mulai dari timeline, desain,
             pembayaran, hingga progres produksi, semuanya tersusun rapi, transparan, dan dapat diakses kapan saja.
           </p>
