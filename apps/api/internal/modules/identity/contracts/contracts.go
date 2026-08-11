@@ -39,6 +39,12 @@ type Contracts interface {
 	ResetPassword(ctx context.Context, principalType PrincipalType, principalID string, newPassword string) error
 	ResetPasswordByUsername(ctx context.Context, username string, newPassword string) error
 	SetActive(ctx context.Context, principalType PrincipalType, principalID string, isActive bool) error
+	// UpdateRole syncs the denormalized `role` this module's own `credentials`
+	// table keeps (baked into every login/refresh JWT) with the owning
+	// module's current role value. Call this from every code path that edits
+	// a principal's role after account creation — CreateCredential only ever
+	// sets it once, at creation time.
+	UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string) error
 	// IssueServiceToken mints a bearer token for a principal not backed by a
 	// Credential row — the caller has already authenticated it against its
 	// own store (e.g. `payment`'s external Apps, see
@@ -81,6 +87,10 @@ func (c *impl) ResetPasswordByUsername(ctx context.Context, username string, new
 
 func (c *impl) SetActive(ctx context.Context, principalType PrincipalType, principalID string, isActive bool) error {
 	return c.management.SetActive(ctx, domain.PrincipalType(principalType), principalID, isActive)
+}
+
+func (c *impl) UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string) error {
+	return c.management.UpdateRole(ctx, domain.PrincipalType(principalType), principalID, role)
 }
 
 func (c *impl) IssueServiceToken(ctx context.Context, principalType string, principalID string, ttl time.Duration) (string, error) {

@@ -165,6 +165,7 @@ func (s *StaffService) Update(ctx context.Context, tenantID, id int64, isSelf bo
 			return nil, apperror.Forbidden("Role Owner tidak dapat diubah dari sini")
 		}
 	}
+	previousRole := member.Role
 	member.Name = input.Name
 	member.Title = input.Title
 	member.Role = input.Role
@@ -172,6 +173,20 @@ func (s *StaffService) Update(ctx context.Context, tenantID, id int64, isSelf bo
 	member.Phone = input.Phone
 	member.Initials = computeInitials(input.Name)
 	if err := s.repo.Update(ctx, member); err != nil {
+		return nil, err
+	}
+	// identity's own `credentials` table keeps a denormalized copy of role,
+	// baked into the JWT at login/refresh -- without this sync, a role edit
+	// would silently never take effect for authorization purposes (the bug
+	// this call fixes). Roll back the role change on this row if it fails,
+	// same compensating-write pattern Create uses on credential-creation
+	// failure, so the two tables never end up disagreeing about this
+	// member's role.
+	if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10), string(input.Role)); err != nil {
+		member.Role = previousRole
+		if rollbackErr := s.repo.Update(ctx, member); rollbackErr != nil {
+			logger.Error("failed to roll back staff member %d's role after credential role sync failed: %v", id, rollbackErr)
+		}
 		return nil, err
 	}
 	return member, nil

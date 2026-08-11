@@ -7,6 +7,7 @@ import (
 	identitycontracts "elproof/internal/modules/identity/contracts"
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/validator"
 )
@@ -100,12 +101,24 @@ func (s *PlatformAdminService) Update(ctx context.Context, id int64, input Updat
 	if err != nil {
 		return nil, err
 	}
+	previousRole := admin.Role
 	admin.Name = input.Name
 	admin.Title = input.Title
 	admin.Role = input.Role
 	admin.Email = input.Email
 	admin.Phone = input.Phone
 	if err := s.repo.Update(ctx, admin); err != nil {
+		return nil, err
+	}
+	// identity's own `credentials` table keeps a denormalized copy of role,
+	// baked into the JWT at login/refresh -- sync it here the same way
+	// staff.StaffService.Update does, rolling back this row's role on
+	// failure so the two tables never end up disagreeing.
+	if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalPlatformAdmin, formatID(id), string(input.Role)); err != nil {
+		admin.Role = previousRole
+		if rollbackErr := s.repo.Update(ctx, admin); rollbackErr != nil {
+			logger.Error("failed to roll back platform admin %d's role after credential role sync failed: %v", id, rollbackErr)
+		}
 		return nil, err
 	}
 	return admin, nil

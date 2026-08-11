@@ -95,6 +95,14 @@ func (r *MySQLCredentialRepository) SetActive(ctx context.Context, principalType
 	return err
 }
 
+func (r *MySQLCredentialRepository) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET role = ? WHERE principal_type = ? AND principal_id = ?`,
+		role, string(principalType), principalID,
+	)
+	return err
+}
+
 // scanner is satisfied by both *sql.Row and *sql.Rows — one scan body serves
 // the single-row (FindByUsername/FindByID/...) and multi-row (FindAllByEmail)
 // queries alike.

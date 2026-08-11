@@ -21,6 +21,14 @@ type CredentialRepository interface {
 	Create(ctx context.Context, cred *domain.Credential) error
 	UpdatePasswordHash(ctx context.Context, principalType domain.PrincipalType, principalID string, passwordHash string) error
 	SetActive(ctx context.Context, principalType domain.PrincipalType, principalID string, isActive bool) error
+	// UpdateRole keeps this table's own denormalized `role` column (baked
+	// into the JWT at login/refresh — see JWTIssuer.IssueAccessToken) in
+	// sync with the owning module's own role field whenever that changes
+	// after account creation. Without this, a role edit (e.g. `staff`'s
+	// Wedding Planner -> Admin) would silently never take effect for
+	// authorization purposes, since Login/Refresh never re-derive it from
+	// the owning module — they only ever read this column.
+	UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error
 }
 
 type RefreshTokenRepository interface {

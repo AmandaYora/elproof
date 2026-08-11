@@ -94,6 +94,12 @@ func (s *ManagementService) SetActive(ctx context.Context, principalType domain.
 	return s.credentials.SetActive(ctx, principalType, principalID, isActive)
 }
 
+// UpdateRole syncs this table's own denormalized `role` column — see
+// CredentialRepository.UpdateRole's doc comment for why this exists at all.
+func (s *ManagementService) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error {
+	return s.credentials.UpdateRole(ctx, principalType, principalID, role)
+}
+
 // ResetPasswordByUsername lets a caller reset a password without knowing the
 // principal's (type, id) pair — used by `platform`'s tenant-credential-reset
 // flow, since `platform` only ever tracks the Owner's username, never the
