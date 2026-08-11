@@ -17,7 +17,7 @@ func NewMySQLEvidenceRepository(db *sql.DB) *MySQLEvidenceRepository {
 }
 
 const evidenceColumns = `id, project_id, name, type, storage_path, file_name, document_date, uploaded_at,
-	description, uploaded_by_staff_id, related_kind, related_id`
+	description, uploaded_by_staff_id, related_kind, related_id, is_client_visible`
 
 func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error) {
 	var e domain.Evidence
@@ -25,7 +25,7 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 	var documentDate sql.NullTime
 	var description sql.NullString
 	err := scan(&e.ID, &e.ProjectID, &e.Name, &evidenceType, &e.StoragePath, &e.FileName, &documentDate, &e.UploadedAt,
-		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID)
+		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID, &e.IsClientVisible)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -103,6 +103,29 @@ func (r *MySQLEvidenceRepository) ListByRelated(ctx context.Context, kind domain
 	return list, rows.Err()
 }
 
+// ListClientVisibleGeneral backs Client Portal's own "Dokumen" tab — see
+// EvidenceRepository.ListClientVisibleGeneral's doc comment.
+func (r *MySQLEvidenceRepository) ListClientVisibleGeneral(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND related_kind = ? AND is_client_visible = TRUE ORDER BY uploaded_at DESC, id DESC`,
+		projectID, string(domain.RelatedGeneral),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.Evidence
+	for rows.Next() {
+		e, err := scanEvidence(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *e)
+	}
+	return list, rows.Err()
+}
+
 func (r *MySQLEvidenceRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
 	return scanEvidence(row.Scan)
@@ -111,10 +134,10 @@ func (r *MySQLEvidenceRepository) FindByID(ctx context.Context, projectID, id in
 func (r *MySQLEvidenceRepository) Create(ctx context.Context, e *domain.Evidence) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO evidence (project_id, name, type, storage_path, file_name, document_date, uploaded_at,
-		 description, uploaded_by_staff_id, related_kind, related_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 description, uploaded_by_staff_id, related_kind, related_id, is_client_visible)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ProjectID, e.Name, string(e.Type), e.StoragePath, e.FileName, e.DocumentDate, e.UploadedAt,
-		e.Description, e.UploadedByStaffID, string(e.RelatedKind), e.RelatedID,
+		e.Description, e.UploadedByStaffID, string(e.RelatedKind), e.RelatedID, e.IsClientVisible,
 	)
 	if err != nil {
 		return err
@@ -125,4 +148,12 @@ func (r *MySQLEvidenceRepository) Create(ctx context.Context, e *domain.Evidence
 	}
 	e.ID = id
 	return nil
+}
+
+func (r *MySQLEvidenceRepository) SetClientVisible(ctx context.Context, projectID, id int64, visible bool) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE evidence SET is_client_visible = ? WHERE project_id = ? AND id = ?`,
+		visible, projectID, id,
+	)
+	return err
 }

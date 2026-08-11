@@ -128,6 +128,11 @@ export const API = {
     issue: (id: string, issueId: string) => `/api/v1/projects/${id}/issues/${issueId}`,
     evidence: (id: string) => `/api/v1/projects/${id}/evidence`,
     evidenceFile: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}/file`,
+    evidenceToggleClientVisible: (id: string, evidenceId: string) =>
+      `/api/v1/projects/${id}/evidence/${evidenceId}/toggle-client-visible`,
+    // Client Portal's own "Dokumen" tab — always only general-kind,
+    // client-visible documents, unconditionally (see backend listDocuments).
+    documents: (id: string) => `/api/v1/projects/${id}/documents`,
     activity: (id: string) => `/api/v1/projects/${id}/activity`,
     venue: (id: string) => `/api/v1/projects/${id}/venue`,
   },

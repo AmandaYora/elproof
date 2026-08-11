@@ -14,7 +14,7 @@ export type ProjectDetailTab =
 // Venue merge, client-facing only) — Venue is now a pinned card inside the
 // "vendor" tab itself, not its own route; ProjectDetailTab above is WO
 // Console's own (unaffected) tab set and keeps its separate "venue" entry.
-export type ClientPortalTab = "vendor" | "pembayaran" | "kendala" | "timeline";
+export type ClientPortalTab = "vendor" | "pembayaran" | "kendala" | "timeline" | "dokumen";
 
 export const ROUTE_PATHS = {
   home: "/",

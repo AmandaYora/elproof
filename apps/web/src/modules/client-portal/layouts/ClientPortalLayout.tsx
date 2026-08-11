@@ -21,11 +21,16 @@ export interface ClientPortalContext {
 // longer has its own tab either (client-facing-only Vendor/Venue merge) —
 // Venue is now a pinned card inside "Vendor" itself (VendorTabPage), so this
 // list no longer mirrors WO Console's own separate Vendor/Venue tab split.
+// "Dokumen" is appended at the end deliberately, not interleaved with the
+// existing tabs (PLAN.md) — it's a new, separate capability (general project
+// documents the staff explicitly opted to share), not a replacement or
+// reordering of anything already here.
 const TABS = [
   { to: ROUTE_PATHS.portal("vendor"), label: "Vendor" },
   { to: ROUTE_PATHS.portal("timeline"), label: "Timeline" },
   { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran" },
   { to: ROUTE_PATHS.portal("kendala"), label: "Kendala" },
+  { to: ROUTE_PATHS.portal("dokumen"), label: "Dokumen" },
 ];
 
 export default function ClientPortalLayout() {

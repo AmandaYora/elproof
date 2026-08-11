@@ -284,16 +284,17 @@ func toIssueResponse(i domain.VendorIssue) issueResponse {
 }
 
 type evidenceResponse struct {
-	ID           int64   `json:"id"`
-	Name         string  `json:"name"`
-	Type         string  `json:"type"`
-	FileName     string  `json:"fileName"`
-	DocumentDate *string `json:"documentDate"`
-	UploadedAt   string  `json:"uploadedAt"`
-	Description  string  `json:"description"`
-	UploadedBy   int64   `json:"uploadedByStaffId"`
-	RelatedKind  string  `json:"relatedKind"`
-	RelatedID    int64   `json:"relatedId"`
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	Type            string  `json:"type"`
+	FileName        string  `json:"fileName"`
+	DocumentDate    *string `json:"documentDate"`
+	UploadedAt      string  `json:"uploadedAt"`
+	Description     string  `json:"description"`
+	UploadedBy      int64   `json:"uploadedByStaffId"`
+	RelatedKind     string  `json:"relatedKind"`
+	RelatedID       int64   `json:"relatedId"`
+	IsClientVisible bool    `json:"isClientVisible"`
 }
 
 func toEvidenceResponse(e domain.Evidence) evidenceResponse {
@@ -301,6 +302,7 @@ func toEvidenceResponse(e domain.Evidence) evidenceResponse {
 		ID: e.ID, Name: e.Name, Type: string(e.Type), FileName: e.FileName,
 		DocumentDate: formatDatePtr(e.DocumentDate), UploadedAt: e.UploadedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Description: e.Description, UploadedBy: e.UploadedByStaffID, RelatedKind: string(e.RelatedKind), RelatedID: e.RelatedID,
+		IsClientVisible: e.IsClientVisible,
 	}
 }
 

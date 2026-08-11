@@ -54,7 +54,7 @@ export type EvidenceType =
   | "Minutes of Meeting"
   | "Other";
 
-export type EvidenceRelatedKind = "vendorMilestone" | "payment" | "projectVendor" | "issue" | "clientPayment" | "venuePayment";
+export type EvidenceRelatedKind = "vendorMilestone" | "payment" | "projectVendor" | "issue" | "clientPayment" | "venuePayment" | "general";
 
 export type ProjectCondition = "On Track" | "Attention" | "At Risk";
 
@@ -225,6 +225,7 @@ export interface Evidence {
   uploadedByStaffId: string;
   relatedKind: EvidenceRelatedKind;
   relatedId: string;
+  isClientVisible: boolean;
 }
 
 // Backend only implements a subset of the mock's original activity taxonomy —

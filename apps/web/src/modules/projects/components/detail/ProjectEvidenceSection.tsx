@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, EyeOff } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
@@ -34,6 +34,7 @@ const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
   issue: "Kendala",
   clientPayment: "Pembayaran Client",
   venuePayment: "Pembayaran Venue",
+  general: "Umum (Tidak Terkait Spesifik)",
 };
 
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
@@ -51,6 +52,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const fetchVenuePayments = useProjectStore((s) => s.fetchVenuePayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
+  const toggleEvidenceClientVisible = useProjectStore((s) => s.toggleEvidenceClientVisible);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
   const staff = useStaffStore((s) => s.staffSummaries);
@@ -104,10 +106,16 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       const payment = venuePayments.find((p) => p.id === item.relatedId);
       return payment ? `Pembayaran Venue ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran Venue";
     }
+    if (item.relatedKind === "general") {
+      return "Dokumen Umum";
+    }
     return "-";
   }
 
   function relatedOptionsFor(kind: EvidenceRelatedKind): { id: string; label: string }[] {
+    if (kind === "general") {
+      return [];
+    }
     if (kind === "vendorMilestone") {
       return vendorMilestones.map((m) => ({ id: m.id, label: `${vendorNameFor(m.projectVendorId)} — ${m.name}` }));
     }
@@ -138,6 +146,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
         description: values.description,
         relatedKind: values.relatedKind,
         relatedId: values.relatedId,
+        isClientVisible: values.isClientVisible,
       });
       setModalOpen(false);
     } catch (err) {
@@ -196,9 +205,23 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <CardListField label="Tanggal Dokumen" value={formatDate(item.documentDate)} />
                     <CardListField label="Diunggah Oleh" value={staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"} />
                     <CardListField label="Konteks" value={contextLabel(item)} />
+                    {item.relatedKind === "general" && (
+                      <CardListField
+                        label="Terlihat Client"
+                        value={item.isClientVisible ? "Ya" : "Tidak"}
+                      />
+                    )}
                   </div>
-                  <div className="pt-1">
+                  <div className="flex items-center gap-2 pt-1">
                     <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
+                    {item.relatedKind === "general" && (
+                      <IconActionButton
+                        icon={item.isClientVisible ? EyeOff : Eye}
+                        label={item.isClientVisible ? "Sembunyikan dari Client" : "Tampilkan ke Client"}
+                        tone={item.isClientVisible ? "success" : "neutral"}
+                        onClick={() => void toggleEvidenceClientVisible(projectId, item.id)}
+                      />
+                    )}
                   </div>
                 </>
               )}
@@ -222,9 +245,28 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <TD><Badge tone="neutral">{item.type}</Badge></TD>
                     <TD>{formatDate(item.documentDate)}</TD>
                     <TD>{staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"}</TD>
-                    <TD className="text-text-secondary">{contextLabel(item)}</TD>
+                    <TD className="text-text-secondary">
+                      <div className="flex items-center gap-2">
+                        <span>{contextLabel(item)}</span>
+                        {item.relatedKind === "general" && (
+                          <Badge tone={item.isClientVisible ? "success" : "neutral"}>
+                            {item.isClientVisible ? "Terlihat Client" : "Tersembunyi"}
+                          </Badge>
+                        )}
+                      </div>
+                    </TD>
                     <TD>
-                      <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
+                      <div className="flex items-center gap-2">
+                        <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
+                        {item.relatedKind === "general" && (
+                          <IconActionButton
+                            icon={item.isClientVisible ? EyeOff : Eye}
+                            label={item.isClientVisible ? "Sembunyikan dari Client" : "Tampilkan ke Client"}
+                            tone={item.isClientVisible ? "success" : "neutral"}
+                            onClick={() => void toggleEvidenceClientVisible(projectId, item.id)}
+                          />
+                        )}
+                      </div>
                     </TD>
                   </TR>
                 ))}
@@ -275,6 +317,7 @@ function emptyValues(defaultRelatedId: string): EvidenceUploadFormValues {
     relatedId: defaultRelatedId,
     documentDate: todayISO(),
     description: "",
+    isClientVisible: false,
   };
 }
 
@@ -305,7 +348,12 @@ function AddEvidenceModal({
 
   function handleRelatedKindChange(kind: EvidenceRelatedKind) {
     const firstOption = relatedOptionsFor(kind)[0]?.id ?? "";
-    setValues((prev) => ({ ...prev, relatedKind: kind, relatedId: firstOption }));
+    setValues((prev) => ({
+      ...prev,
+      relatedKind: kind,
+      relatedId: firstOption,
+      isClientVisible: kind === "general" ? prev.isClientVisible : false,
+    }));
   }
 
   async function handleSubmit() {
@@ -339,7 +387,7 @@ function AddEvidenceModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || options.length === 0}>
+          <Button onClick={() => void handleSubmit()} disabled={submitting || (values.relatedKind !== "general" && options.length === 0)}>
             {submitting ? "Mengunggah..." : "Simpan Evidence"}
           </Button>
         </>
@@ -375,20 +423,32 @@ function AddEvidenceModal({
             ))}
           </Select>
         </Field>
-        <Field label="Terkait" required hint={errors.relatedId}>
-          <Select value={values.relatedId} onChange={(e) => set("relatedId", e.target.value)}>
-            {options.length === 0 && <option value="">Tidak ada data tersedia</option>}
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-          </Select>
-        </Field>
+        {values.relatedKind !== "general" && (
+          <Field label="Terkait" required hint={errors.relatedId}>
+            <Select value={values.relatedId} onChange={(e) => set("relatedId", e.target.value)}>
+              {options.length === 0 && <option value="">Tidak ada data tersedia</option>}
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Tanggal Dokumen" required hint={errors.documentDate}>
           <Input type="date" value={values.documentDate} onChange={(e) => set("documentDate", e.target.value)} />
         </Field>
         <Field label="Deskripsi">
           <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} />
         </Field>
+        {values.relatedKind === "general" && (
+          <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[13px] text-text-secondary">
+            <input
+              type="checkbox"
+              checked={values.isClientVisible}
+              onChange={(e) => set("isClientVisible", e.target.checked)}
+            />
+            Tampilkan dokumen ini ke Client Portal
+          </label>
+        )}
       </div>
     </Modal>
   );

@@ -7,6 +7,7 @@ const VendorTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/Vend
 const TimelineTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/TimelineTabPage"));
 const PembayaranTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/PembayaranTabPage"));
 const KendalaTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/KendalaTabPage"));
+const DokumenTabPage = lazy(() => import("@/modules/client-portal/pages/tabs/DokumenTabPage"));
 
 // "ringkasan" no longer exists (PLAN.md's Client Portal restructure — its
 // summary content is now the persistent ClientProjectHeaderCard, visible on
@@ -31,6 +32,7 @@ export const clientPortalRoutes: RouteObject = {
         { path: "timeline", element: <TimelineTabPage /> },
         { path: "pembayaran", element: <PembayaranTabPage /> },
         { path: "kendala", element: <KendalaTabPage /> },
+        { path: "dokumen", element: <DokumenTabPage /> },
       ],
     },
   ],

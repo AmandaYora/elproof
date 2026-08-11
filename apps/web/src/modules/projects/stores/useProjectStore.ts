@@ -412,6 +412,7 @@ interface RawEvidence {
   uploadedByStaffId: number;
   relatedKind: EvidenceRelatedKind;
   relatedId: number;
+  isClientVisible: boolean;
 }
 
 function toEvidence(raw: RawEvidence): Evidence {
@@ -426,6 +427,7 @@ function toEvidence(raw: RawEvidence): Evidence {
     uploadedByStaffId: String(raw.uploadedByStaffId),
     relatedKind: raw.relatedKind,
     relatedId: String(raw.relatedId),
+    isClientVisible: raw.isClientVisible,
   };
 }
 
@@ -436,6 +438,7 @@ export interface UploadEvidenceInput extends CompressedFilePayload {
   description: string;
   relatedKind: EvidenceRelatedKind;
   relatedId: string;
+  isClientVisible?: boolean;
 }
 
 export interface RawActivity {
@@ -475,6 +478,12 @@ interface ProjectState {
   venuePayments: VenuePayment[];
   issues: VendorIssue[];
   evidence: Evidence[];
+  // documents is Client Portal's own "Dokumen" tab feed — always only
+  // general-kind, client-visible documents (GET /projects/{id}/documents),
+  // deliberately its own cache slice rather than a filtered view over
+  // `evidence` above (which staff-only screens populate via a different,
+  // unfiltered endpoint).
+  documents: Evidence[];
   activity: ActivityLogEntry[];
 
   projectPage: Project[];
@@ -560,6 +569,8 @@ interface ProjectState {
 
   fetchEvidence: (projectId: string) => Promise<void>;
   uploadEvidence: (projectId: string, values: UploadEvidenceInput) => Promise<void>;
+  toggleEvidenceClientVisible: (projectId: string, evidenceId: string) => Promise<void>;
+  fetchDocuments: (projectId: string) => Promise<void>;
 
   fetchActivity: (projectId: string) => Promise<void>;
 }
@@ -579,6 +590,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   venuePayments: [],
   issues: [],
   evidence: [],
+  documents: [],
   activity: [],
 
   projectPage: [],
@@ -1018,9 +1030,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       documentDate: values.documentDate,
       description: values.description,
       relatedKind: values.relatedKind,
-      relatedId: Number(values.relatedId),
+      relatedId: values.relatedId ? Number(values.relatedId) : 0,
+      isClientVisible: values.isClientVisible ?? false,
     });
     await get().fetchEvidence(projectId);
+  },
+
+  toggleEvidenceClientVisible: async (projectId, evidenceId) => {
+    await httpClient.post(API.projects.evidenceToggleClientVisible(projectId, evidenceId));
+    await get().fetchEvidence(projectId);
+  },
+
+  fetchDocuments: async (projectId) => {
+    const res = await httpClient.get(API.projects.documents(projectId));
+    set({ documents: (res.data.data as RawEvidence[]).map(toEvidence) });
   },
 
   fetchActivity: async (projectId) => {

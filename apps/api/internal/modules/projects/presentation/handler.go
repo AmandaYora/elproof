@@ -170,6 +170,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.uploadEvidence(w, r, claims, projectID)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "file" && r.Method == http.MethodGet:
 		h.downloadEvidence(w, r, projectID, rest[1])
+	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "toggle-client-visible" && r.Method == http.MethodPost:
+		h.toggleEvidenceClientVisible(w, r, projectID, rest[1])
+	case len(rest) == 1 && rest[0] == "documents" && r.Method == http.MethodGet:
+		h.listDocuments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "activity" && r.Method == http.MethodGet:
 		h.listActivity(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "venue" && r.Method == http.MethodGet:

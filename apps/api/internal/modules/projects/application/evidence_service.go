@@ -27,8 +27,16 @@ type EvidenceRepository interface {
 	// the given projects in one query (WHERE project_id IN (...)).
 	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.Evidence, error)
 	ListByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) ([]domain.Evidence, error)
+	// ListClientVisibleGeneral backs Client Portal's own "Dokumen" tab
+	// (EvidenceService.ListClientDocuments) — always filters
+	// related_kind='general' AND is_client_visible=true, unconditionally,
+	// regardless of caller. Deliberately its own query rather than a filter
+	// bolted onto ListByProject, so this is trivial to audit as "only ever
+	// returns documents safe to show a client."
+	ListClientVisibleGeneral(ctx context.Context, projectID int64) ([]domain.Evidence, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error)
 	Create(ctx context.Context, e *domain.Evidence) error
+	SetClientVisible(ctx context.Context, projectID, id int64, visible bool) error
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -53,6 +61,42 @@ func NewEvidenceService(repo EvidenceRepository, storage ObjectStorage, buildKey
 
 func (s *EvidenceService) List(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
 	return s.repo.ListByProject(ctx, projectID)
+}
+
+// ListClientDocuments backs GET /projects/{id}/documents — Client Portal's
+// own "Dokumen" tab. Reachable by staff too (no principal-type branching
+// here); the safety property this endpoint exists for is that it ALWAYS
+// only returns general-kind, client-visible documents, not that only
+// clients can call it.
+func (s *EvidenceService) ListClientDocuments(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
+	return s.repo.ListClientVisibleGeneral(ctx, projectID)
+}
+
+// ToggleClientVisible flips a `general`-kind document's client visibility
+// without needing to re-upload the file — rejected for any other
+// RelatedKind, since visibility only ever means anything for a document
+// with no other, already-visible-to-the-client context to inherit from
+// (every other kind stays unconditionally client-visible, unaffected by
+// this field entirely).
+func (s *EvidenceService) ToggleClientVisible(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
+	e, err := s.repo.FindByID(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	if e == nil {
+		return nil, apperror.NotFound("Evidence tidak ditemukan")
+	}
+	if e.RelatedKind != domain.RelatedGeneral {
+		return nil, apperror.Validation("Visibilitas hanya berlaku untuk dokumen umum", map[string][]string{
+			"relatedKind": {"Evidence ini bukan dokumen umum, visibilitasnya tidak dapat diubah"},
+		})
+	}
+	newVisible := !e.IsClientVisible
+	if err := s.repo.SetClientVisible(ctx, projectID, id, newVisible); err != nil {
+		return nil, err
+	}
+	e.IsClientVisible = newVisible
+	return e, nil
 }
 
 // ListByProjects backs ComputeProgressBatch — see EvidenceRepository.
@@ -84,6 +128,9 @@ type UploadEvidenceInput struct {
 	Description  string
 	RelatedKind  domain.EvidenceRelatedKind
 	RelatedID    int64
+	// IsClientVisible is only ever honored when RelatedKind is
+	// RelatedGeneral — see Upload's own normalization below.
+	IsClientVisible bool
 }
 
 func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64, actorStaffID int64, input UploadEvidenceInput) (*domain.Evidence, error) {
@@ -115,10 +162,17 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 		return nil, apperror.Internal("Gagal mengunggah file ke object storage")
 	}
 
+	// Server-side, not just trusted from the request body: IsClientVisible
+	// can only ever be true for a general-kind document — a client-visible
+	// flag on any other kind would be meaningless (those stay unconditionally
+	// visible regardless) and misleading to display back.
+	isClientVisible := input.IsClientVisible && input.RelatedKind == domain.RelatedGeneral
+
 	e := &domain.Evidence{
 		ProjectID: projectID, Name: input.Name, Type: input.Type, StoragePath: key, FileName: input.FileName,
 		DocumentDate: input.DocumentDate, UploadedAt: time.Now(), Description: input.Description,
 		UploadedByStaffID: actorStaffID, RelatedKind: input.RelatedKind, RelatedID: input.RelatedID,
+		IsClientVisible: isClientVisible,
 	}
 	if err := s.repo.Create(ctx, e); err != nil {
 		return nil, err
