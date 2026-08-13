@@ -103,3 +103,12 @@ Venue tab and Client Portal's venue view would break for any project whose venue
 - No migration needed — every affected table already stored its cross-module references as
   primitive, un-enforced IDs (per the modular-monolith rule), which is exactly what makes
   informed-consent delete safe to ship without a schema change.
+
+## Update — payment hard-delete (ADR-0019) is a fifth exception, deliberately NOT Owner-only
+
+This ADR's "Owner-only, uniformly — stricter than the existing SetActive gate" section should be
+read as scoped to Vendor/Venue/Staff specifically, not as a codebase-wide invariant. ADR-0019 (Edit
++ hard delete for vendor/client/venue payments) reuses this ADR's *no-block, informed-consent* shape
+but deliberately widens the role bar to **Owner-or-Admin** — an explicit user request, and the first
+hard-delete anywhere in this codebase that isn't Owner-only. `DATABASE_GUIDE.md`'s "Conventions"
+section now names five exceptions, not four.

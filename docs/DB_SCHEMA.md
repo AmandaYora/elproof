@@ -301,11 +301,11 @@ hardcoded 6-item list shared by every tenant.
 | tenant_id | BIGINT UNSIGNED NOT NULL | |
 | sort_order | INT | |
 | name | VARCHAR(255) | |
-| days_before_event | INT | target date = project's `event_date` minus this many days, clamped to `prep_start_date` for short-notice projects |
+| days_before_event | INT (signed) | target date = project's `event_date` minus this many days. **Can be negative** ("Setelah Acara"/H+ — target = `event_date` **plus** `abs(days_before_event)` days, e.g. "Pengembalian Kotak Seserahan" 3 days after the event); positive values (H-) are clamped to `prep_start_date` for short-notice projects — a negative value's target is always after `event_date`, which is always ≥ `prep_start_date`, so the clamp never applies to H+ rows. Frontend represents this as a Sebelum Acara/Setelah Acara toggle + a non-negative day count, converting to/from the signed column value only at the form boundary — the API body itself is unchanged, still one signed integer |
 | created_at, updated_at | TIMESTAMP | |
 
 No `is_active` column (unlike `vendor_categories`/`vendors`/`venues`) — items are hard-deleted, one
-of four deliberate hard-delete exceptions in this codebase (see
+of five deliberate hard-delete exceptions in this codebase (see
 [`DATABASE_GUIDE.md`](../knowledge/DATABASE_GUIDE.md) and ADR-0018): once copied into a project's own
 `project_milestones` row, a template row is never referenced again, so there's nothing to orphan.
 Migration `000024` also backfilled every already-registered tenant with the previous hardcoded
@@ -373,6 +373,11 @@ vendor paid-amount fix. A `Refund` only needs a `Transfer Proof`; every other ty
 collectible since "Tambah Pembayaran" attaches both file slots in the same submit that records the
 payment.
 
+Rows can now be edited (full-field overwrite, no role gate) and hard-deleted (Owner-or-Admin) — see
+ADR-0019. Deleting a row cascades to its own `evidence` rows (deleted first, then the payment row —
+deliberately reversed order, see ADR-0019) and their S3 objects, best-effort; no schema change was
+needed for this.
+
 ### `client_payments`
 | Column | Type | Notes |
 |---|---|---|
@@ -392,6 +397,8 @@ invoice/proof evidence-ID columns either, since it only ever has one evidence sl
 transfer proof) resolved via the polymorphic `evidence` table (`related_kind = 'clientPayment'`),
 not a direct FK column.
 
+Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR-0019.
+
 ### `venue_payments`
 | Column | Type | Notes |
 |---|---|---|
@@ -409,6 +416,8 @@ Money going **out** to the project's venue — same accounting direction and sam
 rule (Invoice + Transfer Proof, `Refund` needs only proof) as `vendor_payments`, resolved via the
 polymorphic `evidence` table (`related_kind = 'venuePayment'`), never a direct FK column — same
 lesson already learned from `vendor_payments`' now-removed dead columns.
+
+Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR-0019.
 
 ### `vendor_issues`
 | Column | Type | Notes |
@@ -437,8 +446,9 @@ lesson already learned from `vendor_payments`' now-removed dead columns.
 | uploaded_at | TIMESTAMP | |
 | description | VARCHAR(255) NULL | |
 | uploaded_by_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
-| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment','venuePayment') | |
-| related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind` |
+| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment','venuePayment','general') | `'general'` (migration `000035`, ADR-0020) is a project-level document with no specific vendor/payment/vendor-engagement/issue to attach to (rundown, buku acara, teks juru bicara, banquet order, rekap dekor, etc.) — powers Client Portal's own "Dokumen" tab |
+| related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind`. For `related_kind = 'general'`, this is always the sentinel `0` (`AUTO_INCREMENT` never starts at 0), mirroring `projects.venue_id`'s own "0 = none" convention — there's nothing to point at |
+| is_client_visible | BOOLEAN NOT NULL DEFAULT FALSE | migration `000035`, ADR-0020. Only ever meaningful for `related_kind = 'general'` — every other kind stays unconditionally visible to a `client` principal the moment it's attached to something inside their own project (unchanged); toggled via `POST .../evidence/{id}/toggle-client-visible` (rejected 422 for any other `related_kind`). Defaults `FALSE` (safe-by-default): a staff member must explicitly opt a general document in before `GET /projects/{id}/documents` (Client Portal's "Dokumen" tab) will ever return it |
 
 ### `activity_log`
 | Column | Type | Notes |

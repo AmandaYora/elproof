@@ -31,6 +31,13 @@ duplicates a project, and never reassigns a project's PIC (Owner/Admin only).
   issues, evidence documents, activity log. The header also shows a computed **Margin/Keuntungan**
   (contract value minus vendor costs minus venue cost) — Owner/Admin only, hidden from Wedding
   Planner. Creating a new project or duplicating one is Owner/Admin only.
+  - **Pembayaran** (vendor/client/venue, all three): each row can now be edited (full-field, any
+    role) or permanently deleted (**Owner-or-Admin**, informed-consent dialog naming the amount and
+    how many evidence files will go with it — ADR-0019) — closing what was previously create-and-list-only.
+    A "Lihat Bukti" button on every row shows its attached evidence inline, without leaving the tab.
+  - **Dokumen & Evidence**: gained a 7th "Umum" context for documents with no specific
+    vendor/payment/timeline link (rundown, buku acara, teks juru bicara, banquet order, rekap dekor,
+    etc.), each with its own Client Portal visibility toggle — default hidden, opt-in only (ADR-0020).
 - **Clients** (Owner/Admin): contacts per project (Bride/Groom/Family Representative), contact edit,
   credential reset, active/inactive toggle, and a self-service permanent delete for a client left
   without a working login credential (frees up its role slot on the project — deactivating alone
@@ -62,10 +69,12 @@ duplicates a project, and never reassigns a project's PIC (Owner/Admin only).
   the Vendor form's category picker and each project's Vendor tab). Permanent delete is blocked
   (not informed-consent) while any vendor still references the category — a real, same-module SQL
   foreign key, unlike Vendor/Venue/Staff's soft cross-module references (ADR-0018).
-- **Timeline Default** (Owner-only): configure the per-tenant checklist (name + days-before-event)
-  auto-seeded into every new project's own Timeline tab, replacing what used to be one hardcoded
-  6-item list shared by every tenant. Editing it never retroactively changes an already-created
-  project, and has no effect on Duplikat Project (which clones the source project's actual Timeline).
+- **Timeline Default** (Owner-only): configure the per-tenant checklist (name + a day offset, either
+  Sebelum Acara/"H-" or Setelah Acara/"H+" — e.g. an item scheduled a few days *after* the event,
+  like returning the seserahan box) auto-seeded into every new project's own Timeline tab, replacing
+  what used to be one hardcoded 6-item list shared by every tenant. Editing it never retroactively
+  changes an already-created project, and has no effect on Duplikat Project (which clones the source
+  project's actual Timeline).
 
 ## Client Portal (`/portal/*`)
 
@@ -77,7 +86,7 @@ compact progress summary (percent, condition badge, open-issues banner) — this
 to be a standalone "Ringkasan" tab. Internal-only fields (Margin/Keuntungan, Tanggal Booking, and
 every WO-side action button) are never sent to this surface at all, not just hidden in the UI.
 
-Four tabs below that header:
+Five tabs below that header:
 - **Vendor** — every vendor engaged on the project (progress rail, engagement status, open-kendala
   banner, collapsible tahapan/kendala detail) *plus* the project's venue, pinned as the grid's first
   card, presentation-merged in client-facing views only (WO Console keeps Vendor and Venue as
@@ -89,6 +98,9 @@ Four tabs below that header:
 - **Pembayaran** — payments received against the project's contract value.
 - **Kendala** — every open/resolved issue across every vendor on the project, in one place (distinct
   from the per-vendor kendala accordion on the Vendor tab's own cards).
+- **Dokumen** (ADR-0020) — general project documents the WO has explicitly opted to share (rundown,
+  buku acara, etc.) — never every document uploaded internally, only the ones a staff member has
+  individually toggled visible. Appended last, deliberately not interleaved with the four tabs above.
 
 ## Platform Console (`/platform/*`) — ElProof's internal team only
 

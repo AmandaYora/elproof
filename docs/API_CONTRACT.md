@@ -206,14 +206,20 @@ afterward. **Wedding Planner**: rejected 403 if `picStaffId` in the body differs
 | GET/POST | `/projects/{id}/vendors/{projectVendorId}/milestones` | vendor milestones |
 | PATCH | `/projects/{id}/vendors/{projectVendorId}/milestones/{id}` | full-body update (`status`, `targetDate`, `completedDate`, `picStaffId`, `description`, `notes`) — no partial-field PATCH |
 | GET/POST | `/projects/{id}/payments` | vendor payments (money **out**). `method` is one of `Tunai`/`Transfer Bank`/`QRIS` (frontend-constrained, not backend-validated); `referenceNumber` is optional. Response's `evidenceComplete` (migration `000029`) is **computed**, cross-referencing `evidence` rows with `relatedKind: "payment"` for this payment's id, split by `type` (`Invoice` vs `Transfer Proof`) — a `Refund` needs only a Transfer Proof, every other type needs both. "Tambah Pembayaran" attaches both file slots (via two separate `POST .../evidence` calls, `relatedKind: "payment"`) in the same submit that records the payment — finally closing what was previously an unreachable "always incomplete in practice" state (the columns this used to read from were never written by any code path) |
+| PATCH | `/projects/{id}/payments/{paymentId}` | full-field overwrite (`type`, `amount`, `paymentDate`, `method`, `referenceNumber`, `notes`) — **no role gate**, same convention as every other Update in this module; `projectVendorId` is not editable (see ADR-0019) |
+| DELETE | `/projects/{id}/payments/{paymentId}` | hard delete — **Owner-or-Admin only** (403 for `role="Staff"`, checked inline, not via `vendors`/`venues`' `requireOwnerRole` helper). Cascades to this payment's own `evidence` rows (deleted first, then the payment row) and their S3 objects, best-effort — see ADR-0019 |
 | GET/POST | `/projects/{id}/client-payments` | client payments (money **in** — "Uang Masuk dari Client"), no `projectVendorId`. `method`/`referenceNumber` follow the same fixed-dropdown/optional rules as `/payments` above. Response includes `evidenceComplete`, computed by the handler as a plain existence check against `evidence` (`relatedKind = "clientPayment"`) — a single slot, since there's no "invoice" concept for money coming in (unlike `vendor_payments`, which needs both an Invoice and a Transfer Proof) |
+| PATCH/DELETE | `/projects/{id}/client-payments/{paymentId}` | same shape/role-gate as `/payments/{paymentId}` above — see ADR-0019 |
 | GET/POST | `/projects/{id}/venue-payments` | venue payments (money **out** to the project's venue), no `projectVendorId`-equivalent (a project has at most one venue). `method`/`referenceNumber` follow the same fixed-dropdown/optional rules as `/payments` above. Response's `evidenceComplete` is computed the same two-slot way as `/payments` (`relatedKind = "venuePayment"`, distinct from `"payment"` so `vendor_payments.id`/`venue_payments.id` — independent `AUTO_INCREMENT` sequences that can collide in value — are never ambiguous) |
+| PATCH/DELETE | `/projects/{id}/venue-payments/{paymentId}` | same shape/role-gate as `/payments/{paymentId}` above — see ADR-0019 |
 | GET/POST | `/projects/{id}/issues` | |
 | PATCH | `/projects/{id}/issues/{issueId}` | body `{status}`; auto-stamps `resolvedDate` exactly once when status becomes `Resolved`/`Closed` |
 | GET | `/projects/{id}/evidence` | returns every evidence row for the project directly (not derived client-side from milestones/payments/issues) |
-| POST | `/projects/{id}/evidence` | JSON body `{name, type, fileName, mimeType, base64Data, documentDate, description, relatedKind, relatedId}` — base64, not multipart (see ADR-0006, ADR-0010); 15 MB decoded-size cap; `relatedKind` is one of `vendorMilestone`/`payment`/`projectVendor`/`issue`/`clientPayment`/`venuePayment` |
+| POST | `/projects/{id}/evidence` | JSON body `{name, type, fileName, mimeType, base64Data, documentDate, description, relatedKind, relatedId, isClientVisible}` — base64, not multipart (see ADR-0006, ADR-0010); 15 MB decoded-size cap; `relatedKind` is one of `vendorMilestone`/`payment`/`projectVendor`/`issue`/`clientPayment`/`venuePayment`/`general` (migration `000035`, ADR-0020); `isClientVisible` is server-side re-normalized to `false` unless `relatedKind = "general"` (never trusted blindly from the request body, even for a `general` document it still defaults `false`) |
+| POST | `/projects/{id}/evidence/{evidenceId}/toggle-client-visible` | flips `is_client_visible` for one evidence row — rejected `422` unless `relatedKind = "general"` (visibility is meaningless for every other kind, see `DB_SCHEMA.md` and ADR-0020) |
+| GET | `/projects/{id}/documents` | Client Portal's own "Dokumen" tab feed (ADR-0020) — **always** only `relatedKind = "general"` **and** `isClientVisible = true`, unconditionally regardless of caller (reachable by staff too, harmlessly — the safety property is what the endpoint returns, not who can call it). Deliberately its own query/endpoint rather than a filter bolted onto `GET .../evidence`, so "only ever returns documents safe to show a client" stays trivially auditable |
 | GET | `/projects/{id}/evidence/{evidenceId}/file` | authenticated download (Bearer token required — not a public URL); streams the object exactly as stored (already compressed at upload time); frontend fetches it as a blob via `httpClient`, not a bare `<img src>` |
-| GET | `/projects/{id}/activity` | append-only, populated server-side on every mutation above; activity types actually emitted: `project_created`, `project_updated`, `project_status_changed`, `vendor_added`, `vendor_status_changed`, `milestone_updated`, `payment_recorded` (shared by vendor, client, and venue payments, distinguished only by `entityType`: `"vendor_payment"` vs. `"client_payment"` vs. `"venue_payment"`), `evidence_uploaded`, `issue_created`, `issue_updated`; response includes `projectId` (needed by the dashboard's cross-project activity feed, not by the per-project tab which already knows it from the URL) |
+| GET | `/projects/{id}/activity` | append-only, populated server-side on every mutation above; activity types actually emitted: `project_created`, `project_updated`, `project_status_changed`, `vendor_added`, `vendor_status_changed`, `milestone_updated`, `payment_recorded`/`payment_updated`/`payment_deleted` (each shared by vendor, client, and venue payments, distinguished only by `entityType`: `"vendor_payment"` vs. `"client_payment"` vs. `"venue_payment"`), `evidence_uploaded`, `issue_created`, `issue_updated`; response includes `projectId` (needed by the dashboard's cross-project activity feed, not by the per-project tab which already knows it from the URL) |
 
 ## `milestone-templates` (tenant-scoped, "Pengaturan → Timeline Default") — every route Owner-only
 
@@ -225,10 +231,10 @@ a short list). See `DB_SCHEMA.md`.
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/milestone-templates` | Owner-only — `[{id, name, daysBeforeEvent, sortOrder}]` |
-| POST | `/milestone-templates` | Owner-only. Body `{name, daysBeforeEvent}` |
+| POST | `/milestone-templates` | Owner-only. Body `{name, daysBeforeEvent}` — `daysBeforeEvent` can be **negative** ("Setelah Acara"/H+, e.g. `-3` for 3 days after the event); the frontend form represents this as a Sebelum Acara/Setelah Acara toggle + non-negative day count, converting to a signed integer only at the form boundary — this API body is unchanged |
 | PATCH | `/milestone-templates` | Owner-only — reorder. Body `{orderedIds}`, rejected (422) unless an exact permutation of the tenant's current template IDs |
-| PATCH | `/milestone-templates/{id}` | Owner-only — update `{name, daysBeforeEvent}` |
-| DELETE | `/milestone-templates/{id}` | Owner-only — **hard delete** (one of four deliberate hard-delete exceptions in this codebase, see `knowledge/DATABASE_GUIDE.md` and ADR-0018): a template row is only ever copied into a project's own `project_milestones` at creation time, never referenced again afterward, so there's nothing to orphan |
+| PATCH | `/milestone-templates/{id}` | Owner-only — update `{name, daysBeforeEvent}`, same H+ support as `POST` above |
+| DELETE | `/milestone-templates/{id}` | Owner-only — **hard delete** (one of five deliberate hard-delete exceptions in this codebase, see `knowledge/DATABASE_GUIDE.md` and ADR-0018): a template row is only ever copied into a project's own `project_milestones` at creation time, never referenced again afterward, so there's nothing to orphan |
 
 A newly registered tenant gets the same starter 6-item template via `platform`'s tenant-registration
 flow (`SeedDefaultMilestoneTemplate`, called the same moment `vendors.SeedDefaultCategories` is) —
@@ -252,12 +258,15 @@ changed (real `todayISO()` instead of the mock's hardcoded `TODAY`).
 
 `client` principals hit the exact same `/projects/{id}/...` GET endpoints as staff (milestones,
 vendor engagements + their milestones, payments, client-payments, venue-payments, issues, evidence +
-file download, activity, and `venue` — the public-safe summary, ADR-0016) — there is no separate
-client-portal endpoint set. The Pembayaran tab specifically now reads `client-payments` (the client's
-own payment history), not `payments`/`venue-payments` (the WO's spend on vendors/venue) —
+file download, activity, `documents`, and `venue` — the public-safe summary, ADR-0016) — there is no
+separate client-portal endpoint set. The Pembayaran tab specifically now reads `client-payments` (the
+client's own payment history), not `payments`/`venue-payments` (the WO's spend on vendors/venue) —
 "Uang Masuk dari Client" is a distinct concept from money spent on vendors/venue. `venue-payments`
 is reachable by a `client` principal via the same blanket GET allowance as `payments` above, but
-nothing in the Client Portal UI calls it today. The
+nothing in the Client Portal UI calls it today. The Client Portal's own "Dokumen" tab (appended after
+Kendala, ADR-0020) reads `GET .../documents` specifically — never `GET .../evidence` directly, which
+stays unfiltered and would leak every other evidence kind if the Client Portal ever called it (see
+`DB_SCHEMA.md`'s `evidence.is_client_visible` note). The
 one exception is `venues/{id}/attachment`, a `venues`-module route (not under `/projects/{id}/...`)
 that `client` principals also reach, gated by mime type (image only) rather than by project
 ownership, since it isn't itself project-scoped. Enforcement, checked server-side on every request

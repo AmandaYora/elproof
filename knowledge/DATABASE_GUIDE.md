@@ -33,19 +33,23 @@ never a live join.
   NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` where mutation history matters.
 - Soft state over hard delete: the frontend consistently uses `is_active`/status-toggle rather than
   deleting rows (plans still only "deactivate") — mirror this server-side; don't introduce hard
-  deletes the frontend never asks for. Four deliberate, explicit exceptions exist, each narrowly
+  deletes the frontend never asks for. Five deliberate, explicit exceptions exist, each narrowly
   scoped and guarded rather than general-purpose: `clients.Delete` (one bug-workaround scenario,
   see its own doc comment), `projects.Delete` (Owner-only, requires the project already
   archived/cancelled first — block-then-cascade, see ADR-0013), `MilestoneTemplateService.Delete`
   (Timeline Default Template items, Owner-only — safe here specifically because a template row is
   only ever *copied* into a project's own `project_milestones` at creation time, never referenced
-  again afterward, so there's nothing to orphan), and `vendors.Delete`/`venues.Delete`/
+  again afterward, so there's nothing to orphan), `vendors.Delete`/`venues.Delete`/
   `staff.Delete` (Owner-only, **no** precondition — an *informed-consent* confirmation dialog names
   exactly which projects would be affected, rather than blocking the delete; the tenant's own Owner
   account is the one absolute non-negotiable exception; Vendor Category stays hard-blocked instead,
   since its FK is same-module and non-nullable — see ADR-0018 for the full guardrail design and why
-  it deliberately differs from ADR-0013's block-then-cascade model). Don't treat any of these four
-  as license to add more hard deletes without the same explicit reasoning and guardrails.
+  it deliberately differs from ADR-0013's block-then-cascade model), and
+  `PaymentService`/`ClientPaymentService`/`VenuePaymentService.Delete` (vendor/client/venue
+  payments — **Owner-or-Admin**, the one exception that isn't Owner-only, an explicit user request;
+  no precondition, but cascades to the payment's own `evidence` rows first, since evidence has no
+  delete capability of its own — see ADR-0019). Don't treat any of these five as license to add
+  more hard deletes without the same explicit reasoning and guardrails.
 
 ## Tooling
 
