@@ -6,9 +6,9 @@ import type { ProjectFormValues } from "@/modules/projects/schemas/project.schem
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
 import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project-vendor.schema";
 import type { VendorMilestoneFormValues } from "@/modules/projects/schemas/vendor-milestone.schema";
-import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
-import type { ClientPaymentFormValues } from "@/modules/projects/schemas/client-payment.schema";
-import type { VenuePaymentFormValues } from "@/modules/projects/schemas/venue-payment.schema";
+import type { PaymentFormValues, PaymentUpdateFormValues } from "@/modules/projects/schemas/payment.schema";
+import type { ClientPaymentFormValues, ClientPaymentUpdateFormValues } from "@/modules/projects/schemas/client-payment.schema";
+import type { VenuePaymentFormValues, VenuePaymentUpdateFormValues } from "@/modules/projects/schemas/venue-payment.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
@@ -549,6 +549,15 @@ interface ProjectState {
 
   fetchPayments: (projectId: string) => Promise<void>;
   createPayment: (projectId: string, values: PaymentFormValues) => Promise<void>;
+  // Edit scope is the ledger fields only (Type/Amount/PaymentDate/Method/
+  // ReferenceNumber/Notes) — no file re-upload, no re-parenting to a
+  // different vendor engagement (PLAN.md §2.5). Both also refetch
+  // `fetchVendorSection` alongside `fetchPayments` — PLAN.md §2.7's fix for
+  // the pre-existing `pv.paidAmount` staleness bug (that cached field lives
+  // on a sibling array populated only by fetchVendorSection, not derived
+  // from `payments` itself).
+  updatePayment: (projectId: string, paymentId: string, values: PaymentUpdateFormValues) => Promise<void>;
+  deletePayment: (projectId: string, paymentId: string) => Promise<void>;
 
   fetchClientPayments: (projectId: string) => Promise<void>;
   // Orchestrates POST .../client-payments then, only if values.proofFile is
@@ -557,11 +566,15 @@ interface ProjectState {
   // §1.4), closing the "always incomplete in practice" gap vendor_payments
   // has today (createPayment above never attaches evidence at creation time).
   createClientPayment: (projectId: string, values: ClientPaymentFormValues) => Promise<void>;
+  updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues) => Promise<void>;
+  deleteClientPayment: (projectId: string, paymentId: string) => Promise<void>;
 
   fetchVenuePayments: (projectId: string) => Promise<void>;
   // Same two-slot evidence orchestration as createPayment (vendor's own),
   // just against .../venue-payments and relatedKind "venuePayment".
   createVenuePayment: (projectId: string, values: VenuePaymentFormValues) => Promise<void>;
+  updateVenuePayment: (projectId: string, paymentId: string, values: VenuePaymentUpdateFormValues) => Promise<void>;
+  deleteVenuePayment: (projectId: string, paymentId: string) => Promise<void>;
 
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
@@ -874,12 +887,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         failedSlots.push("bukti transfer");
       }
     }
-    await get().fetchPayments(projectId);
+    // Also refetches fetchVendorSection, not just fetchPayments -- PLAN.md
+    // §2.7's fix for the pre-existing pv.paidAmount staleness bug (see the
+    // doc comment on updatePayment/deletePayment below for the full story).
+    await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
     if (failedSlots.length > 0) {
       throw new VendorPaymentEvidenceError(
         `Pembayaran tersimpan, tapi ${failedSlots.join(" dan ")} gagal diunggah. Anda bisa melampirkannya nanti melalui tab Dokumen.`
       );
     }
+  },
+
+  updatePayment: async (projectId, paymentId, values) => {
+    await httpClient.patch(API.projects.payment(projectId, paymentId), {
+      type: values.type,
+      amount: values.amount,
+      paymentDate: values.paymentDate,
+      method: values.method,
+      referenceNumber: values.referenceNumber,
+      notes: values.notes,
+    });
+    await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
+  },
+
+  deletePayment: async (projectId, paymentId) => {
+    await httpClient.delete(API.projects.payment(projectId, paymentId));
+    await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
   },
 
   fetchClientPayments: async (projectId) => {
@@ -924,6 +957,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         );
       }
     }
+    await get().fetchClientPayments(projectId);
+  },
+
+  updateClientPayment: async (projectId, paymentId, values) => {
+    await httpClient.patch(API.projects.clientPayment(projectId, paymentId), {
+      type: values.type,
+      amount: values.amount,
+      paymentDate: values.paymentDate,
+      method: values.method,
+      referenceNumber: values.referenceNumber,
+      notes: values.notes,
+    });
+    await get().fetchClientPayments(projectId);
+  },
+
+  deleteClientPayment: async (projectId, paymentId) => {
+    await httpClient.delete(API.projects.clientPayment(projectId, paymentId));
     await get().fetchClientPayments(projectId);
   },
 
@@ -988,6 +1038,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         `Pembayaran tersimpan, tapi ${failedSlots.join(" dan ")} gagal diunggah. Anda bisa melampirkannya nanti melalui tab Dokumen.`
       );
     }
+  },
+
+  updateVenuePayment: async (projectId, paymentId, values) => {
+    await httpClient.patch(API.projects.venuePayment(projectId, paymentId), {
+      type: values.type,
+      amount: values.amount,
+      paymentDate: values.paymentDate,
+      method: values.method,
+      referenceNumber: values.referenceNumber,
+      notes: values.notes,
+    });
+    await get().fetchVenuePayments(projectId);
+  },
+
+  deleteVenuePayment: async (projectId, paymentId) => {
+    await httpClient.delete(API.projects.venuePayment(projectId, paymentId));
+    await get().fetchVenuePayments(projectId);
   },
 
   fetchIssues: async (projectId) => {

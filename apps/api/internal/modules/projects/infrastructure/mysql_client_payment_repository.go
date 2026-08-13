@@ -72,3 +72,17 @@ func (r *MySQLClientPaymentRepository) Create(ctx context.Context, p *domain.Cli
 	p.ID = id
 	return nil
 }
+
+func (r *MySQLClientPaymentRepository) Update(ctx context.Context, projectID, id int64, p domain.ClientPayment) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE client_payments SET type = ?, amount = ?, payment_date = ?, method = ?, reference_number = ?, notes = ?
+		 WHERE project_id = ? AND id = ?`,
+		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, projectID, id,
+	)
+	return err
+}
+
+func (r *MySQLClientPaymentRepository) Delete(ctx context.Context, projectID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM client_payments WHERE project_id = ? AND id = ?`, projectID, id)
+	return err
+}

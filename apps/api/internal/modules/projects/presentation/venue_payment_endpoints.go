@@ -61,3 +61,57 @@ func (h *Handler) createVenuePayment(w http.ResponseWriter, r *http.Request, cla
 	// identical to createPayment/createClientPayment.
 	response.Created(w, "Pembayaran venue berhasil dicatat", toVenuePaymentResponse(*p, false))
 }
+
+// updateVenuePayment is a full-field overwrite, no role-gate — see
+// updatePayment's doc comment.
+func (h *Handler) updateVenuePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
+	paymentID, err := parseInt64(paymentIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	var body venuePaymentInputBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	paymentDate, err := parseDate(body.PaymentDate)
+	if err != nil {
+		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
+		return
+	}
+	p, err := h.venuePayments.Update(r.Context(), projectID, paymentID, claims.staffID, application.VenuePaymentInput{
+		Type: domain.PaymentType(body.Type), Amount: body.Amount,
+		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	evidences, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
+	response.OK(w, "Pembayaran venue berhasil diperbarui", toVenuePaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof)))
+}
+
+// deleteVenuePayment hard-deletes the payment (and its own evidence).
+// Owner-or-Admin — see deletePayment's doc comment.
+func (h *Handler) deleteVenuePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
+	if !isOwnerOrAdmin(claims.role) {
+		response.Error(w, http.StatusForbidden, "Hanya akun Owner atau Admin yang dapat menghapus pembayaran secara permanen", nil)
+		return
+	}
+	paymentID, err := parseInt64(paymentIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	if err := h.venuePayments.Delete(r.Context(), projectID, paymentID, claims.staffID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran venue berhasil dihapus", nil)
+}

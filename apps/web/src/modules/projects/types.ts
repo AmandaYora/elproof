@@ -238,6 +238,8 @@ export type ActivityType =
   | "vendor_status_changed"
   | "milestone_updated"
   | "payment_recorded"
+  | "payment_updated"
+  | "payment_deleted"
   | "evidence_uploaded"
   | "issue_created"
   | "issue_updated";

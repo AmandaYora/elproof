@@ -122,8 +122,11 @@ export const API = {
     vendorMilestone: (id: string, pvId: string, milestoneId: string) =>
       `/api/v1/projects/${id}/vendors/${pvId}/milestones/${milestoneId}`,
     payments: (id: string) => `/api/v1/projects/${id}/payments`,
+    payment: (id: string, paymentId: string) => `/api/v1/projects/${id}/payments/${paymentId}`,
     clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
+    clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
     venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,
+    venuePayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}`,
     issues: (id: string) => `/api/v1/projects/${id}/issues`,
     issue: (id: string, issueId: string) => `/api/v1/projects/${id}/issues/${issueId}`,
     evidence: (id: string) => `/api/v1/projects/${id}/evidence`,

@@ -18,3 +18,15 @@ export const venuePaymentSchema = z.object({
 });
 
 export type VenuePaymentFormValues = z.infer<typeof venuePaymentSchema>;
+
+// Edit scope is the ledger fields only — no file re-upload, see PLAN.md §2.5.
+export const venuePaymentUpdateSchema = z.object({
+  type: z.enum(VENUE_PAYMENT_TYPE_OPTIONS),
+  amount: z.coerce.number().positive("Nominal harus lebih dari 0"),
+  paymentDate: z.string().min(1, "Tanggal wajib diisi"),
+  method: z.enum(PAYMENT_METHOD_OPTIONS),
+  referenceNumber: z.string().optional().default(""),
+  notes: z.string().optional().default(""),
+});
+
+export type VenuePaymentUpdateFormValues = z.infer<typeof venuePaymentUpdateSchema>;

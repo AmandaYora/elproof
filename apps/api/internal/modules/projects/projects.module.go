@@ -40,9 +40,9 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, venuePaymentRepo, evidenceService, activityService, staff)
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
-	paymentService := application.NewPaymentService(paymentRepo, activityService)
-	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, activityService)
-	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, activityService)
+	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService)
+	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService)
+	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, evidenceService, activityService)
 	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo, evidenceService)
 

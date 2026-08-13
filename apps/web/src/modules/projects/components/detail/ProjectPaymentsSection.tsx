@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
@@ -8,17 +8,22 @@ import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
+import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, VendorPaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import {
   paymentSchema,
+  paymentUpdateSchema,
   PAYMENT_TYPE_OPTIONS,
   PAYMENT_METHOD_OPTIONS,
   type PaymentFormValues,
+  type PaymentUpdateFormValues,
 } from "@/modules/projects/schemas/payment.schema";
-import type { ProjectVendor } from "@/modules/projects/types";
+import type { ProjectVendor, VendorPayment } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
@@ -26,20 +31,35 @@ import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
   const payments = useProjectStore((s) => s.payments);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
+  const evidence = useProjectStore((s) => s.evidence);
   const fetchPayments = useProjectStore((s) => s.fetchPayments);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
+  const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const createPayment = useProjectStore((s) => s.createPayment);
+  const updatePayment = useProjectStore((s) => s.updatePayment);
+  const deletePayment = useProjectStore((s) => s.deletePayment);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
+  // Hard delete is Owner-or-Admin (broadened from Owner-only per explicit
+  // user request) -- mirrors ProjectHeaderCard.tsx's own "!== \"Staff\"" idiom
+  // for the same Owner-or-Admin bar, since those are the only 3 roles. Edit
+  // has no role restriction at all.
+  const canDelete = useAuthStore((s) => s.session?.role) !== "Staff";
 
   const [modalOpen, setModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editingPayment, setEditingPayment] = useState<VendorPayment | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState<VendorPayment | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [viewingEvidencePayment, setViewingEvidencePayment] = useState<VendorPayment | null>(null);
 
   useEffect(() => {
     void fetchPayments(projectId);
     void fetchVendorSection(projectId);
+    void fetchEvidence(projectId);
     void fetchVendors();
-  }, [projectId, fetchPayments, fetchVendorSection, fetchVendors]);
+  }, [projectId, fetchPayments, fetchVendorSection, fetchEvidence, fetchVendors]);
 
   // Excludes Cancelled engagements, same as Margin/Keuntungan's own
   // vendorCost already does — a cancelled engagement's contract value isn't
@@ -69,6 +89,26 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
       }
       setActionError(getApiErrorMessage(err, "Gagal mencatat pembayaran"));
       throw err;
+    }
+  }
+
+  async function handleEditPayment(values: PaymentUpdateFormValues) {
+    if (!editingPayment) return;
+    await updatePayment(projectId, editingPayment.id, values);
+    setEditingPayment(null);
+  }
+
+  async function handleDeletePayment() {
+    if (!deletingPayment) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await deletePayment(projectId, deletingPayment.id);
+      setDeletingPayment(null);
+    } catch (err) {
+      setDeleteError(getApiErrorMessage(err, "Gagal menghapus pembayaran"));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -120,6 +160,13 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       <CardListField label="Metode" value={payment.method} />
                       <CardListField label="No. Referensi" value={payment.referenceNumber} />
                     </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                      <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />
+                      {canDelete && (
+                        <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
+                      )}
+                    </div>
                   </>
                 );
               }}
@@ -135,6 +182,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                   <TH>Metode</TH>
                   <TH>No. Referensi</TH>
                   <TH>Kelengkapan Evidence</TH>
+                  <TH>Aksi</TH>
                 </TR>
               </THead>
               <TBody>
@@ -151,6 +199,15 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       <TD>{payment.referenceNumber}</TD>
                       <TD>
                         {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}
+                      </TD>
+                      <TD>
+                        <div className="flex items-center gap-2">
+                          <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                          <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />
+                          {canDelete && (
+                            <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
+                          )}
+                        </div>
                       </TD>
                     </TR>
                   );
@@ -179,6 +236,61 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           error={actionError}
           vendorEngagements={vendorEngagements}
           vendors={vendors}
+        />
+      )}
+
+      {editingPayment && (
+        <EditPaymentModal
+          open={Boolean(editingPayment)}
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSubmit={handleEditPayment}
+        />
+      )}
+
+      {deletingPayment && (
+        <Modal
+          open={Boolean(deletingPayment)}
+          onClose={() => setDeletingPayment(null)}
+          title="Hapus Pembayaran"
+          description="Tindakan ini permanen dan tidak dapat dibatalkan."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDeletingPayment(null)} disabled={deleting}>Batal</Button>
+              <Button variant="danger" onClick={() => void handleDeletePayment()} disabled={deleting}>
+                {deleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {deleteError && (
+              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{deleteError}</p>
+            )}
+            <p className="flex items-start gap-2 text-[13.5px] text-text-primary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+              <span>
+                Yakin ingin menghapus pembayaran <strong>{formatCurrency(deletingPayment.amount)}</strong> ({deletingPayment.type}) ini
+                secara permanen?
+                {(() => {
+                  const count = evidence.filter((e) => e.relatedKind === "payment" && e.relatedId === deletingPayment.id).length;
+                  return count > 0
+                    ? ` ${count} berkas evidence yang terlampir pada pembayaran ini akan ikut terhapus.`
+                    : "";
+                })()}
+              </span>
+            </p>
+          </div>
+        </Modal>
+      )}
+
+      {viewingEvidencePayment && (
+        <EvidenceListModal
+          open
+          projectId={projectId}
+          title={`Bukti — ${viewingEvidencePayment.type}`}
+          items={evidence.filter((e) => e.relatedKind === "payment" && e.relatedId === viewingEvidencePayment.id)}
+          onClose={() => setViewingEvidencePayment(null)}
         />
       )}
     </div>
@@ -328,6 +440,109 @@ function AddPaymentModal({
             onChange={(e) => set("proofFile", e.target.files?.[0] ?? undefined)}
             className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
           />
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Catatan">
+            <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
+          </Field>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Edit scope is the ledger fields only -- no vendor picker (re-parenting a
+// payment isn't supported, PLAN.md §2.5) and no file inputs (already
+// covered by the existing generic evidence tab).
+function EditPaymentModal({
+  open,
+  payment,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  payment: VendorPayment;
+  onClose: () => void;
+  onSubmit: (values: PaymentUpdateFormValues) => Promise<void>;
+}) {
+  const [values, setValues] = useState<PaymentUpdateFormValues>({
+    type: payment.type,
+    amount: payment.amount,
+    paymentDate: payment.paymentDate,
+    method: payment.method as PaymentUpdateFormValues["method"],
+    referenceNumber: payment.referenceNumber,
+    notes: payment.notes,
+  });
+  const [errors, setErrors] = useState<Partial<Record<keyof PaymentUpdateFormValues, string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  function set<K extends keyof PaymentUpdateFormValues>(key: K, value: PaymentUpdateFormValues[K]) {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSubmit() {
+    const result = paymentUpdateSchema.safeParse(values);
+    if (!result.success) {
+      const fieldErrors: Partial<Record<keyof PaymentUpdateFormValues, string>> = {};
+      for (const issue of result.error.issues) {
+        fieldErrors[issue.path[0] as keyof PaymentUpdateFormValues] = issue.message;
+      }
+      setErrors(fieldErrors);
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(result.data);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Gagal memperbarui pembayaran"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Ubah Pembayaran"
+      description="Perbarui detail pembayaran ini. Berkas evidence yang sudah terlampir tidak berubah."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Batal</Button>
+          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {error && (
+          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
+        )}
+        <Field label="Jenis Pembayaran" required>
+          <Select value={values.type} onChange={(e) => set("type", e.target.value as PaymentUpdateFormValues["type"])}>
+            {PAYMENT_TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Nominal (Rp)" required hint={errors.amount}>
+          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
+        </Field>
+        <Field label="Tanggal" required hint={errors.paymentDate}>
+          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
+        </Field>
+        <Field label="Metode" required hint={errors.method}>
+          <Select value={values.method} onChange={(e) => set("method", e.target.value as PaymentUpdateFormValues["method"])}>
+            {PAYMENT_METHOD_OPTIONS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="No. Referensi" hint={errors.referenceNumber}>
+          <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Catatan">

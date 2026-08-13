@@ -150,14 +150,26 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listPayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "payments" && r.Method == http.MethodPost:
 		h.createPayment(w, r, claims, projectID)
+	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodPatch:
+		h.updatePayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodDelete:
+		h.deletePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodGet:
 		h.listClientPayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
 		h.createClientPayment(w, r, claims, projectID)
+	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodPatch:
+		h.updateClientPayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodDelete:
+		h.deleteClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodGet:
 		h.listVenuePayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodPost:
 		h.createVenuePayment(w, r, claims, projectID)
+	case len(rest) == 2 && rest[0] == "venue-payments" && r.Method == http.MethodPatch:
+		h.updateVenuePayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "venue-payments" && r.Method == http.MethodDelete:
+		h.deleteVenuePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodGet:
 		h.listIssues(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:

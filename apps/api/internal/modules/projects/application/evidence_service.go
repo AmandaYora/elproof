@@ -37,6 +37,9 @@ type EvidenceRepository interface {
 	FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error)
 	Create(ctx context.Context, e *domain.Evidence) error
 	SetClientVisible(ctx context.Context, projectID, id int64, visible bool) error
+	// DeleteByRelated hard-deletes every evidence row for one related_kind+
+	// related_id pair — backs DeleteForRelated below.
+	DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -116,6 +119,27 @@ func (s *EvidenceService) DeleteStorageObjects(ctx context.Context, evidences []
 			logger.Error("failed to delete storage object %q for evidence %d: %v", e.StoragePath, e.ID, err)
 		}
 	}
+}
+
+// DeleteForRelated hard-deletes every evidence row (and, best-effort, its S3
+// object) attached to one specific related_kind+related_id pair -- the
+// cascade a payment Delete needs (PLAN.md "Cascade evidence: hapus evidence
+// DULU, baru payment") so a hard-deleted payment never leaves behind an
+// evidence row that can never be deleted through any other path (evidence
+// itself has no standalone delete). Deletes the DB rows first and only then
+// best-effort deletes their S3 objects, so a failure here always aborts
+// before the caller's own row is touched -- the worst case is an orphaned S3
+// object, never an orphaned DB row.
+func (s *EvidenceService) DeleteForRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error {
+	list, err := s.repo.ListByRelated(ctx, kind, relatedID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteByRelated(ctx, kind, relatedID); err != nil {
+		return err
+	}
+	s.DeleteStorageObjects(ctx, list)
+	return nil
 }
 
 type UploadEvidenceInput struct {

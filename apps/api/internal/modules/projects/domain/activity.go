@@ -12,9 +12,15 @@ const (
 	ActivityVendorStatusChanged  ActivityType = "vendor_status_changed"
 	ActivityMilestoneUpdated     ActivityType = "milestone_updated"
 	ActivityPaymentRecorded      ActivityType = "payment_recorded"
-	ActivityEvidenceUploaded     ActivityType = "evidence_uploaded"
-	ActivityIssueCreated         ActivityType = "issue_created"
-	ActivityIssueUpdated         ActivityType = "issue_updated"
+	// ActivityPaymentUpdated/ActivityPaymentDeleted are shared generically
+	// across all three payment types (vendor/client/venue), same convention
+	// as ActivityPaymentRecorded -- distinguished by entityType/entityLabel/
+	// description at the call site, not by separate per-type constants.
+	ActivityPaymentUpdated   ActivityType = "payment_updated"
+	ActivityPaymentDeleted   ActivityType = "payment_deleted"
+	ActivityEvidenceUploaded ActivityType = "evidence_uploaded"
+	ActivityIssueCreated     ActivityType = "issue_created"
+	ActivityIssueUpdated     ActivityType = "issue_updated"
 )
 
 // ActivityLogEntry is append-only — see ADR-0007. Every mutating use case in

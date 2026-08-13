@@ -157,3 +157,8 @@ func (r *MySQLEvidenceRepository) SetClientVisible(ctx context.Context, projectI
 	)
 	return err
 }
+
+func (r *MySQLEvidenceRepository) DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM evidence WHERE related_kind = ? AND related_id = ?`, string(kind), relatedID)
+	return err
+}

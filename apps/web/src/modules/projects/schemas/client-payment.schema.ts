@@ -19,3 +19,15 @@ export const clientPaymentSchema = z.object({
 });
 
 export type ClientPaymentFormValues = z.infer<typeof clientPaymentSchema>;
+
+// Edit scope is the ledger fields only — no file re-upload, see PLAN.md §2.5.
+export const clientPaymentUpdateSchema = z.object({
+  type: z.enum(CLIENT_PAYMENT_TYPE_OPTIONS),
+  amount: z.coerce.number().positive("Nominal harus lebih dari 0"),
+  paymentDate: z.string().min(1, "Tanggal wajib diisi"),
+  method: z.enum(PAYMENT_METHOD_OPTIONS),
+  referenceNumber: z.string().optional().default(""),
+  notes: z.string().optional().default(""),
+});
+
+export type ClientPaymentUpdateFormValues = z.infer<typeof clientPaymentUpdateSchema>;
