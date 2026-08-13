@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { MilestoneTemplate } from "@/modules/milestone-templates/types";
-import type { MilestoneTemplateFormValues } from "@/modules/milestone-templates/schemas/milestone-template.schema";
+import type { MilestoneTemplateSubmitValues } from "@/modules/milestone-templates/schemas/milestone-template.schema";
 
 interface RawMilestoneTemplate {
   id: number;
@@ -18,8 +18,8 @@ function toMilestoneTemplate(raw: RawMilestoneTemplate): MilestoneTemplate {
 interface MilestoneTemplateState {
   templates: MilestoneTemplate[];
   fetchTemplates: () => Promise<void>;
-  createTemplate: (values: MilestoneTemplateFormValues) => Promise<void>;
-  updateTemplate: (id: string, values: MilestoneTemplateFormValues) => Promise<void>;
+  createTemplate: (values: MilestoneTemplateSubmitValues) => Promise<void>;
+  updateTemplate: (id: string, values: MilestoneTemplateSubmitValues) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   reorderTemplates: (orderedIds: string[]) => Promise<void>;
 }

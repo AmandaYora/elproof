@@ -1,25 +1,28 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
-import { Input, Field } from "@/shared/components/ui/Input";
+import { Input, Select, Field } from "@/shared/components/ui/Input";
 import {
   milestoneTemplateSchema,
+  toDaysBeforeEvent,
+  fromDaysBeforeEvent,
   type MilestoneTemplateFormValues,
+  type MilestoneTemplateSubmitValues,
 } from "@/modules/milestone-templates/schemas/milestone-template.schema";
 import type { MilestoneTemplate } from "@/modules/milestone-templates/types";
 
 interface MilestoneTemplateFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: MilestoneTemplateFormValues) => void;
+  onSubmit: (values: MilestoneTemplateSubmitValues) => void;
   initialTemplate?: MilestoneTemplate;
 }
 
 function toFormValues(template?: MilestoneTemplate): MilestoneTemplateFormValues {
   if (!template) {
-    return { name: "", daysBeforeEvent: 0 };
+    return { name: "", daysOffset: 0, daysDirection: "before" };
   }
-  return { name: template.name, daysBeforeEvent: template.daysBeforeEvent };
+  return { name: template.name, ...fromDaysBeforeEvent(template.daysBeforeEvent) };
 }
 
 export function MilestoneTemplateFormModal({ open, onClose, onSubmit, initialTemplate }: MilestoneTemplateFormModalProps) {
@@ -55,7 +58,10 @@ export function MilestoneTemplateFormModal({ open, onClose, onSubmit, initialTem
       setErrors(fieldErrors);
       return;
     }
-    onSubmit(result.data);
+    onSubmit({
+      name: result.data.name,
+      daysBeforeEvent: toDaysBeforeEvent(result.data.daysOffset, result.data.daysDirection),
+    });
   }
 
   return (
@@ -77,14 +83,25 @@ export function MilestoneTemplateFormModal({ open, onClose, onSubmit, initialTem
         <Field label="Nama Timeline" required hint={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Survei Venue & Vendor" />
         </Field>
-        <Field label="Hari Sebelum Acara (H-)" required hint={errors.daysBeforeEvent}>
-          <Input
-            type="number"
-            min={0}
-            value={values.daysBeforeEvent}
-            onChange={(e) => set("daysBeforeEvent", Number(e.target.value))}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Jumlah Hari" required hint={errors.daysOffset}>
+            <Input
+              type="number"
+              min={0}
+              value={values.daysOffset}
+              onChange={(e) => set("daysOffset", Number(e.target.value))}
+            />
+          </Field>
+          <Field label="Posisi" required>
+            <Select
+              value={values.daysDirection}
+              onChange={(e) => set("daysDirection", e.target.value as MilestoneTemplateFormValues["daysDirection"])}
+            >
+              <option value="before">Sebelum Acara</option>
+              <option value="after">Setelah Acara</option>
+            </Select>
+          </Field>
+        </div>
       </div>
     </Modal>
   );

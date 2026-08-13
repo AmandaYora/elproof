@@ -7,10 +7,15 @@ import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { MilestoneTemplateFormModal } from "@/modules/milestone-templates/components/MilestoneTemplateFormModal";
-import type { MilestoneTemplateFormValues } from "@/modules/milestone-templates/schemas/milestone-template.schema";
+import type { MilestoneTemplateSubmitValues } from "@/modules/milestone-templates/schemas/milestone-template.schema";
 import { useMilestoneTemplateStore } from "@/modules/milestone-templates/stores/useMilestoneTemplateStore";
 import type { MilestoneTemplate } from "@/modules/milestone-templates/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+
+function formatDaysLabel(daysBeforeEvent: number): string {
+  if (daysBeforeEvent === 0) return "Hari-H";
+  return daysBeforeEvent > 0 ? `H-${daysBeforeEvent}` : `H+${Math.abs(daysBeforeEvent)}`;
+}
 
 export default function MilestoneTemplateListPage() {
   const templates = useMilestoneTemplateStore((s) => s.templates);
@@ -44,7 +49,7 @@ export default function MilestoneTemplateListPage() {
     setEditingTemplate(undefined);
   }
 
-  async function handleSubmit(values: MilestoneTemplateFormValues) {
+  async function handleSubmit(values: MilestoneTemplateSubmitValues) {
     setActionError(null);
     try {
       if (editingTemplate) {
@@ -157,7 +162,7 @@ export default function MilestoneTemplateListPage() {
                           <IconActionButton icon={Trash2} label="Hapus timeline" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
                         </div>
                       </div>
-                      <CardListField label="Hari Sebelum Acara" value={t.daysBeforeEvent === 0 ? "Hari-H" : `H-${t.daysBeforeEvent}`} />
+                      <CardListField label="Hari Sebelum/Setelah Acara" value={formatDaysLabel(t.daysBeforeEvent)} />
                     </>
                   );
                 }}
@@ -167,7 +172,7 @@ export default function MilestoneTemplateListPage() {
                   <THead>
                     <TR>
                       <TH>Nama Timeline</TH>
-                      <TH>Hari Sebelum Acara</TH>
+                      <TH>Hari Sebelum/Setelah Acara</TH>
                       <TH>Aksi</TH>
                     </TR>
                   </THead>
@@ -175,7 +180,7 @@ export default function MilestoneTemplateListPage() {
                     {templates.map((t, idx) => (
                       <TR key={t.id}>
                         <TD className="font-medium text-text-primary">{t.sortOrder}. {t.name}</TD>
-                        <TD className="text-text-secondary">{t.daysBeforeEvent === 0 ? "Hari-H" : `H-${t.daysBeforeEvent}`}</TD>
+                        <TD className="text-text-secondary">{formatDaysLabel(t.daysBeforeEvent)}</TD>
                         <TD>
                           <div className="flex items-center gap-1.5">
                             <IconActionButton

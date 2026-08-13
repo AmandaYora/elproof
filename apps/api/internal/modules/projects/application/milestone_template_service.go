@@ -45,10 +45,12 @@ type MilestoneTemplateInput struct {
 	DaysBeforeEvent int
 }
 
+// Create accepts a negative DaysBeforeEvent as a deliberate "H+" (Setelah
+// Acara) offset -- default_milestones.go's AddDate(0, 0, -DaysBeforeEvent)
+// already resolves this correctly to eventDate+N with no change needed
+// there, so there is no lower bound to validate here (PLAN.md "Timeline
+// Default: dukung H+").
 func (s *MilestoneTemplateService) Create(ctx context.Context, tenantID int64, input MilestoneTemplateInput) (*domain.ProjectMilestoneTemplate, error) {
-	if input.DaysBeforeEvent < 0 {
-		return nil, apperror.Validation("Hari sebelum acara tidak boleh negatif", map[string][]string{"daysBeforeEvent": {"Tidak boleh negatif"}})
-	}
 	order, err := s.repo.NextSortOrder(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -60,10 +62,8 @@ func (s *MilestoneTemplateService) Create(ctx context.Context, tenantID int64, i
 	return t, nil
 }
 
+// Update -- see Create's doc comment re: negative DaysBeforeEvent (H+).
 func (s *MilestoneTemplateService) Update(ctx context.Context, tenantID, id int64, input MilestoneTemplateInput) (*domain.ProjectMilestoneTemplate, error) {
-	if input.DaysBeforeEvent < 0 {
-		return nil, apperror.Validation("Hari sebelum acara tidak boleh negatif", map[string][]string{"daysBeforeEvent": {"Tidak boleh negatif"}})
-	}
 	t, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
