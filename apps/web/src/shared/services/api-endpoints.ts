@@ -125,6 +125,11 @@ export const API = {
     payment: (id: string, paymentId: string) => `/api/v1/projects/${id}/payments/${paymentId}`,
     clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
     clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
+    // Kwitansi & Tagihan PDF feature (PLAN.md) -- receipt is a per-row GET
+    // (streamed PDF, no role gate), invoice is a project-level POST (WO
+    // Console only).
+    clientPaymentReceipt: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/receipt`,
+    clientPaymentInvoice: (id: string) => `/api/v1/projects/${id}/client-payments/invoice`,
     venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,
     venuePayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}`,
     issues: (id: string) => `/api/v1/projects/${id}/issues`,

@@ -21,6 +21,12 @@ const (
 	ActivityEvidenceUploaded ActivityType = "evidence_uploaded"
 	ActivityIssueCreated     ActivityType = "issue_created"
 	ActivityIssueUpdated     ActivityType = "issue_updated"
+	// ActivityInvoiceGenerated records a Tagihan (bill) being generated
+	// (PLAN.md's Kwitansi & Tagihan feature) -- Kwitansi (receipt) generation
+	// deliberately does NOT get an activity entry, since it's a read/download
+	// action re-printing data that already exists, not a new formal request
+	// to the client the way a Tagihan is.
+	ActivityInvoiceGenerated ActivityType = "invoice_generated"
 )
 
 // ActivityLogEntry is append-only — see ADR-0007. Every mutating use case in

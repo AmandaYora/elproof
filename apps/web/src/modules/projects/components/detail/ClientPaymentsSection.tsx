@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Plus, Pencil, Trash2, Eye, AlertTriangle, Receipt, FileText } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
@@ -12,7 +12,7 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
-import { useProjectStore, ClientPaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
+import { useProjectStore, ClientPaymentEvidenceError, type GenerateInvoiceInput } from "@/modules/projects/stores/useProjectStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import {
   clientPaymentSchema,
@@ -26,6 +26,7 @@ import type { ClientPayment } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { CLIENT_PAYMENT_STATUS_LABEL, CLIENT_PAYMENT_STATUS_TONE } from "@/modules/projects/lib/status";
 
 // Simpler sibling of ProjectPaymentsSection (PLAN.md "Uang Masuk dari
 // Client") — no vendor picker (nothing to pick), a single Bukti Ada/Belum
@@ -42,6 +43,8 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const createClientPayment = useProjectStore((s) => s.createClientPayment);
   const updateClientPayment = useProjectStore((s) => s.updateClientPayment);
   const deleteClientPayment = useProjectStore((s) => s.deleteClientPayment);
+  const downloadClientPaymentReceipt = useProjectStore((s) => s.downloadClientPaymentReceipt);
+  const generateClientInvoice = useProjectStore((s) => s.generateClientInvoice);
   // Hard delete is Owner-or-Admin (broadened from Owner-only per explicit
   // user request) -- mirrors ProjectHeaderCard.tsx's own "!== \"Staff\"" idiom
   // for the same Owner-or-Admin bar, since those are the only 3 roles. Edit
@@ -55,6 +58,12 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewingEvidencePayment, setViewingEvidencePayment] = useState<ClientPayment | null>(null);
+  // Cetak Kwitansi/Buat Tagihan (PLAN.md) -- generatingReceiptId disables the
+  // triggering row's own button only (a per-row id, not a single boolean),
+  // since another row's PDF may still be in flight independently.
+  const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchClientPayments(projectId);
@@ -108,6 +117,29 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     }
   }
 
+  async function handleDownloadReceipt(payment: ClientPayment) {
+    setGeneratingReceiptId(payment.id);
+    try {
+      const blob = await downloadClientPaymentReceipt(projectId, payment.id);
+      window.open(URL.createObjectURL(blob), "_blank");
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal membuat dokumen kwitansi"));
+    } finally {
+      setGeneratingReceiptId(null);
+    }
+  }
+
+  async function handleGenerateInvoice(input: GenerateInvoiceInput) {
+    setInvoiceError(null);
+    try {
+      const blob = await generateClientInvoice(projectId, input);
+      window.open(URL.createObjectURL(blob), "_blank");
+      setInvoiceModalOpen(false);
+    } catch (err) {
+      setInvoiceError(getApiErrorMessage(err, "Gagal membuat dokumen tagihan"));
+    }
+  }
+
   return (
     <div id="pembayaran-client">
       <Card>
@@ -115,9 +147,20 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           title="Uang Masuk dari Client"
           subtitle="Ringkasan nilai kontrak dan seluruh riwayat pembayaran dari client untuk project ini."
           action={
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-              Tambah Pembayaran
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<FileText className="h-3.5 w-3.5" />}
+                onClick={() => { setInvoiceError(null); setInvoiceModalOpen(true); }}
+                disabled={totalRemaining <= 0}
+              >
+                Buat Tagihan
+              </Button>
+              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+                Tambah Pembayaran
+              </Button>
+            </div>
           }
         />
         <CardContent className="flex flex-col gap-5">
@@ -127,7 +170,17 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <SummaryStat label="Nilai Kontrak" value={formatCurrency(contractValue)} />
             <SummaryStat label="Total Diterima" value={formatCurrency(totalReceived)} />
-            <SummaryStat label="Sisa Tagihan" value={formatCurrency(totalRemaining)} />
+            <SummaryStat
+              label="Sisa Tagihan"
+              value={formatCurrency(totalRemaining)}
+              badge={
+                project && (
+                  <Badge tone={CLIENT_PAYMENT_STATUS_TONE[project.paymentStatus]} className="mt-1.5">
+                    {CLIENT_PAYMENT_STATUS_LABEL[project.paymentStatus]}
+                  </Badge>
+                )
+              }
+            />
           </div>
 
           {clientPayments.length === 0 ? (
@@ -154,6 +207,13 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex items-center gap-2 pt-1">
                     <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                    <IconActionButton
+                      icon={Receipt}
+                      label={payment.type === "Refund" ? "Cetak Bukti Pengembalian Dana" : "Cetak Kwitansi"}
+                      tone="navy"
+                      disabled={generatingReceiptId === payment.id}
+                      onClick={() => void handleDownloadReceipt(payment)}
+                    />
                     <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />
                     {canDelete && (
                       <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -187,6 +247,13 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <TD>
                       <div className="flex items-center gap-2">
                         <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                        <IconActionButton
+                          icon={Receipt}
+                          label={payment.type === "Refund" ? "Cetak Bukti Pengembalian Dana" : "Cetak Kwitansi"}
+                          tone="navy"
+                          disabled={generatingReceiptId === payment.id}
+                          onClick={() => void handleDownloadReceipt(payment)}
+                        />
                         <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />
                         {canDelete && (
                           <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -226,6 +293,16 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSubmit={handleEditPayment}
+        />
+      )}
+
+      {invoiceModalOpen && (
+        <GenerateInvoiceModal
+          open={invoiceModalOpen}
+          defaultAmount={totalRemaining}
+          onClose={() => setInvoiceModalOpen(false)}
+          onSubmit={handleGenerateInvoice}
+          error={invoiceError}
         />
       )}
 
@@ -278,11 +355,12 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+function SummaryStat({ label, value, badge }: { label: string; value: string; badge?: ReactNode }) {
   return (
     <div className="rounded-md border border-border bg-surface-muted/40 px-4 py-3">
       <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
       <p className="mt-1 text-[15px] font-bold tabular-nums text-navy-900">{value}</p>
+      {badge}
     </div>
   );
 }
@@ -503,6 +581,75 @@ function EditClientPaymentModal({
             <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
           </Field>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+// GenerateInvoiceModal (PLAN.md's "Buat Tagihan") -- purely generates a PDF,
+// never touches client_payments itself. `defaultAmount` pre-fills Sisa
+// Tagihan penuh, editable down to e.g. just a DP.
+function GenerateInvoiceModal({
+  open,
+  defaultAmount,
+  onClose,
+  onSubmit,
+  error,
+}: {
+  open: boolean;
+  defaultAmount: number;
+  onClose: () => void;
+  onSubmit: (input: GenerateInvoiceInput) => Promise<void>;
+  error: string | null;
+}) {
+  const [amount, setAmount] = useState(Math.max(0, defaultAmount));
+  const [dueDate, setDueDate] = useState("");
+  const [note, setNote] = useState("");
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    if (amount <= 0) {
+      setAmountError("Jumlah harus lebih dari 0");
+      return;
+    }
+    setAmountError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({ amount, dueDate: dueDate || undefined, note: note || undefined });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Buat Tagihan"
+      description="Dokumen ini hanya dicetak untuk dikirim ke client. Tidak ada pembayaran yang tercatat dari sini — catat pembayarannya lewat 'Tambah Pembayaran' setelah dana benar-benar masuk."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Batal</Button>
+          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? "Membuat..." : "Buat & Unduh Tagihan"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error && (
+          <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
+        )}
+        <Field label="Jumlah Diminta (Rp)" required hint={amountError ?? undefined}>
+          <CurrencyInput value={amount} onChange={setAmount} />
+        </Field>
+        <Field label="Jatuh Tempo">
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+        <Field label="Catatan">
+          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
       </div>
     </Modal>
   );

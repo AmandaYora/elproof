@@ -41,6 +41,30 @@ type projectResponse struct {
 	Description string            `json:"description"`
 	IsArchived  bool              `json:"isArchived"`
 	Progress    *progressResponse `json:"progress,omitempty"`
+	// PaymentStatus/NextDueDate back the Kwitansi & Tagihan PDF feature
+	// (PLAN.md) -- deliberately named "paymentStatus", not "status" (already
+	// taken above by the project lifecycle status), since this is a
+	// different concept: a project-level aggregate of contract value vs.
+	// client payments received. Populated by Handler.attachPaymentStatus,
+	// called from every single-project response (not just GET), so a
+	// project mutated via any other action (update/cancel/archive/
+	// duplicate) never leaves the frontend's cached currentProject with a
+	// stale or missing paymentStatus.
+	//
+	// `omitempty` on PaymentStatus only -- toProjectResponsesWithProgress
+	// (the LIST endpoint) never calls attachPaymentStatus (would reintroduce
+	// the exact N+1 that batching was written to avoid), so without
+	// omitempty every list row would otherwise serialize paymentStatus as ""
+	// -- not a valid ClientPaymentStatus value, and a latent trap for any
+	// future UI that reads it off a list row expecting one of the 4 real
+	// enum values. NextDueDate deliberately has NO omitempty -- a *string
+	// zero value is nil, which is also the legitimate "no due date set"
+	// state on a real single-project response; omitting it there too would
+	// conflate "not computed" with "computed as null" under one wire
+	// signal. PaymentStatus alone is the reliable "was this populated"
+	// indicator (never legitimately empty once attachPaymentStatus runs).
+	PaymentStatus string  `json:"paymentStatus,omitempty"`
+	NextDueDate   *string `json:"nextDueDate"`
 }
 
 func toProjectResponse(p domain.Project) projectResponse {

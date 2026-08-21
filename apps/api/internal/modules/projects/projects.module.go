@@ -21,7 +21,7 @@ type Module struct {
 	projectService           *application.ProjectService
 }
 
-func NewModule(db *sql.DB, storageClient *storage.Client, staff application.StaffNameResolver) *Module {
+func NewModule(db *sql.DB, storageClient *storage.Client, staff application.StaffNameResolver, branding application.TenantBrandingResolver) *Module {
 	projectRepo := infrastructure.NewMySQLProjectRepository(db)
 	milestoneRepo := infrastructure.NewMySQLMilestoneRepository(db)
 	milestoneTemplateRepo := infrastructure.NewMySQLMilestoneTemplateRepository(db)
@@ -41,12 +41,13 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
 	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService)
-	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService)
+	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, projectRepo, evidenceService, activityService)
 	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, evidenceService, activityService)
 	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo, evidenceService)
+	documentService := application.NewDocumentService(clientPaymentRepo, projectRepo, activityService, branding)
 
-	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService)
+	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, documentService)
 
 	return &Module{
 		handler:                  handler,

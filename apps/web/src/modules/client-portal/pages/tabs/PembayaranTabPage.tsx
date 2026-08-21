@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Wallet, FileText } from "lucide-react";
+import { Wallet, FileText, Receipt } from "lucide-react";
 import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal";
+import { Badge } from "@/shared/components/ui/Badge";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import type { Evidence } from "@/modules/projects/types";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { CLIENT_PAYMENT_STATUS_LABEL, CLIENT_PAYMENT_STATUS_TONE } from "@/modules/projects/lib/status";
 import type { ClientPortalContext } from "@/modules/client-portal/layouts/ClientPortalLayout";
 
 // Repurposed (PLAN.md "Uang Masuk dari Client", §3.8) — shows the client's
@@ -22,12 +25,30 @@ export default function PembayaranTabPage() {
   const evidence = useProjectStore((s) => s.evidence);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
+  const downloadClientPaymentReceipt = useProjectStore((s) => s.downloadClientPaymentReceipt);
   const [viewingEvidence, setViewingEvidence] = useState<Evidence | null>(null);
+  // Cetak Kwitansi (PLAN.md) -- a per-row id, since another card's PDF may
+  // still be in flight independently.
+  const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchClientPayments(projectId);
     void fetchEvidence(projectId);
   }, [projectId, fetchClientPayments, fetchEvidence]);
+
+  async function handleDownloadReceipt(paymentId: string) {
+    setReceiptError(null);
+    setGeneratingReceiptId(paymentId);
+    try {
+      const blob = await downloadClientPaymentReceipt(projectId, paymentId);
+      window.open(URL.createObjectURL(blob), "_blank");
+    } catch (err) {
+      setReceiptError(getApiErrorMessage(err, "Gagal membuat dokumen kwitansi"));
+    } finally {
+      setGeneratingReceiptId(null);
+    }
+  }
 
   const sortedPayments = [...clientPayments].sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1));
   const contractValue = project?.contractValue ?? 0;
@@ -61,6 +82,11 @@ export default function PembayaranTabPage() {
           <div className="rounded-2xl border border-amber-100 bg-amber-50/30 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
             <p className="text-[12.5px] font-bold text-amber-700 uppercase tracking-wider">Sisa Tagihan</p>
             <p className="mt-3 text-2xl font-bold tabular-nums text-amber-600">{formatCurrency(totalRemaining)}</p>
+            {project && (
+              <Badge tone={CLIENT_PAYMENT_STATUS_TONE[project.paymentStatus]} className="mt-2">
+                {CLIENT_PAYMENT_STATUS_LABEL[project.paymentStatus]}
+              </Badge>
+            )}
           </div>
         </div>
       </section>
@@ -103,22 +129,35 @@ export default function PembayaranTabPage() {
                     </div>
                   </div>
 
-                  {proofEvidence && (
-                    <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-4 mt-2">
-                      <FileText className="h-4 w-4 shrink-0 text-text-tertiary" />
-                      <span className="text-[13px] font-medium text-text-secondary mr-2">Dokumen Pendukung:</span>
-                      <button
-                        onClick={() => setViewingEvidence(proofEvidence)}
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-semibold text-navy-900 hover:bg-navy-50 hover:border-navy-200 transition-colors shadow-sm"
-                      >
-                        Bukti Transfer
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-4 mt-2">
+                    {proofEvidence && (
+                      <>
+                        <FileText className="h-4 w-4 shrink-0 text-text-tertiary" />
+                        <span className="text-[13px] font-medium text-text-secondary mr-2">Dokumen Pendukung:</span>
+                        <button
+                          onClick={() => setViewingEvidence(proofEvidence)}
+                          className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-semibold text-navy-900 hover:bg-navy-50 hover:border-navy-200 transition-colors shadow-sm"
+                        >
+                          Bukti Transfer
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => void handleDownloadReceipt(payment.id)}
+                      disabled={generatingReceiptId === payment.id}
+                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-navy-200 bg-navy-50 px-3 py-1.5 text-[12px] font-semibold text-navy-900 hover:bg-navy-100 transition-colors shadow-sm disabled:opacity-40"
+                    >
+                      <Receipt className="h-3.5 w-3.5" />
+                      {payment.type === "Refund" ? "Cetak Bukti Pengembalian Dana" : "Cetak Kwitansi"}
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
+        )}
+        {receiptError && (
+          <p className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{receiptError}</p>
         )}
       </section>
 

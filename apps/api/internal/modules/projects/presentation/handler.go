@@ -38,6 +38,7 @@ type Handler struct {
 	evidence       *application.EvidenceService
 	activity       *application.ActivityService
 	dashboard      *application.DashboardService
+	documents      *application.DocumentService
 	clientAccess   ClientAccessResolver
 }
 
@@ -51,10 +52,11 @@ func NewHandler(
 	evidence *application.EvidenceService,
 	activity *application.ActivityService,
 	dashboard *application.DashboardService,
+	documents *application.DocumentService,
 ) *Handler {
 	return &Handler{
 		projects: projects, vendors: vendors, payments: payments, clientPayments: clientPayments, venuePayments: venuePayments,
-		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard,
+		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard, documents: documents,
 	}
 }
 
@@ -162,6 +164,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.updateClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodDelete:
 		h.deleteClientPayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 3 && rest[0] == "client-payments" && rest[2] == "receipt" && r.Method == http.MethodGet:
+		h.downloadClientPaymentReceipt(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "client-payments" && rest[1] == "invoice" && r.Method == http.MethodPost:
+		h.generateClientInvoice(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodGet:
 		h.listVenuePayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodPost:

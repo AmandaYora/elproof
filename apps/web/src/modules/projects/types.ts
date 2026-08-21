@@ -41,6 +41,13 @@ export type IssueStatus = "Open" | "In Review" | "In Resolution" | "Resolved" | 
 
 export type PaymentType = "DP" | "Termin" | "Pelunasan" | "Tambahan" | "Refund";
 
+// Project-level aggregate (contract value vs. total client payments
+// received) -- not a per-payment-row property. Computed backend-only, never
+// re-derived from browser time (ADR-0007) -- see ComputeClientPaymentStatus
+// on the Go side. See modules/projects/lib/payment-status.ts for the
+// Indonesian label/tone mapping.
+export type ClientPaymentStatus = "Unpaid" | "PartiallyPaid" | "Paid" | "Overdue";
+
 export type EvidenceType =
   | "Quotation"
   | "Invoice"
@@ -110,6 +117,11 @@ export interface Project {
   description: string;
   isArchived: boolean;
   progress?: ProjectProgress;
+  // Kwitansi & Tagihan feature (PLAN.md) -- always read as-is from the
+  // backend, never recomputed client-side (ADR-0007: nextDueDate vs "now"
+  // must stay server-only).
+  paymentStatus: ClientPaymentStatus;
+  nextDueDate: string | null;
 }
 
 export interface ProjectMilestone {
@@ -242,7 +254,8 @@ export type ActivityType =
   | "payment_deleted"
   | "evidence_uploaded"
   | "issue_created"
-  | "issue_updated";
+  | "issue_updated"
+  | "invoice_generated";
 
 export interface ActivityLogEntry {
   id: string;

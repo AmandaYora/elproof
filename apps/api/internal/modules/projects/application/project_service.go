@@ -30,6 +30,9 @@ type ProjectRepository interface {
 	Update(ctx context.Context, p *domain.Project) error
 	SetStatus(ctx context.Context, tenantID, id int64, status domain.ProjectStatus) error
 	SetArchived(ctx context.Context, tenantID, id int64, archived bool) error
+	// SetNextDueDate backs the Kwitansi & Tagihan feature (PLAN.md) -- see
+	// the infrastructure implementation's doc comment.
+	SetNextDueDate(ctx context.Context, tenantID, id int64, dueDate *time.Time) error
 	// DeleteCascade permanently removes the project and every same-module row
 	// referencing it — see the infrastructure implementation's doc comment
 	// (ADR-0013) for the exact deletion order and why it matters.

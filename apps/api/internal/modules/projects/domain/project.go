@@ -42,7 +42,16 @@ type Project struct {
 	PrepStartDate    time.Time
 	PackageName      string
 	ContractValue    int64
-	Status           ProjectStatus
+	// NextDueDate is the Kwitansi & Tagihan feature's only new persisted
+	// state (PLAN.md) -- set ad-hoc when a Tagihan is generated with an
+	// explicit due date, never part of a stored payment schedule. Cleared
+	// back to nil by ClientPaymentService whenever a payment mutation
+	// brings the outstanding balance to zero or below, so a settled project
+	// can never be falsely flagged Overdue by a stale due date. Written only
+	// via ProjectRepository.SetNextDueDate, never through the general
+	// Update() query (see its own doc comment).
+	NextDueDate *time.Time
+	Status      ProjectStatus
 	PICStaffID       int64
 	Description      string
 	IsArchived       bool

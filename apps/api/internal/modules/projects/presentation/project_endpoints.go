@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -15,6 +16,34 @@ import (
 
 func parseDate(s string) (time.Time, error) {
 	return time.Parse(dateLayout, s)
+}
+
+// attachPaymentStatus computes the Kwitansi & Tagihan feature's (PLAN.md)
+// derived payment status + next due date for a single-project response.
+// Called from every handler that returns a fresh projectResponse (create,
+// get, update, cancel, toggle-archive, duplicate) -- not just GET -- so a
+// project mutated via any of those actions never leaves the frontend's
+// cached currentProject with a stale paymentStatus (useProjectStore merges
+// each action's own response into currentProject, so every response must
+// carry a fresh value).
+func (h *Handler) attachPaymentStatus(ctx context.Context, p domain.Project, resp *projectResponse) error {
+	payments, err := h.clientPayments.List(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	var totalReceived int64
+	for _, cp := range payments {
+		if cp.Type == domain.PaymentRefund {
+			totalReceived -= cp.Amount
+		} else {
+			totalReceived += cp.Amount
+		}
+	}
+	outstanding := p.ContractValue - totalReceived
+	status := domain.ComputeClientPaymentStatus(outstanding, len(payments) > 0, p.NextDueDate, time.Now())
+	resp.PaymentStatus = string(status)
+	resp.NextDueDate = formatDatePtr(p.NextDueDate)
+	return nil
 }
 
 // listProjects scopes the result to the caller's own PIC'd projects when
@@ -157,6 +186,10 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims s
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	if err := h.attachPaymentStatus(r.Context(), *p, &resp); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.Created(w, "Project berhasil dibuat", resp)
 }
 
@@ -208,6 +241,10 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	progressResp := toProgressResponse(*progress)
 	resp.Progress = &progressResp
 	resp.PICName = h.projects.ResolvePICName(r.Context(), tenantID, p.PICStaffID)
+	if err := h.attachPaymentStatus(r.Context(), *p, &resp); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.OK(w, "ok", resp)
 }
 
@@ -229,6 +266,10 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	if err := h.attachPaymentStatus(r.Context(), *p, &resp); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.OK(w, "Project berhasil diperbarui", resp)
 }
 
@@ -259,6 +300,10 @@ func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims s
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	if err := h.attachPaymentStatus(r.Context(), *p, &resp); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.OK(w, "Project dibatalkan", resp)
 }
 
@@ -278,6 +323,10 @@ func (h *Handler) toggleArchiveProject(w http.ResponseWriter, r *http.Request, c
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	if err := h.attachPaymentStatus(r.Context(), *p, &resp); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.OK(w, "Status arsip project diperbarui", resp)
 }
 
@@ -331,6 +380,10 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	if err := h.attachPaymentStatus(r.Context(), *p, &resp); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.Created(w, "Project berhasil diduplikasi", resp)
 }
 

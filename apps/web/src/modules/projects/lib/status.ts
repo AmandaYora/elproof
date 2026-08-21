@@ -6,6 +6,7 @@ import type {
   IssueImpact,
   IssueStatus,
   ProjectCondition,
+  ClientPaymentStatus,
 } from "@/modules/projects/types";
 
 export const PROJECT_STATUS_TONE: Record<ProjectStatus, BadgeTone> = {
@@ -61,4 +62,21 @@ export const CONDITION_LABEL: Record<ProjectCondition, string> = {
   "On Track": "Sesuai Rencana",
   Attention: "Perlu Perhatian",
   "At Risk": "Berisiko",
+};
+
+// Kwitansi & Tagihan feature (PLAN.md) -- identifier stays English
+// (matches the API value), label is Indonesian, same convention as
+// Timeline/"Tanggal Booking" elsewhere in this codebase.
+export const CLIENT_PAYMENT_STATUS_LABEL: Record<ClientPaymentStatus, string> = {
+  Paid: "Lunas",
+  PartiallyPaid: "Dibayar Sebagian",
+  Unpaid: "Belum Dibayar",
+  Overdue: "Jatuh Tempo",
+};
+
+export const CLIENT_PAYMENT_STATUS_TONE: Record<ClientPaymentStatus, BadgeTone> = {
+  Paid: "success",
+  PartiallyPaid: "info",
+  Unpaid: "neutral",
+  Overdue: "danger",
 };

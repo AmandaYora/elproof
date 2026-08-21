@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import axios from "axios";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
@@ -88,6 +89,20 @@ export interface RawProject {
   description: string;
   isArchived: boolean;
   progress?: RawProgress;
+  // Omitted by the backend entirely on list rows (GET /projects) -- only
+  // GET /projects/{id} and the other single-project mutation responses
+  // populate these (see dto.go's `omitempty`, avoids an N+1 on the list
+  // endpoint). toProject() below falls back to safe defaults when absent.
+  paymentStatus?: Project["paymentStatus"];
+  nextDueDate?: string | null;
+}
+
+// Kwitansi & Tagihan feature (PLAN.md) -- `dueDate`/`note` are optional
+// ad-hoc parameters, not a stored schedule (see backend GenerateInvoiceInput).
+export interface GenerateInvoiceInput {
+  amount: number;
+  dueDate?: string;
+  note?: string;
 }
 
 function toProgress(raw: RawProgress): ProjectProgress {
@@ -123,6 +138,12 @@ export function toProject(raw: RawProject): Project {
     description: raw.description,
     isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,
+    // Falls back to "Unpaid"/null on list rows, where the backend omits
+    // both fields entirely (see RawProject's doc comment) -- keeps `Project`
+    // internally consistent (never an invalid/empty enum value) for any
+    // code that might read these off a list row; no current UI does.
+    paymentStatus: raw.paymentStatus ?? "Unpaid",
+    nextDueDate: raw.nextDueDate ?? null,
   };
 }
 
@@ -569,6 +590,20 @@ interface ProjectState {
   updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues) => Promise<void>;
   deleteClientPayment: (projectId: string, paymentId: string) => Promise<void>;
 
+  // Kwitansi & Tagihan PDF feature (PLAN.md) -- both return the raw PDF Blob,
+  // never touching `clientPayments`/`currentProject` state themselves (the
+  // caller triggers a download/open); refreshCurrentProjectPaymentStatus
+  // below is what keeps `currentProject.paymentStatus`/`nextDueDate` in sync
+  // afterward.
+  downloadClientPaymentReceipt: (projectId: string, paymentId: string) => Promise<Blob>;
+  generateClientInvoice: (projectId: string, input: GenerateInvoiceInput) => Promise<Blob>;
+  // Re-fetches just enough of GET /projects/{id} to refresh
+  // currentProject.paymentStatus/nextDueDate -- called after any client
+  // payment mutation (create/update/delete) or a Tagihan generation, since
+  // none of those endpoints return the project itself. No-op if a different
+  // project is currently loaded.
+  refreshCurrentProjectPaymentStatus: (projectId: string) => Promise<void>;
+
   fetchVenuePayments: (projectId: string) => Promise<void>;
   // Same two-slot evidence orchestration as createPayment (vendor's own),
   // just against .../venue-payments and relatedKind "venuePayment".
@@ -920,6 +955,47 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ clientPayments: (res.data.data as RawClientPayment[]).map(toClientPayment) });
   },
 
+  refreshCurrentProjectPaymentStatus: async (projectId) => {
+    const current = get().currentProject;
+    if (!current || current.id !== projectId) return;
+    const res = await httpClient.get(API.projects.item(projectId));
+    const project = toProject(res.data.data as RawProject);
+    set((state) => ({
+      currentProject:
+        state.currentProject?.id === projectId
+          ? { ...state.currentProject, paymentStatus: project.paymentStatus, nextDueDate: project.nextDueDate }
+          : state.currentProject,
+    }));
+  },
+
+  downloadClientPaymentReceipt: async (projectId, paymentId) => {
+    const res = await httpClient.get(API.projects.clientPaymentReceipt(projectId, paymentId), { responseType: "blob" });
+    return res.data as Blob;
+  },
+
+  generateClientInvoice: async (projectId, input) => {
+    try {
+      const res = await httpClient.post(
+        API.projects.clientPaymentInvoice(projectId),
+        { amount: input.amount, dueDate: input.dueDate || "", note: input.note || "" },
+        { responseType: "blob" }
+      );
+      await get().refreshCurrentProjectPaymentStatus(projectId);
+      return res.data as Blob;
+    } catch (err) {
+      // The only responseType:"blob" call site in this store that carries
+      // user input (`amount`) -- so it's the only one that can receive a
+      // validation error, which axios otherwise wraps as an opaque Blob
+      // instead of parsed JSON, hiding the backend's real message.
+      if (axios.isAxiosError(err) && err.response?.data instanceof Blob) {
+        const text = await (err.response.data as Blob).text();
+        const message = (JSON.parse(text) as { message?: string }).message;
+        if (message) throw new Error(message);
+      }
+      throw err;
+    }
+  },
+
   createClientPayment: async (projectId, values) => {
     const res = await httpClient.post(API.projects.clientPayments(projectId), {
       type: values.type,
@@ -951,13 +1027,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           relatedId: Number(created.id),
         });
       } catch {
-        await get().fetchClientPayments(projectId);
+        await Promise.all([get().fetchClientPayments(projectId), get().refreshCurrentProjectPaymentStatus(projectId)]);
         throw new ClientPaymentEvidenceError(
           "Pembayaran tersimpan, tapi bukti transfer gagal diunggah. Anda bisa melampirkan buktinya nanti melalui tab Dokumen."
         );
       }
     }
-    await get().fetchClientPayments(projectId);
+    await Promise.all([get().fetchClientPayments(projectId), get().refreshCurrentProjectPaymentStatus(projectId)]);
   },
 
   updateClientPayment: async (projectId, paymentId, values) => {
@@ -969,12 +1045,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       referenceNumber: values.referenceNumber,
       notes: values.notes,
     });
-    await get().fetchClientPayments(projectId);
+    await Promise.all([get().fetchClientPayments(projectId), get().refreshCurrentProjectPaymentStatus(projectId)]);
   },
 
   deleteClientPayment: async (projectId, paymentId) => {
     await httpClient.delete(API.projects.clientPayment(projectId, paymentId));
-    await get().fetchClientPayments(projectId);
+    await Promise.all([get().fetchClientPayments(projectId), get().refreshCurrentProjectPaymentStatus(projectId)]);
   },
 
   fetchVenuePayments: async (projectId) => {

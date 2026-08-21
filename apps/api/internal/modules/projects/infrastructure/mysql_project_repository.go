@@ -20,7 +20,7 @@ func NewMySQLProjectRepository(db *sql.DB) *MySQLProjectRepository {
 }
 
 const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, venue_rental_price, venue_charge,
-	prep_start_date, package_name, contract_value, status, pic_staff_id, description, is_archived, created_at, updated_at`
+	prep_start_date, package_name, contract_value, next_due_date, status, pic_staff_id, description, is_archived, created_at, updated_at`
 
 func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) {
 	var p domain.Project
@@ -28,8 +28,9 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	var description sql.NullString
 	var venueID sql.NullInt64
 	var venueRentalPrice, venueCharge sql.NullInt64
+	var nextDueDate sql.NullTime
 	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &venueID, &venueRentalPrice, &venueCharge,
-		&p.PrepStartDate, &p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
+		&p.PrepStartDate, &p.PackageName, &p.ContractValue, &nextDueDate, &status, &p.PICStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -46,6 +47,9 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	}
 	if venueCharge.Valid {
 		p.VenueCharge = &venueCharge.Int64
+	}
+	if nextDueDate.Valid {
+		p.NextDueDate = &nextDueDate.Time
 	}
 	return &p, nil
 }
@@ -277,6 +281,17 @@ func (r *MySQLProjectRepository) SetStatus(ctx context.Context, tenantID, id int
 
 func (r *MySQLProjectRepository) SetArchived(ctx context.Context, tenantID, id int64, archived bool) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE projects SET is_archived = ? WHERE tenant_id = ? AND id = ?`, archived, tenantID, id)
+	return err
+}
+
+// SetNextDueDate is the only write path for projects.next_due_date -- never
+// added to Update()'s own column list, same convention as SetStatus/
+// SetArchived above (PLAN.md's Kwitansi & Tagihan feature). Called both when
+// a Tagihan is generated with an explicit due date (dueDate non-nil) and when
+// ClientPaymentService clears a stale due date once a project's outstanding
+// balance settles to zero or below (dueDate nil).
+func (r *MySQLProjectRepository) SetNextDueDate(ctx context.Context, tenantID, id int64, dueDate *time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE projects SET next_due_date = ? WHERE tenant_id = ? AND id = ?`, dueDate, tenantID, id)
 	return err
 }
 

@@ -13,6 +13,7 @@ import (
 	identitycontracts "elproof/internal/modules/identity/contracts"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform/application"
+	"elproof/internal/modules/platform/contracts"
 	"elproof/internal/modules/platform/infrastructure"
 	"elproof/internal/modules/platform/presentation"
 	projectscontracts "elproof/internal/modules/projects/contracts"
@@ -27,6 +28,7 @@ type Module struct {
 	adminHandler       *presentation.PlatformAdminHandler
 	loginSlidesHandler *presentation.LoginSlidesHandler
 	tenantService      *application.TenantService
+	contracts          contracts.Contracts
 }
 
 func NewModule(
@@ -51,7 +53,15 @@ func NewModule(
 		adminHandler:       presentation.NewPlatformAdminHandler(adminService),
 		loginSlidesHandler: presentation.NewLoginSlidesHandler(storageClient),
 		tenantService:      tenantService,
+		contracts:          contracts.New(tenantService),
 	}
+}
+
+// Contracts exposes this module's public contract -- currently only
+// `projects`' Kwitansi & Tagihan PDF feature (PLAN.md) resolves tenant
+// branding through it, mirroring every other module's Contracts() method.
+func (m *Module) Contracts() contracts.Contracts {
+	return m.contracts
 }
 
 // SetVendors completes two-phase wiring with the vendors module — see

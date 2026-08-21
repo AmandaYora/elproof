@@ -21,6 +21,7 @@ import (
 	"elproof/internal/modules/payment"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform"
+	platformcontracts "elproof/internal/modules/platform/contracts"
 	"elproof/internal/modules/projects"
 	"elproof/internal/modules/staff"
 	staffcontracts "elproof/internal/modules/staff/contracts"
@@ -54,6 +55,25 @@ func (r staffNameResolver) GetName(ctx context.Context, tenantID, staffID int64)
 		return "", false, nil
 	}
 	return summary.Name, true, nil
+}
+
+// tenantBrandingResolver adapts platformcontracts.Contracts to
+// projects/application.TenantBrandingResolver's narrow, primitive-typed
+// interface (PLAN.md's Kwitansi & Tagihan PDF feature) — same import-cycle
+// reasoning as staffNameResolver above: platform/application already imports
+// projects/contracts (Timeline Default template seeding), so
+// projects/application importing platform/contracts back would close the
+// loop.
+type tenantBrandingResolver struct {
+	contracts platformcontracts.Contracts
+}
+
+func (r tenantBrandingResolver) ResolveBranding(ctx context.Context, tenantID int64) (string, string, []byte, error) {
+	info, err := r.contracts.ResolveBranding(ctx, tenantID)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return info.BusinessName, info.BrandColorPreset, info.Logo, nil
 }
 
 // main dispatches on an optional subcommand so the one compiled binary this
@@ -214,7 +234,7 @@ func serve(cfg config.Config) {
 	// projects is built before vendors — vendors' "Lihat Project" resolves a
 	// vendor's cross-project engagement history through projects.Contracts()
 	// (project_vendors is owned by projects, not vendors).
-	projectsModule := projects.NewModule(db, storageClient, staffNameResolver{contracts: staffModule.Contracts()})
+	projectsModule := projects.NewModule(db, storageClient, staffNameResolver{contracts: staffModule.Contracts()}, tenantBrandingResolver{contracts: platformModule.Contracts()})
 	// Two-phase wiring: platform needs projects' contract (seed a newly
 	// registered tenant's Timeline Default template, PLAN.md) but
 	// platformModule is built above, before projectsModule exists — same
