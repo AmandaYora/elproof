@@ -77,9 +77,11 @@ type vendorEngagementInputBody struct {
 	ContractValue    int64  `json:"contractValue"`
 	PricingTier      string `json:"pricingTier"`
 	EngagementStatus string `json:"engagementStatus"`
-	BookingDate      string `json:"bookingDate"`
-	EventDate        string `json:"eventDate"`
-	DPAmount         int64  `json:"dpAmount"`
+	BookingDate      string  `json:"bookingDate"`
+	EventDate        string  `json:"eventDate"`
+	EventStartTime   *string `json:"eventStartTime"`
+	EventEndTime     *string `json:"eventEndTime"`
+	DPAmount         int64   `json:"dpAmount"`
 	DueDate          string `json:"dueDate"`
 	PICStaffID       int64  `json:"picStaffId"`
 	Notes            string `json:"notes"`
@@ -96,6 +98,7 @@ func toVendorEngagementInput(body vendorEngagementInputBody) (application.Vendor
 		VendorID: body.VendorID, CategoryID: body.CategoryID, Scope: body.Scope, ContractValue: body.ContractValue,
 		PricingTier:      domain.VendorPricingTier(body.PricingTier),
 		EngagementStatus: domain.EngagementStatus(body.EngagementStatus), BookingDate: bookingDate, EventDate: eventDate,
+		EventStartTime: body.EventStartTime, EventEndTime: body.EventEndTime,
 		DPAmount: body.DPAmount, DueDate: dueDate, PICStaffID: body.PICStaffID, Notes: body.Notes,
 	}, nil
 }

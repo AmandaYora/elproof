@@ -345,9 +345,10 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <ProjectVendorFormModal open={addOpen} onClose={() => setAddOpen(false)} onSubmit={(values) => void handleAdd(values)} />
+      <ProjectVendorFormModal projectId={projectId} open={addOpen} onClose={() => setAddOpen(false)} onSubmit={(values) => void handleAdd(values)} />
       {editing && (
         <ProjectVendorFormModal
+          projectId={projectId}
           open={Boolean(editing)}
           onClose={() => setEditing(null)}
           onSubmit={(values) => void handleEdit(values)}

@@ -18,18 +18,18 @@ func NewMySQLVendorRepository(db *sql.DB) *MySQLVendorRepository {
 }
 
 const vendorColumns = `id, tenant_id, category_id, name, pic_name, phone, email, social_media, city,
-	address, price_akad, price_akad_resepsi, notes, attachment_path, attachment_mime_type,
+	address, price_akad, price_akad_resepsi, price_resepsi, notes, attachment_path, attachment_mime_type,
 	is_active, created_at, updated_at`
 
 func scanVendor(scan func(dest ...interface{}) error) (*domain.Vendor, error) {
 	var v domain.Vendor
 	var email, socialMedia, city, address, notes sql.NullString
-	var priceAkad, priceAkadResepsi sql.NullInt64
+	var priceAkad, priceAkadResepsi, priceResepsi sql.NullInt64
 	var attachmentPath, attachmentMimeType sql.NullString
 
 	err := scan(
 		&v.ID, &v.TenantID, &v.CategoryID, &v.Name, &v.PICName, &v.Phone, &email, &socialMedia, &city,
-		&address, &priceAkad, &priceAkadResepsi, &notes, &attachmentPath, &attachmentMimeType,
+		&address, &priceAkad, &priceAkadResepsi, &priceResepsi, &notes, &attachmentPath, &attachmentMimeType,
 		&v.IsActive, &v.CreatedAt, &v.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -45,6 +45,7 @@ func scanVendor(scan func(dest ...interface{}) error) (*domain.Vendor, error) {
 	v.Address = nullStringPtr(address)
 	v.PriceAkad = nullInt64Ptr(priceAkad)
 	v.PriceAkadResepsi = nullInt64Ptr(priceAkadResepsi)
+	v.PriceResepsi = nullInt64Ptr(priceResepsi)
 	v.Notes = notes.String
 	v.AttachmentPath = nullStringPtr(attachmentPath)
 	v.AttachmentMimeType = nullStringPtr(attachmentMimeType)
@@ -181,10 +182,10 @@ func (r *MySQLVendorRepository) FindByID(ctx context.Context, tenantID, id int64
 func (r *MySQLVendorRepository) Create(ctx context.Context, vendor *domain.Vendor) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO vendors (tenant_id, category_id, name, pic_name, phone, email, social_media, city,
-		 address, price_akad, price_akad_resepsi, notes, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 address, price_akad, price_akad_resepsi, price_resepsi, notes, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		vendor.TenantID, vendor.CategoryID, vendor.Name, vendor.PICName, vendor.Phone, vendor.Email, vendor.SocialMedia, vendor.City,
-		vendor.Address, vendor.PriceAkad, vendor.PriceAkadResepsi, vendor.Notes, vendor.IsActive,
+		vendor.Address, vendor.PriceAkad, vendor.PriceAkadResepsi, vendor.PriceResepsi, vendor.Notes, vendor.IsActive,
 	)
 	if err != nil {
 		return err
@@ -206,15 +207,15 @@ func (r *MySQLVendorRepository) CreateBatch(ctx context.Context, vendors []domai
 	}
 	var sb strings.Builder
 	sb.WriteString(`INSERT INTO vendors (tenant_id, category_id, name, pic_name, phone, email, social_media, city,
-		 address, price_akad, price_akad_resepsi, notes, is_active) VALUES `)
-	args := make([]interface{}, 0, len(vendors)*13)
+		 address, price_akad, price_akad_resepsi, price_resepsi, notes, is_active) VALUES `)
+	args := make([]interface{}, 0, len(vendors)*14)
 	for i, v := range vendors {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(`(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		sb.WriteString(`(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		args = append(args, v.TenantID, v.CategoryID, v.Name, v.PICName, v.Phone, v.Email, v.SocialMedia, v.City,
-			v.Address, v.PriceAkad, v.PriceAkadResepsi, v.Notes, v.IsActive)
+			v.Address, v.PriceAkad, v.PriceAkadResepsi, v.PriceResepsi, v.Notes, v.IsActive)
 	}
 	_, err := r.db.ExecContext(ctx, sb.String(), args...)
 	return err
@@ -223,9 +224,9 @@ func (r *MySQLVendorRepository) CreateBatch(ctx context.Context, vendors []domai
 func (r *MySQLVendorRepository) Update(ctx context.Context, vendor *domain.Vendor) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE vendors SET category_id = ?, name = ?, pic_name = ?, phone = ?, email = ?, social_media = ?, city = ?,
-		 address = ?, price_akad = ?, price_akad_resepsi = ?, notes = ? WHERE tenant_id = ? AND id = ?`,
+		 address = ?, price_akad = ?, price_akad_resepsi = ?, price_resepsi = ?, notes = ? WHERE tenant_id = ? AND id = ?`,
 		vendor.CategoryID, vendor.Name, vendor.PICName, vendor.Phone, vendor.Email, vendor.SocialMedia, vendor.City,
-		vendor.Address, vendor.PriceAkad, vendor.PriceAkadResepsi, vendor.Notes, vendor.TenantID, vendor.ID,
+		vendor.Address, vendor.PriceAkad, vendor.PriceAkadResepsi, vendor.PriceResepsi, vendor.Notes, vendor.TenantID, vendor.ID,
 	)
 	return err
 }

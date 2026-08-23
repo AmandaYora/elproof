@@ -17,15 +17,28 @@ func NewMySQLVendorEngagementRepository(db *sql.DB) *MySQLVendorEngagementReposi
 }
 
 const projectVendorColumns = `id, project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
-	booking_date, event_date, dp_amount, due_date, pic_staff_id, notes`
+	booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes`
+
+// timeToHHMM/hhmmToTime convert between MySQL's TIME wire format
+// ("15:04:05") and the "HH:MM" shape ProjectVendor.EventStartTime/
+// EventEndTime carry at the domain/API boundary -- mirrors how every other
+// nullable field in this file converts at the scan/exec boundary rather than
+// leaking a driver-specific shape upward.
+func timeToHHMM(s string) string {
+	if len(s) >= 5 {
+		return s[:5]
+	}
+	return s
+}
 
 func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVendor, error) {
 	var pv domain.ProjectVendor
 	var pricingTier, status string
 	var bookingDate, dueDate sql.NullTime
+	var eventStartTime, eventEndTime sql.NullString
 	var notes sql.NullString
 	err := scan(&pv.ID, &pv.ProjectID, &pv.VendorID, &pv.CategoryID, &pv.Scope, &pv.ContractValue, &pricingTier, &status,
-		&bookingDate, &pv.EventDate, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes)
+		&bookingDate, &pv.EventDate, &eventStartTime, &eventEndTime, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -39,6 +52,14 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 	}
 	if dueDate.Valid {
 		pv.DueDate = &dueDate.Time
+	}
+	if eventStartTime.Valid {
+		v := timeToHHMM(eventStartTime.String)
+		pv.EventStartTime = &v
+	}
+	if eventEndTime.Valid {
+		v := timeToHHMM(eventEndTime.String)
+		pv.EventEndTime = &v
 	}
 	pv.Notes = notes.String
 	return &pv, nil
@@ -95,10 +116,10 @@ func (r *MySQLVendorEngagementRepository) FindByID(ctx context.Context, projectI
 func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain.ProjectVendor) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO project_vendors (project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
-		 booking_date, event_date, dp_amount, due_date, pic_staff_id, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		pv.ProjectID, pv.VendorID, pv.CategoryID, pv.Scope, pv.ContractValue, string(pv.PricingTier), string(pv.EngagementStatus),
-		pv.BookingDate, pv.EventDate, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes,
+		pv.BookingDate, pv.EventDate, pv.EventStartTime, pv.EventEndTime, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes,
 	)
 	if err != nil {
 		return err
@@ -114,10 +135,10 @@ func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain
 func (r *MySQLVendorEngagementRepository) Update(ctx context.Context, pv *domain.ProjectVendor) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE project_vendors SET vendor_id = ?, category_id = ?, scope = ?, contract_value = ?, pricing_tier = ?, engagement_status = ?,
-		 booking_date = ?, event_date = ?, dp_amount = ?, due_date = ?, pic_staff_id = ?, notes = ?
+		 booking_date = ?, event_date = ?, event_start_time = ?, event_end_time = ?, dp_amount = ?, due_date = ?, pic_staff_id = ?, notes = ?
 		 WHERE id = ?`,
 		pv.VendorID, pv.CategoryID, pv.Scope, pv.ContractValue, string(pv.PricingTier), string(pv.EngagementStatus),
-		pv.BookingDate, pv.EventDate, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes, pv.ID,
+		pv.BookingDate, pv.EventDate, pv.EventStartTime, pv.EventEndTime, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes, pv.ID,
 	)
 	return err
 }

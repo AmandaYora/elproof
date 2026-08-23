@@ -16,6 +16,9 @@ const (
 	EvidenceScreenshot       EvidenceType = "Screenshot"
 	EvidenceMinutesOfMeeting EvidenceType = "Minutes of Meeting"
 	EvidenceOther            EvidenceType = "Other"
+	// EvidenceBookingProof is bukti booked on a project_vendors engagement --
+	// see PLAN.md revisi-timeline-vendor-role-sales.
+	EvidenceBookingProof EvidenceType = "Booking Proof"
 )
 
 type EvidenceRelatedKind string
@@ -35,6 +38,10 @@ const (
 	// -- AUTO_INCREMENT never starts at 0), and IsClientVisible below is
 	// only ever read/enforced for this one kind.
 	RelatedGeneral EvidenceRelatedKind = "general"
+	// RelatedProjectMilestone attaches evidence to any Timeline item
+	// (project_milestones) -- general capability, not restricted to any
+	// specific milestone name (PLAN.md revisi-timeline-vendor-role-sales).
+	RelatedProjectMilestone EvidenceRelatedKind = "projectMilestone"
 )
 
 type Evidence struct {

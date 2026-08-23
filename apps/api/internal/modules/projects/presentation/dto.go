@@ -32,6 +32,10 @@ type projectResponse struct {
 	ContractValue    int64  `json:"contractValue"`
 	Status           string `json:"status"`
 	PICStaffID       int64  `json:"picStaffId"`
+	// PICSalesStaffID is the "PIC Sales" slot -- see
+	// domain.Project.PICSalesStaffID's doc comment. 0 means "belum
+	// ditugaskan", same sentinel convention as PICStaffID.
+	PICSalesStaffID int64 `json:"picSalesStaffId"`
 	// PICName is populated separately by getProject (PLAN.md's Client Portal
 	// restructure) -- toProjectResponse itself never resolves it, same
 	// pattern as Progress below. Empty string when unresolved (e.g. the
@@ -50,7 +54,7 @@ func toProjectResponse(p domain.Project) projectResponse {
 		VenueRentalPrice: p.VenueRentalPrice, VenueCharge: p.VenueCharge,
 		PrepStartDate: p.PrepStartDate.Format(dateLayout),
 		PackageName:   p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
-		PICStaffID: p.PICStaffID, Description: p.Description, IsArchived: p.IsArchived,
+		PICStaffID: p.PICStaffID, PICSalesStaffID: p.PICSalesStaffID, Description: p.Description, IsArchived: p.IsArchived,
 	}
 }
 
@@ -141,6 +145,8 @@ type projectVendorResponse struct {
 	EngagementStatus string  `json:"engagementStatus"`
 	BookingDate      *string `json:"bookingDate"`
 	EventDate        string  `json:"eventDate"`
+	EventStartTime   *string `json:"eventStartTime"`
+	EventEndTime     *string `json:"eventEndTime"`
 	DPAmount         int64   `json:"dpAmount"`
 	PaidAmount       int64   `json:"paidAmount"`
 	DueDate          *string `json:"dueDate"`
@@ -163,7 +169,8 @@ func toProjectVendorResponse(pv domain.ProjectVendor, paidAmount int64) projectV
 	return projectVendorResponse{
 		ID: pv.ID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope, ContractValue: pv.ContractValue,
 		PricingTier: string(pv.PricingTier), EngagementStatus: string(pv.EngagementStatus), BookingDate: formatDatePtr(pv.BookingDate),
-		EventDate: pv.EventDate.Format(dateLayout), DPAmount: pv.DPAmount, PaidAmount: paidAmount,
+		EventDate: pv.EventDate.Format(dateLayout), EventStartTime: pv.EventStartTime, EventEndTime: pv.EventEndTime,
+		DPAmount: pv.DPAmount, PaidAmount: paidAmount,
 		DueDate: formatDatePtr(pv.DueDate), PICStaffID: pv.PICStaffID, Notes: pv.Notes,
 	}
 }

@@ -3,42 +3,27 @@ import { Plus, Eye, EyeOff } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
-import { Modal } from "@/shared/components/ui/Modal";
-import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
+import { Select } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal";
+import { EvidenceUploadModal } from "@/shared/components/ui/EvidenceUploadModal";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
-import {
-  evidenceUploadSchema,
-  EVIDENCE_TYPE_OPTIONS,
-  EVIDENCE_RELATED_KIND_OPTIONS,
-  type EvidenceUploadFormValues,
-} from "@/modules/projects/schemas/evidence.schema";
+import { EVIDENCE_TYPE_OPTIONS, type EvidenceUploadFormValues } from "@/modules/projects/schemas/evidence.schema";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
-import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { Evidence, EvidenceRelatedKind, EvidenceType } from "@/modules/projects/types";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
-const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
-  vendorMilestone: "Timeline Vendor",
-  payment: "Pembayaran",
-  projectVendor: "Kerja Sama Vendor",
-  issue: "Kendala",
-  clientPayment: "Pembayaran Client",
-  venuePayment: "Pembayaran Venue",
-  general: "Umum (Tidak Terkait Spesifik)",
-};
-
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const evidence = useProjectStore((s) => s.evidence);
+  const milestones = useProjectStore((s) => s.milestones);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const payments = useProjectStore((s) => s.payments);
@@ -46,6 +31,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const venuePayments = useProjectStore((s) => s.venuePayments);
   const issues = useProjectStore((s) => s.issues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
+  const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchPayments = useProjectStore((s) => s.fetchPayments);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
@@ -65,6 +51,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     void fetchEvidence(projectId);
+    void fetchMilestones(projectId);
     void fetchVendorSection(projectId);
     void fetchPayments(projectId);
     void fetchClientPayments(projectId);
@@ -72,7 +59,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     void fetchIssues(projectId);
     void fetchVendors();
     void fetchStaff();
-  }, [projectId, fetchEvidence, fetchVendorSection, fetchPayments, fetchClientPayments, fetchVenuePayments, fetchIssues, fetchVendors, fetchStaff]);
+  }, [projectId, fetchEvidence, fetchMilestones, fetchVendorSection, fetchPayments, fetchClientPayments, fetchVenuePayments, fetchIssues, fetchVendors, fetchStaff]);
 
   const filteredEvidence = typeFilter === "Semua" ? evidence : evidence.filter((e) => e.type === typeFilter);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(filteredEvidence);
@@ -109,6 +96,10 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     if (item.relatedKind === "general") {
       return "Dokumen Umum";
     }
+    if (item.relatedKind === "projectMilestone") {
+      const milestone = milestones.find((m) => m.id === item.relatedId);
+      return milestone ? `Timeline: ${milestone.name}` : "Timeline";
+    }
     return "-";
   }
 
@@ -130,6 +121,9 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     }
     if (kind === "venuePayment") {
       return venuePayments.map((p) => ({ id: p.id, label: `${p.type} — ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})` }));
+    }
+    if (kind === "projectMilestone") {
+      return milestones.map((m) => ({ id: m.id, label: m.name }));
     }
     return issues.map((i) => ({ id: i.id, label: `${i.title} — ${vendorNameFor(i.projectVendorId)}` }));
   }
@@ -287,7 +281,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       </Card>
 
       {modalOpen && (
-        <AddEvidenceModal
+        <EvidenceUploadModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           onSubmit={handleAddEvidence}
@@ -309,147 +303,3 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   );
 }
 
-function emptyValues(defaultRelatedId: string): EvidenceUploadFormValues {
-  return {
-    name: "",
-    type: "Document",
-    relatedKind: "vendorMilestone",
-    relatedId: defaultRelatedId,
-    documentDate: todayISO(),
-    description: "",
-    isClientVisible: false,
-  };
-}
-
-function AddEvidenceModal({
-  open,
-  onClose,
-  onSubmit,
-  error,
-  relatedOptionsFor,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (file: File, values: EvidenceUploadFormValues) => Promise<void>;
-  error: string | null;
-  relatedOptionsFor: (kind: EvidenceRelatedKind) => { id: string; label: string }[];
-}) {
-  const [values, setValues] = useState<EvidenceUploadFormValues>(() => emptyValues(relatedOptionsFor("vendorMilestone")[0]?.id ?? ""));
-  const [file, setFile] = useState<File | null>(null);
-  const [errors, setErrors] = useState<Partial<Record<keyof EvidenceUploadFormValues, string>>>({});
-  const [fileError, setFileError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const options = relatedOptionsFor(values.relatedKind);
-
-  function set<K extends keyof EvidenceUploadFormValues>(key: K, value: EvidenceUploadFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleRelatedKindChange(kind: EvidenceRelatedKind) {
-    const firstOption = relatedOptionsFor(kind)[0]?.id ?? "";
-    setValues((prev) => ({
-      ...prev,
-      relatedKind: kind,
-      relatedId: firstOption,
-      isClientVisible: kind === "general" ? prev.isClientVisible : false,
-    }));
-  }
-
-  async function handleSubmit() {
-    if (!file) {
-      setFileError("Berkas wajib dipilih");
-      return;
-    }
-    const result = evidenceUploadSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof EvidenceUploadFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof EvidenceUploadFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await onSubmit(file, result.data);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Tambah Evidence"
-      description="Unggah dokumen pendukung dan kaitkan dengan timeline, pembayaran, kerja sama vendor, atau kendala pada project ini."
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || (values.relatedKind !== "general" && options.length === 0)}>
-            {submitting ? "Mengunggah..." : "Simpan Evidence"}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        {error && <p className="text-[12.5px] font-medium text-danger">{error}</p>}
-        <Field label="Berkas" required hint={fileError ?? undefined}>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setFileError(null);
-            }}
-            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
-          />
-        </Field>
-        <Field label="Nama Evidence" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Invoice DP Venue" />
-        </Field>
-        <Field label="Jenis Evidence" required>
-          <Select value={values.type} onChange={(e) => set("type", e.target.value as EvidenceType)}>
-            {EVIDENCE_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Konteks">
-          <Select value={values.relatedKind} onChange={(e) => handleRelatedKindChange(e.target.value as EvidenceRelatedKind)}>
-            {EVIDENCE_RELATED_KIND_OPTIONS.map((k) => (
-              <option key={k} value={k}>{RELATED_KIND_LABEL[k]}</option>
-            ))}
-          </Select>
-        </Field>
-        {values.relatedKind !== "general" && (
-          <Field label="Terkait" required hint={errors.relatedId}>
-            <Select value={values.relatedId} onChange={(e) => set("relatedId", e.target.value)}>
-              {options.length === 0 && <option value="">Tidak ada data tersedia</option>}
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        <Field label="Tanggal Dokumen" required hint={errors.documentDate}>
-          <Input type="date" value={values.documentDate} onChange={(e) => set("documentDate", e.target.value)} />
-        </Field>
-        <Field label="Deskripsi">
-          <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} />
-        </Field>
-        {values.relatedKind === "general" && (
-          <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[13px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={values.isClientVisible}
-              onChange={(e) => set("isClientVisible", e.target.checked)}
-            />
-            Tampilkan dokumen ini ke Client Portal
-          </label>
-        )}
-      </div>
-    </Modal>
-  );
-}

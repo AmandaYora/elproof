@@ -25,6 +25,10 @@ type VendorPricingTier string
 const (
 	PricingTierAkad        VendorPricingTier = "Akad"
 	PricingTierAkadResepsi VendorPricingTier = "AkadResepsi"
+	// PricingTierResepsi is the "Resepsi Only" package (PLAN.md
+	// revisi-timeline-vendor-role-sales) -- pairs with Vendor.PriceResepsi
+	// the same way the two tiers above pair with PriceAkad/PriceAkadResepsi.
+	PricingTierResepsi VendorPricingTier = "Resepsi"
 )
 
 type ProjectVendor struct {
@@ -38,6 +42,11 @@ type ProjectVendor struct {
 	EngagementStatus EngagementStatus
 	BookingDate      *time.Time
 	EventDate        time.Time
+	// EventStartTime/EventEndTime are the "Jam Acara" fields ("HH:MM",
+	// optional) -- 5 fixed presets or free custom input on the frontend, see
+	// PLAN.md revisi-timeline-vendor-role-sales.
+	EventStartTime *string
+	EventEndTime   *string
 	// DPAmount is a plain reference figure ("what DP was agreed at
 	// booking") -- never summed into any total. How much has actually been
 	// paid is derived entirely from vendor_payments (see

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Ban, CheckCircle2, Pencil, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Ban, CheckCircle2, Pencil, ArrowUp, ArrowDown, Paperclip, List as ListIcon, GanttChartSquare } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Select } from "@/shared/components/ui/Input";
@@ -9,14 +9,18 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { MilestoneRail, MilestoneRailLegend } from "@/shared/components/ui/MilestoneRail";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { EvidenceUploadModal } from "@/shared/components/ui/EvidenceUploadModal";
 import { ProjectMilestoneFormModal } from "@/modules/projects/components/ProjectMilestoneFormModal";
 import { ProjectMilestoneEditModal, type ProjectMilestoneEditFields } from "@/modules/projects/components/detail/ProjectMilestoneEditModal";
+import { ProjectMilestoneGanttView } from "@/modules/projects/components/detail/ProjectMilestoneGanttView";
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
+import type { EvidenceUploadFormValues } from "@/modules/projects/schemas/evidence.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { computeMilestoneStats, isMilestoneOverdue } from "@/modules/projects/lib/dates";
+import { compressFileForUpload } from "@/shared/lib/image-compression";
+import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { ProjectMilestone, MilestoneStatus } from "@/modules/projects/types";
 import { formatDate } from "@/shared/lib/formatters";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { cn } from "@/shared/lib/cn";
 
 const STATUS_OPTIONS: MilestoneStatus[] = ["Not Started", "In Progress", "Completed", "Blocked", "Cancelled"];
@@ -37,9 +41,13 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
   const updateMilestoneStatus = useProjectStore((s) => s.updateMilestoneStatus);
   const updateMilestone = useProjectStore((s) => s.updateMilestone);
   const reorderMilestones = useProjectStore((s) => s.reorderMilestones);
+  const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
   const [addOpen, setAddOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
+  const [evidenceMilestone, setEvidenceMilestone] = useState<ProjectMilestone | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "gantt">("list");
   const sortedMilestones = sortMilestones(milestones);
   const stats = computeMilestoneStats(milestones);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(sortedMilestones);
@@ -83,6 +91,26 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
     }
   }
 
+  async function handleAddEvidence(file: File, values: EvidenceUploadFormValues) {
+    if (!evidenceMilestone) return;
+    setEvidenceError(null);
+    try {
+      const compressed = await compressFileForUpload(file);
+      await uploadEvidence(projectId, {
+        ...compressed,
+        name: values.name,
+        type: values.type,
+        documentDate: values.documentDate,
+        description: values.description,
+        relatedKind: "projectMilestone",
+        relatedId: evidenceMilestone.id,
+      });
+      setEvidenceMilestone(null);
+    } catch (err) {
+      setEvidenceError(getApiErrorMessage(err, "Gagal mengunggah evidence"));
+    }
+  }
+
   async function handleMove(milestoneId: string, direction: "up" | "down") {
     setActionError(null);
     const idx = activeOrder.findIndex((m) => m.id === milestoneId);
@@ -105,9 +133,33 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
           title="Timeline Persiapan Acara"
           subtitle="Progress keseluruhan didasarkan pada timeline yang benar-benar telah diselesaikan, bukan angka manual."
           action={
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
-              Tambah Timeline
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-md border border-border p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-semibold transition-colors",
+                    viewMode === "list" ? "bg-navy-900 text-white" : "text-text-secondary hover:text-text-primary"
+                  )}
+                >
+                  <ListIcon className="h-3.5 w-3.5" /> List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("gantt")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-semibold transition-colors",
+                    viewMode === "gantt" ? "bg-navy-900 text-white" : "text-text-secondary hover:text-text-primary"
+                  )}
+                >
+                  <GanttChartSquare className="h-3.5 w-3.5" /> Gantt
+                </button>
+              </div>
+              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
+                Tambah Timeline
+              </Button>
+            </div>
           }
         />
         <CardContent>
@@ -124,6 +176,12 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
             </div>
           </div>
 
+          {viewMode === "gantt" ? (
+            <div className="pt-4">
+              <ProjectMilestoneGanttView milestones={sortedMilestones} />
+            </div>
+          ) : (
+          <>
           <CardList
             className="sm:hidden"
             items={pageItems}
@@ -156,6 +214,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                         </>
                       )}
                       <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />
+                      <IconActionButton icon={Paperclip} label="Lampirkan Bukti" tone="info" onClick={() => setEvidenceMilestone(m)} />
                       {cancelled ? (
                         <IconActionButton
                           icon={CheckCircle2}
@@ -254,6 +313,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                           </>
                         )}
                         <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />
+                      <IconActionButton icon={Paperclip} label="Lampirkan Bukti" tone="info" onClick={() => setEvidenceMilestone(m)} />
                         {cancelled ? (
                           <IconActionButton
                             icon={CheckCircle2}
@@ -285,6 +345,8 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
             onPageChange={setPage}
             className="-mx-5 -mb-4 mt-1"
           />
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -297,6 +359,19 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
           onClose={() => setEditingMilestone(null)}
           milestone={editingMilestone}
           onSave={(fields) => void handleEditSave(fields)}
+        />
+      )}
+
+      {evidenceMilestone && (
+        <EvidenceUploadModal
+          open
+          onClose={() => setEvidenceMilestone(null)}
+          onSubmit={handleAddEvidence}
+          error={evidenceError}
+          lockedRelatedKind="projectMilestone"
+          lockedRelatedId={evidenceMilestone.id}
+          title="Lampirkan Bukti"
+          description={`Unggah bukti pendukung untuk timeline "${evidenceMilestone.name}".`}
         />
       )}
     </div>

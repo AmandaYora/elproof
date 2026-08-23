@@ -5,12 +5,12 @@ import { usernameSchema } from "@/shared/lib/validators";
 // option here (its role is fixed at tenant registration, see staff module's
 // backend guard), but an Owner editing their own account still round-trips
 // role="Owner" through this same form, hence the wider enum below.
-export const STAFF_ROLE_OPTIONS = ["Admin", "Staff"] as const;
+export const STAFF_ROLE_OPTIONS = ["Admin", "Staff", "Sales"] as const;
 
 export const userSchema = z.object({
   name: z.string().min(2, "Nama wajib diisi"),
   title: z.string().min(2, "Jabatan wajib diisi"),
-  role: z.enum(["Owner", "Admin", "Staff"]),
+  role: z.enum(["Owner", "Admin", "Staff", "Sales"]),
   email: z.string().email("Email tidak valid"),
   phone: z.string().min(6, "Nomor telepon tidak valid"),
 });

@@ -40,6 +40,7 @@ type vendorResponse struct {
 	Address           *string `json:"address"`
 	PriceAkad         *int64  `json:"priceAkad"`
 	PriceAkadResepsi  *int64  `json:"priceAkadResepsi"`
+	PriceResepsi      *int64  `json:"priceResepsi"`
 	Notes             string  `json:"notes"`
 	HasAttachment     bool    `json:"hasAttachment"`
 	AttachmentIsImage bool    `json:"attachmentIsImage"`
@@ -52,7 +53,7 @@ func toVendorResponse(v domain.Vendor) vendorResponse {
 	return vendorResponse{
 		ID: v.ID, CategoryID: v.CategoryID, Name: v.Name, PICName: v.PICName, Phone: v.Phone,
 		Email: v.Email, SocialMedia: v.SocialMedia, City: v.City, Address: v.Address,
-		PriceAkad: v.PriceAkad, PriceAkadResepsi: v.PriceAkadResepsi, Notes: v.Notes,
+		PriceAkad: v.PriceAkad, PriceAkadResepsi: v.PriceAkadResepsi, PriceResepsi: v.PriceResepsi, Notes: v.Notes,
 		HasAttachment: v.AttachmentPath != nil, AttachmentIsImage: attachmentIsImage, IsActive: v.IsActive,
 		CreatedAt: v.CreatedAt.Format("2006-01-02"),
 	}
@@ -220,6 +221,7 @@ type vendorInputBody struct {
 	Address          string `json:"address"`
 	PriceAkad        *int64 `json:"priceAkad"`
 	PriceAkadResepsi *int64 `json:"priceAkadResepsi"`
+	PriceResepsi     *int64 `json:"priceResepsi"`
 	Notes            string `json:"notes"`
 }
 
@@ -227,7 +229,7 @@ func toVendorInput(body vendorInputBody) application.VendorInput {
 	return application.VendorInput{
 		Name: body.Name, CategoryID: body.CategoryID, PICName: body.PICName, Phone: body.Phone,
 		Email: body.Email, SocialMedia: body.SocialMedia, City: body.City, Address: body.Address,
-		PriceAkad: body.PriceAkad, PriceAkadResepsi: body.PriceAkadResepsi, Notes: body.Notes,
+		PriceAkad: body.PriceAkad, PriceAkadResepsi: body.PriceAkadResepsi, PriceResepsi: body.PriceResepsi, Notes: body.Notes,
 	}
 }
 

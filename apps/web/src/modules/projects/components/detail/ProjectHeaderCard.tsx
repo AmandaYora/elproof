@@ -34,10 +34,12 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const isOwner = useAuthStore((s) => s.session?.role === "Owner");
-  // Wedding Planner never duplicates a project (duplicating creates a new
-  // one — same restriction as creating from scratch, see PLAN.md's RBAC
-  // section); the backend already rejects this role's POST .../duplicate.
-  const canDuplicate = useAuthStore((s) => s.session?.role) !== "Staff";
+  // Neither Wedding Planner nor Sales duplicates a project (duplicating
+  // creates a new one — same restriction as creating from scratch, see
+  // PLAN.md's RBAC section); the backend already rejects both roles' POST
+  // .../duplicate.
+  const role = useAuthStore((s) => s.session?.role);
+  const canDuplicate = role !== "Staff" && role !== "Sales";
   // Margin/Keuntungan reveals vendor-cost/venue-cost business data — Wedding
   // Planner is not supposed to see this specific computed figure (confirmed
   // RBAC rule), even though the underlying vendor engagements and venue cost
@@ -91,6 +93,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const totalMilestones = (progress?.projectMilestoneStats.total ?? 0) + (progress?.vendorMilestoneStats.total ?? 0);
   const completedMilestones = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
   const pic = staff.find((s) => s.id === project.picStaffId);
+  const picSales = staff.find((s) => s.id === project.picSalesStaffId);
   const d = daysUntil(project.eventDate);
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
 
@@ -233,7 +236,8 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
           <InfoField label="Sisa Tagihan Client" value={formatCurrency(outstanding)} />
           {canSeeMargin && <InfoField label="Margin/Keuntungan" value={formatCurrency(margin)} />}
-          <InfoField label="Penanggung Jawab" value={pic?.name ?? "-"} />
+          <InfoField label="PIC Wedding Planner" value={pic?.name ?? "Belum ditugaskan"} />
+          <InfoField label="PIC Sales" value={picSales?.name ?? "Belum ditugaskan"} />
         </div>
 
         {project.description && (

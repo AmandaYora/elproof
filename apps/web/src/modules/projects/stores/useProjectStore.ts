@@ -84,6 +84,7 @@ export interface RawProject {
   contractValue: number;
   status: Project["status"];
   picStaffId: number;
+  picSalesStaffId: number;
   picName: string;
   description: string;
   isArchived: boolean;
@@ -118,7 +119,8 @@ export function toProject(raw: RawProject): Project {
     packageName: raw.packageName,
     contractValue: raw.contractValue,
     status: raw.status,
-    picStaffId: String(raw.picStaffId),
+    picStaffId: raw.picStaffId ? String(raw.picStaffId) : "",
+    picSalesStaffId: raw.picSalesStaffId ? String(raw.picSalesStaffId) : "",
     picName: raw.picName,
     description: raw.description,
     isArchived: raw.isArchived,
@@ -137,7 +139,9 @@ function projectInputBody(values: ProjectFormValues) {
     packageName: values.packageName,
     contractValue: values.contractValue,
     status: values.status,
-    picStaffId: Number(values.picStaffId),
+    // "" (belum ditugaskan) -> 0, the backend's sentinel for both PIC slots.
+    picStaffId: values.picStaffId ? Number(values.picStaffId) : 0,
+    picSalesStaffId: values.picSalesStaffId ? Number(values.picSalesStaffId) : 0,
     description: values.description,
   };
 }
@@ -189,6 +193,8 @@ interface RawProjectVendor {
   engagementStatus: ProjectVendor["engagementStatus"];
   bookingDate: string | null;
   eventDate: string;
+  eventStartTime: string | null;
+  eventEndTime: string | null;
   dpAmount: number;
   paidAmount: number;
   dueDate: string | null;
@@ -211,6 +217,8 @@ function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
     engagementStatus: raw.engagementStatus,
     bookingDate: raw.bookingDate,
     eventDate: raw.eventDate,
+    eventStartTime: raw.eventStartTime,
+    eventEndTime: raw.eventEndTime,
     dpAmount: raw.dpAmount,
     paidAmount: raw.paidAmount,
     dueDate: raw.dueDate,
@@ -231,6 +239,8 @@ function vendorEngagementInputBody(values: ProjectVendorFormValues) {
     engagementStatus: values.engagementStatus,
     bookingDate: values.bookingDate || "",
     eventDate: "",
+    eventStartTime: values.eventStartTime || null,
+    eventEndTime: values.eventEndTime || null,
     dpAmount: values.dpAmount,
     dueDate: values.dueDate || "",
     picStaffId: Number(values.picStaffId),
@@ -655,7 +665,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       packageName: current.packageName,
       contractValue: current.contractValue,
       status: current.status,
-      picStaffId: Number(current.picStaffId),
+      picStaffId: current.picStaffId ? Number(current.picStaffId) : 0,
+      picSalesStaffId: current.picSalesStaffId ? Number(current.picSalesStaffId) : 0,
       description: current.description,
       // 0 is never a real venue id (AUTO_INCREMENT starts at 1) — the
       // backend's sentinel for "detach" (see ADR-0016). The backend also

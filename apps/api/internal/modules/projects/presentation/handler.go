@@ -229,12 +229,13 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 // (a tenant_id+id-scoped lookup; a project belonging to a different tenant
 // resolves as NotFound, just like a nonexistent one). Owner/Admin get full
 // access to any project that check confirms is theirs. A Wedding Planner
-// ("Staff" role) is additionally scoped to only the project they're PIC of —
-// checked once here, since every sub-resource under /projects/{id}/...
-// (milestones, vendor engagements, issues, evidence, payments,
-// client-payments, venue-payments, activity, venue) already funnels through this same
-// function, so neither a Wedding Planner nor any other staff role can reach
-// another tenant's — or, for a Wedding Planner, another project's — data by
+// ("Staff" role) is additionally scoped to only the project they're PIC of,
+// and a Sales staff member is likewise scoped to only the project they're
+// PIC Sales of (PICSalesStaffID) — checked once here, since every
+// sub-resource under /projects/{id}/... (milestones, vendor engagements,
+// issues, evidence, payments, client-payments, venue-payments, activity,
+// venue) already funnels through this same function, so none of these
+// roles can reach another tenant's — or another project's — data by
 // guessing its numeric ID. A client principal only ever gets a synthetic
 // staffClaims with staffID/role left zero-valued — safe because every write
 // branch in Item requires POST/PATCH, which this function already rejects
@@ -259,6 +260,10 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			return staffClaims{}, false
 		}
 		if sc.role == "Staff" && p.PICStaffID != sc.staffID {
+			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+			return staffClaims{}, false
+		}
+		if sc.role == "Sales" && p.PICSalesStaffID != sc.staffID {
 			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
 			return staffClaims{}, false
 		}

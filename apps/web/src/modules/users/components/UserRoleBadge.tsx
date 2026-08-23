@@ -6,6 +6,7 @@ const ROLE_TONE: Record<StaffRole, BadgeTone> = {
   Owner: "navy",
   Admin: "info",
   Staff: "neutral",
+  Sales: "success",
 };
 
 export function UserRoleBadge({ role }: { role: StaffRole }) {

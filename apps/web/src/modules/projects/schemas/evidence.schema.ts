@@ -12,6 +12,7 @@ export const EVIDENCE_TYPE_OPTIONS = [
   "Screenshot",
   "Minutes of Meeting",
   "Other",
+  "Booking Proof",
 ] as const;
 
 export const EVIDENCE_RELATED_KIND_OPTIONS = [
@@ -22,6 +23,7 @@ export const EVIDENCE_RELATED_KIND_OPTIONS = [
   "clientPayment",
   "venuePayment",
   "general",
+  "projectMilestone",
 ] as const;
 
 export const evidenceUploadSchema = z

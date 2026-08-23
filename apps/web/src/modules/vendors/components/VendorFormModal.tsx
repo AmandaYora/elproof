@@ -19,14 +19,14 @@ function toFormValues(vendor?: Vendor, defaultCategoryId = ""): VendorFormValues
   if (!vendor) {
     return {
       name: "", categoryId: defaultCategoryId, picName: "", phone: "", email: "", socialMedia: "",
-      city: "", address: "", priceAkad: 0, priceAkadResepsi: 0, notes: "",
+      city: "", address: "", priceAkad: 0, priceAkadResepsi: 0, priceResepsi: 0, notes: "",
     };
   }
   return {
     name: vendor.name, categoryId: vendor.categoryId, picName: vendor.picName, phone: vendor.phone,
     email: vendor.email ?? "", socialMedia: vendor.socialMedia ?? "", city: vendor.city ?? "",
     address: vendor.address ?? "", priceAkad: vendor.priceAkad ?? 0, priceAkadResepsi: vendor.priceAkadResepsi ?? 0,
-    notes: vendor.notes,
+    priceResepsi: vendor.priceResepsi ?? 0, notes: vendor.notes,
   };
 }
 
@@ -169,6 +169,9 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
         </Field>
         <Field label="Harga Akad+Resepsi (Rp)" required={!isEditing} hint={errors.priceAkadResepsi}>
           <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} />
+        </Field>
+        <Field label="Harga Resepsi Only (Rp)" hint={errors.priceResepsi}>
+          <CurrencyInput value={values.priceResepsi} onChange={(n) => set("priceResepsi", n)} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Alamat" hint={errors.address}>

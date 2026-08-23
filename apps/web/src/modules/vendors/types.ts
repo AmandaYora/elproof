@@ -15,6 +15,8 @@ export interface Vendor {
   address: string | null;
   priceAkad: number | null;
   priceAkadResepsi: number | null;
+  // "Resepsi Only" package preset (PLAN.md revisi-timeline-vendor-role-sales).
+  priceResepsi: number | null;
   notes: string;
   hasAttachment: boolean;
   attachmentIsImage: boolean;

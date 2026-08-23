@@ -146,11 +146,11 @@ export default function LoginPage() {
       useAuthStore.getState().login(session);
 
       if (session.principalType === "staff") {
-        // Wedding Planner ("Staff" role) has no Dashboard access (see
-        // PLAN.md's RBAC section) — land them on the one page they can
-        // actually reach instead of a page RequireRole would just redirect
-        // away from anyway.
-        navigate(session.role === "Staff" ? ROUTE_PATHS.projects : ROUTE_PATHS.dashboard);
+        // Neither Wedding Planner ("Staff") nor Sales has Dashboard access
+        // (see PLAN.md revisi-timeline-vendor-role-sales) — land them on the
+        // one page they can actually reach instead of a page RequireRole
+        // would just redirect away from anyway.
+        navigate(session.role === "Staff" || session.role === "Sales" ? ROUTE_PATHS.projects : ROUTE_PATHS.dashboard);
       } else if (session.principalType === "client") {
         navigate(ROUTE_PATHS.portal());
       } else {

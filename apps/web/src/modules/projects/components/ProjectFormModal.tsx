@@ -33,6 +33,7 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
       contractValue: 0,
       status: "Draft",
       picStaffId: defaultStaffId,
+      picSalesStaffId: "",
       description: "",
     };
   }
@@ -47,6 +48,7 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
     contractValue: project.contractValue,
     status: mode === "duplicate" ? "Draft" : project.status,
     picStaffId: project.picStaffId,
+    picSalesStaffId: project.picSalesStaffId,
     description: project.description,
   };
 }
@@ -55,6 +57,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
   const staffList = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const role = useAuthStore((s) => s.session?.role);
+  const currentStaffId = useAuthStore((s) => s.currentStaffId);
   const [values, setValues] = useState<ProjectFormValues>(() => toFormValues(initialProject, "", mode));
   const [errors, setErrors] = useState<Partial<Record<keyof ProjectFormValues, string>>>({});
 
@@ -63,16 +66,28 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
   // rejects a changed picStaffId from this role, so this is a read-only
   // display for them, not a disabled-but-still-submittable control.
   const picLocked = role === "Staff" && Boolean(initialProject) && mode !== "duplicate";
+  // Sales always creates a project as their own PIC Sales — the backend
+  // forces this server-side regardless of what's submitted, so the field is
+  // shown read-only (locked to self) for them rather than a disabled-but-
+  // submittable control. Owner/Admin keep a free picker, including on an
+  // existing project (mirrors picStaffId's own edit affordance).
+  const picSalesLocked = role === "Sales" && !initialProject;
 
   useEffect(() => {
     void fetchStaff();
   }, [fetchStaff]);
 
   useEffect(() => {
-    if (!initialProject && !values.picStaffId && staffList.length > 0) {
+    if (!initialProject && !values.picStaffId && staffList.length > 0 && role !== "Sales") {
       setValues((prev) => ({ ...prev, picStaffId: staffList[0].id }));
     }
-  }, [initialProject, staffList, values.picStaffId]);
+  }, [initialProject, staffList, values.picStaffId, role]);
+
+  useEffect(() => {
+    if (!initialProject && picSalesLocked) {
+      setValues((prev) => (prev.picSalesStaffId === currentStaffId ? prev : { ...prev, picSalesStaffId: currentStaffId }));
+    }
+  }, [initialProject, picSalesLocked, currentStaffId]);
 
   function set<K extends keyof ProjectFormValues>(key: K, value: ProjectFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -90,7 +105,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
       return;
     }
     onSubmit(result.data);
-    setValues(toFormValues(undefined, staffList[0]?.id ?? ""));
+    setValues(toFormValues(undefined, role === "Sales" ? "" : staffList[0]?.id ?? ""));
     setErrors({});
   }
 
@@ -146,11 +161,24 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
         <Field label="Nilai Kontrak (Rp)" required hint={errors.contractValue}>
           <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} />
         </Field>
-        <Field label="Penanggung Jawab WO" required hint={errors.picStaffId}>
+        <Field label="Penanggung Jawab WO (PIC Wedding Planner)" hint={errors.picStaffId}>
           {picLocked ? (
             <Input value={staffList.find((s) => s.id === values.picStaffId)?.name ?? "..."} disabled />
           ) : (
             <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
+              <option value="">Belum ditugaskan</option>
+              {staffList.map((s) => (
+                <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="PIC Sales" hint={errors.picSalesStaffId}>
+          {picSalesLocked ? (
+            <Input value={staffList.find((s) => s.id === values.picSalesStaffId)?.name ?? "..."} disabled />
+          ) : (
+            <Select value={values.picSalesStaffId} onChange={(e) => set("picSalesStaffId", e.target.value)}>
+              <option value="">Belum ditugaskan</option>
               {staffList.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
               ))}

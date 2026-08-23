@@ -14,7 +14,13 @@ export const projectSchema = z.object({
   packageName: z.string().min(2, "Paket/layanan wajib diisi"),
   contractValue: z.coerce.number().min(0, "Nilai kontrak tidak valid"),
   status: z.enum(PROJECT_STATUS_OPTIONS),
-  picStaffId: z.string().min(1, "Penanggung jawab wajib dipilih"),
+  // Optional now (PLAN.md revisi-timeline-vendor-role-sales) — a project
+  // created by Sales may have no Wedding Planner assigned yet, until
+  // handover.
+  picStaffId: z.string().optional().default(""),
+  // PIC Sales — "" means "belum ditugaskan" (0 on the wire), same sentinel
+  // convention as picStaffId now uses.
+  picSalesStaffId: z.string().optional().default(""),
   description: z.string().optional().default(""),
 });
 

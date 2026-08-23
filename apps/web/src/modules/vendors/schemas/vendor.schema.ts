@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { isValidCity } from "@/shared/constants/cities";
 
-// priceAkad/priceAkadResepsi follow the same "0 in the form == not set"
-// convention as VenueFormModal's rentalPrice — converted to/from null at the
-// store boundary (0 <-> null), not modeled as optional here.
+// priceAkad/priceAkadResepsi/priceResepsi follow the same "0 in the form ==
+// not set" convention as VenueFormModal's rentalPrice — converted to/from
+// null at the store boundary (0 <-> null), not modeled as optional here.
 export const vendorSchema = z.object({
   name: z.string().min(2, "Nama vendor wajib diisi"),
   categoryId: z.string().min(1, "Kategori wajib dipilih"),
@@ -15,6 +15,10 @@ export const vendorSchema = z.object({
   address: z.string().optional().default(""),
   priceAkad: z.coerce.number().min(0, "Harga akad tidak valid"),
   priceAkadResepsi: z.coerce.number().min(0, "Harga akad+resepsi tidak valid"),
+  // "Resepsi Only" package preset (PLAN.md revisi-timeline-vendor-role-sales)
+  // — same optional-at-DB convention as the two fields above; not required
+  // even on create (only Akad/AkadResepsi are, per the "DATA VENDOR" slide).
+  priceResepsi: z.coerce.number().min(0, "Harga resepsi only tidak valid").optional().default(0),
   notes: z.string().optional().default(""),
 });
 

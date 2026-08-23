@@ -12,7 +12,7 @@ import (
 )
 
 type ProjectRepository interface {
-	List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error)
+	List(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64) ([]domain.Project, error)
 	// CountAll backs the dashboard's TotalProjects stat.
 	CountAll(ctx context.Context, tenantID int64) (int64, error)
 	// ListForDashboard backs the dashboard's trend/near-D-day/upcoming/lagging
@@ -20,7 +20,7 @@ type ProjectRepository interface {
 	// instead of List's entire unbounded tenant history. See the
 	// infrastructure implementation's doc comment for `since`'s exact meaning.
 	ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error)
-	ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
 	// ListByVenueID/ListByStaffPIC back the hard-delete "impact" endpoints
 	// (PLAN.md) -- see their infrastructure implementations' doc comments.
 	ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error)
@@ -185,10 +185,11 @@ func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64
 	return &summary, nil
 }
 
-// picStaffID scopes results to a single PIC's own projects — nil means every
-// project in the tenant (see MySQLProjectRepository.List's own doc comment).
-func (s *ProjectService) List(ctx context.Context, tenantID int64, picStaffID *int64) ([]domain.Project, error) {
-	return s.repo.List(ctx, tenantID, picStaffID)
+// picStaffID/picSalesStaffID scope results to a single PIC's own projects —
+// nil/nil means every project in the tenant (see
+// MySQLProjectRepository.List's own doc comment).
+func (s *ProjectService) List(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64) ([]domain.Project, error) {
+	return s.repo.List(ctx, tenantID, picStaffID, picSalesStaffID)
 }
 
 // ListAffectedProjectsForVenue backs the hard-delete "impact" endpoint for
@@ -218,8 +219,8 @@ func (s *ProjectService) ListForDashboard(ctx context.Context, tenantID int64, s
 // result into two disjoint views (active vs. archived), never merged, so
 // archived projects stay genuinely out of the way of day-to-day work (see
 // ADR-0013) rather than just visually deprioritized in a mixed list.
-func (s *ProjectService) ListPaginated(ctx context.Context, tenantID int64, picStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, picStaffID, params, search, status, showArchived)
+func (s *ProjectService) ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, picStaffID, picSalesStaffID, params, search, status, showArchived)
 }
 
 func (s *ProjectService) Get(ctx context.Context, tenantID, id int64) (*domain.Project, error) {
@@ -256,7 +257,12 @@ type ProjectInput struct {
 	ContractValue int64
 	Status        domain.ProjectStatus
 	PICStaffID    int64
-	Description   string
+	// PICSalesStaffID is the "PIC Sales" slot -- see Project.PICSalesStaffID's
+	// doc comment. Create forces this to the caller's own staff id when
+	// callerRole is "Sales" (ignoring whatever's sent here); Owner/Admin's
+	// value passes through untouched.
+	PICSalesStaffID int64
+	Description     string
 	// VenueID is only ever read by Update (Create always leaves a new
 	// project's VenueID nil — attaching a venue is a separate, post-creation
 	// action, see ADR-0016). nil means the caller's JSON body omitted the
@@ -274,12 +280,22 @@ type ProjectInput struct {
 	VenueCharge      *int64
 }
 
-func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffID int64, input ProjectInput) (*domain.Project, error) {
+// callerRole == "Sales" forces PICSalesStaffID to actorStaffID regardless of
+// what input carries -- a Sales staff member can only ever create a project
+// they themselves are the PIC Sales of, mirroring ADR-0017's "only Owner/
+// Admin assign PIC" precedent extended to this second PIC slot. Every other
+// role (including "" for internal callers) passes input.PICSalesStaffID
+// through untouched, same as PICStaffID always has.
+func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffID int64, callerRole string, input ProjectInput) (*domain.Project, error) {
+	picSalesStaffID := input.PICSalesStaffID
+	if callerRole == "Sales" {
+		picSalesStaffID = actorStaffID
+	}
 	p := &domain.Project{
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
 		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
 		PackageName: input.PackageName, ContractValue: input.ContractValue, Status: input.Status,
-		PICStaffID: input.PICStaffID, Description: input.Description,
+		PICStaffID: input.PICStaffID, PICSalesStaffID: picSalesStaffID, Description: input.Description,
 	}
 	if err := s.repo.Create(ctx, p); err != nil {
 		return nil, err
@@ -295,8 +311,13 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffI
 // Update rejects a Wedding Planner ("Staff" role) reassigning PICStaffID —
 // confirmed role rule: only Owner/Admin assign or reassign who a project's
 // PIC is, even on a project the Wedding Planner already manages day to day.
-// callerRole == "" (or any non-"Staff" value) skips the check entirely, so
-// Owner/Admin keep reassigning freely exactly as before.
+// callerRole == "" (or any non-"Staff"/"Sales" value) skips both checks
+// entirely, so Owner/Admin keep reassigning freely exactly as before. A
+// Sales caller may NOT move PICSalesStaffID to someone else (their own PIC
+// Sales slot is immutable from their side), but MAY freely change
+// PICStaffID -- that's the handover mechanism (PLAN.md
+// revisi-timeline-vendor-role-sales); reaching this method at all as Sales
+// already implies resolveProjectAccess confirmed they own this project.
 func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorStaffID int64, callerRole string, input ProjectInput) (*domain.Project, error) {
 	p, err := s.Get(ctx, tenantID, id)
 	if err != nil {
@@ -304,6 +325,9 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorSt
 	}
 	if callerRole == "Staff" && input.PICStaffID != p.PICStaffID {
 		return nil, apperror.Forbidden("Hanya Owner atau Admin yang dapat menugaskan ulang PIC project")
+	}
+	if callerRole == "Sales" && input.PICSalesStaffID != p.PICSalesStaffID {
+		return nil, apperror.Forbidden("Sales tidak dapat memindahkan PIC Sales project ini")
 	}
 	p.Name = input.Name
 	p.BrideName = input.BrideName
@@ -315,6 +339,7 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorSt
 	p.ContractValue = input.ContractValue
 	p.Status = input.Status
 	p.PICStaffID = input.PICStaffID
+	p.PICSalesStaffID = input.PICSalesStaffID
 	p.Description = input.Description
 	if input.VenueID != nil {
 		if *input.VenueID == 0 {
@@ -439,7 +464,7 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
 		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
 		PackageName: input.PackageName, ContractValue: input.ContractValue, Status: input.Status,
-		PICStaffID: input.PICStaffID, Description: input.Description,
+		PICStaffID: input.PICStaffID, PICSalesStaffID: input.PICSalesStaffID, Description: input.Description,
 	}
 	if err := s.repo.Create(ctx, p); err != nil {
 		return nil, err

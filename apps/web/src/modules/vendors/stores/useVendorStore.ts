@@ -20,6 +20,7 @@ interface RawVendor {
   address: string | null;
   priceAkad: number | null;
   priceAkadResepsi: number | null;
+  priceResepsi: number | null;
   notes: string;
   hasAttachment: boolean;
   attachmentIsImage: boolean;
@@ -62,15 +63,17 @@ function toVendorImportResult(raw: RawVendorImportResult): VendorImportResult {
   return { insertedCount: raw.insertedCount, updatedCount: raw.updatedCount, errors: raw.errors };
 }
 
-// priceAkad/priceAkadResepsi are plain numbers in the form (0 == "not set",
-// same convention as VenueFormModal's rentalPrice) — converted to null here
-// so an unset field round-trips as SQL NULL, not a literal 0.
+// priceAkad/priceAkadResepsi/priceResepsi are plain numbers in the form
+// (0 == "not set", same convention as VenueFormModal's rentalPrice) —
+// converted to null here so an unset field round-trips as SQL NULL, not a
+// literal 0.
 function toRequestBody(values: VendorFormValues | VendorCreateFormValues) {
   return {
     ...values,
     categoryId: Number(values.categoryId),
     priceAkad: values.priceAkad || null,
     priceAkadResepsi: values.priceAkadResepsi || null,
+    priceResepsi: values.priceResepsi || null,
   };
 }
 

@@ -44,7 +44,14 @@ type Project struct {
 	ContractValue    int64
 	Status           ProjectStatus
 	PICStaffID       int64
-	Description      string
+	// PICSalesStaffID is the second, independent PIC slot ("PIC Sales") --
+	// sentinel 0 means "belum ditugaskan", same convention as PICStaffID
+	// itself. Set automatically to the creating Sales staff member on
+	// create, immutable afterward for that role; Owner/Admin may set or
+	// clear it freely. Never cleared by handover (assigning PICStaffID) --
+	// see PLAN.md revisi-timeline-vendor-role-sales.
+	PICSalesStaffID int64
+	Description     string
 	IsArchived       bool
 	CreatedAt        time.Time
 	UpdatedAt        time.Time

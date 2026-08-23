@@ -40,20 +40,43 @@ func (s *ClientService) ListByProject(ctx context.Context, tenantID, projectID i
 	return s.repo.ListByProject(ctx, tenantID, projectID)
 }
 
-// VerifyProjectReadAccess scopes a Wedding Planner ("Staff" role) to reading
-// client data only for a project they're PIC of — the same restriction
-// `projects` itself already enforces on every one of its own sub-resources
-// (see handler.go's resolveProjectAccess there); Owner/Admin pass through
-// unconditionally, matching their full-tenant access everywhere else.
+// VerifyProjectReadAccess scopes a Wedding Planner ("Staff" role) or Sales
+// staff member to reading client data only for a project they're
+// PIC/PIC Sales of — the same restriction `projects` itself already
+// enforces on every one of its own sub-resources (see handler.go's
+// resolveProjectAccess there); Owner/Admin pass through unconditionally,
+// matching their full-tenant access everywhere else.
 func (s *ClientService) VerifyProjectReadAccess(ctx context.Context, tenantID, projectID, staffID int64, role string) error {
-	if role != "Staff" {
-		return nil
+	switch role {
+	case "Staff":
+		picStaffID, err := s.projects.ProjectPICStaffID(ctx, tenantID, projectID)
+		if err != nil {
+			return err
+		}
+		if picStaffID != staffID {
+			return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
+		}
+	case "Sales":
+		if err := s.VerifyProjectSalesOwner(ctx, tenantID, projectID, staffID); err != nil {
+			return err
+		}
 	}
-	picStaffID, err := s.projects.ProjectPICStaffID(ctx, tenantID, projectID)
+	return nil
+}
+
+// VerifyProjectSalesOwner confirms a Sales-role caller is the PIC Sales of
+// projectID — used both by VerifyProjectReadAccess above and by the
+// handler's write-side gate (requireManagerOrProjectSales), since a Sales
+// staff member's write access to Client (PLAN.md
+// revisi-timeline-vendor-role-sales, confirmed: full write, unlike a
+// Wedding Planner's read-only) is scoped to their own project the same way
+// their read access is.
+func (s *ClientService) VerifyProjectSalesOwner(ctx context.Context, tenantID, projectID, staffID int64) error {
+	picSalesStaffID, err := s.projects.ProjectPICSalesStaffID(ctx, tenantID, projectID)
 	if err != nil {
 		return err
 	}
-	if picStaffID != staffID {
+	if picSalesStaffID != staffID {
 		return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
 	}
 	return nil

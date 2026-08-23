@@ -19,7 +19,11 @@ export function RequireRole({ allow }: RequireRoleProps) {
   const role = useAuthStore((s) => s.session?.role) as StaffRole | undefined;
 
   if (!role || !allow.includes(role)) {
-    const fallback = role === "Staff" ? ROUTE_PATHS.projects : ROUTE_PATHS.dashboard;
+    // Neither Wedding Planner ("Staff") nor Sales has Dashboard access (see
+    // PLAN.md revisi-timeline-vendor-role-sales) — send both to the one page
+    // they can actually reach instead of a page this same guard would just
+    // redirect away from again.
+    const fallback = role === "Staff" || role === "Sales" ? ROUTE_PATHS.projects : ROUTE_PATHS.dashboard;
     return <Navigate to={fallback} replace />;
   }
 

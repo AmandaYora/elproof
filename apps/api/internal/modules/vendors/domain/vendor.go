@@ -15,6 +15,10 @@ type Vendor struct {
 	Address            *string
 	PriceAkad          *int64
 	PriceAkadResepsi   *int64
+	// PriceResepsi is the "Resepsi Only" package preset (PLAN.md
+	// revisi-timeline-vendor-role-sales) -- same nullable convention as the
+	// two fields above.
+	PriceResepsi       *int64
 	Notes              string
 	AttachmentPath     *string
 	AttachmentMimeType *string

@@ -11,6 +11,10 @@ const (
 	RoleOwner StaffRole = "Owner"
 	RoleAdmin StaffRole = "Admin"
 	RoleStaff StaffRole = "Staff"
+	// RoleSales creates projects (unassigned PIC Wedding Planner until
+	// handover) and hands them over via projects.PICSalesStaffID -- see
+	// PLAN.md revisi-timeline-vendor-role-sales.
+	RoleSales StaffRole = "Sales"
 )
 
 type StaffMember struct {

@@ -61,12 +61,11 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return tenantID, true
 }
 
-// requireManagerRole is the extra gate every Client **write** action and the
-// standalone (non-project-scoped) list needs on top of requireTenant —
-// mirrors vendors/venue_handler.go's own requireManagerRole exactly: a
-// Wedding Planner keeps read access to a single project's clients (see
-// list's projectId branch below, gated by ClientService.VerifyProjectReadAccess
-// instead), but every mutation and the tenant-wide list are Owner/Admin only.
+// requireManagerRole is the extra gate the standalone (non-project-scoped)
+// list needs on top of requireTenant — mirrors vendors/venue_handler.go's
+// own requireManagerRole exactly: Owner/Admin only, since a tenant-wide
+// client list has no single project to scope a Wedding Planner or Sales
+// staff member against.
 func requireManagerRole(w http.ResponseWriter, r *http.Request) bool {
 	claims, _ := middleware.FromContext(r.Context())
 	if !claims.HasRole("Owner", "Admin") {
@@ -74,6 +73,29 @@ func requireManagerRole(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// requireManagerOrProjectSales is the extra gate every Client **write**
+// action needs on top of requireTenant — Owner/Admin write freely across
+// every project (same as before); a Sales staff member additionally gets
+// full write access, but only within the one project they're PIC Sales of
+// (PLAN.md revisi-timeline-vendor-role-sales, confirmed: Sales gets full
+// Client write, unlike a Wedding Planner who stays read-only everywhere —
+// see VerifyProjectReadAccess). Every other role (notably "Staff") is
+// rejected outright, same scope requireManagerRole always had.
+func (h *Handler) requireManagerOrProjectSales(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) bool {
+	claims, _ := middleware.FromContext(r.Context())
+	if claims.HasRole("Owner", "Admin") {
+		return true
+	}
+	if claims.HasRole("Sales") {
+		staffID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
+		if err == nil && h.clients.VerifyProjectSalesOwner(r.Context(), tenantID, projectID, staffID) == nil {
+			return true
+		}
+	}
+	response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses untuk melakukan aksi ini", nil)
+	return false
 }
 
 func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +107,6 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		h.list(w, r, tenantID)
 	case http.MethodPost:
-		if !requireManagerRole(w, r) {
-			return
-		}
 		h.create(w, r, tenantID)
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
@@ -178,6 +197,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	if !h.requireManagerOrProjectSales(w, r, tenantID, body.ProjectID) {
+		return
+	}
 	c, err := h.clients.Create(r.Context(), tenantID, application.CreateClientInput{
 		ProjectID: body.ProjectID, Role: domain.ClientRole(body.Role), RelationNote: body.RelationNote,
 		Name: body.Name, Phone: body.Phone, Username: body.Username, Email: body.Email, Password: body.Password,
@@ -191,13 +213,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 
 // Item only ever dispatches write actions (update/delete/toggle-active/
 // reset-credential/replace-representative — no GET case exists here), so
-// the whole function is gated to Owner/Admin in one place.
+// the whole function is gated in one place — Owner/Admin unconditionally, or
+// a Sales staff member scoped to this client's own project (see
+// requireManagerOrProjectSales). The client row is fetched once here just to
+// resolve its ProjectID for that check; every sub-handler below still does
+// its own lookup when it needs the row's other fields, same as before.
 func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
 	if !ok {
-		return
-	}
-	if !requireManagerRole(w, r) {
 		return
 	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/clients/")
@@ -208,6 +231,14 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(segments[0], 10, 64)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	c, err := h.clients.Get(r.Context(), tenantID, id)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if !h.requireManagerOrProjectSales(w, r, tenantID, c.ProjectID) {
 		return
 	}
 

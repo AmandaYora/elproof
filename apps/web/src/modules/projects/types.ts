@@ -52,9 +52,18 @@ export type EvidenceType =
   | "Document"
   | "Screenshot"
   | "Minutes of Meeting"
-  | "Other";
+  | "Other"
+  | "Booking Proof";
 
-export type EvidenceRelatedKind = "vendorMilestone" | "payment" | "projectVendor" | "issue" | "clientPayment" | "venuePayment" | "general";
+export type EvidenceRelatedKind =
+  | "vendorMilestone"
+  | "payment"
+  | "projectVendor"
+  | "issue"
+  | "clientPayment"
+  | "venuePayment"
+  | "general"
+  | "projectMilestone";
 
 export type ProjectCondition = "On Track" | "Attention" | "At Risk";
 
@@ -101,7 +110,13 @@ export interface Project {
   packageName: string;
   contractValue: number;
   status: ProjectStatus;
+  // "" means "belum ditugaskan" (0 on the wire) — a project created by Sales
+  // may have no Wedding Planner assigned yet, until handover (PLAN.md
+  // revisi-timeline-vendor-role-sales).
   picStaffId: string;
+  // PIC Sales — "" means "belum ditugaskan" (0 on the wire), same sentinel
+  // convention as picStaffId.
+  picSalesStaffId: string;
   // Resolved server-side (PLAN.md's Client Portal restructure) — "" when
   // unresolved (e.g. the staff row was hard-deleted). Lets Client Portal
   // show "Penanggung Jawab" without depending on the staff-only
@@ -121,7 +136,7 @@ export interface ProjectMilestone {
   completedDate: string | null;
 }
 
-export type VendorPricingTier = "Akad" | "AkadResepsi";
+export type VendorPricingTier = "Akad" | "AkadResepsi" | "Resepsi";
 
 export interface ProjectVendor {
   id: string;
@@ -133,6 +148,10 @@ export interface ProjectVendor {
   engagementStatus: EngagementStatus;
   bookingDate: string | null;
   eventDate: string;
+  // "HH:MM", optional (PLAN.md revisi-timeline-vendor-role-sales) — 5 fixed
+  // presets or free custom input on the frontend.
+  eventStartTime: string | null;
+  eventEndTime: string | null;
   dpAmount: number;
   paidAmount: number;
   dueDate: string | null;

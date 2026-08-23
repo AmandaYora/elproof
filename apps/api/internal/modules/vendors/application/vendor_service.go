@@ -112,6 +112,7 @@ type VendorInput struct {
 	Address          string
 	PriceAkad        *int64
 	PriceAkadResepsi *int64
+	PriceResepsi     *int64
 	Notes            string
 }
 
@@ -144,7 +145,7 @@ func (s *VendorService) Create(ctx context.Context, tenantID int64, input Vendor
 		TenantID: tenantID, CategoryID: input.CategoryID, Name: input.Name, PICName: input.PICName,
 		Phone: input.Phone, Email: stringPtrOrNil(input.Email), SocialMedia: stringPtrOrNil(input.SocialMedia),
 		City: stringPtrOrNil(input.City), Address: stringPtrOrNil(input.Address),
-		PriceAkad: input.PriceAkad, PriceAkadResepsi: input.PriceAkadResepsi, Notes: input.Notes, IsActive: true,
+		PriceAkad: input.PriceAkad, PriceAkadResepsi: input.PriceAkadResepsi, PriceResepsi: input.PriceResepsi, Notes: input.Notes, IsActive: true,
 	}
 	if err := s.repo.Create(ctx, vendor); err != nil {
 		return nil, err
@@ -173,6 +174,7 @@ func (s *VendorService) Update(ctx context.Context, tenantID, id int64, input Ve
 	vendor.Address = stringPtrOrNil(input.Address)
 	vendor.PriceAkad = input.PriceAkad
 	vendor.PriceAkadResepsi = input.PriceAkadResepsi
+	vendor.PriceResepsi = input.PriceResepsi
 	vendor.Notes = input.Notes
 	if err := s.repo.Update(ctx, vendor); err != nil {
 		return nil, err

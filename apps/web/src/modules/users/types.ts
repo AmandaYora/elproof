@@ -1,6 +1,6 @@
 // Real backend types for the `staff` module — see docs/API_CONTRACT.md.
 
-export type StaffRole = "Owner" | "Admin" | "Staff";
+export type StaffRole = "Owner" | "Admin" | "Staff" | "Sales";
 
 // ROLE_LABELS is a display-only relabeling — "Staff" is shown to users as
 // "Wedding Planner" (the role's real-world business name), but the value
@@ -11,6 +11,7 @@ export const ROLE_LABELS: Record<StaffRole, string> = {
   Owner: "Owner",
   Admin: "Admin",
   Staff: "Wedding Planner",
+  Sales: "Sales",
 };
 
 export interface StaffMember {

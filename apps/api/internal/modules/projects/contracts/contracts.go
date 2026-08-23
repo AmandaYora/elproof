@@ -37,6 +37,11 @@ type Contracts interface {
 	// to scope a Wedding Planner's client-read access to only projects
 	// they're PIC of (see PLAN.md's RBAC section).
 	ProjectPICStaffID(ctx context.Context, tenantID, projectID int64) (int64, error)
+	// ProjectPICSalesStaffID resolves a project's current PIC Sales — used by
+	// `clients` to scope a Sales staff member's client read/write access to
+	// only projects they're PIC Sales of (PLAN.md
+	// revisi-timeline-vendor-role-sales).
+	ProjectPICSalesStaffID(ctx context.Context, tenantID, projectID int64) (int64, error)
 	ListVendorEngagementHistory(ctx context.Context, tenantID, vendorID int64) ([]VendorEngagementHistoryItem, error)
 	// ListAffectedProjectsForVendor/Venue/Staff back the hard-delete "impact"
 	// endpoints (PLAN.md's Vendor/Venue/Staff hard delete) -- every project
@@ -72,6 +77,14 @@ func (c *impl) ProjectPICStaffID(ctx context.Context, tenantID, projectID int64)
 		return 0, err
 	}
 	return p.PICStaffID, nil
+}
+
+func (c *impl) ProjectPICSalesStaffID(ctx context.Context, tenantID, projectID int64) (int64, error) {
+	p, err := c.projects.Get(ctx, tenantID, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return p.PICSalesStaffID, nil
 }
 
 func (c *impl) ListVendorEngagementHistory(ctx context.Context, tenantID, vendorID int64) ([]VendorEngagementHistoryItem, error) {
