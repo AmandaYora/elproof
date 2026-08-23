@@ -17,6 +17,7 @@ interface RawPlan {
   price: number;
   features: string[] | null;
   isActive: boolean;
+  appIds?: string[] | null;
 }
 
 function toPlan(raw: RawPlan): SubscriptionPlan {
@@ -27,6 +28,7 @@ function toPlan(raw: RawPlan): SubscriptionPlan {
     price: raw.price,
     features: raw.features ?? [],
     isActive: raw.isActive,
+    appIds: raw.appIds ?? [],
   };
 }
 

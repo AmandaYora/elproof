@@ -15,6 +15,12 @@ export const API = {
     plan: (id: string) => `/api/v1/plans/${id}`,
     planToggleActive: (id: string) => `/api/v1/plans/${id}/toggle-active`,
     transactions: "/api/v1/subscription-transactions",
+    // App-plan mapping + subscription ledger (D1) — owned by `billing`
+    // even though they're consumed from Manajemen Aplikasi (payment's
+    // domain), because "paket mana boleh dilihat App mana" is a catalog
+    // visibility concern.
+    appPlans: "/api/v1/app-plans",
+    appSubscriptions: "/api/v1/app-subscriptions",
   },
   // `payment` module — see knowledge/MODULE_PAYMENT.md. Internal-mode
   // (Fase 9) config + external-mode App registry (Fase 10, Platform

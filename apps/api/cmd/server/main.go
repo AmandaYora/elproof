@@ -206,7 +206,12 @@ func serve(cfg config.Config) {
 	}
 
 	staffModule := staff.NewModule(db, identityModule.Contracts())
-	billingModule := billing.NewModule(db)
+	// billing now takes two dependencies from payment (A5, same direct-
+	// contracts-injection pattern as platform receiving paymentModule.Client()
+	// below): AppRegistry for its own external/console App-token endpoints,
+	// Client to create subscription charges. Urutan konstruksi tidak berubah
+	// (A6) — payment is still built before billing.
+	billingModule := billing.NewModule(db, paymentModule.AppRegistry(), paymentModule.Client())
 	platformModule := platform.NewModule(db, staffModule.Contracts(), identityModule.Contracts(), billingModule.Contracts(), paymentModule.Client(), storageClient)
 	// Pre-auth, Host-header-resolved tenant branding (ADR-0015) — registered
 	// unwrapped, same style as identityModule.RegisterRoutes(mux) above.
@@ -254,6 +259,11 @@ func serve(cfg config.Config) {
 	// else in this server either (see server.ListenAndServe() below), so this
 	// goroutine simply ends when the process does.
 	paymentModule.StartReconciler(context.Background(), cfg.PaymentReconcileInterval)
+	// Sejajar dengan reconciler payment di atas, bukan menggantikannya (A16) —
+	// billing punya reconciler sendiri untuk subscription_app_charges, yang
+	// memanggil gateway secara independen (A32).
+	billingModule.SetSubscriptionChargeMaxAge(cfg.SubscriptionChargeMaxAge)
+	billingModule.StartSubscriptionReconciler(context.Background(), cfg.SubscriptionReconcileInterval)
 
 	paymentModule.RegisterRoutes(mux, authed)
 	billingModule.RegisterRoutes(mux, authed)

@@ -114,6 +114,45 @@ submit semantics.
 | created_at | TIMESTAMP | |
 | paid_at | TIMESTAMP NULL | |
 
+### `subscription_plan_apps` — migration `000043`, `docs/plan/external-subscription-plans/PLAN.md`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| plan_id | BIGINT UNSIGNED `FK` → subscription_plans.id, `ON DELETE CASCADE` | same-module FK |
+| app_id | VARCHAR(100) | `FK*` → `payment.payment_apps.app_id` — cross-module primitive ID, no SQL constraint |
+| created_at | TIMESTAMP | |
+
+`UNIQUE(app_id, plan_id)`. **A plan's visibility is derived from whether it has any row here at
+all** — there is no `is_public` column (rejected: it would tie the demo catalog's price and an
+App's own price to one row, see the PLAN's D6). A plan with a row here is private to that App and
+hidden from the WO tenant subscription catalog (`GET /plans` for non-`platform_admin` principals);
+a plan with no row is part of ElProof's own public catalog. This is also the only source of the
+`appIds` field in `planResponse` (`GET /plans`, `platform_admin` only) — see `docs/API_CONTRACT.md`.
+
+### `subscription_app_charges` — migration `000044`, `docs/plan/external-subscription-plans/PLAN.md`
+| Column | Type | Notes |
+|---|---|---|
+| order_ref | VARCHAR(100) PK | `FK*` → `payment.payment_charge_dispatch.order_ref` — cross-module primitive ID, ties this ledger row back to the underlying gateway charge |
+| app_id | VARCHAR(100) | `FK*` → `payment.payment_apps.app_id`, no SQL constraint |
+| plan_id | BIGINT UNSIGNED `FK` → subscription_plans.id | same-module FK |
+| plan_name, plan_price, plan_duration_months | VARCHAR(150), BIGINT UNSIGNED, INT | **snapshot** of the plan at the moment the intent row is written (before `payment.Client` is ever called) — a later catalog price edit never rewrites what a customer already agreed to pay |
+| status | ENUM('pending','paid','expired','failed','cancelled') | |
+| subscription_until | DATE NULL | filled only when `status='paid'` — the answer to "paid up until when" |
+| created_at | TIMESTAMP | |
+| paid_at | TIMESTAMP NULL | |
+| resolved_at | TIMESTAMP NULL | always written in the **same** `UPDATE` as `status` — never a column set on its own. `WHERE resolved_at IS NULL` is the single-winner guard `MarkPaidIfUnresolved`/`MarkResolvedIfUnresolved` use; there is no separate "claim" step, because a claim-then-write split would leave a window where a row is claimed but still `status='pending'` if the process died in between — losing an already-paid charge permanently |
+
+Not a reuse of `subscription_transactions` above — that table's `tenant_id` is `NOT NULL` and is
+actively used by the live WO-tenant subscription flow, so an App-keyed row (which has no tenant)
+would require changing that column's nullability on a table already carrying real traffic. This
+ledger is intentionally empty until an App switches its payment call from `payment`'s
+`/external/payments/charges` to `billing`'s own `/external/subscriptions/charges` (see
+`docs/API_CONTRACT.md`) — an empty table here is expected, not a bug.
+
+`KEY(app_id, status)` and `KEY(resolved_at, created_at)` back the reconciler's own polling query
+(`billing`'s `SubscriptionReconciler`, independent from `payment`'s own reconciler — see
+`knowledge/MODULE_PAYMENT.md`).
+
 ---
 
 ## Module `staff` — **implemented, Fase 3**

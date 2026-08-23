@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a3f1e6d2-8b4c-4e2a-9c7f-1d5e6a2b3c4d",
     "name": "ElProof Payment Gateway (External App API)",
-    "description": "Koleksi untuk aplikasi eksternal yang ingin membuat charge lewat dompet merchant Tripay milik ElProof. Panduan lengkap ada di file pasangan koleksi ini, PAYMENT_INTEGRATION_GUIDE.md.\n\nUrutan pakai:\n1. Isi variable `appId` dan `secret` (didapat dari tim ElProof, ditampilkan sekali saat pendaftaran).\n2. Jalankan request \"Tukar appId + secret -> Token\" di folder Autentikasi — variable `accessToken` otomatis terisi lewat test script, dipakai otomatis oleh semua request lain di folder Pembayaran.\n3. Jalankan request lain sesuai kebutuhan.\n\nTidak ada refresh token — kalau `accessToken` kedaluwarsa (`expiresIn`, default 3600 detik), ulangi langkah 2.",
+    "description": "Koleksi untuk aplikasi eksternal yang ingin membuat charge lewat dompet merchant Tripay milik ElProof. Panduan lengkap ada di file pasangan koleksi ini, PAYMENT_INTEGRATION_GUIDE.md.\n\nUrutan pakai:\n1. Isi variable `appId` dan `secret` (didapat dari tim ElProof, ditampilkan sekali saat pendaftaran).\n2. Jalankan request \"Tukar appId + secret -> Token\" di folder Autentikasi — variable `accessToken` otomatis terisi lewat test script, dipakai otomatis oleh semua request lain di folder Pembayaran dan Langganan.\n3. Jalankan request lain sesuai kebutuhan. Untuk **berlangganan ElProof sendiri**, pakai folder \"3. Langganan\" — folder \"2. Pembayaran\" untuk menagih transaksi umum lewat dompet ElProof.\n\nTidak ada refresh token — kalau `accessToken` kedaluwarsa (`expiresIn`, default 3600 detik), ulangi langkah 2.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,7 +10,8 @@
     { "key": "appId", "value": "", "type": "string", "description": "Client ID App eksternal Anda, dari tim ElProof" },
     { "key": "secret", "value": "", "type": "string", "description": "Secret App eksternal Anda — rahasia, jangan commit ke repo manapun" },
     { "key": "accessToken", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Tukar appId + secret -> Token'" },
-    { "key": "orderRef", "value": "CONTOH-ORDER-0001", "type": "string", "description": "ID transaksi milik sistem Anda sendiri — ganti dengan ID unik yang belum pernah dipakai sebelum membuat charge baru" }
+    { "key": "orderRef", "value": "CONTOH-ORDER-0001", "type": "string", "description": "ID transaksi milik sistem Anda sendiri — ganti dengan ID unik yang belum pernah dipakai sebelum membuat charge baru" },
+    { "key": "planId", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Lihat Katalog Paket Saya' — id paket pertama yang dipetakan ke App Anda" }
   ],
   "item": [
     {
@@ -120,7 +121,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["external", "payments", "charges"]
             },
-            "description": "amount dalam Rupiah utuh (bukan sen). orderRef harus unik selamanya milik sistem Anda sendiri — mengirim ulang orderRef yang sama menghasilkan 409 Conflict (aman untuk retry logic), bukan charge duplikat. channel opsional, default QRIS kalau dikosongkan."
+            "description": "amount dalam Rupiah utuh (bukan sen). orderRef harus unik selamanya milik sistem Anda sendiri — mengirim ulang orderRef yang sama menghasilkan 409 Conflict (aman untuk retry logic), bukan charge duplikat. channel opsional, default QRIS kalau dikosongkan.\n\nKalau yang Anda buat adalah pembayaran langganan ElProof, pakai \"Buat Charge Langganan\" di folder 3 — endpoint ini tidak menautkan charge ke paket mana pun, jadi ElProof tidak bisa mencatat langganan Anda."
           },
           "response": []
         },
@@ -143,7 +144,116 @@
           "response": []
         }
       ],
-      "description": "Perlu {{accessToken}} dari folder Autentikasi — semua request di sini sudah dikonfigurasi memakainya otomatis lewat Bearer Auth."
+      "description": "Perlu {{accessToken}} dari folder Autentikasi — semua request di sini sudah dikonfigurasi memakainya otomatis lewat Bearer Auth. Charge di folder ini bersifat umum dan nominalnya ditentukan pemanggil. Untuk membeli/memperpanjang langganan ElProof, pakai folder \"3. Langganan\" yang mengambil nominal dari harga paket."
+    },
+    {
+      "name": "3. Langganan",
+      "item": [
+        {
+          "name": "Lihat Katalog Paket Saya",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.test(\"data berupa array\", function () { pm.expect(data).to.be.an(\"array\"); });",
+                  "    if (data.length > 0) {",
+                  "        pm.collectionVariables.set(\"planId\", String(data[0].id));",
+                  "        console.log(\"planId tersimpan: \" + data[0].id + \" (\" + data[0].name + \")\");",
+                  "    } else {",
+                  "        console.log(\"App ini belum dipetakan ke paket mana pun — hubungi tim ElProof\");",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/external/subscription-plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "subscription-plans"]
+            },
+            "description": "Katalog ini khusus milik App Anda — App lain punya katalognya sendiri dan tidak pernah saling terlihat. Respons 200 dengan data: [] bukan galat: artinya App Anda belum dipetakan ke paket mana pun, hubungi tim ElProof. Field features berisi rincian paket dan boleh kosong ([]). Field active bisa false — paket non-aktif tetap dikirim supaya Anda bisa menandai paket yang sedang dipakai pelanggan; saring sendiri di sisi Anda kalau hanya ingin menampilkan yang aktif."
+          },
+          "response": []
+        },
+        {
+          "name": "Buat Charge Langganan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201 (sukses), 409 (orderRef dipakai), atau 422 (paket bukan milik App ini)\", function () {",
+                  "    pm.expect([201, 409, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json().data;",
+                  "    console.log(\"Charge langganan dibuat: \" + data.orderRef + \" status=\" + data.status + \" amount=\" + data.amount);",
+                  "}",
+                  "if (pm.response.code === 422) {",
+                  "    console.log(\"planId tidak dipetakan ke App ini — jalankan 'Lihat Katalog Paket Saya' dulu\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderRef\": \"{{orderRef}}\",\n  \"planId\": {{planId}},\n  \"customerName\": \"Budi Santoso\",\n  \"customerEmail\": \"budi@example.com\",\n  \"customerPhone\": \"081234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/external/subscriptions/charges",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "subscriptions", "charges"]
+            },
+            "description": "Tidak ada field amount — nominal diambil ElProof dari harga paket, jadi App tidak bisa menentukan sendiri berapa yang ia bayar. planId harus paket yang dipetakan ke App Anda; planId milik App lain dijawab 422 walaupun Anda tahu id-nya. orderRef harus unik selamanya milik sistem Anda sendiri — mengulang orderRef yang sama menghasilkan 409, bukan charge duplikat. Bentuk responsnya identik dengan \"Buat Charge\" di folder Pembayaran, jadi parser yang sudah Anda punya tidak perlu diubah.\n\nCatatan: planId di body raw di atas SENGAJA tanpa tanda kutip — ia angka (int64), bukan string. Jangan \"perbaiki\" jadi \"{{planId}}\" berkutip, endpoint akan menolaknya."
+          },
+          "response": []
+        },
+        {
+          "name": "Cek Status Charge Langganan",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/external/payments/charges/{{orderRef}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "payments", "charges", "{{orderRef}}", "status"]
+            },
+            "description": "Sengaja memakai path yang sama dengan folder Pembayaran — endpoint status TIDAK dipindahkan ke /external/subscriptions/, satu endpoint status melayani kedua jenis charge, jadi tidak ada parser atau alur polling kedua yang perlu Anda bangun. Request ini ada di sini hanya supaya alur langganan bisa dijalankan utuh dari satu folder."
+          },
+          "response": []
+        }
+      ],
+      "description": "Alur berlangganan ElProof: ambil katalog paket milik App Anda, lalu buat charge langganan. Berbeda dari folder Pembayaran yang untuk transaksi umum — di sini nominal tidak dikirim dari sisi Anda, melainkan diambil ElProof dari harga paket. Jalankan folder Autentikasi lebih dulu."
     }
   ]
 }

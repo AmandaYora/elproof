@@ -30,12 +30,25 @@ a payment gateway directly into `billing`/`platform`, this module wraps **one me
   ever answers "can I charge this amount through the active gateway, and what happened to charge
   X" — see §4.
 - **Not aware of tenants, plans, or any other business concept.** `contextID` in `contracts.Client`
-  is opaque — the module never inspects it, just threads it through for the caller's own use (Fase
-  9 doesn't even populate it; `platform` doesn't need to).
+  is documented as opaque — the module never inspects it, just threads it through for the caller's
+  own use. **In practice it's dead**: verified (`docs/plan/external-subscription-plans/PLAN.md`
+  T14) that it appears only in `CreateCharge`/`CreateChannelCharge`'s own signature
+  (`infrastructure/client.go`), is never read inside either body, and no `context%` column exists
+  anywhere in `elproof_db`. Neither Fase 9 (`platform`) nor `billing`'s own subscription-charge
+  path below populates it — both leave it `""`. Not removed here (changing `contracts.Client`'s
+  signature would touch `platform` too, out of scope for the plan that found this) — flagged so the
+  next reader doesn't build something load-bearing on top of a parameter nothing threads anywhere.
 - **Not a multi-provider abstraction the caller sees.** Callers (Apps) never pick "Tripay" vs
   "Midtrans" — there's exactly one active provider at a time, chosen by a platform_admin in
   Konfigurasi Gateway (§4). Apps just call `CreateCharge`; which gateway actually processes it is
   this module's own concern.
+- **Still true after `billing` gained its own external, App-token routes** (`GET
+  /external/subscription-plans`, `POST /external/subscriptions/charges` —
+  `docs/plan/external-subscription-plans/PLAN.md`). `payment` only exposes one new thing,
+  `contracts.AppRegistry` (`IsAppActive`/`AppExists`), a read-only App-status check — it still
+  knows nothing about plans, prices, or subscriptions. `billing` is the one that imports
+  `payment/contracts` and owns those routes end to end; this module's own route table (§7.2) is
+  unchanged.
 
 ## 3. Structure and dependencies
 
@@ -208,6 +221,12 @@ expire.
 | POST | `/external/payments/charges` | body `{orderRef, amount, channel?, customerName?, customerEmail?, customerPhone?}`. `appId` always comes from the token, never the body. Duplicate `orderRef` → `409 conflict` (§7.3), no duplicate charge ever created upstream. |
 | GET | `/external/payments/charges/{orderRef}/status` | Only returns a charge if the Charge Dispatch Index says this `orderRef` belongs to the calling App — another App's `orderRef` is `404 not_found`, never leaked as "exists but not yours". |
 | GET | `/external/payments/channels` | Same channel list `Client.ListChannels` returns internally — cached, see §7.4. |
+
+**A 4th and 5th App-token route exist, but they're owned and registered by `billing`, not this
+module:** `GET /external/subscription-plans` and `POST /external/subscriptions/charges`
+(`docs/plan/external-subscription-plans/PLAN.md`). `billing` reuses this same live-active-check
+pattern via `contracts.AppRegistry` (§2.2 above) rather than a duplicate implementation — see
+`docs/API_CONTRACT.md`'s `billing` section for their request/response shapes.
 
 ### 7.3 Idempotency
 

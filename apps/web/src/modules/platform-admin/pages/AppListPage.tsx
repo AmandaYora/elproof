@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, KeyRound, Ban, CheckCircle2 } from "lucide-react";
+import { Plus, KeyRound, Ban, CheckCircle2, Info } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
@@ -9,6 +9,7 @@ import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { AppFormModal } from "@/modules/platform-admin/components/AppFormModal";
+import { AppDetailModal } from "@/modules/platform-admin/components/AppDetailModal";
 import { useAppsStore, type PaymentApp } from "@/modules/platform-admin/stores/useAppsStore";
 import type { CreateAppFormValues } from "@/modules/platform-admin/schemas/app.schema";
 import { formatDate } from "@/shared/lib/formatters";
@@ -29,6 +30,7 @@ export default function AppListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [secretReveal, setSecretReveal] = useState<SecretReveal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [detailApp, setDetailApp] = useState<PaymentApp | undefined>(undefined);
 
   useEffect(() => {
     void fetchApps();
@@ -112,6 +114,7 @@ export default function AppListPage() {
                 </div>
                 {app.kind === "external" && (
                   <div className="flex items-center gap-1.5 pt-1">
+                    <IconActionButton icon={Info} label="Detail" onClick={() => setDetailApp(app)} />
                     <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => void handleResetSecret(app.appId)} />
                     <IconActionButton
                       icon={app.isActive ? Ban : CheckCircle2}
@@ -129,11 +132,8 @@ export default function AppListPage() {
             <THead>
               <TR>
                 <TH>Nama</TH>
-                <TH>App ID</TH>
                 <TH>Jenis</TH>
-                <TH>Callback URL</TH>
                 <TH>Status</TH>
-                <TH>Terdaftar</TH>
                 <TH className="text-right">Aksi</TH>
               </TR>
             </THead>
@@ -141,23 +141,19 @@ export default function AppListPage() {
               {apps.map((app) => (
                 <TR key={app.appId}>
                   <TD className="font-medium">{app.name}</TD>
-                  <TD className="font-mono text-[12.5px] text-text-secondary">{app.appId}</TD>
                   <TD>
                     <Badge tone={app.kind === "internal" ? "navy" : "info"}>
                       {app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}
                     </Badge>
                   </TD>
-                  <TD className="max-w-[220px] truncate text-[12.5px] text-text-secondary" title={app.callbackUrl}>
-                    {app.callbackUrl || "-"}
-                  </TD>
                   <TD>
                     <Badge tone={app.isActive ? "success" : "neutral"}>{app.isActive ? "Aktif" : "Nonaktif"}</Badge>
                   </TD>
-                  <TD className="text-[12.5px] text-text-secondary">{formatDate(app.createdAt)}</TD>
                   <TD>
                     <div className="flex justify-end gap-1.5">
                       {app.kind === "external" && (
                         <>
+                          <IconActionButton icon={Info} label="Detail" onClick={() => setDetailApp(app)} />
                           <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => void handleResetSecret(app.appId)} />
                           <IconActionButton
                             icon={app.isActive ? Ban : CheckCircle2}
@@ -179,6 +175,8 @@ export default function AppListPage() {
       </Card>
 
       <AppFormModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={(values) => void handleCreate(values)} />
+
+      <AppDetailModal open={detailApp !== undefined} onClose={() => setDetailApp(undefined)} app={detailApp} />
 
       <Modal
         open={secretReveal !== null}

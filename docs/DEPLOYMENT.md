@@ -101,11 +101,19 @@ See ADR-0011 for the full decision record. The target VPS ("Elcodelabs", also ho
 3. **One binary does everything the image needs** — no separate migrate CLI, seed binary, or
    curl/wget baked into the container. `cmd/server`'s compiled binary (`./api`) dispatches on an
    optional first argument:
+   - `./api migrate up` — applies **every pending** migration in one call (`golang-migrate`'s
+     `m.Up()`, `apps/api/internal/migrator/migrator.go:41`), not "one step" — a deploy after
+     several unreleased migrations have accumulated applies all of them in a single run. `./api
+     migrate down` **is** one step (`m.Steps(-1)`, `migrator.go:53`) — `up` and `down` are NOT
+     symmetric, despite an earlier version of this doc claiming otherwise. This distinction matters
+     in practice: it's what let migrations 37–45 (`docs/plan/external-subscription-plans/PLAN.md`)
+     silently queue up behind three unreleased commits without anyone noticing until deploy time —
+     see §7 below.
    - `./api` (no args) — serve, exactly like local dev.
-   - `./api migrate up` / `./api migrate down` — apply/roll back one step, using the same
-     `apps/api/migrations/*.sql` files (now embedded in the binary via `go:embed`, see
-     `apps/api/internal/migrator`) that `npm run migrate:up`/`migrate:down` drive locally through
-     the external `golang-migrate` CLI. Both paths share one `schema_migrations` table format, so
+   - Both `migrate up`/`migrate down` and the local `npm run migrate:up`/`migrate:down` drive the
+     same `apps/api/migrations/*.sql` files (now embedded in the binary via `go:embed`, see
+     `apps/api/internal/migrator`) — one through the external `golang-migrate` CLI, the other
+     through the compiled binary. Both paths share one `schema_migrations` table format, so
      they're interchangeable — the CLI (§1 prerequisite) stays a local-dev convenience only, never
      required in production.
    - `./api migrate force <version>` — clear a "dirty" `schema_migrations` state without running
@@ -149,3 +157,21 @@ See ADR-0011 for the full decision record. The target VPS ("Elcodelabs", also ho
      applied. Recovered with the new `./api migrate force <version>` subcommand (mirrors upstream
      golang-migrate's `migrate force`) rather than a manual SQL `UPDATE` against the production
      database — see `apps/api/internal/migrator`'s `Force`.
+
+## 7. Two independent reconcilers (`docs/plan/external-subscription-plans/PLAN.md`)
+
+Since that plan landed, the server starts **two** background reconciliation loops, not one — both
+should be visible ticking in the container logs after a deploy:
+
+- `payment: reconciliation sweep` — `payment`'s own sweep over `payment_charge_dispatch`
+  (`PAYMENT_RECONCILE_INTERVAL`, default `3m`), unchanged from before.
+- `billing: subscription reconciliation sweep` — a **separate** reconciler over
+  `subscription_app_charges` (`SUBSCRIPTION_RECONCILE_INTERVAL`, default `3m`; also reads
+  `SUBSCRIPTION_CHARGE_MAX_AGE`, default `24h`, before force-expiring a still-unpaid charge).
+
+The two call the payment gateway **independently** — for a subscription charge, both reconcilers
+may end up checking the same `order_ref` against the gateway around the same time. This is
+accepted and by design (`billing` deliberately doesn't hook into `payment`'s own dispatch switch,
+to avoid touching the code path that processes real WO-tenant money) — two nearby log lines for one
+`order_ref` is expected behavior, not a duplicate-firing bug. If only one of the two reconcilers is
+ticking after a deploy, that's the actual problem to chase.

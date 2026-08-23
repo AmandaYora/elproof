@@ -89,3 +89,11 @@ func FromContext(ctx context.Context) (*Claims, bool) {
 	claims, ok := ctx.Value(claimsContextKey).(*Claims)
 	return claims, ok
 }
+
+// NewContextWithClaims injects Claims the same way RequireAuth does,
+// without needing a real signed JWT — every handler test across modules
+// that needs to simulate an authenticated principal calls this instead of
+// re-declaring its own context key (A34/§7.1).
+func NewContextWithClaims(ctx context.Context, claims *Claims) context.Context {
+	return context.WithValue(ctx, claimsContextKey, claims)
+}

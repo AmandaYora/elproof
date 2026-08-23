@@ -80,6 +80,19 @@ type Client interface {
 	CheckStatusForApp(ctx context.Context, appID, orderRef string) (*ChargeResult, error)
 }
 
+// AppRegistry is the contract for another module's own external, App-token-
+// authenticated endpoints (not payment endpoints) that need to check an
+// App's status without importing `payment/infrastructure` directly — e.g.
+// `billing`'s `/external/subscription-plans` and
+// `/external/subscriptions/charges`. IsAppActive already backs `payment`'s
+// own RequireActiveApp guard; AppExists additionally lets a caller validate
+// an app_id exists at all (active or not) before writing a cross-module
+// mapping to it, since app_id is stored as a primitive ID with no FK.
+type AppRegistry interface {
+	IsAppActive(ctx context.Context, appID string) (bool, error)
+	AppExists(ctx context.Context, appID string) (bool, error)
+}
+
 // WebhookConsumer is implemented by every App internal that registers with
 // the Dispatcher — invoked in-process, same request, when a webhook event
 // for that App's order ref arrives (see MODULE_PAYMENT.md §6).

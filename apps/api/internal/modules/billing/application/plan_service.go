@@ -15,6 +15,11 @@ type PlanRepository interface {
 	Create(ctx context.Context, plan *domain.Plan) error
 	Update(ctx context.Context, plan *domain.Plan) error
 	SetActive(ctx context.Context, id int64, isActive bool) error
+	ListForApp(ctx context.Context, appID string) ([]domain.Plan, error)
+	ListPublic(ctx context.Context) ([]domain.Plan, error)
+	ListPublicPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error)
+	ListPlanIDsForApp(ctx context.Context, appID string) ([]int64, error)
+	ReplaceAppPlans(ctx context.Context, appID string, planIDs []int64) error
 }
 
 type PlanService struct {
@@ -83,6 +88,59 @@ func (s *PlanService) Update(ctx context.Context, id int64, input PlanInput) (*d
 		return nil, err
 	}
 	return existing, nil
+}
+
+// ListForApp returns the catalog visible to appID (D3) — every plan mapped
+// to it, including non-active ones (A3).
+func (s *PlanService) ListForApp(ctx context.Context, appID string) ([]domain.Plan, error) {
+	if appID == "" {
+		return nil, apperror.Validation("appId wajib diisi", map[string][]string{"appId": {"appId wajib diisi"}})
+	}
+	return s.repo.ListForApp(ctx, appID)
+}
+
+// ListPublic returns ElProof's own catalog — plans with no App mapping (D3).
+func (s *PlanService) ListPublic(ctx context.Context) ([]domain.Plan, error) {
+	return s.repo.ListPublic(ctx)
+}
+
+// ListPublicPaginated is ListPublic with pagination — backs the branching
+// list() paginated cabang (A12).
+func (s *PlanService) ListPublicPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
+	return s.repo.ListPublicPaginated(ctx, params, search)
+}
+
+// GetAppPlanIDs returns the raw plan_id set mapped to appID — backs
+// GET /api/v1/app-plans (task 7.3).
+func (s *PlanService) GetAppPlanIDs(ctx context.Context, appID string) ([]int64, error) {
+	if appID == "" {
+		return nil, apperror.Validation("appId wajib diisi", map[string][]string{"appId": {"appId wajib diisi"}})
+	}
+	return s.repo.ListPlanIDsForApp(ctx, appID)
+}
+
+// SetAppPlans replaces appID's entire mapping set (A8, replace-set
+// semantics). Duplicate planIDs are dropped before writing so a sensible
+// payload never trips the UNIQUE (app_id, plan_id) constraint.
+func (s *PlanService) SetAppPlans(ctx context.Context, appID string, planIDs []int64) error {
+	if appID == "" {
+		return apperror.Validation("appId wajib diisi", map[string][]string{"appId": {"appId wajib diisi"}})
+	}
+	return s.repo.ReplaceAppPlans(ctx, appID, dedupInt64(planIDs))
+}
+
+// dedupInt64 drops duplicates while keeping first-seen order stable.
+func dedupInt64(ids []int64) []int64 {
+	seen := make(map[int64]bool, len(ids))
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		result = append(result, id)
+	}
+	return result
 }
 
 func (s *PlanService) ToggleActive(ctx context.Context, id int64) (*domain.Plan, error) {

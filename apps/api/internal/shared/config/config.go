@@ -39,6 +39,17 @@ type Config struct {
 	// webhook was never received against the gateway directly — the safety
 	// net described in knowledge/MODULE_PAYMENT.md.
 	PaymentReconcileInterval time.Duration
+
+	// SubscriptionReconcileInterval is how often `billing`'s own reconciler
+	// (A16) re-checks subscription intents whose webhook was never received —
+	// separate from PaymentReconcileInterval since it's a different
+	// reconciler polling a different table (subscription_app_charges, not
+	// payment_charge_dispatch). See PLAN.md A32: the two reconcilers call
+	// the gateway independently by design.
+	SubscriptionReconcileInterval time.Duration
+	// SubscriptionChargeMaxAge is how long a subscription charge can stay
+	// `unpaid` before the reconciler force-resolves it as `expired`.
+	SubscriptionChargeMaxAge time.Duration
 }
 
 // Load reads .env from the repo root (or the current directory) into the process
@@ -68,6 +79,9 @@ func Load() Config {
 
 		PaymentEncryptionKey:     getEnv("PAYMENT_ENCRYPTION_KEY", ""),
 		PaymentReconcileInterval: getDuration("PAYMENT_RECONCILE_INTERVAL", 3*time.Minute),
+
+		SubscriptionReconcileInterval: getDuration("SUBSCRIPTION_RECONCILE_INTERVAL", 3*time.Minute),
+		SubscriptionChargeMaxAge:      getDuration("SUBSCRIPTION_CHARGE_MAX_AGE", 24*time.Hour),
 	}
 }
 

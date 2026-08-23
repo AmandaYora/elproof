@@ -727,6 +727,18 @@ func (s *PaymentService) IsAppActive(ctx context.Context, appID string) (bool, e
 	return app != nil && app.IsActive, nil
 }
 
+// AppExists reports whether appID is registered at all, active or not —
+// used by other modules to validate an app_id before writing a cross-module
+// mapping to it (e.g. `billing`'s app-plan mapping), since app_id is stored
+// as a primitive ID with no FK back to payment_apps.
+func (s *PaymentService) AppExists(ctx context.Context, appID string) (bool, error) {
+	app, err := s.appRepo.FindByAppID(ctx, appID)
+	if err != nil {
+		return false, err
+	}
+	return app != nil, nil
+}
+
 // CreateExternalApp registers a new external App and returns its plaintext
 // secret exactly once — the caller (Platform Console) must display it now;
 // it can never be retrieved again, only reset.

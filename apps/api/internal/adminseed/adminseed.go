@@ -86,6 +86,11 @@ func truncateAll(db *sql.DB) {
 		"TRUNCATE TABLE credentials",
 		"TRUNCATE TABLE subscription_transactions",
 		"TRUNCATE TABLE plan_features",
+		// Both FK-reference subscription_plans.id — truncated before it so no
+		// orphaned row survives pointing at a plan this reseed is about to
+		// delete (docs/plan/external-subscription-plans/PLAN.md).
+		"TRUNCATE TABLE subscription_app_charges",
+		"TRUNCATE TABLE subscription_plan_apps",
 		"TRUNCATE TABLE subscription_plans",
 		"TRUNCATE TABLE staff_members",
 		"TRUNCATE TABLE platform_admins",

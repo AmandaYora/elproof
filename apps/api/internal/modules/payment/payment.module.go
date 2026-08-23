@@ -60,6 +60,13 @@ func (m *Module) Client() contracts.Client {
 	return m.service
 }
 
+// AppRegistry exposes the read-only App-status contract another module's
+// own external, App-token endpoints need (e.g. `billing`) — see
+// contracts.AppRegistry.
+func (m *Module) AppRegistry() contracts.AppRegistry {
+	return m.service
+}
+
 // Dispatcher exposes the contract main.go uses, after every module is built,
 // to register each App internal's webhook consumer — mirrors the
 // dependency-inversion bridge pattern from Fase 6's projects<->clients wiring

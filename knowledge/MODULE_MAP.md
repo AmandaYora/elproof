@@ -10,7 +10,7 @@ frontend's own module folders under `apps/web/src/modules/<name>`.
 | `identity` | Login/refresh/logout for all principal types; password hashing; token issuance | `credentials`, `refresh_tokens` | none — deliberately profile-agnostic (see ADR-0005) |
 | `payment` | One payment-gateway merchant wallet (Tripay), wrapped for many consumers ("Apps") — gateway config, App registry, webhook dispatch. Owns no business ledger of its own — see `MODULE_PAYMENT.md`. Fase 9: internal mode (`platform` as the one App internal). Fase 10 (implemented): external Apps over HTTP — `/auth/app/token` + `/external/payments/*`, Platform Console's "Manajemen Aplikasi" page. | `payment_gateway_config`, `payment_apps`, `payment_charge_dispatch`, `payment_webhook_events` | `identity` (mint bearer tokens for external Apps — one-way, same shape as `vendors -> projects` below) |
 | `platform` | Tenant lifecycle (register/suspend/activate/pay), per-tenant branding (logo + 1-of-20 color presets), Platform Console's own admin accounts — see `MODULE_PLATFORM.md` | `tenants`, `platform_admins`, `pending_subscription_charges` | `staff` (create Owner on tenant registration), `identity` (create credentials), `billing` (read plan, record/update transaction), `payment` (create charge; also registers itself as `payment`'s webhook consumer for `platform-billing`, Fase 9), `vendors` (seed a new tenant's default vendor categories on registration), `projects` (seed a new tenant's default Timeline template on registration — `SeedDefaultMilestoneTemplate`, same moment as the `vendors` seed above); depends directly on `internal/shared/storage` (not another module's contract — a shared technical utility, same one `projects`/evidence uses, ADR-0006) for logo upload/download |
-| `billing` | Subscription plan catalog + subscription transaction ledger — single source of truth shared by both consoles | `subscription_plans`, `subscription_transactions` | none |
+| `billing` | Subscription plan catalog + subscription transaction ledger — single source of truth shared by both consoles. Also owns per-App plan visibility (`subscription_plan_apps`, D3) and an external-App subscription ledger (`subscription_app_charges`, D7) — `GET /external/subscription-plans`, `POST /external/subscriptions/charges`, `GET`/`PUT /app-plans`, `GET /app-subscriptions` (`docs/plan/external-subscription-plans/PLAN.md`) | `subscription_plans`, `subscription_transactions`, `subscription_plan_apps`, `subscription_app_charges` | `payment` (`AppRegistry` — checks an App's active/exists status for `billing`'s own App-token endpoints; `Client` — creates a subscription charge, `CreateChannelCharge`) |
 | `staff` | WO internal users (Owner/Admin/Staff), tenant-scoped | `staff_members` | `identity` (create credentials for Admin/Staff created via "Tambah Pengguna"; the Owner's own credential is created separately by `platform`'s tenant-registration orchestration, see below) |
 | `clients` | Client contacts per project, tenant-scoped | `clients` | `projects` (validate `project_id` exists), `identity` (create/reset credentials) |
 | `vendors` | Vendor directory + categories, tenant-scoped, plus (ADR-0016) the Venue directory — its own table, but still this module, since Venue and Vendor are conceptually siblings | `vendors`, `vendor_categories`, `venues` | `projects` (resolve a vendor's cross-project engagement history for "Lihat Project" — `project_vendors` is owned by `projects`, not `vendors`) |
@@ -100,6 +100,15 @@ provision a real credential for Admin/Staff the same way `clients.Create` alread
 the same compensating rollback (delete the just-inserted `staff_members` row) if
 `identity.CreateCredential` fails after it. `identity` never needs anything back from `staff`, so
 `main.go` just builds `identityModule` before `staffModule` (already the existing order).
+
+**`billing` → `payment`, a plain one-way dependency (`docs/plan/external-subscription-plans/PLAN.md`,
+A5):** `billing.NewModule` now takes `paymentcontracts.AppRegistry` and `paymentcontracts.Client` as
+constructor arguments — the same direct-contracts-injection shape `platform` already uses for
+`paymentModule.Client()` (`main.go:210`), not a duplicated local interface. `payment` needs nothing
+back from `billing` (verified zero imports either direction before this change, T6 in the plan
+above), so this is an ordinary one-way dependency, not a cycle: `main.go` simply builds
+`paymentModule` before `billingModule` — the existing order already had `payment` first (A6), so no
+reordering was needed either.
 
 ## Frontend module ↔ backend module
 

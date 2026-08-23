@@ -84,20 +84,31 @@ from `GET /tenants` + `GET /subscription-transactions` (`getPlatformStats`, `bui
 same as before Fase 2. Moving that computation server-side (with a real clock instead of the
 frontend's local "today") is Fase 5 scope.
 
-## `billing` (read by both consoles; writes are `platform_admin`-only) — **implemented, Fase 2**
+## `billing` (read by both consoles; writes are `platform_admin`-only) — **implemented, Fase 2**; isolated per-App catalog + subscription ledger added `docs/plan/external-subscription-plans/PLAN.md`
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/plans` | public to any authenticated principal — WO Console's `Langganan` reads this too; **paginated** (Fase 7), but every current frontend consumer calls `?all=true` since the plan catalog is a small, bounded reference list, not a growing per-tenant one |
+| GET | `/plans` | **principal-aware since the isolated-catalog change** (was: public to any authenticated principal reading the same list). `platform_admin` sees every plan (public + private); any other principal — including no claim at all — sees only plans with no App mapping (ElProof's own public catalog). `planResponse` gained an additive field `appIds: string[]`, populated only for `platform_admin` ([] otherwise) — a non-empty value marks a plan private to those App IDs. WO Console's `Langganan` reads this too; **paginated** (Fase 7), but every current frontend consumer calls `?all=true` since the plan catalog is a small, bounded reference list, not a growing per-tenant one |
 | POST | `/plans` | platform_admin only |
 | PATCH | `/plans/{id}` | platform_admin only |
 | POST | `/plans/{id}/toggle-active` | platform_admin only |
 | GET | `/subscription-transactions` | platform_admin: all tenants (optional `?tenantId=`); staff: forced to own tenant from JWT regardless of query; **paginated** (Fase 7), `?status=` filters transaction status (now includes `pending`, added Fase 9) |
+| GET | `/external/subscription-plans` | `app` principal only. Every plan mapped to the calling App (isolated per App — App A never sees App B's plans), including non-active ones with an `active` flag. Response: `{id, name, durationMonths, price, active, features}` — note `active`, not `isActive` (deliberately different from `/plans` above), and `features` always present, never `null`. No mapping → `200` with `data: []`, not `404`. |
+| GET, PUT | `/app-plans` | `platform_admin` only. `?appId=` query on `GET` → `{appId, planIds}`; `PUT` body `{appId, planIds}` **replaces the entire mapping set** (not a delta) — Platform Console's "Kelola Paket" tab inside `AppDetailModal` uses this, never SQL by hand. `appId` not found in the App registry → `422` (no FK exists between this table and `payment_apps`, since that would be a cross-module FK). |
+| POST | `/external/subscriptions/charges` | `app` principal only. The correct way for an external App to buy/renew an ElProof subscription — as opposed to `payment`'s `/external/payments/charges` (general-purpose, amount supplied by caller). Body `{orderRef, planId, customerName?, customerEmail?, customerPhone?}` — **no `amount`**, the price comes from the catalog server-side. `planId` not mapped to the calling App → `422` (the real guard against buying another App's plan — `planId` is guessable, the catalog endpoint alone isn't sufficient). Response shape identical to `payment`'s own charge response. Status polling reuses `payment`'s existing `GET /external/payments/charges/{orderRef}/status` unchanged — not duplicated here. |
+| GET | `/app-subscriptions` | `platform_admin` only. `[{appId, planName, subscriptionUntil, status}]` — "who's paying for what, until when" per external App, backing `AppDetailModal`'s tab Langganan. An App with no paid history simply doesn't appear (ledger starts empty until a consumer switches to the subscription-charge endpoint above) — the frontend renders that as "—", not an error. |
 
 No `POST /subscription-transactions` on this module — both "pay" and "activate" mutations live on
 `platform`'s routes (`/subscriptions/pay`, `/tenants/{id}/activate-subscription`) since they must
 also update the `tenants` row `billing` doesn't own; they call `billing.Contracts.RecordTransaction`
 internally. See ADR-0008.
+
+`subscription_plan_apps` (visibility mapping) and `subscription_app_charges` (ledger) are owned by
+`billing`, not `payment`, even though the two `/external/subscriptions/*` and `/app-plans`/
+`/app-subscriptions` routes above are token-App-authenticated the same way `payment`'s own external
+routes are — `billing` receives `payment.contracts.AppRegistry`/`Client` at construction time
+(`main.go`) rather than duplicating App-registry logic. See `docs/DB_SCHEMA.md` and
+`knowledge/MODULE_PAYMENT.md` for the module-boundary reasoning.
 
 ## `staff` (WO Console, tenant-scoped) — Owner-only (`requireOwnerTenant`) except `/staff/summary`
 
