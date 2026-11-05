@@ -14,3 +14,4 @@ export * from "./Table";
 export * from "./Pagination";
 export * from "./EvidenceViewerModal";
 export * from "./IconActionButton";
+export * from "./ConfirmDialog";

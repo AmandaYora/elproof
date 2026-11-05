@@ -18,7 +18,16 @@ export interface RegisterTenantResult {
 
 export interface ResetTenantCredentialResult {
   username: string;
+  /** The password the admin just typed — the API never echoes it back. */
   password: string;
+}
+
+/** Manual activation: reason and proof are mandatory (backend validates). */
+export interface ManualActivationInput {
+  planId: string;
+  reason: string;
+  proofReference: string;
+  note: string;
 }
 
 export interface RegisterPlatformAdminResult {
@@ -60,6 +69,8 @@ interface RawTenant {
   planId: number | null;
   subscriptionStatus: Tenant["subscriptionStatus"];
   subscriptionExpiresAt: string | null;
+  trialEndsAt: string | null;
+  lifecycle: Tenant["lifecycle"];
   isSuspended: boolean;
   lastCredentialResetAt: string | null;
   brandColorPreset: string;
@@ -96,6 +107,7 @@ interface RawPlatformAdmin {
   email: string;
   phone: string;
   isActive: boolean;
+  mfaEnabled: boolean;
 }
 
 function toPlatformAdmin(raw: RawPlatformAdmin): PlatformAdmin {
@@ -132,7 +144,7 @@ interface PlatformAdminState {
   uploadTenantLogo: (id: string, file: CompressedFilePayload) => Promise<void>;
   toggleTenantSuspension: (id: string) => Promise<void>;
   resetTenantCredential: (id: string, password: string) => Promise<ResetTenantCredentialResult>;
-  activateTenantSubscription: (tenantId: string, planId: string) => Promise<void>;
+  activateTenantSubscription: (tenantId: string, input: ManualActivationInput) => Promise<void>;
   // Tenant Owner's own self-service "Bayar Sekarang" — scoped to their own
   // tenant server-side via the JWT claim, not a request parameter. Returns
   // the created charge (Fase 9) — the subscription activates later, once
@@ -145,6 +157,7 @@ interface PlatformAdminState {
   updatePlatformAdmin: (id: string, values: PlatformAdminFormValues) => Promise<void>;
   togglePlatformAdminActive: (id: string) => Promise<void>;
   resetPlatformAdminPassword: (id: string, password: string) => Promise<ResetPlatformAdminPasswordResult>;
+  resetPlatformAdminMfa: (id: string) => Promise<void>;
 }
 
 // Backed by the real `platform` + `billing` modules (Fase 2) — fetch-then-set,
@@ -236,11 +249,17 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
   resetTenantCredential: async (id, password) => {
     const res = await httpClient.post(API.platform.tenantResetCredential(id), { password });
     await get().fetchTenants();
-    return res.data.data as ResetTenantCredentialResult;
+    const { username } = res.data.data as { username: string };
+    return { username, password };
   },
 
-  activateTenantSubscription: async (tenantId, planId) => {
-    await httpClient.post(API.platform.tenantActivateSubscription(tenantId), { planId: Number(planId) });
+  activateTenantSubscription: async (tenantId, input) => {
+    await httpClient.post(API.platform.tenantActivateSubscription(tenantId), {
+      planId: Number(input.planId),
+      reason: input.reason,
+      proofReference: input.proofReference,
+      note: input.note,
+    });
     await Promise.all([get().fetchTenants(), get().fetchTransactions()]);
   },
 
@@ -281,6 +300,12 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
 
   resetPlatformAdminPassword: async (id, password) => {
     const res = await httpClient.post(API.platform.platformAdminResetPassword(id), { password });
-    return res.data.data as ResetPlatformAdminPasswordResult;
+    const { username } = res.data.data as { username: string };
+    return { username, password };
+  },
+
+  resetPlatformAdminMfa: async (id) => {
+    await httpClient.post(API.platform.platformAdminResetMfa(id));
+    await get().fetchPlatformAdmins();
   },
 }));

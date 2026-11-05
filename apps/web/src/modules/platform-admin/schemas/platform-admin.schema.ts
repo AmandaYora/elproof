@@ -1,7 +1,15 @@
 import { z } from "zod";
 import { usernameSchema } from "@/shared/lib/validators";
 
-export const PLATFORM_ADMIN_ROLE_OPTIONS = ["Super Admin", "Support"] as const;
+export const PLATFORM_ADMIN_ROLE_OPTIONS = ["Super Admin", "Billing", "Support", "Read-only"] as const;
+
+/** What each role may do — shown next to the role picker. */
+export const PLATFORM_ADMIN_ROLE_DESCRIPTIONS: Record<(typeof PLATFORM_ADMIN_ROLE_OPTIONS)[number], string> = {
+  "Super Admin": "Semua akses, termasuk admin, gateway pembayaran, dan pembekuan tenant.",
+  Billing: "Kelola paket dan aktivasi langganan manual.",
+  Support: "Daftarkan dan ubah tenant, serta reset kredensial Owner.",
+  "Read-only": "Hanya melihat data, tanpa mengubah apa pun.",
+};
 
 export const platformAdminSchema = z.object({
   name: z.string().min(2, "Nama wajib diisi"),

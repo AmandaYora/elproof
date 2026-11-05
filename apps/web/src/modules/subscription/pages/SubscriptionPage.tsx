@@ -12,6 +12,8 @@ import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
+import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
+import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePlatformAdminStore, type PaymentCharge } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LABEL } from "@/modules/platform-admin/lib/status";
@@ -75,6 +77,7 @@ export default function SubscriptionPage() {
 
   const activePlans = plans.filter((p) => p.isActive);
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
+  const lifecycle = tenant?.lifecycle;
   const isActive = tenant?.subscriptionStatus === "active" || tenant?.subscriptionStatus === "expiring_soon";
   // A pending charge whose live gateway status couldn't be fetched degrades
   // to just orderRef + amount (see GetPendingCharge on the backend) — channel
@@ -83,10 +86,15 @@ export default function SubscriptionPage() {
   // allowing "Batalkan".
   const isPendingChargeDegraded = pendingCharge !== null && !pendingCharge.channel;
 
-  const daysLeft = isActive && tenant?.subscriptionExpiresAt ? daysBetween(today(), tenant.subscriptionExpiresAt) : null;
-  const isExpired = tenant?.subscriptionStatus === "expired";
+  const periodEnd = lifecycle?.periodEndsAt ?? tenant?.subscriptionExpiresAt ?? null;
+  const daysLeft = periodEnd ? daysBetween(today(), periodEnd) : null;
   const isExpiringSoon = tenant?.subscriptionStatus === "expiring_soon";
-  const isHealthy = tenant?.subscriptionStatus === "active";
+  // Label for the period line, by lifecycle state.
+  const periodLabel = lifecycle?.status === "trialing"
+    ? "Masa coba hingga"
+    : isActive
+      ? "Berlaku hingga"
+      : "Berakhir pada";
 
   // Stop polling on unmount so a left-open tab doesn't keep hitting the API.
   useEffect(() => {
@@ -117,6 +125,7 @@ export default function SubscriptionPage() {
         if (match.status === "paid") {
           setChargeOutcome("paid");
           await fetchMyTenant();
+          void useSubscriptionStatusStore.getState().fetch();
         } else {
           setChargeOutcome("expired");
         }
@@ -257,18 +266,15 @@ export default function SubscriptionPage() {
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[15px] font-bold text-text-primary">Pilih Paket Langganan</h2>
-          {isHealthy && <Badge tone="success">Aktif</Badge>}
-          {isExpiringSoon && <Badge tone="warning">Segera Berakhir</Badge>}
-          {isExpired && <Badge tone="danger">Berakhir</Badge>}
-          {tenant?.subscriptionStatus === "pending_payment" && <Badge tone="neutral">Belum Berlangganan</Badge>}
+          {tenant && <TenantStatusBadge status={tenant.subscriptionStatus} />}
         </div>
 
-        {isActive && tenant?.subscriptionExpiresAt && (
+        {periodEnd && (
           <p className="flex items-center gap-1.5 text-[12.5px] text-text-secondary">
             <Clock className="h-3.5 w-3.5 shrink-0" />
-            {isExpired ? "Berakhir pada" : "Berlaku hingga"} {formatDate(tenant.subscriptionExpiresAt)}
-            {isExpiringSoon && daysLeft !== null && daysLeft <= RENEWAL_WARNING_DAYS && (
-              <span className="font-semibold text-warning"> · H-{daysLeft}</span>
+            {periodLabel} {formatDate(periodEnd)}
+            {(isExpiringSoon || lifecycle?.status === "trialing") && daysLeft !== null && daysLeft >= 0 && daysLeft <= RENEWAL_WARNING_DAYS && (
+              <span className="font-semibold text-warning">, tersisa {daysLeft} hari</span>
             )}
           </p>
         )}
@@ -402,7 +408,7 @@ export default function SubscriptionPage() {
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         title={selectedPlan && selectedPlan.id === tenant?.planId ? "Perpanjang Langganan" : "Berlangganan ElProof"}
-        description="Anda akan diarahkan ke halaman pembayaran untuk menyelesaikan transaksi."
+        description="Setelah ini kode QRIS muncul untuk dibayar lewat aplikasi bank atau e-wallet. Masa aktif baru dimulai setelah masa berjalan Anda selesai."
         size="sm"
         footer={
           <>

@@ -9,6 +9,10 @@ export const API = {
     refresh: "/api/v1/auth/refresh",
     logout: "/api/v1/auth/logout",
     me: "/api/v1/auth/me",
+    // Two-factor (TOTP) for Platform Console admins.
+    mfaVerify: "/api/v1/auth/mfa/verify",
+    mfaSetup: "/api/v1/auth/mfa/setup",
+    mfaEnable: "/api/v1/auth/mfa/enable",
   },
   billing: {
     plans: "/api/v1/plans",
@@ -37,6 +41,8 @@ export const API = {
     tenants: "/api/v1/tenants",
     tenant: (id: string) => `/api/v1/tenants/${id}`,
     tenantMe: "/api/v1/tenants/me",
+    // Lifecycle summary for every staff role (console banner).
+    tenantMeSubscription: "/api/v1/tenants/me/subscription",
     tenantMeBranding: "/api/v1/tenants/me/branding",
     tenantMeLogo: "/api/v1/tenants/me/logo",
     tenantLogo: (id: string) => `/api/v1/tenants/${id}/logo`,
@@ -50,6 +56,7 @@ export const API = {
     platformAdmin: (id: string) => `/api/v1/platform-admins/${id}`,
     platformAdminToggleActive: (id: string) => `/api/v1/platform-admins/${id}/toggle-active`,
     platformAdminResetPassword: (id: string) => `/api/v1/platform-admins/${id}/reset-password`,
+    platformAdminResetMfa: (id: string) => `/api/v1/platform-admins/${id}/reset-mfa`,
   },
   // Pre-auth, Host-header-resolved tenant branding (ADR-0015) — powers
   // LoginPage for a tenant's own custom domain. Unlike every other group

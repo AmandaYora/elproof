@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, KeyRound, UserX, UserCheck } from "lucide-react";
+import { Plus, Pencil, KeyRound, UserX, UserCheck, ShieldOff } from "lucide-react";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
@@ -40,6 +41,10 @@ export default function PlatformUserListPage() {
   const updatePlatformAdmin = usePlatformAdminStore((s) => s.updatePlatformAdmin);
   const togglePlatformAdminActive = usePlatformAdminStore((s) => s.togglePlatformAdminActive);
   const resetPlatformAdminPassword = usePlatformAdminStore((s) => s.resetPlatformAdminPassword);
+  const resetPlatformAdminMfa = usePlatformAdminStore((s) => s.resetPlatformAdminMfa);
+  const [mfaResetAdmin, setMfaResetAdmin] = useState<PlatformAdmin | undefined>(undefined);
+  const [mfaResetError, setMfaResetError] = useState<string | null>(null);
+  const [isResettingMfa, setIsResettingMfa] = useState(false);
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
@@ -114,6 +119,40 @@ export default function PlatformUserListPage() {
     setResetPasswordAdmin(undefined);
   }
 
+  async function handleConfirmMfaReset() {
+    if (!mfaResetAdmin) return;
+    setMfaResetError(null);
+    setIsResettingMfa(true);
+    try {
+      await resetPlatformAdminMfa(mfaResetAdmin.id);
+      await refetch();
+      setMfaResetAdmin(undefined);
+    } catch (err) {
+      setMfaResetError(getApiErrorMessage(err, "Gagal mereset verifikasi dua langkah"));
+    } finally {
+      setIsResettingMfa(false);
+    }
+  }
+
+  function mfaBadge(admin: PlatformAdmin) {
+    return admin.mfaEnabled ? <Badge tone="success">2FA aktif</Badge> : <Badge tone="warning">2FA belum aktif</Badge>;
+  }
+
+  function mfaResetButton(admin: PlatformAdmin) {
+    if (!admin.mfaEnabled) return null;
+    return (
+      <IconActionButton
+        icon={ShieldOff}
+        label="Reset verifikasi dua langkah"
+        tone="danger"
+        onClick={() => {
+          setMfaResetError(null);
+          setMfaResetAdmin(admin);
+        }}
+      />
+    );
+  }
+
   async function handleToggleActive(adminId: string) {
     setActionError(null);
     try {
@@ -175,11 +214,14 @@ export default function PlatformUserListPage() {
                         <Avatar name={admin.name} />
                         <span className="truncate font-semibold text-text-primary">{admin.name}</span>
                       </div>
-                      {admin.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        {admin.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                        {mfaBadge(admin)}
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <CardListField label="Jabatan" value={admin.title} />
-                      <CardListField label="Role" value={<PlatformAdminRoleBadge role={admin.role} />} />
+                      <CardListField label="Peran" value={<PlatformAdminRoleBadge role={admin.role} />} />
                       <CardListField label="Telepon" value={admin.phone} />
                       <CardListField label="Email" value={admin.email} />
                     </div>
@@ -191,6 +233,7 @@ export default function PlatformUserListPage() {
                         tone="info"
                         onClick={() => setResetPasswordAdmin(admin)}
                       />
+                      {mfaResetButton(admin)}
                       {admin.isActive ? (
                         <IconActionButton
                           icon={UserX}
@@ -218,7 +261,7 @@ export default function PlatformUserListPage() {
                 <TR>
                   <TH>Nama</TH>
                   <TH>Jabatan</TH>
-                  <TH>Role</TH>
+                  <TH>Peran</TH>
                   <TH>Kontak</TH>
                   <TH>Status</TH>
                   <TH>Aksi</TH>
@@ -243,7 +286,12 @@ export default function PlatformUserListPage() {
                         <span className="block">{admin.phone}</span>
                         <span className="block text-[12.5px] text-text-secondary">{admin.email}</span>
                       </TD>
-                      <TD>{admin.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}</TD>
+                      <TD>
+                        <div className="flex flex-wrap gap-1.5">
+                          {admin.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                          {mfaBadge(admin)}
+                        </div>
+                      </TD>
                       <TD>
                         <div className="flex items-center gap-1.5">
                           <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(admin)} />
@@ -253,6 +301,7 @@ export default function PlatformUserListPage() {
                             tone="info"
                             onClick={() => setResetPasswordAdmin(admin)}
                           />
+                          {mfaResetButton(admin)}
                           {admin.isActive ? (
                             <IconActionButton
                               icon={UserX}
@@ -290,6 +339,22 @@ export default function PlatformUserListPage() {
         onSubmitCreate={handleRegister}
         onSubmitEdit={handleEditSubmit}
       />
+
+      <ConfirmDialog
+        open={mfaResetAdmin !== undefined}
+        title="Reset verifikasi dua langkah?"
+        confirmLabel="Reset verifikasi"
+        confirmText={mfaResetAdmin?.username}
+        isSubmitting={isResettingMfa}
+        error={mfaResetError}
+        onConfirm={() => void handleConfirmMfaReset()}
+        onClose={() => setMfaResetAdmin(undefined)}
+      >
+        <p>
+          Gunakan bila <span className="font-semibold text-text-primary">{mfaResetAdmin?.name}</span> kehilangan aplikasi
+          authenticator. Semua sesinya berakhir, dan saat masuk lagi ia harus menyiapkan verifikasi dua langkah dari awal.
+        </p>
+      </ConfirmDialog>
 
       <PlatformAdminResetPasswordModal
         key={resetPasswordAdmin?.id ?? "reset-none"}

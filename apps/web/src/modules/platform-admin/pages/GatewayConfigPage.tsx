@@ -6,6 +6,7 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { Field, Input, Select } from "@/shared/components/ui/Input";
 import { usePaymentGatewayStore } from "@/modules/platform-admin/stores/usePaymentGatewayStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 
 const PROVIDER_OPTIONS = [
   { value: "", label: "Tidak ada (mode simulasi — charge akan ditolak)" },
@@ -26,9 +27,16 @@ export default function GatewayConfigPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  function load() {
+    setLoadError(null);
+    fetchConfig().catch((err) => setLoadError(getApiErrorMessage(err, "Konfigurasi gateway gagal dimuat")));
+  }
 
   useEffect(() => {
-    void fetchConfig();
+    load();
   }, [fetchConfig]);
 
   useEffect(() => {
@@ -37,6 +45,20 @@ export default function GatewayConfigPage() {
     setIsSandbox(config.isSandbox);
     setMerchantCode(config.tripayMerchantCode);
   }, [config]);
+
+  // Switching provider or mode changes where real payments go: always ask.
+  const providerChanged = config !== null && activeProvider !== config.activeProvider;
+  const modeChanged = config !== null && isSandbox !== config.isSandbox;
+  const needsConfirmation = providerChanged || modeChanged;
+
+  function requestSave() {
+    if (needsConfirmation) {
+      setActionError(null);
+      setConfirmOpen(true);
+      return;
+    }
+    void handleSubmit();
+  }
 
   async function handleSubmit() {
     setActionError(null);
@@ -49,6 +71,7 @@ export default function GatewayConfigPage() {
       });
       setApiKey("");
       setPrivateKey("");
+      setConfirmOpen(false);
       setSuccessMessage("Konfigurasi gateway berhasil disimpan.");
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menyimpan konfigurasi gateway"));
@@ -59,6 +82,24 @@ export default function GatewayConfigPage() {
 
   if (isLoading && !config) {
     return <div className="py-20 text-center text-sm text-text-secondary">Memuat...</div>;
+  }
+
+  // Never show an editable form built from defaults: saving it would switch
+  // the live gateway off and wipe the merchant code.
+  if (!config) {
+    return (
+      <div className="flex max-w-xl flex-col gap-4">
+        <h1 className="text-xl font-bold text-text-primary">Konfigurasi Gateway</h1>
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+          {loadError ?? "Konfigurasi gateway gagal dimuat"}. Form dikunci supaya pengaturan yang sedang berjalan tidak tertimpa.
+        </p>
+        <div>
+          <Button variant="secondary" onClick={load}>
+            Muat ulang
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -141,11 +182,39 @@ export default function GatewayConfigPage() {
             />
           </Field>
 
-          <Button className="w-full justify-center" onClick={() => void handleSubmit()} disabled={isSubmitting} icon={<ShieldCheck className="h-4 w-4" />}>
+          <Button className="w-full justify-center" onClick={requestSave} disabled={isSubmitting} icon={<ShieldCheck className="h-4 w-4" />}>
             {isSubmitting ? "Menyimpan..." : "Simpan Konfigurasi"}
           </Button>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Ubah gateway pembayaran?"
+        confirmLabel="Simpan perubahan gateway"
+        confirmText={!isSandbox || !activeProvider ? "UBAH GATEWAY" : undefined}
+        isSubmitting={isSubmitting}
+        error={actionError}
+        onConfirm={() => void handleSubmit()}
+        onClose={() => setConfirmOpen(false)}
+      >
+        <ul className="flex list-disc flex-col gap-1.5 pl-5">
+          {providerChanged && (
+            <li>
+              Provider berubah dari <b className="text-text-primary">{config.activeProvider || "tidak ada"}</b> menjadi{" "}
+              <b className="text-text-primary">{activeProvider || "tidak ada"}</b>.
+              {!activeProvider && " Semua pembayaran langganan WO dan aplikasi eksternal akan ditolak."}
+            </li>
+          )}
+          {modeChanged && (
+            <li>
+              Mode berubah menjadi <b className="text-text-primary">{isSandbox ? "Sandbox" : "Production"}</b>.
+              {isSandbox ? " Pembayaran baru tidak akan menggerakkan uang sungguhan." : " Pembayaran baru akan menggerakkan uang sungguhan."}
+            </li>
+          )}
+          <li>Berlaku segera untuk langganan ElProof dan semua aplikasi eksternal.</li>
+        </ul>
+      </ConfirmDialog>
     </div>
   );
 }

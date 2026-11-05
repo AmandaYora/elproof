@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, KeyRound, Ban, CheckCircle2, Info } from "lucide-react";
+import { Plus, KeyRound, Ban, CheckCircle2, Info, Copy, Check } from "lucide-react";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
@@ -31,6 +32,20 @@ export default function AppListPage() {
   const [secretReveal, setSecretReveal] = useState<SecretReveal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [detailApp, setDetailApp] = useState<PaymentApp | undefined>(undefined);
+  const [resetTarget, setResetTarget] = useState<PaymentApp | undefined>(undefined);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  async function copy(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      setCopied(null);
+    }
+  }
 
   useEffect(() => {
     void fetchApps();
@@ -47,13 +62,18 @@ export default function AppListPage() {
     }
   }
 
-  async function handleResetSecret(appId: string) {
-    setActionError(null);
+  async function handleConfirmReset() {
+    if (!resetTarget) return;
+    setResetError(null);
+    setIsResetting(true);
     try {
-      const result = await resetAppSecret(appId);
+      const result = await resetAppSecret(resetTarget.appId);
+      setResetTarget(undefined);
       setSecretReveal({ kind: "reset", appId: result.appId, secret: result.secret });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mereset secret aplikasi"));
+      setResetError(getApiErrorMessage(err, "Gagal mereset secret aplikasi"));
+    } finally {
+      setIsResetting(false);
     }
   }
 
@@ -115,7 +135,10 @@ export default function AppListPage() {
                 {app.kind === "external" && (
                   <div className="flex items-center gap-1.5 pt-1">
                     <IconActionButton icon={Info} label="Detail" onClick={() => setDetailApp(app)} />
-                    <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => void handleResetSecret(app.appId)} />
+                    <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => {
+                      setResetError(null);
+                      setResetTarget(app);
+                    }} />
                     <IconActionButton
                       icon={app.isActive ? Ban : CheckCircle2}
                       label={app.isActive ? "Nonaktifkan" : "Aktifkan"}
@@ -154,7 +177,10 @@ export default function AppListPage() {
                       {app.kind === "external" && (
                         <>
                           <IconActionButton icon={Info} label="Detail" onClick={() => setDetailApp(app)} />
-                          <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => void handleResetSecret(app.appId)} />
+                          <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => {
+                      setResetError(null);
+                      setResetTarget(app);
+                    }} />
                           <IconActionButton
                             icon={app.isActive ? Ban : CheckCircle2}
                             label={app.isActive ? "Nonaktifkan" : "Aktifkan"}
@@ -191,9 +217,27 @@ export default function AppListPage() {
               <span className="text-text-secondary">App ID</span>
               <span className="font-mono font-semibold text-text-primary">{secretReveal.appId}</span>
             </div>
-            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2">
+            <div className="flex items-center justify-between gap-3 rounded-md bg-surface-muted px-3 py-2">
               <span className="text-text-secondary">Secret</span>
-              <span className="font-mono font-semibold text-text-primary">{secretReveal.secret}</span>
+              <span className="min-w-0 break-all font-mono font-semibold text-text-primary">{secretReveal.secret}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={copied === "id" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                onClick={() => void copy("id", secretReveal.appId)}
+              >
+                {copied === "id" ? "App ID tersalin" : "Salin App ID"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={copied === "secret" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                onClick={() => void copy("secret", secretReveal.secret)}
+              >
+                {copied === "secret" ? "Secret tersalin" : "Salin Secret"}
+              </Button>
             </div>
             <p className="text-[13px] leading-relaxed text-text-secondary">
               Berikan App ID dan Secret ini kepada tim teknis aplikasi eksternal tersebut untuk menyambungkan
@@ -203,6 +247,21 @@ export default function AppListPage() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog
+        open={resetTarget !== undefined}
+        title="Reset secret aplikasi?"
+        confirmLabel="Reset secret"
+        confirmText={resetTarget?.appId}
+        isSubmitting={isResetting}
+        error={resetError}
+        onConfirm={() => void handleConfirmReset()}
+        onClose={() => setResetTarget(undefined)}
+      >
+        <p>
+          Secret lama <span className="font-semibold text-text-primary">{resetTarget?.name}</span> langsung tidak berlaku.
+          Integrasi aplikasi itu akan gagal sampai tim teknisnya memasang secret baru.
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }

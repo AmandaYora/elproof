@@ -6,6 +6,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { loginSchema, type LoginFormValues } from "@/modules/auth/schemas/login.schema";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { clearLoginNotice, peekLoginNotice } from "@/shared/lib/session-notice";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
@@ -131,21 +132,23 @@ export default function LoginPage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Second login step for Platform Console admins with two-factor on.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  // Why the app ended the previous session (e.g. tenant frozen), once.
+  const [notice] = useState(() => peekLoginNotice());
+  useEffect(() => {
+    clearLoginNotice();
+  }, []);
 
   function set<K extends keyof LoginFormValues>(key: K, value: LoginFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
     setAuthError(null);
   }
 
-  async function attemptLogin(username: string, password: string) {
-    setAuthError(null);
-    setIsSubmitting(true);
-    try {
-      const res = await httpClient.post(API.auth.login, { username, password });
-      const session = res.data.data as AuthSession;
-      useAuthStore.getState().login(session);
-
-      if (session.principalType === "staff") {
+  function finishLogin(session: AuthSession) {
+    useAuthStore.getState().login(session);
+    if (session.principalType === "staff") {
         // Neither Wedding Planner ("Staff") nor Sales has Dashboard access
         // (see PLAN.md revisi-timeline-vendor-role-sales) — land them on the
         // one page they can actually reach instead of a page RequireRole
@@ -154,11 +157,54 @@ export default function LoginPage() {
       } else if (session.principalType === "client") {
         navigate(ROUTE_PATHS.portal());
       } else {
-        navigate(ROUTE_PATHS.platformDashboard);
+        navigate(session.mfa ? ROUTE_PATHS.platformDashboard : ROUTE_PATHS.platformSecurity);
       }
+  }
+
+  function loginErrorMessage(err: unknown, fallback: string) {
+    if (axios.isAxiosError(err)) {
+      if (!err.response) return "Tidak dapat terhubung ke server. Periksa koneksi internet Anda lalu coba lagi.";
+      const message = (err.response.data as { message?: string })?.message;
+      if (message) return message;
+    }
+    return fallback;
+  }
+
+  async function attemptLogin(username: string, password: string) {
+    setAuthError(null);
+    setIsSubmitting(true);
+    try {
+      const res = await httpClient.post(API.auth.login, { username, password });
+      const data = res.data.data as AuthSession | { mfaRequired: true; mfaToken: string };
+      if ("mfaRequired" in data && data.mfaRequired) {
+        setMfaToken(data.mfaToken);
+        setMfaCode("");
+        return;
+      }
+      finishLogin(data as AuthSession);
     } catch (err) {
-      const message = axios.isAxiosError(err) ? (err.response?.data as { message?: string })?.message : undefined;
-      setAuthError(message ?? "Username atau kata sandi salah.");
+      setAuthError(loginErrorMessage(err, "Username atau kata sandi salah."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function verifyMfa() {
+    if (!mfaToken) return;
+    if (mfaCode.length !== 6) {
+      setAuthError("Masukkan 6 digit kode dari aplikasi authenticator.");
+      return;
+    }
+    setAuthError(null);
+    setIsSubmitting(true);
+    try {
+      const res = await httpClient.post(API.auth.mfaVerify, { mfaToken, code: mfaCode });
+      finishLogin(res.data.data as AuthSession);
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      setAuthError(loginErrorMessage(err, "Kode verifikasi salah atau sudah kedaluwarsa."));
+      // An expired challenge cannot be retried: go back to the password step.
+      if (status === 401 && /sesi verifikasi/i.test(loginErrorMessage(err, ""))) setMfaToken(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -227,50 +273,90 @@ export default function LoginPage() {
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
+            {notice && !authError && (
+              <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] font-medium text-warning">
+                {notice}
+              </p>
+            )}
             {authError && (
               <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
                 {authError}
               </p>
             )}
 
-            <Field label="Nama Pengguna atau Email" required hint={errors.username}>
-              <Input
-                value={values.username}
-                onChange={(e) => set("username", e.target.value)}
-                placeholder="Masukkan nama pengguna atau email Anda"
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              />
-            </Field>
-
-            <Field label="Kata Sandi" required hint={errors.password}>
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={values.password}
-                  onChange={(e) => set("password", e.target.value)}
-                  placeholder="Masukkan kata sandi Anda"
-                  className="pr-10"
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                />
+            {mfaToken ? (
+              <>
+                <Field label="Kode verifikasi" required hint="Buka aplikasi authenticator Anda dan masukkan 6 digit kode untuk ElProof.">
+                  <Input
+                    value={mfaCode}
+                    onChange={(e) => {
+                      setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                      setAuthError(null);
+                    }}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    placeholder="123456"
+                    className="font-mono tracking-[0.3em]"
+                    onKeyDown={(e) => e.key === "Enter" && void verifyMfa()}
+                  />
+                </Field>
+                <Button variant="neutral" className="mt-2 w-full justify-center" onClick={() => void verifyMfa()} disabled={isSubmitting}>
+                  {isSubmitting ? "Memeriksa kode..." : "Verifikasi"}
+                </Button>
                 <button
                   type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                  onClick={() => {
+                    setMfaToken(null);
+                    setAuthError(null);
+                  }}
+                  className="text-[13px] font-medium text-text-secondary hover:text-text-primary"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  Kembali ke kata sandi
                 </button>
-              </div>
-            </Field>
+              </>
+            ) : (
+              <>
+                <Field label="Nama Pengguna atau Email" required hint={errors.username}>
+                  <Input
+                    value={values.username}
+                    onChange={(e) => set("username", e.target.value)}
+                    placeholder="Masukkan nama pengguna atau email Anda"
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                  />
+                </Field>
 
-            <Button
-              variant={branding ? "primary" : "neutral"}
-              className="mt-2 w-full justify-center"
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Memproses..." : "Masuk"}
-            </Button>
+                <Field label="Kata Sandi" required hint={errors.password}>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={values.password}
+                      onChange={(e) => set("password", e.target.value)}
+                      placeholder="Masukkan kata sandi Anda"
+                      className="pr-10"
+                      onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </Field>
+
+                <Button
+                  variant={branding ? "primary" : "neutral"}
+                  className="mt-2 w-full justify-center"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Memproses..." : "Masuk"}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

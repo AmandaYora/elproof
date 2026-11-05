@@ -1,18 +1,37 @@
 import { Suspense, useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/shared/layouts/Sidebar";
 import { Topbar } from "@/shared/layouts/Topbar";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { SubscriptionBanner, SubscriptionLockedScreen } from "@/shared/layouts/SubscriptionBanner";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
   const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
+  const lifecycle = useSubscriptionStatusStore((s) => s.lifecycle);
+  const fetchLifecycle = useSubscriptionStatusStore((s) => s.fetch);
+  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  const { pathname } = useLocation();
 
   useEffect(() => {
     void hydrateBranding("WO Console");
   }, [hydrateBranding]);
+
+  // Subscription state for the banner: on entry and whenever the tab
+  // regains focus (a payment may have completed in the meantime).
+  useEffect(() => {
+    void fetchLifecycle();
+    const onFocus = () => void fetchLifecycle();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchLifecycle]);
+
+  const locked = lifecycle?.access === "billing_only" && pathname !== ROUTE_PATHS.subscription;
 
   if (!brandingHydrated) {
     // Sidebar and every `variant="primary"` Button read their color live off
@@ -34,9 +53,14 @@ export function AppLayout() {
       <div className="lg:pl-64">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
         <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
-          <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
-            <Outlet />
-          </Suspense>
+          {lifecycle && !locked && <SubscriptionBanner lifecycle={lifecycle} canManage={isOwner} />}
+          {locked ? (
+            <SubscriptionLockedScreen canManage={isOwner} />
+          ) : (
+            <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
+              <Outlet />
+            </Suspense>
+          )}
         </main>
       </div>
     </div>

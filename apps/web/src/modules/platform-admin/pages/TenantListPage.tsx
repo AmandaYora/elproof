@@ -15,18 +15,18 @@ import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantSta
 import { TenantFormModal } from "@/modules/platform-admin/components/TenantFormModal";
 import { TenantResetPasswordModal } from "@/modules/platform-admin/components/TenantResetPasswordModal";
 import { ActivateSubscriptionModal } from "@/modules/platform-admin/components/ActivateSubscriptionModal";
-import { daysUntilExpiry } from "@/modules/platform-admin/data";
-import type { Tenant, TenantSubscriptionStatus } from "@/modules/platform-admin/data";
+import { daysUntilExpiry, periodEndsAt } from "@/modules/platform-admin/data";
+import type { Tenant } from "@/modules/platform-admin/data";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import type { TenantCreateFormValues, TenantFormValues, ResetTenantPasswordFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
 import type { ActivateSubscriptionFormValues } from "@/modules/platform-admin/schemas/activate-subscription.schema";
-import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
+import { TENANT_STATUS_FILTERS, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
-const STATUS_FILTERS: TenantSubscriptionStatus[] = ["active", "expiring_soon", "expired", "pending_payment"];
 
 type CredentialReveal =
   | { kind: "create"; tenant: Tenant; username: string; password: string }
@@ -56,6 +56,10 @@ export default function TenantListPage() {
   const [isActivating, setIsActivating] = useState(false);
   const [credentialReveal, setCredentialReveal] = useState<CredentialReveal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activationError, setActivationError] = useState<string | null>(null);
+  const [suspensionTarget, setSuspensionTarget] = useState<Tenant | undefined>(undefined);
+  const [suspensionError, setSuspensionError] = useState<string | null>(null);
+  const [isTogglingSuspension, setIsTogglingSuspension] = useState(false);
 
   useEffect(() => {
     void fetchPlans();
@@ -128,27 +132,44 @@ export default function TenantListPage() {
     setResetPasswordTenant(undefined);
   }
 
-  async function handleActivateSubmit(values: ActivateSubscriptionFormValues) {
-    if (!activatingTenant) return;
-    setActionError(null);
-    setIsActivating(true);
-    try {
-      await activateTenantSubscription(activatingTenant.id, values.planId);
-      await refetch();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengaktifkan langganan tenant"));
-    }
-    setIsActivating(false);
-    setActivatingTenant(undefined);
+  function openActivation(tenant: Tenant) {
+    setActivationError(null);
+    setActivatingTenant(tenant);
   }
 
-  async function handleToggleSuspension(tenantId: string) {
-    setActionError(null);
+  async function handleActivateSubmit(values: ActivateSubscriptionFormValues) {
+    if (!activatingTenant) return;
+    setActivationError(null);
+    setIsActivating(true);
     try {
-      await toggleTenantSuspension(tenantId);
+      await activateTenantSubscription(activatingTenant.id, values);
       await refetch();
+      setActivatingTenant(undefined);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah status tenant"));
+      // Keep the dialog open with what was typed, so the admin can fix it.
+      setActivationError(getApiErrorMessage(err, "Gagal mengaktifkan langganan tenant"));
+    } finally {
+      setIsActivating(false);
+    }
+  }
+
+  function openSuspension(tenant: Tenant) {
+    setSuspensionError(null);
+    setSuspensionTarget(tenant);
+  }
+
+  async function handleConfirmSuspension() {
+    if (!suspensionTarget) return;
+    setSuspensionError(null);
+    setIsTogglingSuspension(true);
+    try {
+      await toggleTenantSuspension(suspensionTarget.id);
+      await refetch();
+      setSuspensionTarget(undefined);
+    } catch (err) {
+      setSuspensionError(getApiErrorMessage(err, "Gagal mengubah status tenant"));
+    } finally {
+      setIsTogglingSuspension(false);
     }
   }
 
@@ -177,7 +198,7 @@ export default function TenantListPage() {
         />
         <Select className="w-56" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="Semua">Semua Status</option>
-          {STATUS_FILTERS.map((status) => (
+          {TENANT_STATUS_FILTERS.map((status) => (
             <option key={status} value={status}>
               {TENANT_STATUS_LABEL[status]}
             </option>
@@ -202,7 +223,7 @@ export default function TenantListPage() {
                       <span className="font-semibold text-text-primary">{tenant.businessName}</span>
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         <TenantStatusBadge status={tenant.subscriptionStatus} />
-                        {tenant.isSuspended && <Badge tone="danger">Disuspend</Badge>}
+                        {tenant.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -215,9 +236,10 @@ export default function TenantListPage() {
                       <CardListField
                         label="Berakhir"
                         value={
-                          tenant.subscriptionExpiresAt ? (
+                          periodEndsAt(tenant) ? (
                             <>
-                              {formatDate(tenant.subscriptionExpiresAt)}
+                              {formatDate(periodEndsAt(tenant))}
+                              {tenant.lifecycle?.isTrial && <span className="ml-1 text-text-secondary">(masa coba)</span>}
                               {d !== null && (
                                 <span className={`ml-1 ${d < 0 ? "text-danger" : "text-text-secondary"}`}>
                                   ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
@@ -242,21 +264,21 @@ export default function TenantListPage() {
                         icon={Zap}
                         label="Aktifkan Langganan"
                         tone="success"
-                        onClick={() => setActivatingTenant(tenant)}
+                        onClick={() => openActivation(tenant)}
                       />
                       {tenant.isSuspended ? (
                         <IconActionButton
                           icon={UserCheck}
                           label="Aktifkan Kembali"
                           tone="success"
-                          onClick={() => void handleToggleSuspension(tenant.id)}
+                          onClick={() => openSuspension(tenant)}
                         />
                       ) : (
                         <IconActionButton
                           icon={UserX}
-                          label="Suspend Tenant"
+                          label="Bekukan Tenant"
                           tone="danger"
-                          onClick={() => void handleToggleSuspension(tenant.id)}
+                          onClick={() => openSuspension(tenant)}
                         />
                       )}
                     </div>
@@ -297,13 +319,14 @@ export default function TenantListPage() {
                       <TD>
                         <div className="flex flex-col items-start gap-1">
                           <TenantStatusBadge status={tenant.subscriptionStatus} />
-                          {tenant.isSuspended && <Badge tone="danger">Disuspend</Badge>}
+                          {tenant.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
                         </div>
                       </TD>
                       <TD>
-                        {tenant.subscriptionExpiresAt ? (
+                        {periodEndsAt(tenant) ? (
                           <>
-                            {formatDate(tenant.subscriptionExpiresAt)}
+                            {formatDate(periodEndsAt(tenant))}
+                            {tenant.lifecycle?.isTrial && <span className="ml-1 text-[12px] text-text-secondary">(masa coba)</span>}
                             {d !== null && (
                               <span className={`ml-1.5 text-[12px] font-semibold ${d < 0 ? "text-danger" : "text-text-secondary"}`}>
                                 ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
@@ -327,21 +350,21 @@ export default function TenantListPage() {
                             icon={Zap}
                             label="Aktifkan Langganan"
                             tone="success"
-                            onClick={() => setActivatingTenant(tenant)}
+                            onClick={() => openActivation(tenant)}
                           />
                           {tenant.isSuspended ? (
                             <IconActionButton
                               icon={UserCheck}
                               label="Aktifkan Kembali"
                               tone="success"
-                              onClick={() => void handleToggleSuspension(tenant.id)}
+                              onClick={() => openSuspension(tenant)}
                             />
                           ) : (
                             <IconActionButton
                               icon={UserX}
-                              label="Suspend Tenant"
+                              label="Bekukan Tenant"
                               tone="danger"
-                              onClick={() => void handleToggleSuspension(tenant.id)}
+                              onClick={() => openSuspension(tenant)}
                             />
                           )}
                         </div>
@@ -382,8 +405,33 @@ export default function TenantListPage() {
         tenant={activatingTenant}
         plans={plans}
         isSubmitting={isActivating}
+        error={activationError}
         onSubmit={handleActivateSubmit}
       />
+
+      <ConfirmDialog
+        open={suspensionTarget !== undefined}
+        title={suspensionTarget?.isSuspended ? "Aktifkan kembali tenant?" : "Bekukan tenant?"}
+        confirmLabel={suspensionTarget?.isSuspended ? "Aktifkan kembali" : "Bekukan tenant"}
+        tone={suspensionTarget?.isSuspended ? "primary" : "danger"}
+        confirmText={suspensionTarget?.isSuspended ? undefined : suspensionTarget?.businessName}
+        isSubmitting={isTogglingSuspension}
+        error={suspensionError}
+        onConfirm={() => void handleConfirmSuspension()}
+        onClose={() => setSuspensionTarget(undefined)}
+      >
+        {suspensionTarget?.isSuspended ? (
+          <p>
+            Staf dan klien {suspensionTarget.businessName} bisa masuk dan memakai ElProof lagi, sesuai status langganannya.
+          </p>
+        ) : (
+          <p>
+            Semua staf dan klien <span className="font-semibold text-text-primary">{suspensionTarget?.businessName}</span>{" "}
+            langsung keluar dan tidak bisa masuk sampai tenant diaktifkan kembali. Data tetap tersimpan. Gunakan hanya
+            untuk pelanggaran atau penyalahgunaan; tunggakan langganan sudah ditangani otomatis.
+          </p>
+        )}
+      </ConfirmDialog>
 
       <Modal
         open={credentialReveal !== null}

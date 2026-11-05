@@ -7,6 +7,7 @@ import {
   platformAdminSchema,
   platformAdminCreateSchema,
   PLATFORM_ADMIN_ROLE_OPTIONS,
+  PLATFORM_ADMIN_ROLE_DESCRIPTIONS,
   type PlatformAdminFormValues,
   type PlatformAdminCreateFormValues,
 } from "@/modules/platform-admin/schemas/platform-admin.schema";
@@ -106,7 +107,7 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
         <Field label="Nama Lengkap" required hint={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Reza Hakim" />
         </Field>
-        <Field label="Role" required>
+        <Field label="Peran" required hint={PLATFORM_ADMIN_ROLE_DESCRIPTIONS[values.role]}>
           <Select value={values.role} onChange={(e) => set("role", e.target.value as FormState["role"])}>
             {PLATFORM_ADMIN_ROLE_OPTIONS.map((r) => (
               <option key={r} value={r}>

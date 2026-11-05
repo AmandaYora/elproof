@@ -3,6 +3,7 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 // Shared by every console's logout button (WO Console, Client Portal, Platform
@@ -12,6 +13,7 @@ export async function logoutAndRedirect(navigate: NavigateFunction) {
   const refreshToken = useAuthStore.getState().session?.refreshToken;
   useAuthStore.getState().logout();
   useTenantBrandingStore.getState().reset();
+  useSubscriptionStatusStore.getState().reset();
   navigate(ROUTE_PATHS.login);
 
   if (refreshToken) {

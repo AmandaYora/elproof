@@ -22,6 +22,15 @@ const NAV_ITEMS = [
 ];
 
 export default function PlatformLayout() {
+  const session = useAuthStore((s) => s.session);
+  // The API refuses every console call without a two-factor session.
+  if (session?.principalType === "platform_admin" && !session.mfa) {
+    return <Navigate to={ROUTE_PATHS.platformSecurity} replace />;
+  }
+  return <PlatformShell />;
+}
+
+function PlatformShell() {
   const navigate = useNavigate();
   const currentPlatformAdminId = useAuthStore((s) => s.currentPlatformAdminId);
   const platformAdmins = usePlatformAdminStore((s) => s.platformAdmins);

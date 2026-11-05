@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { Suspense, lazy } from "react";
 import type { RouteObject } from "react-router-dom";
 import { RequireAuth } from "@/shared/components/RequireAuth";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -11,10 +11,19 @@ const PlatformTransactionsPage = lazy(() => import("@/modules/platform-admin/pag
 const PlatformUserListPage = lazy(() => import("@/modules/platform-admin/pages/PlatformUserListPage"));
 const GatewayConfigPage = lazy(() => import("@/modules/platform-admin/pages/GatewayConfigPage"));
 const AppListPage = lazy(() => import("@/modules/platform-admin/pages/AppListPage"));
+const MfaSetupPage = lazy(() => import("@/modules/platform-admin/pages/MfaSetupPage"));
 
 export const platformRoutes: RouteObject = {
   element: <RequireAuth allow={["platform_admin"]} />,
   children: [
+    {
+      path: ROUTE_PATHS.platformSecurity,
+      element: (
+        <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
+          <MfaSetupPage />
+        </Suspense>
+      ),
+    },
     {
       element: <PlatformLayout />,
       children: [

@@ -41,12 +41,15 @@ export function Field({
   label,
   htmlFor,
   hint,
+  error,
   required,
   children,
 }: {
   label: string;
   htmlFor?: string;
   hint?: string;
+  /** Validation message — shown in the danger color, replacing the hint. */
+  error?: string;
   required?: boolean;
 } & { children: ReactNode }) {
   return (
@@ -56,7 +59,13 @@ export function Field({
         {required && <span className="text-danger"> *</span>}
       </span>
       {children}
-      {hint && <span className="text-xs text-text-secondary">{hint}</span>}
+      {error ? (
+        <span role="alert" className="text-xs font-medium text-danger">
+          {error}
+        </span>
+      ) : (
+        hint && <span className="text-xs text-text-secondary">{hint}</span>
+      )}
     </label>
   );
 }

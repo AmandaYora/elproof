@@ -7,6 +7,7 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { TrendBarChart } from "@/modules/platform-admin/components/TrendBarChart";
 import { PeriodToggle } from "@/modules/platform-admin/components/PeriodToggle";
 import { getPlatformStats, daysUntilExpiry } from "@/modules/platform-admin/data";
+import { TENANT_ATTENTION_STATUSES, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { buildRevenueTrend, buildTenantGrowthTrend, type DashboardPeriod } from "@/modules/platform-admin/lib/trend";
 import { formatCurrency, formatCurrencyCompact, formatDate } from "@/shared/lib/formatters";
@@ -25,9 +26,9 @@ export default function PlatformDashboardPage() {
   }, [fetchTenants, fetchTransactions]);
 
   const stats = getPlatformStats(tenants, transactions);
-  const unpaidTransactions = transactions.filter((t) => t.status === "unpaid");
+  const unpaidTransactions = transactions.filter((t) => t.status === "pending" || t.status === "unpaid");
   const attentionTenants = tenants
-    .filter((t) => t.subscriptionStatus === "expiring_soon" || t.subscriptionStatus === "expired")
+    .filter((t) => TENANT_ATTENTION_STATUSES.includes(t.subscriptionStatus))
     .sort((a, b) => (daysUntilExpiry(a) ?? 0) - (daysUntilExpiry(b) ?? 0));
 
   const [period, setPeriod] = useState<DashboardPeriod>("month");
@@ -138,11 +139,12 @@ export default function PlatformDashboardPage() {
                         to={ROUTE_PATHS.platformTenants}
                         className="flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-surface-muted"
                       >
-                        <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${tenant.subscriptionStatus === "expired" ? "text-danger" : "text-warning"}`} />
+                        <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${tenant.subscriptionStatus === "read_only" || tenant.subscriptionStatus === "suspended" ? "text-danger" : "text-warning"}`} />
                         <span className="min-w-0 flex-1">
                           <span className="block text-[13.5px] font-semibold text-text-primary">{tenant.businessName}</span>
                           <span className="block truncate text-[12.5px] text-text-secondary">
-                            {d !== null && d >= 0 ? `Berakhir dalam H-${d}` : `Sudah berakhir H+${Math.abs(d ?? 0)}`}
+                            {TENANT_STATUS_LABEL[tenant.subscriptionStatus]},{" "}
+                            {d !== null && d >= 0 ? `berakhir dalam ${d} hari` : `berakhir ${Math.abs(d ?? 0)} hari lalu`}
                           </span>
                         </span>
                       </Link>

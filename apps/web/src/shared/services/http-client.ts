@@ -2,6 +2,41 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
+import { setLoginNotice } from "@/shared/lib/session-notice";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
+
+/** Codes the API attaches to a 403 when access depends on account state. */
+type AccessErrorCode = "subscription_read_only" | "subscription_suspended" | "tenant_frozen" | "mfa_required";
+
+function accessErrorCode(error: AxiosError): AccessErrorCode | undefined {
+  if (error.response?.status !== 403) return undefined;
+  const errors = (error.response.data as { errors?: { code?: string } } | undefined)?.errors;
+  return errors?.code as AccessErrorCode | undefined;
+}
+
+/**
+ * Reacts to account-state refusals in one place, so every page behaves the
+ * same: refresh the subscription banner, or end the session with a reason.
+ */
+function handleAccessError(code: AccessErrorCode | undefined) {
+  switch (code) {
+    case "subscription_read_only":
+    case "subscription_suspended":
+      void useSubscriptionStatusStore.getState().fetch();
+      break;
+    case "tenant_frozen":
+      setLoginNotice("Akun WO ini sedang dibekukan oleh ElProof. Hubungi tim ElProof untuk bantuan.");
+      useAuthStore.getState().logout();
+      useTenantBrandingStore.getState().reset();
+      useSubscriptionStatusStore.getState().reset();
+      window.location.assign(ROUTE_PATHS.login);
+      break;
+    case "mfa_required":
+      if (window.location.pathname !== ROUTE_PATHS.platformSecurity) window.location.assign(ROUTE_PATHS.platformSecurity);
+      break;
+  }
+}
 
 export const httpClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -40,8 +75,10 @@ async function refreshAccessToken(): Promise<string | null> {
         return data.accessToken as string;
       })
       .catch(() => {
+        setLoginNotice("Sesi Anda sudah berakhir. Silakan masuk kembali.");
         useAuthStore.getState().logout();
         useTenantBrandingStore.getState().reset();
+        useSubscriptionStatusStore.getState().reset();
         return null;
       })
       .finally(() => {
@@ -58,7 +95,10 @@ httpClient.interceptors.response.use(
     const isAuthEndpoint =
       originalRequest?.url === API.auth.login ||
       originalRequest?.url === API.auth.refresh ||
-      originalRequest?.url === API.auth.logout;
+      originalRequest?.url === API.auth.logout ||
+      originalRequest?.url === API.auth.mfaVerify;
+
+    handleAccessError(accessErrorCode(error));
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint) {
       originalRequest._retried = true;

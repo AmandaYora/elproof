@@ -44,4 +44,6 @@ export const ROUTE_PATHS = {
   platformUsers: "/platform/pengguna",
   platformGatewayConfig: "/platform/pembayaran",
   platformApps: "/platform/aplikasi",
+  // Two-factor enrolment — outside PlatformLayout, reachable before MFA.
+  platformSecurity: "/platform/keamanan",
 } as const;

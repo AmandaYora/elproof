@@ -163,7 +163,7 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 > Rancangan "seperti apa yang ideal" per peran (Platform Owner, WO, Klien) ada di
 > [FLOW-IDEAL.md](FLOW-IDEAL.md). Fase di bawah merujuk kode kesenjangan G1–G11 di sana.
 
-**Fase 1 — Fondasi keamanan & penegakan langganan** (prasyarat registrasi mandiri; G1–G3)
+**Fase 1 — Fondasi keamanan & penegakan langganan** (prasyarat registrasi mandiri; G1–G3) — ✅ **SELESAI 6 Nov 2026** (branch `revamp/flow-ideal`; ADR-0022, ADR-0023; diverifikasi unit test + 82 langkah end-to-end pada MySQL sementara + cek visual)
 - **Tutup kebocoran data klien di API (G1)**: whitelist endpoint yang boleh diakses principal `client` (bukan "semua GET"), DTO khusus klien untuk proyek/vendor/venue, dokumen difilter `client_visible`, unduh file dicek visibilitasnya.
 - Rate limit login; cek suspend di login/refresh; sinkronisasi `is_active` ke credential + cabut refresh token; perbaikan `''` → NULL.
 - **State machine langganan** (FLOW-IDEAL §1.4) + job harian + `TenantAccessGate` + banner global di WO Console.
@@ -187,6 +187,7 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 **Fase 4 — WO Console UX (G7, G9)**
 - Beranda berbasis tindakan, Detail Proyek dua kolom dengan tab Ringkasan pertama, tab Kendala & Keuangan (jadwal termin), siklus proyek eksplisit + checklist penutupan, buat proyek 2 langkah, Profil Usaha self-service.
 - Pola modal standar (await submit, error di dalam modal, tombol nonaktif saat menyimpan) + sistem toast.
+- Saat langganan baca-saja: sembunyikan/nonaktifkan tombol tulis di semua halaman (Fase 1 baru menampilkan banner; API sudah menolak dengan pesan jelas).
 - Bug form "Ubah Project"; Escape di Combobox; validasi lebih bayar (frontend + backend) + badge "Lebih bayar".
 - Transisi status project yang eksplisit; arahkan ke detail setelah membuat project; venue tunggal.
 - State loading/error/empty yang dibedakan; label status berbahasa Indonesia; istilah seragam ("Dokumen").
@@ -197,6 +198,7 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - Label status ramah klien (tanpa "Negotiation"/"Critical" mentah), tombol WhatsApp ke PIC, kartu "Yang perlu Anda lakukan", termin berikutnya, halaman error (bukan lempar ke login), countdown setelah hari H.
 
 **Fase 6 — Platform Owner, Langganan, Marketing (G5, G6, G10)**
+- Tambahkan kode QR di halaman penyiapan 2FA (Fase 1 menampilkan kunci + tautan `otpauth://`; butuh library QR).
 - Platform Console baru (FLOW-IDEAL §1.2–1.5): Ringkasan dengan metrik SaaS dari backend (MRR, churn, konversi trial), Detail Tenant 360°, versi harga & entitlement paket, Tagihan/antrean penagihan, Pengumuman, Audit Log UI, Kebijakan langganan, UI slide login, impersonasi baca-saja dengan izin tenant, permintaan data PDP.
 - Copy & alur QRIS (hitung mundur, masa aktif baru, pesan dibatalkan vs kedaluwarsa), kuitansi langganan PDF, metrik dashboard platform, SEO (`lang="id"`, meta per halaman), kredibilitas & halaman legal.
 - Hapus fitur custom domain tenant (K15): field di form tenant & API, `GET /public/branding` berbasis Host, `useDomainBranding()` di LoginPage, migrasi drop `tenants.custom_domain`.

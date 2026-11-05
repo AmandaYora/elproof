@@ -10,6 +10,10 @@ export interface AuthSession {
   tenantId: number | null;
   role: string;
   displayName: string;
+  /** Session established with a second factor (Platform Console admins). */
+  mfa?: boolean;
+  /** A Platform Console admin must set up two-factor before anything else. */
+  mfaSetupRequired?: boolean;
 }
 
 const STORAGE_KEY = "elproof.session";

@@ -1,6 +1,15 @@
 import { Badge } from "@/shared/components/ui/Badge";
 import type { PlatformAdminRole } from "@/modules/platform-admin/data/types";
 
+import type { BadgeTone } from "@/shared/components/ui/Badge";
+
+const ROLE_TONE: Record<PlatformAdminRole, BadgeTone> = {
+  "Super Admin": "navy",
+  Billing: "info",
+  Support: "neutral",
+  "Read-only": "neutral",
+};
+
 export function PlatformAdminRoleBadge({ role }: { role: PlatformAdminRole }) {
-  return <Badge tone={role === "Super Admin" ? "navy" : "neutral"}>{role}</Badge>;
+  return <Badge tone={ROLE_TONE[role] ?? "neutral"}>{role}</Badge>;
 }
