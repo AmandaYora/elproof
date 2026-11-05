@@ -145,3 +145,26 @@ func (s *ManagementService) ResetPasswordByUsername(ctx context.Context, usernam
 	}
 	return s.revokeSessions(ctx, cred)
 }
+
+// ResetMFA clears two-factor for one principal and revokes their sessions.
+func (s *ManagementService) ResetMFA(ctx context.Context, principalType domain.PrincipalType, principalID string) error {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil {
+		return err
+	}
+	if cred == nil {
+		return apperror.NotFound("Kredensial tidak ditemukan")
+	}
+	if err := s.credentials.ClearTOTP(ctx, principalType, principalID); err != nil {
+		return err
+	}
+	return s.revokeSessions(ctx, cred)
+}
+
+func (s *ManagementService) MFAEnabled(ctx context.Context, principalType domain.PrincipalType, principalID string) (bool, error) {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil || cred == nil {
+		return false, err
+	}
+	return cred.TOTPEnabled, nil
+}

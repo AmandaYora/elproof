@@ -25,7 +25,7 @@ func NewJWTIssuer(secret string) *JWTIssuer {
 // IssueAccessToken signs a JWT carrying the claims shape shared/middleware
 // verifies on every subsequent request (principal_type, principal_id, tenant_id,
 // role) — see ADR-0005.
-func (i *JWTIssuer) IssueAccessToken(cred *domain.Credential, ttl time.Duration) (string, error) {
+func (i *JWTIssuer) IssueAccessToken(cred *domain.Credential, mfa bool, ttl time.Duration) (string, error) {
 	var tenantID string
 	if cred.TenantID != nil {
 		tenantID = strconv.FormatInt(*cred.TenantID, 10)
@@ -36,6 +36,7 @@ func (i *JWTIssuer) IssueAccessToken(cred *domain.Credential, ttl time.Duration)
 		PrincipalID:   cred.PrincipalID,
 		TenantID:      tenantID,
 		Role:          cred.Role,
+		MFA:           mfa,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   cred.Username,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),

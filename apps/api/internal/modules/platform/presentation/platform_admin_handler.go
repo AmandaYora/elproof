@@ -30,6 +30,8 @@ type platformAdminResponse struct {
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	IsActive bool   `json:"isActive"`
+	// MFAEnabled: the admin has confirmed two-factor (filled by list/get).
+	MFAEnabled bool `json:"mfaEnabled"`
 }
 
 func toPlatformAdminResponse(a domain.PlatformAdmin) platformAdminResponse {
@@ -62,7 +64,9 @@ func (h *PlatformAdminHandler) list(w http.ResponseWriter, r *http.Request) {
 		}
 		result := make([]platformAdminResponse, 0, len(admins))
 		for _, a := range admins {
-			result = append(result, toPlatformAdminResponse(a))
+			item := toPlatformAdminResponse(a)
+			item.MFAEnabled = h.admins.MFAEnabled(r.Context(), a.ID)
+			result = append(result, item)
 		}
 		response.OK(w, "ok", result)
 		return
@@ -77,7 +81,9 @@ func (h *PlatformAdminHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]platformAdminResponse, 0, len(admins))
 	for _, a := range admins {
-		result = append(result, toPlatformAdminResponse(a))
+		item := toPlatformAdminResponse(a)
+		item.MFAEnabled = h.admins.MFAEnabled(r.Context(), a.ID)
+		result = append(result, item)
 	}
 	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 }
@@ -134,6 +140,8 @@ func (h *PlatformAdminHandler) Item(w http.ResponseWriter, r *http.Request) {
 		h.toggleActive(w, r, id)
 	case len(segments) == 2 && segments[1] == "reset-password" && r.Method == http.MethodPost:
 		h.resetPassword(w, r, id)
+	case len(segments) == 2 && segments[1] == "reset-mfa" && r.Method == http.MethodPost:
+		h.resetMFA(w, r, id)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
@@ -198,5 +206,17 @@ func (h *PlatformAdminHandler) resetPassword(w http.ResponseWriter, r *http.Requ
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Password admin platform berhasil direset", map[string]string{"username": admin.Username, "password": body.Password})
+	// Never echo the new password back (see tenant resetCredential).
+	response.OK(w, "Password admin platform berhasil direset", map[string]string{"username": admin.Username})
+}
+
+// resetMFA is POST /platform-admins/{id}/reset-mfa — for an admin who lost
+// their authenticator. Super Admin only (cmd/server/platform_scope.go).
+func (h *PlatformAdminHandler) resetMFA(w http.ResponseWriter, r *http.Request, id int64) {
+	admin, err := h.admins.ResetMFA(r.Context(), id)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Verifikasi dua langkah admin direset; admin harus menyiapkannya lagi saat masuk", toPlatformAdminResponse(*admin))
 }

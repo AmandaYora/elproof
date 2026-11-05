@@ -26,6 +26,12 @@ type Credential struct {
 	Username      string
 	Email         string
 	PasswordHash  string
+	// TOTPSecretEnc is the AES-GCM-encrypted TOTP secret (nil when never
+	// set up); TOTPEnabled is true once the admin confirmed a first code;
+	// TOTPLastStep is the last accepted time step (replay protection).
+	TOTPSecretEnc []byte
+	TOTPEnabled   bool
+	TOTPLastStep  int64
 	Role          string
 	DisplayName   string
 	IsActive      bool

@@ -28,3 +28,24 @@ func RestrictPrincipal(principalType string, allow RouteAllowFunc) func(http.Han
 		})
 	}
 }
+
+// ClaimsAllowFunc is RouteAllowFunc with access to the caller's claims (for
+// role- or flag-based rules). It returns a user-facing reason when denying.
+type ClaimsAllowFunc func(claims *Claims, method, path string) (allowed bool, code, reason string)
+
+// RestrictPrincipalBy is RestrictPrincipal for rules that depend on the
+// claims (e.g. Platform Console roles). Other principal types pass through.
+func RestrictPrincipalBy(principalType string, allow ClaimsAllowFunc) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := FromContext(r.Context())
+			if ok && claims.PrincipalType == principalType {
+				if allowed, code, reason := allow(claims, r.Method, r.URL.Path); !allowed {
+					response.Error(w, http.StatusForbidden, reason, map[string]string{"code": code})
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

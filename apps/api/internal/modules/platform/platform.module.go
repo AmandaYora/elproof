@@ -45,6 +45,7 @@ func NewModule(
 	tenantService := application.NewTenantService(
 		tenantRepo, pendingChargeRepo, staff, identity, billing, payment, storageClient, storage.BuildKey,
 	)
+	tenantService.SetManualActivations(infrastructure.NewMySQLManualActivationRepository(db))
 	adminService := application.NewPlatformAdminService(adminRepo, identity)
 
 	return &Module{

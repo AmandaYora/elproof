@@ -493,20 +493,33 @@ func (h *TenantHandler) resetCredential(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kredensial tenant berhasil direset", map[string]string{"username": result.Username, "password": body.Password})
+	// The new password is never echoed back: the admin typed it, and a
+	// response body is one more place a secret could be logged or cached.
+	response.OK(w, "Kredensial tenant berhasil direset", map[string]string{"username": result.Username})
 }
 
 type activateSubscriptionBody struct {
 	PlanID int64 `json:"planId"`
 }
 
+type manualActivationBody struct {
+	PlanID         int64  `json:"planId"`
+	Reason         string `json:"reason"`
+	ProofReference string `json:"proofReference"`
+	Note           string `json:"note"`
+}
+
 func (h *TenantHandler) activateSubscription(w http.ResponseWriter, r *http.Request, id int64) {
-	var body activateSubscriptionBody
+	var body manualActivationBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	tenant, err := h.tenants.ActivateSubscription(r.Context(), id, body.PlanID)
+	claims, _ := middleware.FromContext(r.Context())
+	tenant, err := h.tenants.ActivateSubscription(r.Context(), id, application.ActivateSubscriptionInput{
+		PlanID: body.PlanID, Reason: domain.ManualActivationReason(body.Reason),
+		ProofReference: body.ProofReference, Note: body.Note, ActorAdminID: claims.PrincipalID,
+	})
 	if err != nil {
 		writeAppError(w, err)
 		return

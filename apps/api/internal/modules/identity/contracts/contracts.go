@@ -50,6 +50,11 @@ type Contracts interface {
 	// own store (e.g. `payment`'s external Apps, see
 	// knowledge/MODULE_PAYMENT.md §7.1). No refresh token is issued.
 	IssueServiceToken(ctx context.Context, principalType string, principalID string, ttl time.Duration) (string, error)
+	// ResetMFA removes a principal's two-factor setup (lost device) and ends
+	// their sessions; they must enrol again at next login.
+	ResetMFA(ctx context.Context, principalType PrincipalType, principalID string) error
+	// MFAEnabled reports whether a principal has confirmed two-factor.
+	MFAEnabled(ctx context.Context, principalType PrincipalType, principalID string) (bool, error)
 }
 
 type impl struct {
@@ -91,6 +96,14 @@ func (c *impl) SetActive(ctx context.Context, principalType PrincipalType, princ
 
 func (c *impl) UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string) error {
 	return c.management.UpdateRole(ctx, domain.PrincipalType(principalType), principalID, role)
+}
+
+func (c *impl) ResetMFA(ctx context.Context, principalType PrincipalType, principalID string) error {
+	return c.management.ResetMFA(ctx, domain.PrincipalType(principalType), principalID)
+}
+
+func (c *impl) MFAEnabled(ctx context.Context, principalType PrincipalType, principalID string) (bool, error) {
+	return c.management.MFAEnabled(ctx, domain.PrincipalType(principalType), principalID)
 }
 
 func (c *impl) IssueServiceToken(ctx context.Context, principalType string, principalID string, ttl time.Duration) (string, error) {

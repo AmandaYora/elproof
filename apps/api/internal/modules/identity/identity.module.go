@@ -33,6 +33,11 @@ func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration
 	hasher := infrastructure.NewBcryptHasher()
 
 	authService := application.NewAuthService(credentialRepo, refreshTokenRepo, issuer, hasher, accessTTL, refreshTTL)
+	totp, err := infrastructure.NewTOTP("ElProof", jwtSecret)
+	if err != nil {
+		panic("identity: cannot initialise TOTP: " + err.Error())
+	}
+	authService.SetMFAEngine(totp)
 	managementService := application.NewManagementService(credentialRepo, refreshTokenRepo, hasher)
 
 	return &Module{
@@ -53,4 +58,11 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/login", httpx.Method(http.MethodPost, m.handler.Login))
 	mux.HandleFunc("/api/v1/auth/refresh", httpx.Method(http.MethodPost, m.handler.Refresh))
 	mux.HandleFunc("/api/v1/auth/logout", httpx.Method(http.MethodPost, m.handler.Logout))
+	mux.HandleFunc("/api/v1/auth/mfa/verify", httpx.Method(http.MethodPost, m.handler.VerifyMFA))
+}
+
+// RegisterAuthedRoutes registers endpoints that need a signed-in principal.
+func (m *Module) RegisterAuthedRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
+	mux.Handle("/api/v1/auth/mfa/setup", authed(httpx.Method(http.MethodPost, m.handler.SetupMFA)))
+	mux.Handle("/api/v1/auth/mfa/enable", authed(httpx.Method(http.MethodPost, m.handler.EnableMFA)))
 }

@@ -20,7 +20,7 @@ func NewMySQLCredentialRepository(db *sql.DB) *MySQLCredentialRepository {
 	return &MySQLCredentialRepository{db: db}
 }
 
-const credentialColumns = `id, tenant_id, principal_type, principal_id, username, email, password_hash, role, display_name, is_active, created_at, updated_at`
+const credentialColumns = `id, tenant_id, principal_type, principal_id, username, email, password_hash, totp_secret_enc, totp_enabled, totp_last_step, role, display_name, is_active, created_at, updated_at`
 
 func (r *MySQLCredentialRepository) FindByUsername(ctx context.Context, username string) (*domain.Credential, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+credentialColumns+` FROM credentials WHERE username = ? LIMIT 1`, username)
@@ -124,11 +124,14 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 	var tenantID sql.NullInt64
 	var principalType string
 	var email sql.NullString
+	var totpLastStep sql.NullInt64
 
 	err := row.Scan(
 		&c.ID, &tenantID, &principalType, &c.PrincipalID, &c.Username, &email, &c.PasswordHash,
+		&c.TOTPSecretEnc, &c.TOTPEnabled, &totpLastStep,
 		&c.Role, &c.DisplayName, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 	)
+	c.TOTPLastStep = totpLastStep.Int64
 	if err != nil {
 		return nil, err
 	}
@@ -150,4 +153,43 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 func nullableEmail(email string) sql.NullString {
 	email = strings.TrimSpace(email)
 	return sql.NullString{String: email, Valid: email != ""}
+}
+
+// SetTOTPSecret stores a new (not yet confirmed) encrypted secret and turns
+// two-factor off until the admin confirms a first code.
+func (r *MySQLCredentialRepository) SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET totp_secret_enc = ?, totp_enabled = FALSE, totp_last_step = NULL WHERE id = ?`,
+		enc, credentialID)
+	return err
+}
+
+// EnableTOTP marks the stored secret as confirmed and records the step used.
+func (r *MySQLCredentialRepository) EnableTOTP(ctx context.Context, credentialID int64, step int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET totp_enabled = TRUE, totp_last_step = ? WHERE id = ? AND totp_secret_enc IS NOT NULL`,
+		step, credentialID)
+	return err
+}
+
+// SetTOTPLastStep records an accepted code's time step. The WHERE clause
+// makes it monotonic, so two concurrent logins can't both use one code.
+func (r *MySQLCredentialRepository) SetTOTPLastStep(ctx context.Context, credentialID int64, step int64) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET totp_last_step = ? WHERE id = ? AND (totp_last_step IS NULL OR totp_last_step < ?)`,
+		step, credentialID, step)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// ClearTOTP removes two-factor from one principal (lost device).
+func (r *MySQLCredentialRepository) ClearTOTP(ctx context.Context, principalType domain.PrincipalType, principalID string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET totp_secret_enc = NULL, totp_enabled = FALSE, totp_last_step = NULL
+		 WHERE principal_type = ? AND principal_id = ?`,
+		string(principalType), principalID)
+	return err
 }

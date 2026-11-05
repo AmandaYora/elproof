@@ -51,6 +51,11 @@ type ObjectStorage interface {
 
 // PendingChargeRepository backs the Fase 9 self-service payment flow — see
 // domain.PendingCharge.
+// ManualActivationRepository stores the reason/proof of manual grants.
+type ManualActivationRepository interface {
+	Create(ctx context.Context, a *domain.ManualActivation) error
+}
+
 type PendingChargeRepository interface {
 	Create(ctx context.Context, orderRef string, tenantID, planID int64) error
 	FindByOrderRef(ctx context.Context, orderRef string) (*domain.PendingCharge, error)
@@ -71,7 +76,13 @@ type TenantService struct {
 	buildKey       func(tenantID, projectID, category, filename string) string
 	// access caches each tenant's lifecycle for the per-request access gate
 	// (tenant_access.go).
-	access *accessCache
+	access      *accessCache
+	activations ManualActivationRepository
+}
+
+// SetManualActivations plugs in the manual-activation record store.
+func (s *TenantService) SetManualActivations(repo ManualActivationRepository) {
+	s.activations = repo
 }
 
 func NewTenantService(
@@ -433,12 +444,49 @@ func (s *TenantService) ResetCredential(ctx context.Context, id int64, newPasswo
 // would still fire ApplyWebhookEvent and call UpdateSubscription a second
 // time, silently double-extending the expiry this call is about to set
 // (computeNewExpiry stacks on top of whatever expiry is already there).
-func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64, planID int64) (*domain.Tenant, error) {
+// ActivateSubscriptionInput is a manual grant by ElProof's team. Reason and
+// proof are mandatory so every free or offline-paid period can be explained
+// later (who granted it, why, on what evidence).
+type ActivateSubscriptionInput struct {
+	PlanID         int64
+	Reason         domain.ManualActivationReason
+	ProofReference string
+	Note           string
+	ActorAdminID   string
+}
+
+func validateActivation(input ActivateSubscriptionInput) error {
+	fields := map[string][]string{}
+	if input.PlanID <= 0 {
+		fields["planId"] = []string{"Pilih paket yang diaktifkan"}
+	}
+	if _, ok := domain.ManualActivationReasonLabels[input.Reason]; !ok {
+		fields["reason"] = []string{"Pilih alasan aktivasi"}
+	}
+	if n := len(strings.TrimSpace(input.ProofReference)); n < 3 || n > 255 {
+		fields["proofReference"] = []string{"Isi bukti aktivasi (no. transaksi, no. invoice, atau tautan dokumen), 3–255 karakter"}
+	}
+	if input.Reason == domain.ReasonOther && len(strings.TrimSpace(input.Note)) < 5 {
+		fields["note"] = []string{"Jelaskan alasan aktivasi (minimal 5 karakter)"}
+	}
+	if len(input.Note) > 500 {
+		fields["note"] = []string{"Catatan maksimal 500 karakter"}
+	}
+	if len(fields) > 0 {
+		return apperror.Validation("Data aktivasi belum lengkap", fields)
+	}
+	return nil
+}
+
+func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64, input ActivateSubscriptionInput) (*domain.Tenant, error) {
+	if err := validateActivation(input); err != nil {
+		return nil, err
+	}
 	tenant, err := s.Get(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	plan, err := s.billing.GetPlan(ctx, planID)
+	plan, err := s.billing.GetPlan(ctx, input.PlanID)
 	if err != nil {
 		return nil, err
 	}
@@ -456,15 +504,27 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 		}
 	}
 
+	reference := generateGrantReference()
+	newExpiry := computeNewExpiry(tenant, plan)
 	if err := s.billing.RecordTransaction(ctx, billingcontracts.RecordTransactionInput{
 		TenantID: tenantID, Type: txTypeFor(tenant), Amount: plan.Price,
-		PaymentMethod: "Aktivasi Manual (Super Admin)", PaymentReference: generateGrantReference(),
-		Status: billingcontracts.StatusGranted,
+		PaymentMethod:    "Aktivasi Manual — " + domain.ManualActivationReasonLabels[input.Reason],
+		PaymentReference: reference,
+		Status:           billingcontracts.StatusGranted,
 	}); err != nil {
 		return nil, err
 	}
-	if err := s.repo.UpdateSubscription(ctx, tenantID, planID, domain.StatusActive, computeNewExpiry(tenant, plan)); err != nil {
+	if err := s.repo.UpdateSubscription(ctx, tenantID, input.PlanID, domain.StatusActive, newExpiry); err != nil {
 		return nil, err
+	}
+	if err := s.activations.Create(ctx, &domain.ManualActivation{
+		TenantID: tenantID, PlanID: input.PlanID, ActorAdminID: input.ActorAdminID, Reason: input.Reason,
+		ProofReference: strings.TrimSpace(input.ProofReference), Note: strings.TrimSpace(input.Note),
+		TransactionReference: reference, ExpiresAt: newExpiry,
+	}); err != nil {
+		// The subscription is already granted and the ledger row written;
+		// losing the detail record must not undo that, but must be visible.
+		logger.Error("platform: manual activation of tenant %d applied but its record failed: %v", tenantID, err)
 	}
 	s.access.invalidate(tenantID)
 	return s.Get(ctx, tenantID)

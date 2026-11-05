@@ -15,6 +15,7 @@ import (
 	"elproof/internal/adminseed"
 	"elproof/internal/loginslides"
 	"elproof/internal/migrator"
+	"elproof/internal/modules/audit"
 	"elproof/internal/modules/billing"
 	"elproof/internal/modules/clients"
 	"elproof/internal/modules/identity"
@@ -186,9 +187,14 @@ func serve(cfg config.Config) {
 	// the platform module, bound below once it exists.
 	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
 	restrictClients := middleware.RestrictPrincipal("client", clientPortalAllowed)
+	restrictAdmins := middleware.RestrictPrincipalBy("platform_admin", platformAdminPolicy)
 	tenantGate := middleware.NewTenantAccessGate(staffAllowedWhenRestricted)
+	auditModule := audit.NewModule(db)
+	// Every state-changing request by ElProof's own team is recorded,
+	// including refused attempts (audit sits before the role check).
+	auditAdmins := middleware.AuditTrail(auditModule.Recorder(), "platform_admin")
 	authed := func(next http.Handler) http.Handler {
-		return requireAuth(restrictClients(tenantGate.Middleware(next)))
+		return requireAuth(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(next)))))
 	}
 
 	mux.Handle("/api/v1/auth/me", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -282,6 +288,8 @@ func serve(cfg config.Config) {
 	// with the date-derived lifecycle; access never depends on it.
 	platformModule.StartSubscriptionStatusSweeper(context.Background(), time.Hour)
 
+	identityModule.RegisterAuthedRoutes(mux, authed)
+	auditModule.RegisterRoutes(mux, authed)
 	paymentModule.RegisterRoutes(mux, authed)
 	billingModule.RegisterRoutes(mux, authed)
 	platformModule.RegisterRoutes(mux, authed)

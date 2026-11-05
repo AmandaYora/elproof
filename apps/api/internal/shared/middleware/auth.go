@@ -22,6 +22,9 @@ type Claims struct {
 	PrincipalID   string `json:"principal_id"`
 	TenantID      string `json:"tenant_id,omitempty"`
 	Role          string `json:"role"`
+	// MFA is true when the session was established with a second factor
+	// (TOTP). Platform Console admins need it for everything but enrolment.
+	MFA bool `json:"mfa,omitempty"`
 	jwt.RegisteredClaims
 }
 

@@ -29,6 +29,11 @@ type CredentialRepository interface {
 	// authorization purposes, since Login/Refresh never re-derive it from
 	// the owning module — they only ever read this column.
 	UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error
+	// Two-factor (TOTP) state — see mfa.go.
+	SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) error
+	EnableTOTP(ctx context.Context, credentialID int64, step int64) error
+	SetTOTPLastStep(ctx context.Context, credentialID int64, step int64) (bool, error)
+	ClearTOTP(ctx context.Context, principalType domain.PrincipalType, principalID string) error
 }
 
 type RefreshTokenRepository interface {
@@ -50,7 +55,9 @@ type TenantGuard interface {
 
 // TokenIssuer signs access tokens and mints/hashes opaque refresh tokens.
 type TokenIssuer interface {
-	IssueAccessToken(cred *domain.Credential, ttl time.Duration) (string, error)
+	// IssueAccessToken signs an access token; mfa records whether the
+	// session was established with a second factor.
+	IssueAccessToken(cred *domain.Credential, mfa bool, ttl time.Duration) (string, error)
 	// IssueServiceToken signs an access-token-only JWT for a principal that
 	// isn't backed by a Credential row (e.g. payment's external Apps, see
 	// knowledge/MODULE_PAYMENT.md §7.1) — no refresh token, no tenant/role.
@@ -74,6 +81,8 @@ type AuthService struct {
 	accessTTL     time.Duration
 	refreshTTL    time.Duration
 	tenantGuard   TenantGuard
+	mfa           MFAEngine
+	challenges    *mfaChallenges
 }
 
 // SetTenantGuard completes two-phase wiring: identity is built before the
@@ -97,7 +106,13 @@ func NewAuthService(
 		hasher:        hasher,
 		accessTTL:     accessTTL,
 		refreshTTL:    refreshTTL,
+		challenges:    newMFAChallenges(),
 	}
+}
+
+// SetMFAEngine plugs in the TOTP implementation (identity.module.go).
+func (s *AuthService) SetMFAEngine(engine MFAEngine) {
+	s.mfa = engine
 }
 
 // Session is what the presentation layer returns to the client after a
@@ -110,6 +125,18 @@ type Session struct {
 	TenantID      *int64
 	Role          string
 	DisplayName   string
+	// MFA is true when this session was established with a second factor;
+	// MFASetupRequired tells a Platform Console admin to enrol first.
+	MFA              bool
+	MFASetupRequired bool
+}
+
+// LoginResult is either a session, or — for an admin with two-factor on —
+// a short-lived challenge to answer with a TOTP code (VerifyMFA).
+type LoginResult struct {
+	Session     *Session
+	MFARequired bool
+	MFAToken    string
 }
 
 // Login accepts either a username or an email as identifier. Username is
@@ -121,13 +148,13 @@ type Session struct {
 // one candidate; each is tried in turn rather than assuming the first match
 // is the intended account — the correct one is whichever candidate's
 // password actually matches.
-func (s *AuthService) Login(ctx context.Context, identifier, password string) (*Session, error) {
+func (s *AuthService) Login(ctx context.Context, identifier, password string) (*LoginResult, error) {
 	cred, err := s.credentials.FindByUsername(ctx, identifier)
 	if err != nil {
 		return nil, err
 	}
 	if cred != nil && cred.IsActive && s.hasher.Compare(cred.PasswordHash, password) == nil {
-		return s.issueSession(ctx, cred)
+		return s.completeLogin(ctx, cred)
 	}
 
 	candidates, err := s.credentials.FindAllByEmail(ctx, identifier)
@@ -136,11 +163,26 @@ func (s *AuthService) Login(ctx context.Context, identifier, password string) (*
 	}
 	for _, c := range candidates {
 		if c.IsActive && s.hasher.Compare(c.PasswordHash, password) == nil {
-			return s.issueSession(ctx, c)
+			return s.completeLogin(ctx, c)
 		}
 	}
 
 	return nil, apperror.Unauthorized("Username/email atau password salah")
+}
+
+// completeLogin runs after the password matched: an admin with two-factor
+// on gets a challenge instead of a session.
+func (s *AuthService) completeLogin(ctx context.Context, cred *domain.Credential) (*LoginResult, error) {
+	if requiresMFA(cred) && cred.TOTPEnabled {
+		// A frozen tenant is checked again in issueSession; admins have no
+		// tenant, so nothing else to check before the second factor.
+		return &LoginResult{MFARequired: true, MFAToken: s.challenges.issue(cred.ID)}, nil
+	}
+	session, err := s.issueSession(ctx, cred, false)
+	if err != nil {
+		return nil, err
+	}
+	return &LoginResult{Session: session}, nil
 }
 
 func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*Session, error) {
@@ -164,7 +206,10 @@ func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*S
 	if err := s.refreshTokens.Revoke(ctx, record.ID); err != nil {
 		return nil, err
 	}
-	return s.issueSession(ctx, cred)
+	// Every refresh token of an admin with two-factor on descends from a
+	// TOTP-verified login (enabling two-factor revokes older ones), so the
+	// refreshed session keeps its MFA status.
+	return s.issueSession(ctx, cred, requiresMFA(cred) && cred.TOTPEnabled)
 }
 
 // IssueServiceToken mints a bearer access token for a principal the caller
@@ -192,7 +237,7 @@ func (s *AuthService) Logout(ctx context.Context, refreshTokenPlain string) erro
 	return s.refreshTokens.Revoke(ctx, record.ID)
 }
 
-func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential) (*Session, error) {
+func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential, mfa bool) (*Session, error) {
 	// Both Login (after the password matched) and Refresh funnel through
 	// here, so a frozen tenant can neither start nor extend a session.
 	if cred.TenantID != nil && s.tenantGuard != nil {
@@ -200,7 +245,7 @@ func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential)
 			return nil, err
 		}
 	}
-	access, err := s.issuer.IssueAccessToken(cred, s.accessTTL)
+	access, err := s.issuer.IssueAccessToken(cred, mfa, s.accessTTL)
 	if err != nil {
 		return nil, apperror.Internal("Gagal membuat sesi login")
 	}
@@ -220,12 +265,14 @@ func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential)
 	}
 
 	return &Session{
-		AccessToken:   access,
-		RefreshToken:  plainRefresh,
-		PrincipalType: string(cred.PrincipalType),
-		PrincipalID:   cred.PrincipalID,
-		TenantID:      cred.TenantID,
-		Role:          cred.Role,
-		DisplayName:   cred.DisplayName,
+		AccessToken:      access,
+		RefreshToken:     plainRefresh,
+		PrincipalType:    string(cred.PrincipalType),
+		PrincipalID:      cred.PrincipalID,
+		TenantID:         cred.TenantID,
+		Role:             cred.Role,
+		DisplayName:      cred.DisplayName,
+		MFA:              mfa,
+		MFASetupRequired: requiresMFA(cred) && !cred.TOTPEnabled,
 	}, nil
 }

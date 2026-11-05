@@ -63,6 +63,9 @@ func (s *PlatformAdminService) Register(ctx context.Context, input RegisterPlatf
 	if err := validator.Username(input.Username); err != nil {
 		return nil, err
 	}
+	if !domain.IsValidPlatformAdminRole(input.Role) {
+		return nil, invalidRole()
+	}
 	username := input.Username
 
 	admin := &domain.PlatformAdmin{
@@ -100,6 +103,9 @@ func (s *PlatformAdminService) Update(ctx context.Context, id int64, input Updat
 	admin, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !domain.IsValidPlatformAdminRole(input.Role) {
+		return nil, invalidRole()
 	}
 	previousRole := admin.Role
 	admin.Name = input.Name
@@ -153,4 +159,29 @@ func (s *PlatformAdminService) ResetPassword(ctx context.Context, id int64, newP
 
 func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+func invalidRole() error {
+	return apperror.Validation("Peran admin tidak valid", map[string][]string{
+		"role": {"Pilih salah satu: Super Admin, Billing, Support, Read-only"},
+	})
+}
+
+// ResetMFA clears an admin's two-factor (lost device); they re-enrol at next
+// login.
+func (s *PlatformAdminService) ResetMFA(ctx context.Context, id int64) (*domain.PlatformAdmin, error) {
+	admin, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResetMFA(ctx, identitycontracts.PrincipalPlatformAdmin, formatID(id)); err != nil {
+		return nil, err
+	}
+	return admin, nil
+}
+
+// MFAEnabled reports whether an admin has confirmed two-factor.
+func (s *PlatformAdminService) MFAEnabled(ctx context.Context, id int64) bool {
+	ok, err := s.identity.MFAEnabled(ctx, identitycontracts.PrincipalPlatformAdmin, formatID(id))
+	return err == nil && ok
 }
