@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
+	"time"
 
 	billingcontracts "elproof/internal/modules/billing/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
@@ -111,6 +112,24 @@ func (m *Module) SiteMetaForHost(ctx context.Context, host string) (meta SiteMet
 // RegisterPublicRoutes registers this module's pre-auth endpoints (ADR-0015)
 // — Host-header-resolved tenant branding for a custom domain's login page,
 // never wrapped in the `authed` middleware since no session exists yet.
+// TenantAccessLevel implements middleware.TenantAccessResolver for the
+// per-request subscription gate (wired in cmd/server).
+func (m *Module) TenantAccessLevel(ctx context.Context, tenantID int64) (string, error) {
+	return m.tenantService.TenantAccessLevel(ctx, tenantID)
+}
+
+// CheckTenantLogin implements identity's TenantGuard (frozen tenants cannot
+// log in or refresh).
+func (m *Module) CheckTenantLogin(ctx context.Context, tenantID int64) error {
+	return m.tenantService.CheckTenantLogin(ctx, tenantID)
+}
+
+// StartSubscriptionStatusSweeper keeps the cached subscription_status column
+// current (see TenantService.SweepSubscriptionStatuses).
+func (m *Module) StartSubscriptionStatusSweeper(ctx context.Context, interval time.Duration) {
+	m.tenantService.StartSubscriptionStatusSweeper(ctx, interval)
+}
+
 func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/public/branding", httpx.Method(http.MethodGet, m.tenantHandler.PublicBranding))
 	mux.Handle("/api/v1/public/logo", httpx.Method(http.MethodGet, m.tenantHandler.PublicLogo))

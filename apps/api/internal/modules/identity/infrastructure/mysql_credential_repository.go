@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"elproof/internal/modules/identity/domain"
 )
@@ -66,7 +67,7 @@ func (r *MySQLCredentialRepository) Create(ctx context.Context, cred *domain.Cre
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO credentials (tenant_id, principal_type, principal_id, username, email, password_hash, role, display_name, is_active)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		cred.TenantID, string(cred.PrincipalType), cred.PrincipalID, cred.Username, cred.Email, cred.PasswordHash, cred.Role, cred.DisplayName, cred.IsActive,
+		cred.TenantID, string(cred.PrincipalType), cred.PrincipalID, cred.Username, nullableEmail(cred.Email), cred.PasswordHash, cred.Role, cred.DisplayName, cred.IsActive,
 	)
 	if err != nil {
 		return err
@@ -140,4 +141,13 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 		c.Email = email.String
 	}
 	return &c, nil
+}
+
+// nullableEmail stores "no email" as SQL NULL, never as an empty string. The
+// email column is UNIQUE (migration 000016): MySQL allows many NULLs there
+// but only one empty string, so every second account created without an
+// email used to fail to insert.
+func nullableEmail(email string) sql.NullString {
+	email = strings.TrimSpace(email)
+	return sql.NullString{String: email, Valid: email != ""}
 }

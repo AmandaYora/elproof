@@ -3,18 +3,46 @@ package presentation
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"elproof/internal/modules/identity/application"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
 
 type Handler struct {
 	auth *application.AuthService
+	// loginIP caps login attempts per caller IP (any outcome), and
+	// loginFailures caps *failed* attempts per identifier — together they
+	// stop both spraying many accounts from one IP and guessing one
+	// account's password from many IPs (OWASP Authentication Cheat Sheet).
+	loginIP       *middleware.RateLimiter
+	loginFailures *middleware.RateLimiter
 }
 
+// Login limits (in-memory, single instance — ADR-0011).
+const (
+	loginWindow          = 15 * time.Minute
+	loginMaxPerIP        = 30
+	loginMaxFailedPerKey = 10
+)
+
 func NewHandler(auth *application.AuthService) *Handler {
-	return &Handler{auth: auth}
+	return &Handler{
+		auth:          auth,
+		loginIP:       middleware.NewRateLimiter(loginMaxPerIP, loginWindow),
+		loginFailures: middleware.NewRateLimiter(loginMaxFailedPerKey, loginWindow),
+	}
+}
+
+func (h *Handler) tooManyAttempts(w http.ResponseWriter, limiter *middleware.RateLimiter) {
+	w.Header().Set("Retry-After", strconv.Itoa(limiter.RetryAfterSeconds()))
+	response.Error(w, http.StatusTooManyRequests,
+		"Terlalu banyak percobaan masuk. Silakan coba lagi dalam 15 menit.",
+		map[string]string{"code": "rate_limited"})
 }
 
 type loginRequest struct {
@@ -62,11 +90,25 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.loginIP.Allow(middleware.ClientIP(r)) {
+		h.tooManyAttempts(w, h.loginIP)
+		return
+	}
+	identifierKey := strings.ToLower(strings.TrimSpace(req.Username))
+	if h.loginFailures.Exceeded(identifierKey) {
+		h.tooManyAttempts(w, h.loginFailures)
+		return
+	}
+
 	session, err := h.auth.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if appErr, ok := apperror.As(err); ok && appErr.Kind == apperror.KindUnauthorized {
+			h.loginFailures.Record(identifierKey)
+		}
 		writeAppError(w, err)
 		return
 	}
+	h.loginFailures.Reset(identifierKey)
 	response.OK(w, "Login berhasil", toSessionResponse(session))
 }
 

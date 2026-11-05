@@ -22,19 +22,19 @@ func NewMySQLTenantRepository(db *sql.DB) *MySQLTenantRepository {
 }
 
 const tenantColumns = `id, business_name, owner_name, username, email, phone, city, joined_at, plan_id,
-	subscription_status, subscription_expires_at, is_suspended, last_credential_reset_at,
+	subscription_status, subscription_expires_at, trial_ends_at, is_suspended, last_credential_reset_at,
 	brand_color_preset, logo_storage_path, custom_domain, created_at, updated_at`
 
 func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	var t domain.Tenant
 	var planID sql.NullInt64
 	var status string
-	var expiresAt, lastReset sql.NullTime
+	var expiresAt, trialEndsAt, lastReset sql.NullTime
 	var logoStoragePath, customDomain sql.NullString
 
 	err := scan(
 		&t.ID, &t.BusinessName, &t.OwnerName, &t.Username, &t.Email, &t.Phone, &t.City, &t.JoinedAt, &planID,
-		&status, &expiresAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &customDomain,
+		&status, &expiresAt, &trialEndsAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &customDomain,
 		&t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -50,6 +50,9 @@ func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	}
 	if expiresAt.Valid {
 		t.SubscriptionExpiresAt = &expiresAt.Time
+	}
+	if trialEndsAt.Valid {
+		t.TrialEndsAt = &trialEndsAt.Time
 	}
 	if lastReset.Valid {
 		t.LastCredentialResetAt = &lastReset.Time
@@ -141,10 +144,10 @@ func (r *MySQLTenantRepository) FindByDomain(ctx context.Context, host string) (
 
 func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenant) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tenant.BusinessName, tenant.OwnerName, tenant.Username, tenant.Email, tenant.Phone, tenant.City,
-		tenant.JoinedAt, tenant.PlanID, string(tenant.SubscriptionStatus),
+		tenant.JoinedAt, tenant.PlanID, string(tenant.SubscriptionStatus), tenant.TrialEndsAt,
 	)
 	if err != nil {
 		return err
@@ -177,6 +180,13 @@ func (r *MySQLTenantRepository) UpdateLogo(ctx context.Context, id int64, logoSt
 
 func (r *MySQLTenantRepository) SetSuspended(ctx context.Context, id int64, suspended bool) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET is_suspended = ? WHERE id = ?`, suspended, id)
+	return err
+}
+
+// SetSubscriptionStatus refreshes the cached status column (the status
+// sweeper; the lifecycle itself is computed from dates).
+func (r *MySQLTenantRepository) SetSubscriptionStatus(ctx context.Context, id int64, status domain.SubscriptionStatus) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET subscription_status = ? WHERE id = ?`, string(status), id)
 	return err
 }
 

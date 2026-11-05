@@ -13,12 +13,23 @@ import (
 // admin, a client contact, etc.) — identity never reaches into their tables,
 // they never reach into identity's. See ADR-0005.
 type ManagementService struct {
-	credentials CredentialRepository
-	hasher      PasswordHasher
+	credentials   CredentialRepository
+	refreshTokens RefreshTokenRepository
+	hasher        PasswordHasher
 }
 
-func NewManagementService(credentials CredentialRepository, hasher PasswordHasher) *ManagementService {
-	return &ManagementService{credentials: credentials, hasher: hasher}
+func NewManagementService(credentials CredentialRepository, refreshTokens RefreshTokenRepository, hasher PasswordHasher) *ManagementService {
+	return &ManagementService{credentials: credentials, refreshTokens: refreshTokens, hasher: hasher}
+}
+
+// revokeSessions ends every open session of one principal. Called whenever
+// that principal loses access (deactivated) or its password is replaced, so
+// an already-issued refresh token can't keep the old session alive.
+func (s *ManagementService) revokeSessions(ctx context.Context, cred *domain.Credential) error {
+	if cred == nil {
+		return nil
+	}
+	return s.refreshTokens.RevokeAllForCredential(ctx, cred.ID)
 }
 
 type CreateCredentialInput struct {
@@ -87,11 +98,24 @@ func (s *ManagementService) ResetPassword(ctx context.Context, principalType dom
 	if err != nil {
 		return apperror.Internal("Gagal memproses password")
 	}
-	return s.credentials.UpdatePasswordHash(ctx, principalType, principalID, hash)
+	if err := s.credentials.UpdatePasswordHash(ctx, principalType, principalID, hash); err != nil {
+		return err
+	}
+	return s.revokeSessions(ctx, cred)
 }
 
 func (s *ManagementService) SetActive(ctx context.Context, principalType domain.PrincipalType, principalID string, isActive bool) error {
-	return s.credentials.SetActive(ctx, principalType, principalID, isActive)
+	if err := s.credentials.SetActive(ctx, principalType, principalID, isActive); err != nil {
+		return err
+	}
+	if isActive {
+		return nil
+	}
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil {
+		return err
+	}
+	return s.revokeSessions(ctx, cred)
 }
 
 // UpdateRole syncs this table's own denormalized `role` column — see
@@ -116,5 +140,8 @@ func (s *ManagementService) ResetPasswordByUsername(ctx context.Context, usernam
 	if err != nil {
 		return apperror.Internal("Gagal memproses password")
 	}
-	return s.credentials.UpdatePasswordHash(ctx, cred.PrincipalType, cred.PrincipalID, hash)
+	if err := s.credentials.UpdatePasswordHash(ctx, cred.PrincipalType, cred.PrincipalID, hash); err != nil {
+		return err
+	}
+	return s.revokeSessions(ctx, cred)
 }

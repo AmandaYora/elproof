@@ -203,6 +203,12 @@ func (s *StaffService) SetActive(ctx context.Context, tenantID, id int64, isActi
 	if err := s.repo.SetActive(ctx, tenantID, id, isActive); err != nil {
 		return nil, err
 	}
+	// Keep the login identity in step: a deactivated staff member must not
+	// be able to log in or refresh (identity also revokes their sessions).
+	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10), isActive); err != nil {
+		_ = s.repo.SetActive(ctx, tenantID, id, !isActive)
+		return nil, err
+	}
 	member.IsActive = isActive
 	return member, nil
 }

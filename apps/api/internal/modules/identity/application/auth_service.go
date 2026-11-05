@@ -35,6 +35,17 @@ type RefreshTokenRepository interface {
 	Create(ctx context.Context, token *domain.RefreshToken) error
 	FindByTokenHash(ctx context.Context, tokenHash string) (*domain.RefreshToken, error)
 	Revoke(ctx context.Context, id int64) error
+	// RevokeAllForCredential ends every open session of one login identity
+	// (used when the owning module deactivates that principal).
+	RevokeAllForCredential(ctx context.Context, credentialID int64) error
+}
+
+// TenantGuard lets the tenant's owning module veto a login/refresh for a
+// tenant-scoped principal (staff or client) — e.g. a tenant frozen by
+// ElProof's platform team. Declared here, implemented by `platform`, wired in
+// cmd/server, so identity never imports platform. A nil guard allows all.
+type TenantGuard interface {
+	CheckTenantLogin(ctx context.Context, tenantID int64) error
 }
 
 // TokenIssuer signs access tokens and mints/hashes opaque refresh tokens.
@@ -62,6 +73,13 @@ type AuthService struct {
 	hasher        PasswordHasher
 	accessTTL     time.Duration
 	refreshTTL    time.Duration
+	tenantGuard   TenantGuard
+}
+
+// SetTenantGuard completes two-phase wiring: identity is built before the
+// platform module that implements the guard (see cmd/server/main.go).
+func (s *AuthService) SetTenantGuard(guard TenantGuard) {
+	s.tenantGuard = guard
 }
 
 func NewAuthService(
@@ -175,6 +193,13 @@ func (s *AuthService) Logout(ctx context.Context, refreshTokenPlain string) erro
 }
 
 func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential) (*Session, error) {
+	// Both Login (after the password matched) and Refresh funnel through
+	// here, so a frozen tenant can neither start nor extend a session.
+	if cred.TenantID != nil && s.tenantGuard != nil {
+		if err := s.tenantGuard.CheckTenantLogin(ctx, *cred.TenantID); err != nil {
+			return nil, err
+		}
+	}
 	access, err := s.issuer.IssueAccessToken(cred, s.accessTTL)
 	if err != nil {
 		return nil, apperror.Internal("Gagal membuat sesi login")

@@ -37,6 +37,7 @@ type TenantRepository interface {
 	SetSuspended(ctx context.Context, id int64, suspended bool) error
 	SetCredentialResetAt(ctx context.Context, id int64, when time.Time) error
 	UpdateSubscription(ctx context.Context, id int64, planID int64, status domain.SubscriptionStatus, expiresAt time.Time) error
+	SetSubscriptionStatus(ctx context.Context, id int64, status domain.SubscriptionStatus) error
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -68,6 +69,9 @@ type TenantService struct {
 	projects       projectscontracts.Contracts
 	storage        ObjectStorage
 	buildKey       func(tenantID, projectID, category, filename string) string
+	// access caches each tenant's lifecycle for the per-request access gate
+	// (tenant_access.go).
+	access *accessCache
 }
 
 func NewTenantService(
@@ -84,6 +88,7 @@ func NewTenantService(
 		repo: repo, pendingCharges: pendingCharges,
 		staff: staff, identity: identity, billing: billing, payment: payment,
 		storage: storage, buildKey: buildKey,
+		access: newAccessCache(accessCacheTTL),
 	}
 }
 
@@ -167,6 +172,9 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 	}
 
 	username := input.Username
+	// Every new tenant starts on a free trial (product decision K1); the
+	// lifecycle (domain.ComputeLifecycle) takes it from there.
+	trialEndsAt := time.Now().AddDate(0, 0, domain.DefaultSubscriptionPolicy.TrialDays)
 
 	tenant := &domain.Tenant{
 		BusinessName:       input.BusinessName,
@@ -177,7 +185,8 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		City:               input.City,
 		JoinedAt:           time.Now(),
 		PlanID:             nil,
-		SubscriptionStatus: domain.StatusPendingPayment,
+		SubscriptionStatus: domain.StatusTrialing,
+		TrialEndsAt:        &trialEndsAt,
 		BrandColorPreset:   domain.DefaultBrandColorPreset,
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
@@ -380,6 +389,7 @@ func (s *TenantService) SetSuspended(ctx context.Context, id int64, suspended bo
 	if err := s.repo.SetSuspended(ctx, id, suspended); err != nil {
 		return nil, err
 	}
+	s.access.invalidate(id)
 	return s.Get(ctx, id)
 }
 
@@ -456,6 +466,7 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 	if err := s.repo.UpdateSubscription(ctx, tenantID, planID, domain.StatusActive, computeNewExpiry(tenant, plan)); err != nil {
 		return nil, err
 	}
+	s.access.invalidate(tenantID)
 	return s.Get(ctx, tenantID)
 }
 
@@ -615,26 +626,40 @@ func (s *TenantService) ApplyWebhookEvent(ctx context.Context, orderRef string, 
 	if err := s.repo.UpdateSubscription(ctx, pending.TenantID, pending.PlanID, domain.StatusActive, computeNewExpiry(tenant, plan)); err != nil {
 		return err
 	}
+	s.access.invalidate(pending.TenantID)
 	return s.pendingCharges.Delete(ctx, orderRef)
 }
 
+// txTypeFor: the first paid period ever is "new"; every later one is a
+// renewal. Decided from the dates, not the cached status column.
 func txTypeFor(tenant *domain.Tenant) billingcontracts.TransactionType {
-	if tenant.SubscriptionStatus != domain.StatusPendingPayment {
+	if tenant.SubscriptionExpiresAt != nil {
 		return billingcontracts.TransactionRenewal
 	}
 	return billingcontracts.TransactionNew
 }
 
-// computeNewExpiry extends from the tenant's existing expiry if their plan
-// is still active (renewal stacks on top of remaining time), otherwise from
-// now (new subscription, or reactivating a lapsed one).
+// computeNewExpiry starts the new paid period where the tenant's current
+// access ends, so nobody loses days they already have: a renewal stacks on
+// top of the remaining paid time, and paying during the free trial starts
+// the paid period when the trial ends. A lapsed tenant restarts from now.
 func computeNewExpiry(tenant *domain.Tenant, plan *billingcontracts.Plan) time.Time {
-	wasActive := tenant.SubscriptionStatus == domain.StatusActive || tenant.SubscriptionStatus == domain.StatusExpiringSoon
-	base := time.Now()
-	if wasActive && tenant.SubscriptionExpiresAt != nil && tenant.SubscriptionExpiresAt.After(base) {
-		base = *tenant.SubscriptionExpiresAt
+	return computeNewExpiryAt(tenant, plan.DurationMonths, time.Now())
+}
+
+func computeNewExpiryAt(tenant *domain.Tenant, durationMonths int, now time.Time) time.Time {
+	base := now
+	switch {
+	case tenant.SubscriptionExpiresAt != nil:
+		if tenant.SubscriptionExpiresAt.After(base) {
+			base = *tenant.SubscriptionExpiresAt
+		}
+	case tenant.TrialEndsAt != nil:
+		if tenant.TrialEndsAt.After(base) {
+			base = *tenant.TrialEndsAt
+		}
 	}
-	return base.AddDate(0, plan.DurationMonths, 0)
+	return base.AddDate(0, durationMonths, 0)
 }
 
 // ParseTenantID converts a JWT tenant-id claim (string) to int64 — used by the

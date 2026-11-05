@@ -58,3 +58,10 @@ func (r *MySQLRefreshTokenRepository) Revoke(ctx context.Context, id int64) erro
 	_, err := r.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ? WHERE id = ?`, time.Now(), id)
 	return err
 }
+
+func (r *MySQLRefreshTokenRepository) RevokeAllForCredential(ctx context.Context, credentialID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked_at = ? WHERE credential_id = ? AND revoked_at IS NULL`,
+		time.Now(), credentialID)
+	return err
+}

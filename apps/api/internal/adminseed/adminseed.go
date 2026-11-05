@@ -35,7 +35,8 @@ func Run(ctx context.Context, db *sql.DB) error {
 
 	credentialRepo := identityinfra.NewMySQLCredentialRepository(db)
 	hasher := identityinfra.NewBcryptHasher()
-	management := identityapp.NewManagementService(credentialRepo, hasher)
+	refreshTokenRepo := identityinfra.NewMySQLRefreshTokenRepository(db)
+	management := identityapp.NewManagementService(credentialRepo, refreshTokenRepo, hasher)
 	// No AuthService here — seeding only ever needs CreateCredential, never
 	// token issuance (IssueServiceToken), so the second constructor arg is
 	// nil; see contracts.impl.IssueServiceToken's guard.

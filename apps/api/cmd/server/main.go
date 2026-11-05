@@ -180,12 +180,15 @@ func serve(cfg config.Config) {
 	identityModule := identity.NewModule(db, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 	identityModule.RegisterRoutes(mux)
 
-	// Every authenticated route: verify the JWT, then hold `client`
-	// principals to the Client Portal's own allowlist (client_scope.go).
+	// Every authenticated route: verify the JWT, hold `client` principals to
+	// the Client Portal's own allowlist (client_scope.go), then enforce the
+	// tenant's subscription state (tenant_scope.go). The gate's resolver is
+	// the platform module, bound below once it exists.
 	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
 	restrictClients := middleware.RestrictPrincipal("client", clientPortalAllowed)
+	tenantGate := middleware.NewTenantAccessGate(staffAllowedWhenRestricted)
 	authed := func(next http.Handler) http.Handler {
-		return requireAuth(restrictClients(next))
+		return requireAuth(restrictClients(tenantGate.Middleware(next)))
 	}
 
 	mux.Handle("/api/v1/auth/me", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +222,11 @@ func serve(cfg config.Config) {
 	// (A6) — payment is still built before billing.
 	billingModule := billing.NewModule(db, paymentModule.AppRegistry(), paymentModule.Client())
 	platformModule := platform.NewModule(db, staffModule.Contracts(), identityModule.Contracts(), billingModule.Contracts(), paymentModule.Client(), storageClient)
+	// Two-phase wiring (identity is built first): a tenant frozen by the
+	// platform team can neither log in nor refresh, and every request is
+	// checked against the tenant's subscription lifecycle.
+	identityModule.SetTenantGuard(platformModule)
+	tenantGate.SetResolver(platformModule)
 	// Pre-auth, Host-header-resolved tenant branding (ADR-0015) — registered
 	// unwrapped, same style as identityModule.RegisterRoutes(mux) above.
 	platformModule.RegisterPublicRoutes(mux)
@@ -270,6 +278,9 @@ func serve(cfg config.Config) {
 	// memanggil gateway secara independen (A32).
 	billingModule.SetSubscriptionChargeMaxAge(cfg.SubscriptionChargeMaxAge)
 	billingModule.StartSubscriptionReconciler(context.Background(), cfg.SubscriptionReconcileInterval)
+	// Keeps tenants.subscription_status (list filters, dashboards) in step
+	// with the date-derived lifecycle; access never depends on it.
+	platformModule.StartSubscriptionStatusSweeper(context.Background(), time.Hour)
 
 	paymentModule.RegisterRoutes(mux, authed)
 	billingModule.RegisterRoutes(mux, authed)

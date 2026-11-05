@@ -44,6 +44,32 @@ type tenantResponse struct {
 	BrandColorPreset      string  `json:"brandColorPreset"`
 	HasLogo               bool    `json:"hasLogo"`
 	CustomDomain          *string `json:"customDomain"`
+	TrialEndsAt           *string `json:"trialEndsAt"`
+	// Lifecycle is computed at read time (domain.ComputeLifecycle);
+	// SubscriptionStatus above mirrors Lifecycle.Status.
+	Lifecycle lifecycleResponse `json:"lifecycle"`
+}
+
+// lifecycleResponse is the subscription state any staff member of the
+// tenant may see (GET /tenants/me/subscription) — it powers the WO
+// Console's global banner for every role, not only the Owner.
+type lifecycleResponse struct {
+	Status       string  `json:"status"`
+	Access       string  `json:"access"`
+	IsTrial      bool    `json:"isTrial"`
+	PeriodEndsAt *string `json:"periodEndsAt"`
+	DaysLeft     int     `json:"daysLeft"`
+	ReadOnlyAt   *string `json:"readOnlyAt"`
+	SuspendAt    *string `json:"suspendAt"`
+	Frozen       bool    `json:"frozen"`
+}
+
+func toLifecycleResponse(lc domain.Lifecycle) lifecycleResponse {
+	return lifecycleResponse{
+		Status: string(lc.Status), Access: string(lc.Access), IsTrial: lc.IsTrial,
+		PeriodEndsAt: dateOrNil(lc.PeriodEndsAt), DaysLeft: lc.DaysLeft,
+		ReadOnlyAt: dateOrNil(lc.ReadOnlyAt), SuspendAt: dateOrNil(lc.SuspendAt), Frozen: lc.Frozen,
+	}
 }
 
 // brandingResponse is the minimal, non-sensitive branding shape any
@@ -65,10 +91,12 @@ func dateOrNil(t *time.Time) *string {
 }
 
 func toTenantResponse(t domain.Tenant) tenantResponse {
+	lc := domain.ComputeLifecycle(t, time.Now(), domain.DefaultSubscriptionPolicy)
 	return tenantResponse{
 		ID: t.ID, BusinessName: t.BusinessName, OwnerName: t.OwnerName, Username: t.Username,
 		Email: t.Email, Phone: t.Phone, City: t.City, JoinedAt: t.JoinedAt.Format("2006-01-02"),
-		PlanID: t.PlanID, SubscriptionStatus: string(t.SubscriptionStatus),
+		PlanID: t.PlanID, SubscriptionStatus: string(lc.Status),
+		TrialEndsAt: dateOrNil(t.TrialEndsAt), Lifecycle: toLifecycleResponse(lc),
 		SubscriptionExpiresAt: dateOrNil(t.SubscriptionExpiresAt), IsSuspended: t.IsSuspended,
 		LastCredentialResetAt: dateOrNil(t.LastCredentialResetAt),
 		BrandColorPreset:      t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
@@ -196,6 +224,8 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 			h.myBranding(w, r)
 		case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodGet:
 			h.myLogo(w, r)
+		case len(segments) == 2 && segments[1] == "subscription" && r.Method == http.MethodGet:
+			h.mySubscription(w, r)
 		default:
 			response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 		}
@@ -246,6 +276,29 @@ func (h *TenantHandler) myBranding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.OK(w, "ok", toBrandingResponse(*tenant))
+}
+
+// mySubscription backs GET /tenants/me/subscription — the lifecycle summary
+// (status, access level, days left) every staff role needs for the WO
+// Console banner. Unlike /me it carries no billing history, so it is not
+// Owner-only; it is staff-only (clients never see the WO's billing state).
+func (h *TenantHandler) mySubscription(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.FromContext(r.Context())
+	if !ok || claims.PrincipalType != "staff" {
+		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat melihat status langganan", nil)
+		return
+	}
+	tenantID, ok := selfTenantID(r)
+	if !ok {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return
+	}
+	tenant, err := h.tenants.Get(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", toLifecycleResponse(h.tenants.Lifecycle(*tenant)))
 }
 
 // myLogo streams the caller's own tenant's logo — same auth scoping as

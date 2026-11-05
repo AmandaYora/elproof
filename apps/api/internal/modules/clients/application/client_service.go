@@ -234,6 +234,12 @@ func (s *ClientService) SetActive(ctx context.Context, tenantID, id int64, isAct
 	if err := s.repo.SetActive(ctx, tenantID, id, isActive); err != nil {
 		return nil, err
 	}
+	// Keep the login identity in step: before Fase 1 a deactivated client
+	// could still log in (only project reads were refused).
+	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalClient, formatID(c.ID), isActive); err != nil {
+		_ = s.repo.SetActive(ctx, tenantID, id, !isActive)
+		return nil, err
+	}
 	c.IsActive = isActive
 	return c, nil
 }

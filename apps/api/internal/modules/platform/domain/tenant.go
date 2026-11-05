@@ -7,11 +7,19 @@ import (
 
 type SubscriptionStatus string
 
+// Subscription lifecycle (docs/plan/registrasi-wo-self-service/FLOW-IDEAL.md
+// §1.4). The stored column is a cache refreshed by the status sweeper;
+// ComputeLifecycle (subscription_lifecycle.go) is the source of truth.
 const (
-	StatusActive        SubscriptionStatus = "active"
+	StatusTrialing       SubscriptionStatus = "trialing"
+	StatusActive         SubscriptionStatus = "active"
 	StatusExpiringSoon   SubscriptionStatus = "expiring_soon"
-	StatusExpired        SubscriptionStatus = "expired"
+	StatusPastDue        SubscriptionStatus = "past_due"
+	StatusReadOnly       SubscriptionStatus = "read_only"
+	StatusSuspended      SubscriptionStatus = "suspended"
 	StatusPendingPayment SubscriptionStatus = "pending_payment"
+	// StatusExpired is legacy (pre-Fase 1 rows); never produced anymore.
+	StatusExpired SubscriptionStatus = "expired"
 )
 
 // PendingCharge remembers, for a subscription charge still awaiting gateway
@@ -36,7 +44,12 @@ type Tenant struct {
 	PlanID                *int64
 	SubscriptionStatus    SubscriptionStatus
 	SubscriptionExpiresAt *time.Time
-	IsSuspended           bool
+	// TrialEndsAt is set when a tenant starts on a free trial (every new
+	// tenant, Fase 1); nil only for legacy rows.
+	TrialEndsAt *time.Time
+	// IsSuspended is a freeze by ElProof's platform team (abuse, fraud) —
+	// separate from the billing lifecycle and blocks every principal.
+	IsSuspended bool
 	LastCredentialResetAt *time.Time
 	BrandColorPreset      string
 	LogoStoragePath       *string

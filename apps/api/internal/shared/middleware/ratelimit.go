@@ -50,6 +50,43 @@ func (rl *RateLimiter) Allow(key string) bool {
 	return true
 }
 
+// Exceeded reports whether key has already used its budget in the current
+// window, without recording a new attempt. Paired with Record it lets a
+// caller count only *failed* attempts (e.g. wrong passwords) instead of
+// every request.
+func (rl *RateLimiter) Exceeded(key string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	cutoff := time.Now().Add(-rl.window)
+	n := 0
+	for _, t := range rl.hits[key] {
+		if t.After(cutoff) {
+			n++
+		}
+	}
+	return n >= rl.max
+}
+
+// Record counts one attempt for key (see Exceeded).
+func (rl *RateLimiter) Record(key string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.hits[key] = append(rl.hits[key], time.Now())
+}
+
+// Reset forgets every attempt recorded for key (e.g. after a successful
+// login, so earlier typos don't count toward a later lockout).
+func (rl *RateLimiter) Reset(key string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	delete(rl.hits, key)
+}
+
+// RetryAfterSeconds is the window length, for a 429's Retry-After header.
+func (rl *RateLimiter) RetryAfterSeconds() int {
+	return int(rl.window.Seconds())
+}
+
 // RateLimit rejects requests once the calling IP exceeds limiter's budget.
 // Sets Retry-After (seconds, the limiter's own window) on a 429 so a caller
 // doesn't have to guess a backoff — external integrators in particular
@@ -57,7 +94,7 @@ func (rl *RateLimiter) Allow(key string) bool {
 func RateLimit(limiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !limiter.Allow(clientIP(r)) {
+			if !limiter.Allow(ClientIP(r)) {
 				w.Header().Set("Retry-After", strconv.Itoa(int(limiter.window.Seconds())))
 				response.Error(w, http.StatusTooManyRequests, "Terlalu banyak percobaan, coba lagi nanti", map[string]string{"code": "rate_limited"})
 				return
@@ -67,7 +104,16 @@ func RateLimit(limiter *RateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
-func clientIP(r *http.Request) string {
+// ClientIP returns the caller's IP for rate limiting. In production the app
+// only listens on 127.0.0.1 behind host nginx, which sets X-Real-IP to
+// $remote_addr — overwriting anything the caller sent — so it is preferred.
+// X-Forwarded-For is only a fallback: nginx *appends* to it
+// ($proxy_add_x_forwarded_for), so its first entry is whatever the caller
+// claimed and could be rotated to dodge a per-IP limit.
+func ClientIP(r *http.Request) string {
+	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+		return real
+	}
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 		if first, _, ok := strings.Cut(fwd, ","); ok {
 			return strings.TrimSpace(first)

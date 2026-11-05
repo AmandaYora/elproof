@@ -17,6 +17,13 @@ import (
 type Module struct {
 	handler   *presentation.Handler
 	contracts contracts.Contracts
+	auth      *application.AuthService
+}
+
+// SetTenantGuard lets cmd/server plug in the platform module's tenant check
+// (frozen tenants cannot log in or refresh) after both modules exist.
+func (m *Module) SetTenantGuard(guard application.TenantGuard) {
+	m.auth.SetTenantGuard(guard)
 }
 
 func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration) *Module {
@@ -26,11 +33,12 @@ func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration
 	hasher := infrastructure.NewBcryptHasher()
 
 	authService := application.NewAuthService(credentialRepo, refreshTokenRepo, issuer, hasher, accessTTL, refreshTTL)
-	managementService := application.NewManagementService(credentialRepo, hasher)
+	managementService := application.NewManagementService(credentialRepo, refreshTokenRepo, hasher)
 
 	return &Module{
 		handler:   presentation.NewHandler(authService),
 		contracts: contracts.New(managementService, authService),
+		auth:      authService,
 	}
 }
 
