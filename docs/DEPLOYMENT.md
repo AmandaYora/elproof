@@ -131,6 +131,19 @@ See ADR-0011 for the full decision record. The target VPS ("Elcodelabs", also ho
    generated fresh for this environment — never copied from local dev's `.env`.
 5. **nginx + TLS** front the container's `127.0.0.1:8082`.
 
+**TLS (updated 2026-11-06):** the certificate is `--cert-name elproof.elcodelabs.com` covering
+**only** `elproof.elcodelabs.com` (authenticator + installer `nginx`), renewed by the system
+`certbot.timer` (twice daily), with `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`
+reloading nginx after every renewal. Never add another domain to this certificate — on
+2026-10-28 it expired because a tenant custom domain (`journey.jwswedding.com`) that had been
+added to it moved to another server and failed its challenge (see ADR-0015 "Deprecation").
+Quick checks:
+
+```bash
+ssh elcodelabs 'sudo certbot certificates && sudo certbot renew --dry-run'
+echo | openssl s_client -servername elproof.elcodelabs.com -connect elproof.elcodelabs.com:443 2>/dev/null | openssl x509 -noout -dates
+```
+
 **Status as of 2026-07-17 — LIVE at <https://elproof.elcodelabs.com>:**
 - `elproof-app` container running and healthy on `127.0.0.1:8082`; `elproof_db` fully migrated
   (all 25 tables) and seeded (`superadmin`/`superadmin`, "Paket 1 Tahun"); nginx site + certbot

@@ -1,7 +1,8 @@
 # ADR-0015: Tenant custom domain (pre-login branding on a second hostname)
 
 ## Status
-Accepted
+Accepted — **Deprecated 2026-11-06** (see "Deprecation" at the end). Tenant custom domains are
+no longer offered; the code paths described here are scheduled for removal.
 
 ## Context
 ADR-0012 shipped per-tenant branding (logo + one of 20 color presets) applied at runtime once a
@@ -141,3 +142,28 @@ platform's own domain keeps the original neutral slate scrim, preserving this AD
 reasoning (no tenant is knowable there). A thin translucent-white divider between headline and
 subtext (matching a reference design) rides on top of whichever scrim is active without needing
 its own tenant-color logic — it just reads as tinted by whatever gradient sits behind it.
+
+## Deprecation (2026-11-06): tenant custom domains discontinued
+
+**Decision (product owner):** ElProof no longer offers per-tenant custom domains. Every tenant and
+client uses `elproof.elcodelabs.com` only. Pre-login branding by Host header is therefore no longer
+a supported feature.
+
+**Why:** the operational model in "Consequences" step 3 (`certbot --nginx -d <domain>`) expanded
+the platform's own certificate with the tenant domain. When `journey.jwswedding.com` later moved to
+another server, its HTTP-01 challenge failed and — because certbot renews a certificate
+all-or-nothing — `elproof.elcodelabs.com` itself expired on 2026-10-28 (production served
+`ERR_CERT_DATE_INVALID` for 9 days). A per-tenant manual DNS/nginx/certbot step also does not scale
+to self-service registration (docs/plan/registrasi-wo-self-service/PLAN.md).
+
+**Done (Fase 0, 2026-11-06):** `journey.jwswedding.com` removed from the elproof nginx site and from
+the certificate; certificate reissued for `elproof.elcodelabs.com` only (valid to 2027-02-03);
+nginx reload deploy hook added; `certbot renew --dry-run` passes for every certificate on the VPS.
+See `/opt/elcodelabs/SERVER_PLAYBOOK.md` "Incident — elproof TLS expired".
+
+**Still to do (code, later phase):** remove `tenants.custom_domain` from the tenant edit form and
+API, `GET /public/branding` Host resolution, `useDomainBranding()` in `LoginPage`, and the
+`PLATFORM_HOSTNAMES` gate; a migration drops the column. Until then the field must not be used.
+
+**Rule kept for any future extra hostname:** one certificate per domain (`--cert-name <domain>`),
+never `--expand` the platform certificate with a domain ElProof does not control.
