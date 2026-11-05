@@ -186,6 +186,10 @@ func serve(cfg config.Config) {
 	// tenant's subscription state (tenant_scope.go). The gate's resolver is
 	// the platform module, bound below once it exists.
 	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
+	// Tokens stop working as soon as their account is deactivated, demoted
+	// or loses two-factor, not only when they expire.
+	liveSession := &middleware.RequireLiveSession{}
+	liveSession.SetValidator(identityModule.SessionValidator())
 	restrictClients := middleware.RestrictPrincipal("client", clientPortalAllowed)
 	restrictAdmins := middleware.RestrictPrincipalBy("platform_admin", platformAdminPolicy)
 	tenantGate := middleware.NewTenantAccessGate(staffAllowedWhenRestricted)
@@ -194,7 +198,7 @@ func serve(cfg config.Config) {
 	// including refused attempts (audit sits before the role check).
 	auditAdmins := middleware.AuditTrail(auditModule.Recorder(), "platform_admin")
 	authed := func(next http.Handler) http.Handler {
-		return requireAuth(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(next)))))
+		return requireAuth(liveSession.Middleware(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(next))))))
 	}
 
 	mux.Handle("/api/v1/auth/me", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
+	"sync"
 
 	"elproof/internal/shared/response"
 )
@@ -48,4 +50,41 @@ func RestrictPrincipalBy(principalType string, allow ClaimsAllowFunc) func(http.
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// SessionValidator checks that an access token still matches its account
+// (active, same role, same two-factor state) — implemented by identity.
+type SessionValidator interface {
+	ValidateSession(ctx context.Context, claims *Claims) error
+}
+
+// RequireLiveSession rejects (401) a valid-looking token whose account was
+// deactivated, demoted or lost two-factor since it was issued. The web
+// client then refreshes (which re-reads the account) or logs out. Bound late
+// because identity is built after the authed chain is assembled.
+type RequireLiveSession struct {
+	mu        sync.RWMutex
+	validator SessionValidator
+}
+
+func (l *RequireLiveSession) SetValidator(v SessionValidator) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.validator = v
+}
+
+func (l *RequireLiveSession) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := FromContext(r.Context())
+		l.mu.RLock()
+		v := l.validator
+		l.mu.RUnlock()
+		if ok && v != nil {
+			if err := v.ValidateSession(r.Context(), claims); err != nil {
+				response.Error(w, http.StatusUnauthorized, "Sesi tidak berlaku lagi, silakan masuk kembali", map[string]string{"code": "session_revoked"})
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

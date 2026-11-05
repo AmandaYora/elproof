@@ -53,7 +53,8 @@ type ObjectStorage interface {
 // domain.PendingCharge.
 // ManualActivationRepository stores the reason/proof of manual grants.
 type ManualActivationRepository interface {
-	Create(ctx context.Context, a *domain.ManualActivation) error
+	// ApplyGrant updates the tenant and stores the record atomically.
+	ApplyGrant(ctx context.Context, a *domain.ManualActivation, status domain.SubscriptionStatus) error
 }
 
 type PendingChargeRepository interface {
@@ -185,7 +186,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 	username := input.Username
 	// Every new tenant starts on a free trial (product decision K1); the
 	// lifecycle (domain.ComputeLifecycle) takes it from there.
-	trialEndsAt := time.Now().AddDate(0, 0, domain.DefaultSubscriptionPolicy.TrialDays)
+	trialEndsAt := time.Now().Truncate(time.Second).AddDate(0, 0, domain.DefaultSubscriptionPolicy.TrialDays)
 
 	tenant := &domain.Tenant{
 		BusinessName:       input.BusinessName,
@@ -514,17 +515,18 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 	}); err != nil {
 		return nil, err
 	}
-	if err := s.repo.UpdateSubscription(ctx, tenantID, input.PlanID, domain.StatusActive, newExpiry); err != nil {
-		return nil, err
-	}
-	if err := s.activations.Create(ctx, &domain.ManualActivation{
+	// The ledger lives in `billing` (another module, so not the same DB
+	// transaction): it is written first, and cancelled again if the
+	// platform-side grant below cannot be applied.
+	if err := s.activations.ApplyGrant(ctx, &domain.ManualActivation{
 		TenantID: tenantID, PlanID: input.PlanID, ActorAdminID: input.ActorAdminID, Reason: input.Reason,
 		ProofReference: strings.TrimSpace(input.ProofReference), Note: strings.TrimSpace(input.Note),
 		TransactionReference: reference, ExpiresAt: newExpiry,
-	}); err != nil {
-		// The subscription is already granted and the ledger row written;
-		// losing the detail record must not undo that, but must be visible.
-		logger.Error("platform: manual activation of tenant %d applied but its record failed: %v", tenantID, err)
+	}, domain.StatusActive); err != nil {
+		if cerr := s.billing.UpdateTransactionStatus(ctx, reference, billingcontracts.StatusCancelled); cerr != nil {
+			logger.Error("platform: manual activation of tenant %d failed and its ledger row %s could not be cancelled: %v", tenantID, reference, cerr)
+		}
+		return nil, err
 	}
 	s.access.invalidate(tenantID)
 	return s.Get(ctx, tenantID)

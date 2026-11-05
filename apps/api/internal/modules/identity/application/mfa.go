@@ -38,6 +38,8 @@ func (s *AuthService) VerifyMFA(ctx context.Context, mfaToken, code string) (*Se
 	if s.mfa == nil {
 		return nil, apperror.Internal("Verifikasi dua langkah belum dikonfigurasi")
 	}
+	// use() reserves one attempt atomically, so parallel guesses on one
+	// challenge cannot exceed its budget.
 	credentialID, ok := s.challenges.use(mfaToken)
 	if !ok {
 		return nil, apperror.Unauthorized("Sesi verifikasi sudah berakhir, silakan masuk kembali")
@@ -50,7 +52,6 @@ func (s *AuthService) VerifyMFA(ctx context.Context, mfaToken, code string) (*Se
 		return nil, apperror.Unauthorized("Sesi verifikasi sudah berakhir, silakan masuk kembali")
 	}
 	if err := s.checkCode(ctx, cred, code); err != nil {
-		s.challenges.fail(mfaToken)
 		return nil, err
 	}
 	s.challenges.drop(mfaToken)
@@ -76,8 +77,12 @@ func (s *AuthService) SetupMFA(ctx context.Context, principalType, principalID s
 	if err != nil {
 		return nil, apperror.Internal("Gagal menyimpan kunci verifikasi")
 	}
-	if err := s.credentials.SetTOTPSecret(ctx, cred.ID, enc); err != nil {
+	stored, err := s.credentials.SetTOTPSecret(ctx, cred.ID, enc)
+	if err != nil {
 		return nil, err
+	}
+	if !stored {
+		return nil, apperror.Conflict("Verifikasi dua langkah sudah aktif untuk akun ini")
 	}
 	return &MFASetup{Secret: encoded, OTPAuthURL: s.mfa.URL(cred.Username, encoded)}, nil
 }
@@ -99,13 +104,23 @@ func (s *AuthService) EnableMFA(ctx context.Context, principalType, principalID,
 	if err != nil {
 		return nil, apperror.Internal("Kunci verifikasi tidak dapat dibaca, ulangi penyiapan")
 	}
+	key := credentialKey(cred.ID)
+	if s.totpFailures.Exceeded(key) {
+		return nil, tooManyAttempts()
+	}
 	step, ok := s.mfa.Verify(raw, code, cred.TOTPLastStep)
 	if !ok {
+		s.totpFailures.Record(key)
 		return nil, invalidCode()
 	}
-	if err := s.credentials.EnableTOTP(ctx, cred.ID, step); err != nil {
+	enabled, err := s.credentials.EnableTOTP(ctx, cred.ID, step)
+	if err != nil {
 		return nil, err
 	}
+	if !enabled {
+		return nil, apperror.Conflict("Verifikasi dua langkah sudah aktif untuk akun ini")
+	}
+	s.sessions.Invalidate(cred.PrincipalType, cred.PrincipalID)
 	if err := s.refreshTokens.RevokeAllForCredential(ctx, cred.ID); err != nil {
 		return nil, err
 	}
@@ -130,15 +145,23 @@ func (s *AuthService) mfaCandidate(ctx context.Context, principalType, principal
 	return cred, nil
 }
 
+// checkCode verifies a login code. Failures are budgeted per account (not
+// per challenge), so fresh password logins cannot reset the count.
 func (s *AuthService) checkCode(ctx context.Context, cred *domain.Credential, code string) error {
+	key := credentialKey(cred.ID)
+	if s.totpFailures.Exceeded(key) {
+		return tooManyAttempts()
+	}
 	raw, err := s.mfa.Open(cred.TOTPSecretEnc)
 	if err != nil {
 		return apperror.Internal("Kunci verifikasi tidak dapat dibaca; minta Super Admin mereset verifikasi dua langkah")
 	}
 	step, ok := s.mfa.Verify(raw, code, cred.TOTPLastStep)
 	if !ok {
+		s.totpFailures.Record(key)
 		return invalidCode()
 	}
+	s.totpFailures.Reset(key)
 	fresh, err := s.credentials.SetTOTPLastStep(ctx, cred.ID, step)
 	if err != nil {
 		return err
@@ -194,6 +217,8 @@ func (c *mfaChallenges) issue(credentialID int64) string {
 	return token
 }
 
+// use reserves one attempt on the challenge (under the lock, before the
+// code is checked) and reports which credential it belongs to.
 func (c *mfaChallenges) use(token string) (int64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -202,18 +227,8 @@ func (c *mfaChallenges) use(token string) (int64, bool) {
 		delete(c.items, token)
 		return 0, false
 	}
+	ch.attempts++
 	return ch.credentialID, true
-}
-
-func (c *mfaChallenges) fail(token string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if ch, ok := c.items[token]; ok {
-		ch.attempts++
-		if ch.attempts >= mfaChallengeAttempts {
-			delete(c.items, token)
-		}
-	}
 }
 
 func (c *mfaChallenges) drop(token string) {

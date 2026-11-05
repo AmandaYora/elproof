@@ -5,10 +5,12 @@ package application
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"elproof/internal/modules/identity/domain"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/middleware"
 )
 
 type CredentialRepository interface {
@@ -30,8 +32,8 @@ type CredentialRepository interface {
 	// the owning module — they only ever read this column.
 	UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error
 	// Two-factor (TOTP) state — see mfa.go.
-	SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) error
-	EnableTOTP(ctx context.Context, credentialID int64, step int64) error
+	SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) (bool, error)
+	EnableTOTP(ctx context.Context, credentialID int64, step int64) (bool, error)
 	SetTOTPLastStep(ctx context.Context, credentialID int64, step int64) (bool, error)
 	ClearTOTP(ctx context.Context, principalType domain.PrincipalType, principalID string) error
 }
@@ -39,7 +41,9 @@ type CredentialRepository interface {
 type RefreshTokenRepository interface {
 	Create(ctx context.Context, token *domain.RefreshToken) error
 	FindByTokenHash(ctx context.Context, tokenHash string) (*domain.RefreshToken, error)
-	Revoke(ctx context.Context, id int64) error
+	// Revoke reports whether this call revoked the token (false: it was
+	// already revoked, e.g. by a concurrent refresh).
+	Revoke(ctx context.Context, id int64) (bool, error)
 	// RevokeAllForCredential ends every open session of one login identity
 	// (used when the owning module deactivates that principal).
 	RevokeAllForCredential(ctx context.Context, credentialID int64) error
@@ -83,6 +87,44 @@ type AuthService struct {
 	tenantGuard   TenantGuard
 	mfa           MFAEngine
 	challenges    *mfaChallenges
+	sessions      *SessionChecker
+	// Failed attempts are counted per credential (not per typed string,
+	// which accent/case variants and username-vs-email could multiply), so
+	// an account's budget is the same from any IP and any spelling.
+	passwordFailures *middleware.RateLimiter
+	totpFailures     *middleware.RateLimiter
+}
+
+const (
+	failureWindow       = 15 * time.Minute
+	maxPasswordFailures = 10
+	maxTOTPFailures     = 5
+)
+
+func credentialKey(id int64) string { return strconv.FormatInt(id, 10) }
+
+func tooManyAttempts() error {
+	return apperror.RateLimited("Terlalu banyak percobaan masuk untuk akun ini. Silakan coba lagi dalam 15 menit.")
+}
+
+// checkPassword tries one candidate, honouring and updating its failure
+// budget. ok=false with err=nil means "wrong password".
+func (s *AuthService) checkPassword(cred *domain.Credential, password string) (bool, error) {
+	key := credentialKey(cred.ID)
+	if s.passwordFailures.Exceeded(key) {
+		return false, tooManyAttempts()
+	}
+	if s.hasher.Compare(cred.PasswordHash, password) != nil {
+		s.passwordFailures.Record(key)
+		return false, nil
+	}
+	s.passwordFailures.Reset(key)
+	return true, nil
+}
+
+// SetSessionChecker lets two-factor changes invalidate cached session state.
+func (s *AuthService) SetSessionChecker(c *SessionChecker) {
+	s.sessions = c
 }
 
 // SetTenantGuard completes two-phase wiring: identity is built before the
@@ -107,6 +149,9 @@ func NewAuthService(
 		accessTTL:     accessTTL,
 		refreshTTL:    refreshTTL,
 		challenges:    newMFAChallenges(),
+
+		passwordFailures: middleware.NewRateLimiter(maxPasswordFailures, failureWindow),
+		totpFailures:     middleware.NewRateLimiter(maxTOTPFailures, failureWindow),
 	}
 }
 
@@ -153,8 +198,14 @@ func (s *AuthService) Login(ctx context.Context, identifier, password string) (*
 	if err != nil {
 		return nil, err
 	}
-	if cred != nil && cred.IsActive && s.hasher.Compare(cred.PasswordHash, password) == nil {
-		return s.completeLogin(ctx, cred)
+	if cred != nil && cred.IsActive {
+		ok, err := s.checkPassword(cred, password)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return s.completeLogin(ctx, cred)
+		}
 	}
 
 	candidates, err := s.credentials.FindAllByEmail(ctx, identifier)
@@ -162,7 +213,14 @@ func (s *AuthService) Login(ctx context.Context, identifier, password string) (*
 		return nil, err
 	}
 	for _, c := range candidates {
-		if c.IsActive && s.hasher.Compare(c.PasswordHash, password) == nil {
+		if !c.IsActive || (cred != nil && c.ID == cred.ID) {
+			continue
+		}
+		ok, err := s.checkPassword(c, password)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			return s.completeLogin(ctx, c)
 		}
 	}
@@ -203,13 +261,17 @@ func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*S
 		return nil, apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
 	}
 
-	if err := s.refreshTokens.Revoke(ctx, record.ID); err != nil {
+	revoked, err := s.refreshTokens.Revoke(ctx, record.ID)
+	if err != nil {
 		return nil, err
 	}
-	// Every refresh token of an admin with two-factor on descends from a
-	// TOTP-verified login (enabling two-factor revokes older ones), so the
-	// refreshed session keeps its MFA status.
-	return s.issueSession(ctx, cred, requiresMFA(cred) && cred.TOTPEnabled)
+	if !revoked { // redeemed concurrently by another request
+		return nil, apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
+	}
+	// The refreshed session keeps exactly the second-factor status of the
+	// session that created this token, and loses it if two-factor was
+	// reset since.
+	return s.issueSession(ctx, cred, record.MFA && cred.TOTPEnabled)
 }
 
 // IssueServiceToken mints a bearer access token for a principal the caller
@@ -234,7 +296,8 @@ func (s *AuthService) Logout(ctx context.Context, refreshTokenPlain string) erro
 	if record == nil {
 		return nil // idempotent — already gone
 	}
-	return s.refreshTokens.Revoke(ctx, record.ID)
+	_, err = s.refreshTokens.Revoke(ctx, record.ID)
+	return err
 }
 
 func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential, mfa bool) (*Session, error) {
@@ -258,6 +321,7 @@ func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential,
 	record := &domain.RefreshToken{
 		CredentialID: cred.ID,
 		TokenHash:    hash,
+		MFA:          mfa,
 		ExpiresAt:    time.Now().Add(s.refreshTTL),
 	}
 	if err := s.refreshTokens.Create(ctx, record); err != nil {

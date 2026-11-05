@@ -44,6 +44,9 @@ type RefreshToken struct {
 	ID           int64
 	CredentialID int64
 	TokenHash    string
+	// MFA: the session this token extends was established with a second
+	// factor; refreshed sessions inherit it.
+	MFA          bool
 	ExpiresAt    time.Time
 	RevokedAt    *time.Time
 	CreatedAt    time.Time

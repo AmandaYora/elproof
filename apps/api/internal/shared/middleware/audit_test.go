@@ -25,6 +25,7 @@ func TestAuditTrail(t *testing.T) {
 	}))
 	do := func(principal, method string) {
 		req := httptest.NewRequest(method, "/api/v1/tenants/4/toggle-suspension", nil)
+		req.RemoteAddr = "127.0.0.1:40000" // via host nginx
 		req.Header.Set("X-Real-IP", "1.2.3.4")
 		req = req.WithContext(NewContextWithClaims(req.Context(), &Claims{PrincipalType: principal, PrincipalID: "9", Role: "Support"}))
 		h.ServeHTTP(httptest.NewRecorder(), req)

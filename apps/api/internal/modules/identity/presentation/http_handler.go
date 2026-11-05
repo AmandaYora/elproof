@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"elproof/internal/modules/identity/application"
@@ -15,27 +14,31 @@ import (
 
 type Handler struct {
 	auth *application.AuthService
-	// loginIP caps login attempts per caller IP (any outcome), and
-	// loginFailures caps *failed* attempts per identifier — together they
-	// stop both spraying many accounts from one IP and guessing one
-	// account's password from many IPs (OWASP Authentication Cheat Sheet).
-	loginIP       *middleware.RateLimiter
-	loginFailures *middleware.RateLimiter
+	// loginIP caps login and two-factor attempts per caller IP. Failed
+	// attempts per *account* are capped inside AuthService (by credential
+	// id), so spelling variants of one identifier share one budget.
+	loginIP *middleware.RateLimiter
 }
 
-// Login limits (in-memory, single instance — ADR-0011).
 const (
-	loginWindow          = 15 * time.Minute
-	loginMaxPerIP        = 30
-	loginMaxFailedPerKey = 10
+	loginWindow   = 15 * time.Minute
+	loginMaxPerIP = 30
+	// Auth request bodies are tiny; anything larger is refused before
+	// decoding (memory safety).
+	maxAuthBodyBytes = 16 << 10
+	maxIdentifierLen = 254
+	maxPasswordLen   = 1024
 )
 
 func NewHandler(auth *application.AuthService) *Handler {
 	return &Handler{
-		auth:          auth,
-		loginIP:       middleware.NewRateLimiter(loginMaxPerIP, loginWindow),
-		loginFailures: middleware.NewRateLimiter(loginMaxFailedPerKey, loginWindow),
+		auth:    auth,
+		loginIP: middleware.NewRateLimiter(loginMaxPerIP, loginWindow),
 	}
+}
+
+func limitBody(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
 }
 
 func (h *Handler) tooManyAttempts(w http.ResponseWriter, limiter *middleware.RateLimiter) {
@@ -91,6 +94,7 @@ func toSessionResponse(s *application.Session) sessionResponse {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
@@ -104,25 +108,20 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.loginIP.Allow(middleware.ClientIP(r)) {
-		h.tooManyAttempts(w, h.loginIP)
+	if len(req.Username) > maxIdentifierLen || len(req.Password) > maxPasswordLen {
+		response.Error(w, http.StatusUnprocessableEntity, "Username/email atau password terlalu panjang", nil)
 		return
 	}
-	identifierKey := strings.ToLower(strings.TrimSpace(req.Username))
-	if h.loginFailures.Exceeded(identifierKey) {
-		h.tooManyAttempts(w, h.loginFailures)
+	if !h.loginIP.Allow(middleware.ClientIP(r)) {
+		h.tooManyAttempts(w, h.loginIP)
 		return
 	}
 
 	result, err := h.auth.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if appErr, ok := apperror.As(err); ok && appErr.Kind == apperror.KindUnauthorized {
-			h.loginFailures.Record(identifierKey)
-		}
 		writeAppError(w, err)
 		return
 	}
-	h.loginFailures.Reset(identifierKey)
 	if result.MFARequired {
 		response.OK(w, "Masukkan kode verifikasi dari aplikasi authenticator", mfaChallengeResponse{MFARequired: true, MFAToken: result.MFAToken})
 		return
@@ -131,6 +130,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
 	var req refreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
 		response.Error(w, http.StatusBadRequest, "Refresh token wajib diisi", nil)
@@ -146,6 +146,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
 	var req refreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
 		response.OK(w, "Berhasil keluar", nil)
@@ -175,6 +176,7 @@ type mfaVerifyRequest struct {
 
 // VerifyMFA is POST /auth/mfa/verify (public): second login step.
 func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
 	var req mfaVerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MFAToken == "" || req.Code == "" {
 		response.Error(w, http.StatusUnprocessableEntity, "Kode verifikasi wajib diisi", map[string][]string{"code": {"Masukkan 6 digit kode"}})
@@ -219,6 +221,7 @@ type mfaEnableRequest struct {
 // EnableMFA is POST /auth/mfa/enable: confirms enrolment with a first code
 // and returns a new two-factor session (all other sessions are revoked).
 func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)

@@ -48,3 +48,23 @@ Opening self-service registration on top of that would have meant free, unlimite
 - Staff restrictions are visible in the WO Console through `GET /tenants/me/subscription`
   (banner and locked screen in `AppLayout`).
 - The in-memory caches/limiters assume one instance (ADR-0011); scaling out needs shared state.
+
+## Revision (2026-11-06): independent security review
+- **Live sessions:** `middleware.RequireLiveSession` (first in the authed chain) re-checks every
+  staff/client/admin token against its credential — active, same role, two-factor still on —
+  through identity's `SessionChecker` (30 s cache, invalidated immediately on deactivate, role
+  change, password reset and two-factor changes). A demoted or deactivated account loses access
+  at once instead of after the 30-minute token lifetime; refused tokens get `session_revoked`.
+- **Login limits per account:** failed passwords (10) and TOTP codes (5) are budgeted per
+  credential id inside `AuthService` for 15 minutes, so spelling variants (case/accents, username
+  vs email) and fresh challenges share one budget; the per-IP limit stays in the handler. Auth
+  bodies are capped (16 KB), identifiers at 254 chars, and limiter keys are swept when expired.
+- **Proxy headers:** `ClientIP` trusts `X-Real-IP`/`X-Forwarded-For` only when the direct peer is
+  loopback or a private address (host nginx / Docker bridge).
+- **Access cache:** entries carry an invalidation generation, so a read that began before a
+  freeze can no longer re-cache the un-frozen state.
+- **Dates:** `subscription_expires_at` is DATETIME (migration 000053; old dates become 23:59:59 of
+  the same day); `DaysLeft` counts calendar days (0 = ends today).
+- Time zone: Go reads and writes with `loc=Local` and all lifecycle math happens in Go; keep the
+  app container's TZ fixed when deploying.
+

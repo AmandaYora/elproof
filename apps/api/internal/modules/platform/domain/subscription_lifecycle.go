@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // AccessLevel is what a tenant's staff may do right now. The Client Portal
 // is read-only by construction and stays readable at every billing level —
@@ -47,7 +50,8 @@ type Lifecycle struct {
 	// passed or when there is no period).
 	ReadOnlyAt *time.Time
 	SuspendAt  *time.Time
-	// DaysLeft is whole days until PeriodEndsAt (negative once passed).
+	// DaysLeft is calendar days from today until the day PeriodEndsAt falls
+	// on: 0 = ends today, negative once passed.
 	DaysLeft int
 	// IsTrial is true while the period is a trial, not a paid period.
 	IsTrial bool
@@ -120,12 +124,16 @@ func ComputeLifecycle(t Tenant, now time.Time, p SubscriptionPolicy) Lifecycle {
 	return lc
 }
 
-// daysUntil rounds up partial days so "ends in 3h" reads as 1 day left and
-// "ended 3h ago" as 0, matching how people read a countdown.
+// daysUntil counts calendar days between today and the end date (in now's
+// time zone), matching how people read a countdown: an end later today is
+// 0 ("hari ini"), tomorrow is 1. Exact-duration rounding is avoided on
+// purpose — MySQL rounds fractional seconds on write, which made a fresh
+// 14-day trial read as 15 days.
 func daysUntil(now, end time.Time) int {
-	d := end.Sub(now)
-	if d >= 0 {
-		return int((d + day - 1) / day)
-	}
-	return -int(-d / day)
+	loc := now.Location()
+	y1, m1, d1 := now.Date()
+	y2, m2, d2 := end.In(loc).Date()
+	a := time.Date(y1, m1, d1, 12, 0, 0, 0, loc) // noon: immune to DST shifts
+	b := time.Date(y2, m2, d2, 12, 0, 0, 0, loc)
+	return int(math.Round(b.Sub(a).Hours() / 24))
 }

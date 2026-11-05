@@ -29,7 +29,13 @@ export function bannerCopy(lc: SubscriptionLifecycle): BannerCopy | null {
             : `Masa coba ElProof tersisa ${days} hari, sampai ${end}.`,
       };
     case "expiring_soon":
-      return { tone: "warning", message: `Langganan berakhir dalam ${days} hari, pada ${end}. Perpanjang agar pekerjaan tim tidak terputus.` };
+      return {
+        tone: "warning",
+        message:
+          days === 0
+            ? `Langganan berakhir hari ini. Perpanjang agar pekerjaan tim tidak terputus.`
+            : `Langganan berakhir dalam ${days} hari, pada ${end}. Perpanjang agar pekerjaan tim tidak terputus.`,
+      };
     case "past_due":
       return {
         tone: "warning",

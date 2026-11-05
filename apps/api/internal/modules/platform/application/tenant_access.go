@@ -26,10 +26,21 @@ type accessCache struct {
 	mu      sync.Mutex
 	ttl     time.Duration
 	entries map[int64]accessEntry
+	// gen counts invalidations per tenant. A lookup remembers the
+	// generation it started with and only stores its result if nothing was
+	// invalidated meanwhile — otherwise a read that began before a freeze
+	// committed could re-cache the un-frozen state for a whole TTL.
+	gen map[int64]uint64
 }
 
 func newAccessCache(ttl time.Duration) *accessCache {
-	return &accessCache{ttl: ttl, entries: make(map[int64]accessEntry)}
+	return &accessCache{ttl: ttl, entries: make(map[int64]accessEntry), gen: make(map[int64]uint64)}
+}
+
+func (c *accessCache) generation(id int64) uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen[id]
 }
 
 func (c *accessCache) get(id int64, now time.Time) (accessEntry, bool) {
@@ -42,9 +53,13 @@ func (c *accessCache) get(id int64, now time.Time) (accessEntry, bool) {
 	return e, true
 }
 
-func (c *accessCache) put(id int64, e accessEntry) {
+// put stores e unless the tenant was invalidated after generation g.
+func (c *accessCache) put(id int64, e accessEntry, g uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.gen[id] != g {
+		return
+	}
 	c.entries[id] = e
 }
 
@@ -52,6 +67,7 @@ func (c *accessCache) invalidate(id int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.entries, id)
+	c.gen[id]++
 }
 
 // Lifecycle returns a tenant's subscription state right now.
@@ -64,6 +80,7 @@ func (s *TenantService) cachedLifecycle(ctx context.Context, tenantID int64) (do
 	if e, ok := s.access.get(tenantID, now); ok {
 		return e.lifecycle, e.found, nil
 	}
+	g := s.access.generation(tenantID)
 	tenant, err := s.repo.FindByID(ctx, tenantID)
 	if err != nil {
 		return domain.Lifecycle{}, false, err
@@ -72,7 +89,7 @@ func (s *TenantService) cachedLifecycle(ctx context.Context, tenantID int64) (do
 	if tenant != nil {
 		e.lifecycle = domain.ComputeLifecycle(*tenant, now, domain.DefaultSubscriptionPolicy)
 	}
-	s.access.put(tenantID, e)
+	s.access.put(tenantID, e, g)
 	return e.lifecycle, e.found, nil
 }
 

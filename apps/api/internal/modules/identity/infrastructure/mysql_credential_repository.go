@@ -157,19 +157,30 @@ func nullableEmail(email string) sql.NullString {
 
 // SetTOTPSecret stores a new (not yet confirmed) encrypted secret and turns
 // two-factor off until the admin confirms a first code.
-func (r *MySQLCredentialRepository) SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE credentials SET totp_secret_enc = ?, totp_enabled = FALSE, totp_last_step = NULL WHERE id = ?`,
+// It never touches an account whose two-factor is already on (guarded in
+// SQL, so a setup racing a just-completed enable cannot switch it off) and
+// reports whether the secret was stored.
+func (r *MySQLCredentialRepository) SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET totp_secret_enc = ?, totp_last_step = NULL WHERE id = ? AND totp_enabled = FALSE`,
 		enc, credentialID)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // EnableTOTP marks the stored secret as confirmed and records the step used.
-func (r *MySQLCredentialRepository) EnableTOTP(ctx context.Context, credentialID int64, step int64) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE credentials SET totp_enabled = TRUE, totp_last_step = ? WHERE id = ? AND totp_secret_enc IS NOT NULL`,
+func (r *MySQLCredentialRepository) EnableTOTP(ctx context.Context, credentialID int64, step int64) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET totp_enabled = TRUE, totp_last_step = ? WHERE id = ? AND totp_secret_enc IS NOT NULL AND totp_enabled = FALSE`,
 		step, credentialID)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // SetTOTPLastStep records an accepted code's time step. The WHERE clause

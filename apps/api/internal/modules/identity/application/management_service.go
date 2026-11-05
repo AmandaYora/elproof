@@ -16,6 +16,13 @@ type ManagementService struct {
 	credentials   CredentialRepository
 	refreshTokens RefreshTokenRepository
 	hasher        PasswordHasher
+	sessions      *SessionChecker
+}
+
+// SetSessionChecker lets account changes invalidate cached session state
+// immediately (identity.module.go).
+func (s *ManagementService) SetSessionChecker(c *SessionChecker) {
+	s.sessions = c
 }
 
 func NewManagementService(credentials CredentialRepository, refreshTokens RefreshTokenRepository, hasher PasswordHasher) *ManagementService {
@@ -29,6 +36,7 @@ func (s *ManagementService) revokeSessions(ctx context.Context, cred *domain.Cre
 	if cred == nil {
 		return nil
 	}
+	s.sessions.Invalidate(cred.PrincipalType, cred.PrincipalID)
 	return s.refreshTokens.RevokeAllForCredential(ctx, cred.ID)
 }
 
@@ -108,6 +116,7 @@ func (s *ManagementService) SetActive(ctx context.Context, principalType domain.
 	if err := s.credentials.SetActive(ctx, principalType, principalID, isActive); err != nil {
 		return err
 	}
+	s.sessions.Invalidate(principalType, principalID)
 	if isActive {
 		return nil
 	}
@@ -121,7 +130,13 @@ func (s *ManagementService) SetActive(ctx context.Context, principalType domain.
 // UpdateRole syncs this table's own denormalized `role` column — see
 // CredentialRepository.UpdateRole's doc comment for why this exists at all.
 func (s *ManagementService) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error {
-	return s.credentials.UpdateRole(ctx, principalType, principalID, role)
+	if err := s.credentials.UpdateRole(ctx, principalType, principalID, role); err != nil {
+		return err
+	}
+	// Tokens carrying the old role stop working at once; the next refresh
+	// issues one with the new role.
+	s.sessions.Invalidate(principalType, principalID)
+	return nil
 }
 
 // ResetPasswordByUsername lets a caller reset a password without knowing the

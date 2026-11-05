@@ -18,6 +18,13 @@ type Module struct {
 	handler   *presentation.Handler
 	contracts contracts.Contracts
 	auth      *application.AuthService
+	sessions  *application.SessionChecker
+}
+
+// SessionValidator is plugged into middleware.RequireLiveSession so a token
+// stops working as soon as its account is deactivated or changed.
+func (m *Module) SessionValidator() *application.SessionChecker {
+	return m.sessions
 }
 
 // SetTenantGuard lets cmd/server plug in the platform module's tenant check
@@ -39,11 +46,15 @@ func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration
 	}
 	authService.SetMFAEngine(totp)
 	managementService := application.NewManagementService(credentialRepo, refreshTokenRepo, hasher)
+	sessions := application.NewSessionChecker(credentialRepo)
+	managementService.SetSessionChecker(sessions)
+	authService.SetSessionChecker(sessions)
 
 	return &Module{
 		handler:   presentation.NewHandler(authService),
 		contracts: contracts.New(managementService, authService),
 		auth:      authService,
+		sessions:  sessions,
 	}
 }
 

@@ -11,7 +11,7 @@ CREATE TABLE manual_activations (
   proof_reference VARCHAR(255) NOT NULL,
   note VARCHAR(500) NOT NULL DEFAULT '',
   transaction_reference VARCHAR(100) NOT NULL,
-  expires_at DATE NOT NULL,
+  expires_at DATETIME NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_manual_activations_tenant (tenant_id, created_at)

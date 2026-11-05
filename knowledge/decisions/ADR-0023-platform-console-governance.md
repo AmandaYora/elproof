@@ -29,3 +29,20 @@ of who did what, and manual activation recorded neither a reason nor the acting 
 - Rotating `JWT_SECRET` invalidates enrolled authenticators (admins re-enrol).
 - The seed `superadmin` must enrol two-factor at first login.
 - An audit-log UI and richer per-domain events (before/after values) are planned for Fase 6.
+
+## Revision (2026-11-06): independent security review
+- Refresh tokens store whether their session had a second factor (`refresh_tokens.mfa`,
+  migration 000052); refresh copies it forward (and drops it if two-factor was reset) instead of
+  re-deriving it. Revoking a refresh token must affect exactly one row, so one token cannot be
+  redeemed twice concurrently.
+- Setting a TOTP secret and enabling it are guarded in SQL (`totp_enabled = FALSE`), so a setup
+  racing a completed enrolment cannot overwrite the secret or switch two-factor off.
+- Login challenges reserve an attempt atomically; failed codes are also budgeted per account.
+- Manual activation: tenant update and `manual_activations` record are one platform
+  transaction; if it fails, the billing ledger row is cancelled (cross-module compensation).
+- Rolling back migration 000048 deactivates Billing/Read-only admins instead of promoting them
+  to Support.
+- Known residual risk: an account that has never enrolled can be enrolled by anyone who knows its
+  password (bootstrap problem). Mitigation today: enrol right after an admin is created; every
+  setup/enable is in the audit log. A Super-Admin-issued enrolment code is a candidate for Fase 6.
+

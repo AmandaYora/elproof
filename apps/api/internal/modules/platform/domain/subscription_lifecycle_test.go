@@ -85,8 +85,14 @@ func TestComputeLifecycleFreezeAndLegacy(t *testing.T) {
 
 func TestDaysUntil(t *testing.T) {
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
-	if got := daysUntil(now, now.Add(3*time.Hour)); got != 1 {
-		t.Errorf("3h ahead = %d, want 1", got)
+	if got := daysUntil(now, now.Add(3*time.Hour)); got != 0 {
+		t.Errorf("later today = %d, want 0", got)
+	}
+	if got := daysUntil(now, now.Add(14*24*time.Hour+500*time.Millisecond)); got != 14 {
+		t.Errorf("14 days + rounding = %d, want 14", got)
+	}
+	if got := daysUntil(now, now.Add(13*time.Hour)); got != 1 {
+		t.Errorf("tomorrow 01:00 = %d, want 1", got)
 	}
 	if got := daysUntil(now, now.Add(-3*time.Hour)); got != 0 {
 		t.Errorf("3h ago = %d, want 0", got)
