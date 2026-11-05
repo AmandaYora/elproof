@@ -180,7 +180,13 @@ func serve(cfg config.Config) {
 	identityModule := identity.NewModule(db, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 	identityModule.RegisterRoutes(mux)
 
-	authed := middleware.RequireAuth(cfg.JWTSecret)
+	// Every authenticated route: verify the JWT, then hold `client`
+	// principals to the Client Portal's own allowlist (client_scope.go).
+	requireAuth := middleware.RequireAuth(cfg.JWTSecret)
+	restrictClients := middleware.RestrictPrincipal("client", clientPortalAllowed)
+	authed := func(next http.Handler) http.Handler {
+		return requireAuth(restrictClients(next))
+	}
 
 	mux.Handle("/api/v1/auth/me", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, _ := middleware.FromContext(r.Context())

@@ -106,14 +106,14 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := segments[1:]
 
-	claims, ok := h.resolveProjectAccess(w, r, projectID)
+	claims, ok := h.resolveProjectAccess(w, r, projectID, rest)
 	if !ok {
 		return
 	}
 
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodGet:
-		h.getProject(w, r, claims.tenantID, projectID)
+		h.getProject(w, r, claims.tenantID, projectID, claims.isClient)
 	case len(rest) == 0 && r.Method == http.MethodPatch:
 		h.updateProject(w, r, claims, projectID)
 	case len(rest) == 0 && r.Method == http.MethodDelete:
@@ -133,7 +133,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "milestones" && r.Method == http.MethodPatch:
 		h.updateMilestone(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodGet:
-		h.listVendorEngagements(w, r, projectID)
+		h.listVendorEngagements(w, r, projectID, claims.isClient)
 	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodPost:
 		h.createVendorEngagement(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "vendors" && r.Method == http.MethodPatch:
@@ -155,7 +155,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodDelete:
 		h.deletePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodGet:
-		h.listClientPayments(w, r, projectID)
+		h.listClientPayments(w, r, projectID, claims.isClient)
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
 		h.createClientPayment(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodPatch:
@@ -177,11 +177,11 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "issues" && r.Method == http.MethodPatch:
 		h.updateIssue(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodGet:
-		h.listEvidence(w, r, projectID)
+		h.listEvidence(w, r, projectID, claims.isClient)
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodPost:
 		h.uploadEvidence(w, r, claims, projectID)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "file" && r.Method == http.MethodGet:
-		h.downloadEvidence(w, r, projectID, rest[1])
+		h.downloadEvidence(w, r, projectID, rest[1], claims.isClient)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "toggle-client-visible" && r.Method == http.MethodPost:
 		h.toggleEvidenceClientVisible(w, r, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "documents" && r.Method == http.MethodGet:
@@ -202,6 +202,9 @@ type staffClaims struct {
 	tenantID int64
 	staffID  int64
 	role     string
+	// isClient is true for a `client` principal (Client Portal). Read
+	// handlers use it to redact internal fields — see client_view.go.
+	isClient bool
 }
 
 func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
@@ -237,11 +240,11 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 // venue) already funnels through this same function, so none of these
 // roles can reach another tenant's — or another project's — data by
 // guessing its numeric ID. A client principal only ever gets a synthetic
-// staffClaims with staffID/role left zero-valued — safe because every write
-// branch in Item requires POST/PATCH, which this function already rejects
-// for clients before the big switch is ever reached, so those zero values
-// are never read.
-func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, projectID int64) (staffClaims, bool) {
+// staffClaims with staffID/role left zero-valued and isClient set — safe
+// because this function rejects every non-GET request and every path not in
+// clientCanRead's allowlist (client_view.go) for clients before the big
+// switch is ever reached, so those zero values are never read by a write.
+func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, projectID int64, rest []string) (staffClaims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)
@@ -273,6 +276,10 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			response.Error(w, http.StatusForbidden, "Client hanya memiliki akses baca", nil)
 			return staffClaims{}, false
 		}
+		if !clientCanRead(rest) {
+			response.Error(w, http.StatusForbidden, "Data ini tidak tersedia untuk akun client", nil)
+			return staffClaims{}, false
+		}
 		tenantID, ok := claims.TenantIDInt()
 		if !ok {
 			response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
@@ -292,7 +299,7 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
 			return staffClaims{}, false
 		}
-		return staffClaims{tenantID: tenantID}, true
+		return staffClaims{tenantID: tenantID, isClient: true}, true
 	default:
 		response.Error(w, http.StatusForbidden, "Prinsipal ini tidak dapat mengakses project", nil)
 		return staffClaims{}, false

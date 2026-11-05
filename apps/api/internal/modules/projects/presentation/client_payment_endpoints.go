@@ -14,7 +14,7 @@ import (
 // client_payments has no direct evidence-ID column (unlike vendor_payments),
 // so completeness is a simple existence check against the polymorphic
 // evidence table instead of a struct method.
-func (h *Handler) listClientPayments(w http.ResponseWriter, r *http.Request, projectID int64) {
+func (h *Handler) listClientPayments(w http.ResponseWriter, r *http.Request, projectID int64, isClient bool) {
 	list, err := h.clientPayments.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
@@ -33,7 +33,11 @@ func (h *Handler) listClientPayments(w http.ResponseWriter, r *http.Request, pro
 	}
 	result := make([]clientPaymentResponse, 0, len(list))
 	for _, p := range list {
-		result = append(result, toClientPaymentResponse(p, hasEvidence[p.ID]))
+		resp := toClientPaymentResponse(p, hasEvidence[p.ID])
+		if isClient {
+			redactClientPaymentForClient(&resp)
+		}
+		result = append(result, resp)
 	}
 	response.OK(w, "ok", result)
 }

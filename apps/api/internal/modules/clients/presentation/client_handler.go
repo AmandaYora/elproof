@@ -47,10 +47,20 @@ func toClientResponse(c domain.Client) clientResponse {
 	}
 }
 
+// requireTenant gates every /clients endpoint to a WO staff principal. A
+// `client` principal (bride/groom/family) is rejected outright: before
+// Fase 1, VerifyProjectReadAccess only special-cased the "Staff"/"Sales"
+// roles, so a client's role ("Bride", ...) fell through to "allowed" and
+// GET /clients?projectId=<any project> returned other couples' names,
+// phone numbers, usernames and emails.
 func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)
+		return 0, false
+	}
+	if claims.PrincipalType != "staff" {
+		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat mengakses data client", nil)
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()

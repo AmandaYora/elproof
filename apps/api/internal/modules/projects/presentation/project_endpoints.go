@@ -200,10 +200,10 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	h.getProject(w, r, tenantID, projectID)
+	h.getProject(w, r, tenantID, projectID, true)
 }
 
-func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) {
+func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, projectID int64, isClient bool) {
 	p, err := h.projects.Get(r.Context(), tenantID, projectID)
 	if err != nil {
 		writeAppError(w, err)
@@ -218,6 +218,9 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	progressResp := toProgressResponse(*progress)
 	resp.Progress = &progressResp
 	resp.PICName = h.projects.ResolvePICName(r.Context(), tenantID, p.PICStaffID)
+	if isClient {
+		redactProjectForClient(&resp)
+	}
 	response.OK(w, "ok", resp)
 }
 

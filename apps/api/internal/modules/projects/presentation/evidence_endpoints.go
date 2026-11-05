@@ -10,7 +10,7 @@ import (
 	"elproof/internal/shared/response"
 )
 
-func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, projectID int64) {
+func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, projectID int64, isClient bool) {
 	list, err := h.evidence.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
@@ -18,7 +18,14 @@ func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, projectID
 	}
 	result := make([]evidenceResponse, 0, len(list))
 	for _, e := range list {
-		result = append(result, toEvidenceResponse(e))
+		if isClient && !clientCanSeeEvidence(e) {
+			continue
+		}
+		resp := toEvidenceResponse(e)
+		if isClient {
+			redactEvidenceForClient(&resp)
+		}
+		result = append(result, resp)
 	}
 	response.OK(w, "ok", result)
 }
@@ -91,7 +98,7 @@ func (h *Handler) toggleEvidenceClientVisible(w http.ResponseWriter, r *http.Req
 	response.OK(w, "Visibilitas dokumen diperbarui", toEvidenceResponse(*e))
 }
 
-func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string) {
+func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string, isClient bool) {
 	evidenceID, err := parseInt64(evidenceIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
@@ -103,6 +110,13 @@ func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, proje
 		return
 	}
 	defer reader.Close()
+	// Same rule as listEvidence: a client who learns an internal document's
+	// id still cannot fetch its file. 404 (not 403) so the response doesn't
+	// confirm the document exists.
+	if isClient && !clientCanSeeEvidence(*e) {
+		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
+		return
+	}
 
 	w.Header().Set("Content-Disposition", `inline; filename="`+e.FileName+`"`)
 	w.WriteHeader(http.StatusOK)

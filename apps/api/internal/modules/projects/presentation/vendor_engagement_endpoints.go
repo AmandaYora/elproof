@@ -37,7 +37,7 @@ func (h *Handler) vendorPaidAmounts(ctx context.Context, projectID int64) (map[i
 // response (one batched query via ListMilestonesByProjectVendors) so the
 // frontend's fetchVendorSection no longer needs its own per-engagement
 // Promise.all loop — PLAN.md "Performance remediation" Phase E.
-func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, projectID int64) {
+func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, projectID int64, isClient bool) {
 	list, err := h.vendors.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
@@ -64,6 +64,9 @@ func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, 
 		resp.Milestones = make([]vendorMilestoneResponse, 0, len(milestones))
 		for _, m := range milestones {
 			resp.Milestones = append(resp.Milestones, toVendorMilestoneResponse(m))
+		}
+		if isClient {
+			redactVendorForClient(&resp)
 		}
 		result = append(result, resp)
 	}
