@@ -17,6 +17,7 @@ const NAV_LINKS = [
 const LEGAL_LINKS = [
   { to: ROUTE_PATHS.homepageTerms, label: "Syarat & Ketentuan" },
   { to: ROUTE_PATHS.homepagePrivacy, label: "Kebijakan Privasi" },
+  { to: ROUTE_PATHS.homepageDataProcessing, label: "Pemrosesan Data" },
   { to: ROUTE_PATHS.homepageRefund, label: "Kebijakan Refund" },
 ];
 
@@ -78,9 +79,15 @@ export default function MarketingLayout() {
             ))}
             <Link
               to={ROUTE_PATHS.login}
-              className="ml-3 inline-flex h-9 items-center rounded-full bg-navy-900 px-5 text-[13.5px] font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-navy-800 hover:shadow-md outline-none focus-visible:ring-2 focus-visible:ring-navy-900/20 focus-visible:ring-offset-2"
+              className="ml-3 rounded-full px-4 py-2 text-[13.5px] font-semibold text-navy-950 transition-colors hover:bg-navy-900/5 outline-none focus-visible:ring-2 focus-visible:ring-navy-900/20"
             >
               Masuk
+            </Link>
+            <Link
+              to={ROUTE_PATHS.signup}
+              className="ml-1 inline-flex h-9 items-center rounded-full bg-navy-900 px-5 text-[13.5px] font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-navy-800 hover:shadow-md outline-none focus-visible:ring-2 focus-visible:ring-navy-900/20 focus-visible:ring-offset-2"
+            >
+              Coba Gratis
             </Link>
           </nav>
 
@@ -112,8 +119,14 @@ export default function MarketingLayout() {
               </NavLink>
             ))}
             <Link
-              to={ROUTE_PATHS.login}
+              to={ROUTE_PATHS.signup}
               className="mt-3 flex h-11 items-center justify-center rounded-xl bg-navy-900 text-[14.5px] font-semibold text-white shadow-sm"
+            >
+              Coba Gratis 14 Hari
+            </Link>
+            <Link
+              to={ROUTE_PATHS.login}
+              className="flex h-11 items-center justify-center rounded-xl border border-border text-[14.5px] font-semibold text-navy-950"
             >
               Masuk ke {APP_NAME}
             </Link>

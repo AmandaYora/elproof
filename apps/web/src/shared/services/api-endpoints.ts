@@ -13,6 +13,10 @@ export const API = {
     mfaVerify: "/api/v1/auth/mfa/verify",
     mfaSetup: "/api/v1/auth/mfa/setup",
     mfaEnable: "/api/v1/auth/mfa/enable",
+    // Sign in with Google for WO Owners and staff (Fase 2).
+    google: "/api/v1/auth/google",
+    // Link Google to an existing staff login by confirming its password once.
+    googleLink: "/api/v1/auth/google/link",
   },
   billing: {
     plans: "/api/v1/plans",
@@ -45,6 +49,13 @@ export const API = {
     tenantMeSubscription: "/api/v1/tenants/me/subscription",
     tenantMeBranding: "/api/v1/tenants/me/branding",
     tenantMeLogo: "/api/v1/tenants/me/logo",
+    // Owner-only self-service (Fase 2): "Lengkapi Profil" and the
+    // "Mulai di sini" checklist with trial usage.
+    tenantMeProfile: "/api/v1/tenants/me/profile",
+    tenantMeOnboarding: "/api/v1/tenants/me/onboarding",
+    tenantMeOnboardingDismiss: "/api/v1/tenants/me/onboarding/dismiss",
+    // Free-trial caps, edited in the Platform Console.
+    trialLimits: "/api/v1/trial-limits",
     tenantLogo: (id: string) => `/api/v1/tenants/${id}/logo`,
     tenantToggleSuspension: (id: string) => `/api/v1/tenants/${id}/toggle-suspension`,
     tenantResetCredential: (id: string) => `/api/v1/tenants/${id}/reset-credential`,
@@ -69,6 +80,10 @@ export const API = {
     // photos (not tenant-scoped), unlike branding/logo above.
     loginSlides: "/api/v1/public/login-slides",
     loginSlide: (index: number) => `/api/v1/public/login-slides/${index}`,
+    // Non-secret settings needed before sign-in (Google client ID).
+    config: "/api/v1/public/config",
+    // Self-service WO registration (Fase 2).
+    signupWorkspace: "/api/v1/public/signup/workspace",
   },
   staff: {
     base: "/api/v1/staff",

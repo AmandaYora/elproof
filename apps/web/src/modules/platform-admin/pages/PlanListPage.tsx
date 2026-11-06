@@ -8,6 +8,7 @@ import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { PlanFormModal } from "@/modules/platform-admin/components/PlanFormModal";
+import { TrialLimitsCard } from "@/modules/platform-admin/components/TrialLimitsCard";
 import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { useAppsStore } from "@/modules/platform-admin/stores/useAppsStore";
@@ -193,6 +194,8 @@ export default function PlanListPage() {
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
       )}
+
+      <TrialLimitsCard />
 
       {plans.length === 0 ? (
         <Card>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
@@ -13,6 +13,9 @@ import { API } from "@/shared/services/api-endpoints";
 import { applyBrandColorPreset, resetBrandColorPreset, isBrandColorPresetKey } from "@/theme/brandPresets";
 import { applyTabIdentity, resetTabIdentity } from "@/theme/tabIdentity";
 import { LoginPhotoSlider } from "@/modules/auth/components/LoginPhotoSlider";
+import { GoogleSignInButton } from "@/shared/components/auth/GoogleSignInButton";
+import { landingPathFor } from "@/shared/lib/auth-actions";
+import type { GoogleAuthOutcome, GoogleSignupState } from "@/modules/auth/types";
 
 interface DomainBranding {
   businessName: string;
@@ -137,6 +140,13 @@ export default function LoginPage() {
   const [mfaCode, setMfaCode] = useState("");
   // Why the app ended the previous session (e.g. tenant frozen), once.
   const [notice] = useState(() => peekLoginNotice());
+  // Google account whose email matches an existing staff login: confirm
+  // that login's password once to link them (or start a new workspace).
+  const location = useLocation();
+  const [googleLink, setGoogleLink] = useState<GoogleSignupState | null>(
+    () => (location.state as { googleLink?: GoogleSignupState } | null)?.googleLink ?? null,
+  );
+  const [linkPassword, setLinkPassword] = useState("");
   useEffect(() => {
     clearLoginNotice();
   }, []);
@@ -146,20 +156,44 @@ export default function LoginPage() {
     setAuthError(null);
   }
 
-  function finishLogin(session: AuthSession) {
-    useAuthStore.getState().login(session);
-    if (session.principalType === "staff") {
-        // Neither Wedding Planner ("Staff") nor Sales has Dashboard access
-        // (see PLAN.md revisi-timeline-vendor-role-sales) — land them on the
-        // one page they can actually reach instead of a page RequireRole
-        // would just redirect away from anyway.
-        navigate(session.role === "Staff" || session.role === "Sales" ? ROUTE_PATHS.projects : ROUTE_PATHS.dashboard);
-      } else if (session.principalType === "client") {
-        navigate(ROUTE_PATHS.portal());
-      } else {
-        navigate(session.mfa ? ROUTE_PATHS.platformDashboard : ROUTE_PATHS.platformSecurity);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  const finishLogin = useCallback(
+    (session: AuthSession) => {
+      useAuthStore.getState().login(session);
+      navigate(landingPathFor(session));
+    },
+    [navigate],
+  );
+
+  // Sign in with Google (WO Owner and staff). A Google account with no
+  // ElProof login yet continues to the workspace form.
+  const handleGoogleCredential = useCallback(
+    async (credential: string) => {
+      setAuthError(null);
+      setGoogleBusy(true);
+      try {
+        const res = await httpClient.post(API.auth.google, { credential });
+        const data = res.data.data as AuthSession | GoogleAuthOutcome;
+        if ("linkRequired" in data) {
+          setGoogleLink({ credential, email: data.email, name: data.name });
+          setLinkPassword("");
+          return;
+        }
+        if ("signupRequired" in data) {
+          const state: GoogleSignupState = { credential, email: data.email, name: data.name };
+          navigate(ROUTE_PATHS.signupWorkspace, { state });
+          return;
+        }
+        finishLogin(data);
+      } catch (err) {
+        setAuthError(loginErrorMessage(err, "Masuk dengan Google gagal. Silakan coba lagi."));
+      } finally {
+        setGoogleBusy(false);
       }
-  }
+    },
+    [finishLogin, navigate],
+  );
 
   function loginErrorMessage(err: unknown, fallback: string) {
     if (axios.isAxiosError(err)) {
@@ -184,6 +218,29 @@ export default function LoginPage() {
       finishLogin(data as AuthSession);
     } catch (err) {
       setAuthError(loginErrorMessage(err, "Username atau kata sandi salah."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function linkGoogle() {
+    if (!googleLink) return;
+    if (!linkPassword) {
+      setAuthError("Masukkan kata sandi ElProof akun ini.");
+      return;
+    }
+    setAuthError(null);
+    setIsSubmitting(true);
+    try {
+      const res = await httpClient.post(API.auth.googleLink, { credential: googleLink.credential, password: linkPassword });
+      finishLogin(res.data.data as AuthSession);
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 401 && /google/i.test(loginErrorMessage(err, ""))) {
+        // The Google credential expired: start over with the button.
+        setGoogleLink(null);
+      }
+      setAuthError(loginErrorMessage(err, "Kata sandi salah."));
     } finally {
       setIsSubmitting(false);
     }
@@ -269,7 +326,9 @@ export default function LoginPage() {
             {branding ? `Selamat Datang di ${branding.businessName}` : "Selamat Datang"}
           </h2>
           <p className="mt-1.5 text-[13.5px] text-text-secondary">
-            Masuk sebagai tim WO Console, client, atau admin platform.
+            {mfaToken
+              ? "Verifikasi dua langkah untuk admin platform."
+              : "Tim WO masuk dengan Google. Client dan admin platform masuk dengan nama pengguna."}
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
@@ -284,7 +343,50 @@ export default function LoginPage() {
               </p>
             )}
 
-            {mfaToken ? (
+            {googleLink && !mfaToken ? (
+              <>
+                <p className="rounded-md border border-border bg-surface-muted px-3.5 py-3 text-[13px] leading-relaxed text-text-secondary">
+                  Email <span className="font-semibold text-text-primary">{googleLink.email}</span> sudah terdaftar sebagai akun staf
+                  di ElProof. Masukkan kata sandi ElProof akun tersebut sekali untuk menghubungkannya dengan Google. Setelah itu
+                  cukup masuk dengan Google.
+                </p>
+                <Field label="Kata sandi ElProof" required>
+                  <Input
+                    type="password"
+                    value={linkPassword}
+                    onChange={(e) => {
+                      setLinkPassword(e.target.value);
+                      setAuthError(null);
+                    }}
+                    autoComplete="current-password"
+                    autoFocus
+                    onKeyDown={(e) => e.key === "Enter" && void linkGoogle()}
+                  />
+                </Field>
+                <Button variant="neutral" className="mt-2 w-full justify-center" onClick={() => void linkGoogle()} disabled={isSubmitting}>
+                  {isSubmitting ? "Menghubungkan..." : "Hubungkan dan masuk"}
+                </Button>
+                <div className="flex flex-wrap justify-between gap-2 text-[13px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGoogleLink(null);
+                      setAuthError(null);
+                    }}
+                    className="font-medium text-text-secondary hover:text-text-primary"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(ROUTE_PATHS.signupWorkspace, { state: googleLink })}
+                    className="font-medium text-text-secondary hover:text-text-primary"
+                  >
+                    Bukan akun saya, buat workspace baru
+                  </button>
+                </div>
+              </>
+            ) : mfaToken ? (
               <>
                 <Field label="Kode verifikasi" required hint="Buka aplikasi authenticator Anda dan masukkan 6 digit kode untuk ElProof.">
                   <Input
@@ -317,6 +419,12 @@ export default function LoginPage() {
               </>
             ) : (
               <>
+                <GoogleSignInButton text="signin_with" context="signin" onCredential={handleGoogleCredential} busy={googleBusy} />
+                <div className="flex items-center gap-3 text-[12px] text-text-secondary" aria-hidden>
+                  <span className="h-px flex-1 bg-border" />
+                  atau dengan nama pengguna
+                  <span className="h-px flex-1 bg-border" />
+                </div>
                 <Field label="Nama Pengguna atau Email" required hint={errors.username}>
                   <Input
                     value={values.username}
@@ -358,6 +466,15 @@ export default function LoginPage() {
               </>
             )}
           </div>
+
+          {!mfaToken && !googleLink && (
+            <p className="mt-8 border-t border-border pt-5 text-center text-[13.5px] text-text-secondary">
+              Belum memakai ElProof?{" "}
+              <Link to={ROUTE_PATHS.signup} className="font-semibold text-text-primary hover:underline">
+                Coba gratis 14 hari
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

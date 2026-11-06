@@ -37,6 +37,8 @@ export interface Tenant {
   subscriptionStatus: TenantSubscriptionStatus;
   subscriptionExpiresAt: string | null;
   trialEndsAt: string | null;
+  /** "self_service": registered on /daftar (Fase 2); "platform": created by ElProof's team. */
+  signupSource: "self_service" | "platform";
   lifecycle: TenantLifecycle;
   isSuspended: boolean;
   lastCredentialResetAt: string | null;

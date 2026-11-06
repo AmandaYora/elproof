@@ -10,12 +10,17 @@ import { useDashboardStore } from "@/modules/dashboard/stores/useDashboardStore"
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { formatCurrencyCompact } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { useLocation } from "react-router-dom";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { OnboardingChecklist } from "@/modules/onboarding/components/OnboardingChecklist";
 
 export default function DashboardPage() {
   const stats = useDashboardStore((s) => s.stats);
   const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
+  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  const welcome = Boolean((useLocation().state as { welcome?: boolean } | null)?.welcome);
 
   useEffect(() => {
     void fetchDashboard();
@@ -43,6 +48,8 @@ export default function DashboardPage() {
         <h1 className="text-xl font-bold text-text-primary">Dashboard</h1>
         <p className="mt-1 text-[13px] text-text-secondary">Ringkasan kondisi operasional seluruh project pernikahan.</p>
       </div>
+
+      {isOwner && <OnboardingChecklist welcome={welcome} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard

@@ -70,6 +70,7 @@ interface RawTenant {
   subscriptionStatus: Tenant["subscriptionStatus"];
   subscriptionExpiresAt: string | null;
   trialEndsAt: string | null;
+  signupSource: Tenant["signupSource"];
   lifecycle: Tenant["lifecycle"];
   isSuspended: boolean;
   lastCredentialResetAt: string | null;

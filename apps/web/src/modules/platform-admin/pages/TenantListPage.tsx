@@ -220,7 +220,10 @@ export default function TenantListPage() {
                 return (
                   <>
                     <div className="flex items-start justify-between gap-3">
-                      <span className="font-semibold text-text-primary">{tenant.businessName}</span>
+                      <span className="flex flex-col gap-1">
+                        <span className="font-semibold text-text-primary">{tenant.businessName}</span>
+                        {tenant.signupSource === "self_service" && <span className="text-[12px] font-normal text-text-secondary">Daftar mandiri</span>}
+                      </span>
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         <TenantStatusBadge status={tenant.subscriptionStatus} />
                         {tenant.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
@@ -305,7 +308,10 @@ export default function TenantListPage() {
                   const d = daysUntilExpiry(tenant);
                   return (
                     <TR key={tenant.id}>
-                      <TD className="font-semibold text-text-primary">{tenant.businessName}</TD>
+                      <TD>
+                        <span className="block font-semibold text-text-primary">{tenant.businessName}</span>
+                        {tenant.signupSource === "self_service" && <span className="block text-[12px] text-text-secondary">Daftar mandiri</span>}
+                      </TD>
                       <TD>
                         <span className="block">{tenant.ownerName}</span>
                         <span className="block text-[12.5px] text-text-secondary">@{tenant.username}</span>

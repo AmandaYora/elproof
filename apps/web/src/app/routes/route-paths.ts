@@ -19,13 +19,19 @@ export type ClientPortalTab = "vendor" | "pembayaran" | "kendala" | "timeline" |
 export const ROUTE_PATHS = {
   home: "/",
   login: "/login",
-  homepage: "/homepage",
-  homepageAbout: "/homepage/tentang-kami",
-  homepageTerms: "/homepage/syarat-ketentuan",
-  homepagePrivacy: "/homepage/kebijakan-privasi",
-  homepageRefund: "/homepage/kebijakan-refund",
-  homepageFaq: "/homepage/faq",
-  homepageContact: "/homepage/kontak",
+  // Self-service WO registration (Fase 2): Google first, then one form.
+  signup: "/daftar",
+  signupWorkspace: "/daftar/workspace",
+  // Marketing site lives at the root since Fase 2 ("/" was a redirect to
+  // /login). The old /homepage/* paths redirect here (homepage.routes.tsx).
+  homepage: "/",
+  homepageAbout: "/tentang-kami",
+  homepageTerms: "/syarat-ketentuan",
+  homepagePrivacy: "/kebijakan-privasi",
+  homepageDataProcessing: "/perjanjian-pemrosesan-data",
+  homepageRefund: "/kebijakan-refund",
+  homepageFaq: "/faq",
+  homepageContact: "/kontak",
   dashboard: "/dashboard",
   projects: "/projects",
   projectDetail: (id: string, tab: ProjectDetailTab = "vendor") => `/projects/${id}/${tab}`,

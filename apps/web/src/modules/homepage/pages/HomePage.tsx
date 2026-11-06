@@ -84,18 +84,19 @@ export default function HomePage() {
             
             <div className="mt-10 flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row lg:justify-start">
               <Link
-                to={ROUTE_PATHS.homepageContact}
+                to={ROUTE_PATHS.signup}
                 className="group flex h-13 w-full items-center justify-center gap-2 rounded-full bg-white px-8 text-[15px] font-bold text-navy-950 shadow-lg shadow-navy-900/20 transition-all hover:-translate-y-1 hover:bg-surface-muted hover:shadow-xl sm:w-auto"
               >
-                Jadwalkan Demo <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                Coba Gratis 14 Hari <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
-              <a
-                href="#fitur"
+              <Link
+                to={ROUTE_PATHS.homepageContact}
                 className="flex h-13 w-full items-center justify-center rounded-full border border-white/20 bg-white/5 px-8 text-[15px] font-semibold text-white shadow-sm backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-white/30 hover:bg-white/10 sm:w-auto"
               >
-                Jelajahi Fitur
-              </a>
+                Jadwalkan Demo
+              </Link>
             </div>
+            <p className="mt-4 text-[13px] text-white/60">Tanpa kartu kredit. Daftar dengan akun Google.</p>
           </Reveal>
 
           {/* RIGHT SIDE: RELEVANT MOCKUP / ANIMATION */}
@@ -256,21 +257,27 @@ export default function HomePage() {
               Siap meningkatkan standar pelayanan WO Anda?
             </h2>
             <p className="mt-6 text-[16px] leading-relaxed text-white/70">
-              Bergabunglah dengan puluhan Wedding Organizer yang telah beralih ke cara kerja yang lebih transparan dan terukur bersama ElProof.
+              Buat workspace WO Anda sekarang dan pakai semua fitur selama 14 hari. Daftar cukup dengan akun Google.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link
-                to={ROUTE_PATHS.homepageContact}
+                to={ROUTE_PATHS.signup}
                 className="group flex h-14 w-full items-center justify-center gap-2 rounded-full bg-white px-8 text-[15px] font-bold text-navy-950 transition-all hover:scale-105 hover:bg-surface-muted sm:w-auto"
               >
-                Mulai Sekarang <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                Coba Gratis 14 Hari <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to={ROUTE_PATHS.homepageContact}
+                className="flex h-14 w-full items-center justify-center rounded-full border border-white/20 px-8 text-[15px] font-semibold text-white transition-all hover:bg-white/10 sm:w-auto"
+              >
+                Jadwalkan Demo
               </Link>
             </div>
             
             <div className="mt-10 flex flex-wrap items-center justify-center gap-6 text-[13px] font-medium text-white/50">
-              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Setup Cepat</span>
-              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Support Dedicated</span>
-              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Keamanan Data</span>
+              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Gratis 14 hari</span>
+              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Tanpa kartu kredit</span>
+              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Data tidak dihapus otomatis</span>
             </div>
           </Reveal>
         </div>

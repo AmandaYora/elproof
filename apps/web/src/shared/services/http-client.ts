@@ -96,7 +96,10 @@ httpClient.interceptors.response.use(
       originalRequest?.url === API.auth.login ||
       originalRequest?.url === API.auth.refresh ||
       originalRequest?.url === API.auth.logout ||
-      originalRequest?.url === API.auth.mfaVerify;
+      originalRequest?.url === API.auth.mfaVerify ||
+      originalRequest?.url === API.auth.google ||
+      originalRequest?.url === API.auth.googleLink ||
+      originalRequest?.url === API.public.signupWorkspace;
 
     handleAccessError(accessErrorCode(error));
 
