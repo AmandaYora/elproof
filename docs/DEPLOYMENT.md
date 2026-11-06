@@ -154,6 +154,12 @@ while testing, only accounts listed as test users can sign in. Never set `GOOGLE
 server: it exists only so end-to-end tests can sign their own tokens; the API refuses to start
 if it is set to a non-loopback URL or with `APP_ENV=production`.
 
+**One-time links (Fase 3, ADR-0025):** invitation and password-reset tokens travel in URL paths
+(`/undangan/<token>`, `/api/v1/auth/links/<token>`), so nginx access logs contain them. They are
+single-use and short-lived, but the logs must not be shared; to mask them, give the elproof
+server block an access-log format that logs `$uri` with those segments replaced, or turn
+`access_log off` for `location ^~ /api/v1/auth/links/` and `location ^~ /undangan/`.
+
 **Status as of 2026-07-17 — LIVE at <https://elproof.elcodelabs.com>:**
 - `elproof-app` container running and healthy on `127.0.0.1:8082`; `elproof_db` fully migrated
   (all 25 tables) and seeded (`superadmin`/`superadmin`, "Paket 1 Tahun"); nginx site + certbot

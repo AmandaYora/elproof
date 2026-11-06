@@ -173,8 +173,9 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - Sign in with Google (verifikasi ID token sendiri), `signup_requests` + saga yang bisa dilanjutkan, trial 14 hari, Lengkapi Profil (WhatsApp, kota, logo), checklist onboarding, batas masa coba (K6) yang bisa diubah dari Platform Console, halaman legal (S&K + Perjanjian Pemrosesan Data + Privasi sesuai UU PDP), `/` → landing + CTA daftar.
 - **Berbeda dari rencana:** tanpa slug (custom domain dihentikan, K15). Staf lama dengan email yang sama **tidak** ditautkan otomatis ke Google; harus konfirmasi kata sandi ElProof sekali (mencegah "pendudukan" email oleh Owner lain). Login kata sandi untuk staf tetap ada sampai undangan Fase 3.
 
-**Fase 3 — Undangan & akun**
+**Fase 3 — Undangan & akun** — ✅ **SELESAI 6 Nov 2026** (branch `revamp/flow-ideal`; ADR-0025; diverifikasi unit test + 58 langkah end-to-end Fase 3 dan 101 langkah regresi Fase 2 pada MySQL sementara + cek visual + review independen)
 - Undangan staf (Google, email harus cocok) dan klien (set sandi sendiri) lewat tombol WhatsApp/salin link, link reset sandi klien oleh WO, redirect ke halaman asal, pesan "sesi berakhir", error jaringan dibedakan dari salah sandi, `<form>` + `autocomplete`.
+- Ikut dikerjakan: Owner yang didaftarkan tim ElProof juga menerima undangan Google (tanpa kata sandi dari admin), "Undang ulang Owner" menggantikan reset password di Platform Console, **login kata sandi untuk staf ditutup** (K5), ganti Perwakilan Keluarga langsung mencabut akses orang lama dan membuat nama pengguna baru, status "Menunggu undangan" di daftar staf/client.
 
 **Fase 3a — RBAC per tenant (G12)**
 - Tabel `permissions` (katalog tetap), `tenant_roles` + `tenant_role_permissions` (+ cakupan semua/proyek saya), peran klien di tabel yang sama dengan `principal_kind = client`. Seed templat bawaan saat workspace dibuat (Owner terkunci; Admin, Wedding Planner, Sales, Keuangan; Pengantin, Keluarga).
