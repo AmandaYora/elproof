@@ -114,11 +114,17 @@ three *authenticated* route trees (`protected.routes.tsx`, `client-portal.routes
 `public.routes.tsx` (`/login`) and `homepage.routes.tsx` (the public marketing site, `/homepage/*`
 — frontend-only, no API calls, see the `homepage` row in `MODULE_MAP.md`).
 
-**Role-based sub-guards within `protected.routes.tsx` (ADR-0017):** `RequireRole` (`shared/
-components/RequireRole.tsx`) wraps a sub-tree of routes inside the already-`RequireAuth`-guarded WO
-Console tree, redirecting away if the session's role isn't in its `allow` list — kept 1:1 with
-`Sidebar.tsx`'s own `allowedRoles` per nav item, so a route is never reachable by direct URL when
-its menu entry is hidden. A narrower, in-page (not whole-route) restriction that doesn't warrant
-hiding a route entirely is instead a plain inline role check in the component itself (e.g.
-`ProjectHeaderCard.tsx`'s `canDuplicate`/`canSeeMargin`) — reach for `RequireRole` only when an
-entire page should be unreachable for a role, not for hiding one button on an otherwise-shared page.
+**Permission guards within `protected.routes.tsx` (ADR-0026):** `AppLayout` loads the signed-in
+staff member's grants (`GET /access/me`) into `shared/stores/usePermissionStore.ts` before rendering.
+`RequirePermission` (`shared/components/RequirePermission.tsx`, props `all` = permission keys,
+`allProjects`) wraps a route sub-tree and redirects to `/projects` when a grant is missing — kept 1:1
+with `Sidebar.tsx`'s `requires`/`allProjects` per nav item, so a hidden menu entry is never reachable
+by URL. Buttons inside shared pages use `useCan("project.delete")` / `useAllProjects()`; never branch
+on the role's name. A `403 forbidden_permission` from the API makes `http-client.ts` re-fetch grants
+(the role was edited); `403 role_missing` signs the user out.
+
+**UI foundation (Fase 3b):** `Drawer`, `Toaster` + `toast.success/error/info`
+(`shared/stores/useToastStore.ts`), `Skeleton`/`SkeletonRows`, `ConfirmDialog` (type-to-confirm), and
+density tokens (`--density-*` in `theme.css`; layouts set `data-density="compact"` for the consoles and
+`"comfortable"` for the client portal). Status labels live in `shared/lib/labels.ts` with a staff and a
+client wording per status (FLOW-IDEAL §4); `StatusBadges` take `audience="client"` in the portal.

@@ -17,11 +17,11 @@ the original neutral look untouched.
 
 ## WO Console (`/dashboard`, `/projects`, `/clients`, `/vendors`, `/venues`, `/pengguna`, `/langganan`, `/vendor-categories`, `/timeline-default`)
 
-**Role-based access (RBAC — see ADR-0017):** Owner sees and can do everything below. Admin sees
-everything except the "Pengaturan" group (Pengguna, Langganan, Kategori Vendor, Timeline Default —
-collapsed under one sidebar entry, invisible to Admin entirely). Wedding Planner (backend role
-`"Staff"`) only sees Project, scoped to just the projects they're PIC of — never creates or
-duplicates a project, and never reassigns a project's PIC (Owner/Admin only).
+**Role-based access (RBAC — see ADR-0026):** each workspace has editable roles built from a fixed
+permission catalog (Pengaturan → Peran & Akses). Owner (locked) sees and can do everything below.
+Default templates: Admin (everything except workspace settings and hard deletes), Wedding Planner
+(only projects they're PIC or PIC Sales of), Sales (creates projects, manages their clients),
+Keuangan (payments across all projects). Menu entries and buttons follow the role's permissions.
 
 - **Dashboard** (Owner/Admin): stat cards + revenue/project trend charts + attention queue (overdue
   Timeline items, open issues, incomplete payment evidence, near-D-day projects, lagging progress) +

@@ -1,7 +1,8 @@
 # ADR-0017: Role-Based Access Control (Owner / Admin / Wedding Planner)
 
 ## Status
-Accepted
+Superseded by ADR-0026 (per-workspace roles and permissions, 2026-11-06). Kept for history:
+the three fixed roles below became the Owner / Admin / Wedding Planner templates.
 
 ## Context
 `staff_members.role` (`Owner`/`Admin`/`Staff`) has flowed through `credentials`/JWT claims since

@@ -177,14 +177,16 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - Undangan staf (Google, email harus cocok) dan klien (set sandi sendiri) lewat tombol WhatsApp/salin link, link reset sandi klien oleh WO, redirect ke halaman asal, pesan "sesi berakhir", error jaringan dibedakan dari salah sandi, `<form>` + `autocomplete`.
 - Ikut dikerjakan: Owner yang didaftarkan tim ElProof juga menerima undangan Google (tanpa kata sandi dari admin), "Undang ulang Owner" menggantikan reset password di Platform Console, **login kata sandi untuk staf ditutup** (K5), ganti Perwakilan Keluarga langsung mencabut akses orang lama dan membuat nama pengguna baru, status "Menunggu undangan" di daftar staf/client.
 
-**Fase 3a — RBAC per tenant (G12)**
+**Fase 3a — RBAC per tenant (G12)** — ✅ **SELESAI 6 Nov 2026** (branch `revamp/flow-ideal`; ADR-0026 menggantikan ADR-0017; diverifikasi unit test + 83 langkah end-to-end RBAC (termasuk pencegahan eskalasi peran), 68 langkah Fase 3 dan 101 langkah regresi Fase 2 pada MySQL sementara + uji migrasi data lama naik/turun + cek visual per peran + review independen)
 - Tabel `permissions` (katalog tetap), `tenant_roles` + `tenant_role_permissions` (+ cakupan semua/proyek saya), peran klien di tabel yang sama dengan `principal_kind = client`. Seed templat bawaan saat workspace dibuat (Owner terkunci; Admin, Wedding Planner, Sales, Keuangan; Pengantin, Keluarga).
 - Middleware/guard izin di backend menggantikan cek string role (ADR-0017 diganti ADR baru). Klaim JWT membawa `role_id`; izin di-resolve dari DB dengan cache singkat.
 - Halaman Pengaturan → Peran & Akses (matriks izin per grup, deskripsi awam). Sidebar & tombol mengikuti izin.
 - Fase 1 menutup kebocoran klien dengan whitelist dulu; Fase 3a memindahkannya ke izin `portal.*`.
+- **Berbeda dari rencana:** katalog izin di kode Go (bukan tabel `permissions`) agar izin baru selalu datang bersama pengecekannya; diuji cocok dengan seed migrasi. Peran lama "Staff" menjadi Wedding Planner. Perubahan peran tercatat di `audit_log` (kini dengan `tenant_id`). Peran bawaan bisa diubah tetapi tidak dihapus; peran kustom hanya bisa dihapus jika tidak dipakai.
 
-**Fase 3b — Fondasi UI (G11)**
+**Fase 3b — Fondasi UI (G11)** — ✅ **SELESAI 6 Nov 2026** (bersama Fase 3a)
 - Token design system dua kepadatan (console padat, portal lega), komponen Drawer, Toast, Skeleton, ConfirmDialog (ketik nama), label status terpusat (FLOW-IDEAL §4). Memakai skill `frontend-design` sesuai `.claude/rules/frontend-react.md`.
+- Hasil: `Drawer`, `Toaster`/`toast`, `Skeleton`, token `--density-*` (console `compact`, portal `comfortable`), `shared/lib/labels.ts` (label staf vs klien), `StatusBadges audience="client"` di portal. `ConfirmDialog` ketik-nama sudah ada sejak Fase 1. Penerapan pola baru ke seluruh halaman lama dilanjutkan di Fase 4.
 
 **Fase 4 — WO Console UX (G7, G9)**
 - Beranda berbasis tindakan, Detail Proyek dua kolom dengan tab Ringkasan pertama, tab Kendala & Keuangan (jadwal termin), siklus proyek eksplisit + checklist penutupan, buat proyek 2 langkah, Profil Usaha self-service.
