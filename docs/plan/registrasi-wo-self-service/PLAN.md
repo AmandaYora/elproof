@@ -163,14 +163,15 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 > Rancangan "seperti apa yang ideal" per peran (Platform Owner, WO, Klien) ada di
 > [FLOW-IDEAL.md](FLOW-IDEAL.md). Fase di bawah merujuk kode kesenjangan G1–G11 di sana.
 
-**Fase 1 — Fondasi keamanan & penegakan langganan** (prasyarat registrasi mandiri; G1–G3) — ✅ **SELESAI 6 Nov 2026** (branch `revamp/flow-ideal`; ADR-0022, ADR-0023; diverifikasi unit test + 82 langkah end-to-end pada MySQL sementara + cek visual)
+**Fase 1 — Fondasi keamanan & penegakan langganan** (prasyarat registrasi mandiri; G1–G3) — ✅ **SELESAI 6 Nov 2026** (branch `revamp/flow-ideal`; ADR-0022, ADR-0023; diverifikasi unit test + 89 langkah end-to-end pada MySQL sementara + cek visual)
 - **Tutup kebocoran data klien di API (G1)**: whitelist endpoint yang boleh diakses principal `client` (bukan "semua GET"), DTO khusus klien untuk proyek/vendor/venue, dokumen difilter `client_visible`, unduh file dicek visibilitasnya.
 - Rate limit login; cek suspend di login/refresh; sinkronisasi `is_active` ke credential + cabut refresh token; perbaikan `''` → NULL.
 - **State machine langganan** (FLOW-IDEAL §1.4) + job harian + `TenantAccessGate` + banner global di WO Console.
 - Platform: peran Super Admin / Billing / Support / Read-only ditegakkan di backend, **2FA (TOTP) admin platform**, **audit log** aksi sensitif, aktivasi manual wajib alasan + bukti, hapus password plaintext dari response, konfirmasi ketik-slug untuk Suspend / Reset Secret / ganti gateway, kunci form gateway saat gagal dimuat.
 
-**Fase 2 — Registrasi WO self-service (Google)**
-- Sign in with Google, `signup_requests`, saga, slug, trial 14 hari, Lengkapi Profil (WhatsApp), checklist onboarding, kuota paket, halaman legal (S&K + DPA + Privasi sesuai UU PDP), `/` → landing + CTA daftar.
+**Fase 2 — Registrasi WO self-service (Google)** — ✅ **SELESAI 6 Nov 2026** (branch `revamp/flow-ideal`; ADR-0024; diverifikasi unit test + 103 langkah end-to-end pada MySQL sementara dengan Google palsu lokal + cek visual dengan tombol Google asli + review independen)
+- Sign in with Google (verifikasi ID token sendiri), `signup_requests` + saga yang bisa dilanjutkan, trial 14 hari, Lengkapi Profil (WhatsApp, kota, logo), checklist onboarding, batas masa coba (K6) yang bisa diubah dari Platform Console, halaman legal (S&K + Perjanjian Pemrosesan Data + Privasi sesuai UU PDP), `/` → landing + CTA daftar.
+- **Berbeda dari rencana:** tanpa slug (custom domain dihentikan, K15). Staf lama dengan email yang sama **tidak** ditautkan otomatis ke Google; harus konfirmasi kata sandi ElProof sekali (mencegah "pendudukan" email oleh Owner lain). Login kata sandi untuk staf tetap ada sampai undangan Fase 3.
 
 **Fase 3 — Undangan & akun**
 - Undangan staf (Google, email harus cocok) dan klien (set sandi sendiri) lewat tombol WhatsApp/salin link, link reset sandi klien oleh WO, redirect ke halaman asal, pesan "sesi berakhir", error jaringan dibedakan dari salah sandi, `<form>` + `autocomplete`.
@@ -216,10 +217,10 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 | K3 | Pendaftaran langsung aktif atau ditinjau tim | ✅ **Langsung aktif**; tim bisa membekukan tenant |
 | K4 | Setelah trial/langganan habis | ✅ **Bertahap**: tenggang 7 hari → baca-saja → suspend; portal klien tetap terbaca |
 | K5 | Cara masuk staf & klien; akun lama | ✅ Staf **Google saja**; klien **username + sandi yang diatur sendiri lewat undangan**; data lama dummy, **tanpa migrasi** |
-| K6 | Batas tiap paket | ⏳ Perlu angka dari pemilik (proyek aktif, staf, klien/proyek, storage); kolom dibuat dulu dengan nilai NULL = tanpa batas |
+| K6 | Batas tiap paket | ✅ **Batas hanya saat masa coba**: 3 staf, 5 proyek aktif, 10 klien. Paket berbayar tanpa batas (paket dibedakan durasi, bukan tingkat). Angka bisa diubah dari Platform Console (diputuskan 6 Nov 2026) |
 | K7 | Alamat per WO | Slug disimpan sekarang; subdomain `namawo.elproof…` ditunda |
 | K8 | Penyedia email | Ditunda; tidak dibutuhkan selama login WO via Google dan link dikirim via WhatsApp |
-| K9 | Akun Google Cloud OAuth | ⏳ Pemilik membuat OAuth Client ID (Web) dan memberikan `GOOGLE_CLIENT_ID` |
+| K9 | Akun Google Cloud OAuth | ✅ Client ID `145222647838-e9nhkpkaoiupcd0ume68qg2bqmlhcq58.apps.googleusercontent.com` (publik). Authorized JavaScript origins: `https://elproof.elcodelabs.com`, `http://localhost`, `http://localhost:5173`; redirect URI kosong (alur ID token Google Identity Services, tanpa client secret). Consent screen harus **In production** sebelum WO sungguhan mendaftar |
 | K10 | Durasi tiap tahap downgrade | ✅ **Tanpa penghapusan otomatis**: tenggang → baca-saja → suspend, bertahan sampai bayar atau Owner minta hapus. Durasi tenggang/baca-saja diatur di Kebijakan (usulan 7 & 23 hari) |
 | K11 | Impersonasi oleh tim ElProof | ✅ **Dengan izin Owner tenant** (24 jam), baca-saja, maks 60 menit, tercatat |
 | K12 | Siapa boleh melihat/melakukan apa (staf & klien) | ✅ **RBAC diatur tiap WO**: katalog izin tetap + peran yang bisa diedit/dibuat WO, untuk staf maupun klien (FLOW-IDEAL §2.5) |

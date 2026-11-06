@@ -144,6 +144,16 @@ ssh elcodelabs 'sudo certbot certificates && sudo certbot renew --dry-run'
 echo | openssl s_client -servername elproof.elcodelabs.com -connect elproof.elcodelabs.com:443 2>/dev/null | openssl x509 -noout -dates
 ```
 
+**Sign in with Google (Fase 2, ADR-0024):** WO Owners and staff sign in with Google. The OAuth
+web client lives in Google Cloud (Authorised JavaScript origins: `https://elproof.elcodelabs.com`,
+`http://localhost`, `http://localhost:5173`; no redirect URI, no client secret). Its client ID is
+public and is the default of `GOOGLE_CLIENT_ID`, so the server `.env` needs nothing new unless a
+different client is used. The browser fetches it from `GET /api/v1/public/config`. Before real
+WOs sign up, the OAuth consent screen must be switched from "Testing" to "In production" —
+while testing, only accounts listed as test users can sign in. Never set `GOOGLE_JWKS_URL` on the
+server: it exists only so end-to-end tests can sign their own tokens; the API refuses to start
+if it is set to a non-loopback URL or with `APP_ENV=production`.
+
 **Status as of 2026-07-17 — LIVE at <https://elproof.elcodelabs.com>:**
 - `elproof-app` container running and healthy on `127.0.0.1:8082`; `elproof_db` fully migrated
   (all 25 tables) and seeded (`superadmin`/`superadmin`, "Paket 1 Tahun"); nginx site + certbot
