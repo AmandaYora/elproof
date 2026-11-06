@@ -15,6 +15,9 @@ type Client struct {
 	TenantID              int64
 	ProjectID             int64
 	Role                  ClientRole
+	// AccessRoleID is the portal role (access module) deciding what this
+	// client sees — Pengantin / Keluarga by default (ADR-0026).
+	AccessRoleID int64
 	Username              string
 	RelationNote          string
 	Name                  string

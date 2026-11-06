@@ -32,8 +32,10 @@ type CreateCredentialInput struct {
 	GoogleSub string
 	// Pending creates a login activated later through an access link
 	// (invitation); Password and GoogleSub must be empty.
-	Pending     bool
-	Role        string
+	Pending bool
+	Role    string
+	// RoleID: workspace role (tenant_roles.id) for staff and clients.
+	RoleID      int64
 	DisplayName string
 }
 
@@ -57,7 +59,10 @@ type Contracts interface {
 	// module's current role value. Call this from every code path that edits
 	// a principal's role after account creation — CreateCredential only ever
 	// sets it once, at creation time.
-	UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string) error
+	// roleID is the workspace role (tenant_roles.id); 0 for platform admins.
+	UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string, roleID int64) error
+	// CountLoginsWithRole counts a workspace's logins holding a role.
+	CountLoginsWithRole(ctx context.Context, tenantID, roleID int64) (int, error)
 	// IssueServiceToken mints a bearer token for a principal not backed by a
 	// Credential row — the caller has already authenticated it against its
 	// own store (e.g. `payment`'s external Apps, see
@@ -131,6 +136,7 @@ func (c *impl) CreateCredential(ctx context.Context, input CreateCredentialInput
 		Password:      input.Password,
 		GoogleSub:     input.GoogleSub,
 		Pending:       input.Pending,
+		RoleID:        input.RoleID,
 		Role:          input.Role,
 		DisplayName:   input.DisplayName,
 	})
@@ -148,8 +154,12 @@ func (c *impl) SetActive(ctx context.Context, principalType PrincipalType, princ
 	return c.management.SetActive(ctx, domain.PrincipalType(principalType), principalID, isActive)
 }
 
-func (c *impl) UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string) error {
-	return c.management.UpdateRole(ctx, domain.PrincipalType(principalType), principalID, role)
+func (c *impl) UpdateRole(ctx context.Context, principalType PrincipalType, principalID string, role string, roleID int64) error {
+	return c.management.UpdateRole(ctx, domain.PrincipalType(principalType), principalID, role, roleID)
+}
+
+func (c *impl) CountLoginsWithRole(ctx context.Context, tenantID, roleID int64) (int, error) {
+	return c.management.CountLoginsWithRole(ctx, tenantID, roleID)
 }
 
 func (c *impl) ResetMFA(ctx context.Context, principalType PrincipalType, principalID string) error {

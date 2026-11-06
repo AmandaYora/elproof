@@ -120,7 +120,7 @@ func (s *PlatformAdminService) Update(ctx context.Context, id int64, input Updat
 	// baked into the JWT at login/refresh -- sync it here the same way
 	// staff.StaffService.Update does, rolling back this row's role on
 	// failure so the two tables never end up disagreeing.
-	if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalPlatformAdmin, formatID(id), string(input.Role)); err != nil {
+	if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalPlatformAdmin, formatID(id), string(input.Role), 0); err != nil {
 		admin.Role = previousRole
 		if rollbackErr := s.repo.Update(ctx, admin); rollbackErr != nil {
 			logger.Error("failed to roll back platform admin %d's role after credential role sync failed: %v", id, rollbackErr)

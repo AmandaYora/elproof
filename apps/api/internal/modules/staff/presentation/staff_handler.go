@@ -29,6 +29,7 @@ type staffResponse struct {
 	Title    string `json:"title"`
 	Initials string `json:"initials"`
 	Role     string `json:"role"`
+	RoleID   int64  `json:"roleId"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
@@ -48,29 +49,30 @@ func toInvitationResponse(inv *application.Invitation) invitationResponse {
 }
 
 // withLoginStatus adds the invitation state (Pengguna list).
-func (h *Handler) withLoginStatus(r *http.Request, m domain.StaffMember) staffResponse {
+func (h *Handler) withLoginStatus(r *http.Request, m domain.StaffMember, roleNames map[int64]string) staffResponse {
 	resp := toStaffResponse(m)
 	resp.LoginStatus = h.staff.LoginStatus(r.Context(), m.ID)
+	if name, ok := roleNames[m.RoleID]; ok {
+		resp.Role = name // current name (roles can be renamed)
+	}
 	return resp
 }
 
 func toStaffResponse(m domain.StaffMember) staffResponse {
 	return staffResponse{
 		ID: m.ID, Name: m.Name, Title: m.Title, Initials: m.Initials,
-		Role: string(m.Role), Username: m.Username, Email: m.Email, Phone: m.Phone, IsActive: m.IsActive,
+		Role: string(m.Role), RoleID: m.RoleID, Username: m.Username, Email: m.Email, Phone: m.Phone, IsActive: m.IsActive,
 	}
 }
 
-// requireOwnerTenant gates the entire Pengguna (staff directory) surface to
-// Owner only — confirmed business rule: Admin has no access to User
-// management at all, not even to view the list or edit their own row via
-// this endpoint (Owner-editing-Owner's own row, per StaffService.Update's
-// isSelf check, still works fine since only Owner ever reaches this handler
-// at all now).
-func requireOwnerTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
+// requireTeamManager gates the Pengguna (staff directory) surface to roles
+// holding team.manage (Owner by default; a WO may grant it to others —
+// ADR-0026). The Owner's own row stays editable only by the Owner
+// (StaffService.Update's isSelf check).
+func requireTeamManager(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "staff" || !claims.HasRole("Owner") {
-		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat mengakses pengelolaan pengguna", nil)
+	if !ok || claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("team.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak memiliki izin mengelola tim", map[string]string{"code": "forbidden_permission"})
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()
@@ -131,7 +133,7 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := requireOwnerTenant(w, r)
+	tenantID, ok := requireTeamManager(w, r)
 	if !ok {
 		return
 	}
@@ -144,8 +146,9 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			result := make([]staffResponse, 0, len(members))
+			names := h.staff.RoleNames(r.Context(), tenantID)
 			for _, m := range members {
-				result = append(result, h.withLoginStatus(r, m))
+				result = append(result, h.withLoginStatus(r, m, names))
 			}
 			response.OK(w, "ok", result)
 			return
@@ -159,8 +162,9 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result := make([]staffResponse, 0, len(members))
+		names := h.staff.RoleNames(r.Context(), tenantID)
 		for _, m := range members {
-			result = append(result, h.withLoginStatus(r, m))
+			result = append(result, h.withLoginStatus(r, m, names))
 		}
 		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 	case http.MethodPost:
@@ -171,11 +175,11 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 }
 
 type staffInputBody struct {
-	Name  string `json:"name"`
-	Title string `json:"title"`
-	Role  string `json:"role"`
-	Email string `json:"email"`
-	Phone string `json:"phone"`
+	Name   string `json:"name"`
+	Title  string `json:"title"`
+	RoleID int64  `json:"roleId"`
+	Email  string `json:"email"`
+	Phone  string `json:"phone"`
 }
 
 type createStaffResponse struct {
@@ -190,8 +194,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 		return
 	}
 	member, inv, err := h.staff.Create(r.Context(), tenantID, application.StaffInput{
-		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role), Email: body.Email, Phone: body.Phone,
-	})
+		Name: body.Name, Title: body.Title, RoleID: body.RoleID, Email: body.Email, Phone: body.Phone,
+	}, middleware.GrantsFrom(r.Context()))
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -202,7 +206,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 }
 
 func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := requireOwnerTenant(w, r)
+	tenantID, ok := requireTeamManager(w, r)
 	if !ok {
 		return
 	}
@@ -215,6 +219,15 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
+	}
+
+	// Changing someone whose role allows more than the caller's is the
+	// Owner's call (ADR-0026).
+	if r.Method != http.MethodGet {
+		if err := h.staff.CheckManageable(r.Context(), tenantID, id, middleware.GrantsFrom(r.Context())); err != nil {
+			writeAppError(w, err)
+			return
+		}
 	}
 
 	switch {
@@ -280,8 +293,8 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, tenantID, id in
 	claims, _ := middleware.FromContext(r.Context())
 	isSelf := claims != nil && claims.PrincipalID == strconv.FormatInt(id, 10)
 	member, err := h.staff.Update(r.Context(), tenantID, id, isSelf, application.StaffInput{
-		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role), Email: body.Email, Phone: body.Phone,
-	})
+		Name: body.Name, Title: body.Title, RoleID: body.RoleID, Email: body.Email, Phone: body.Phone,
+	}, middleware.GrantsFrom(r.Context()))
 	if err != nil {
 		writeAppError(w, err)
 		return

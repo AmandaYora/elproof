@@ -100,8 +100,8 @@ func (h *Handler) updateVenuePayment(w http.ResponseWriter, r *http.Request, cla
 // deleteVenuePayment hard-deletes the payment (and its own evidence).
 // Owner-or-Admin — see deletePayment's doc comment.
 func (h *Handler) deleteVenuePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
-	if !isOwnerOrAdmin(claims.role) {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner atau Admin yang dapat menghapus pembayaran secara permanen", nil)
+	if !claims.can("finance.payment.delete") {
+		forbiddenPermission(w, "Peran Anda tidak dapat menghapus pembayaran")
 		return
 	}
 	paymentID, err := parseInt64(paymentIDRaw)

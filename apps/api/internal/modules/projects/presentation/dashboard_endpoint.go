@@ -168,8 +168,10 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if claims.role == "Staff" || claims.role == "Sales" {
-		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat mengakses dashboard", nil)
+	// The dashboard aggregates every project, so it needs dashboard.view
+	// and a role that reaches every project.
+	if !claims.can("dashboard.view") || claims.assignedOnly() {
+		forbiddenPermission(w, "Peran Anda tidak dapat membuka dasbor")
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -181,5 +183,10 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "ok", toDashboardResponse(*stats))
+	resp := toDashboardResponse(*stats)
+	if !claims.can("dashboard.revenue.view") {
+		resp.Revenue = revenueSummaryResponse{}
+		resp.RevenueTrend = []revenueTrendPointResponse{}
+	}
+	response.OK(w, "ok", resp)
 }

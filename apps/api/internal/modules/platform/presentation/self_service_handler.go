@@ -75,12 +75,13 @@ func (h *SignupHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// ownerTenantID returns the caller's tenant when the caller is that
-// tenant's Owner; otherwise it writes a 403.
+// ownerTenantID returns the caller's tenant when the caller's role may
+// manage the business profile (business_profile.manage — the Owner by
+// default, ADR-0026); otherwise it writes a 403.
 func ownerTenantID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
-		response.Error(w, http.StatusForbidden, "Hanya Owner WO yang dapat melakukan aksi ini", nil)
+	if !ok || claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("business_profile.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola profil usaha", map[string]string{"code": "forbidden_permission"})
 		return 0, false
 	}
 	id, ok := claims.TenantIDInt()

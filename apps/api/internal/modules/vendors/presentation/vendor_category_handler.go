@@ -64,13 +64,31 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 // new Delete/delete-impact routes, which need the same Owner-only gate —
 // hence the generic message rather than one naming "kategori vendor"
 // specifically.
-func requireOwnerRole(w http.ResponseWriter, r *http.Request) bool {
-	claims, _ := middleware.FromContext(r.Context())
-	if !claims.HasRole("Owner") {
-		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat melakukan aksi ini", nil)
+func requirePermission(w http.ResponseWriter, r *http.Request, permission string) bool {
+	if !middleware.GrantsFrom(r.Context()).Can(permission) {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak memiliki izin untuk aksi ini", map[string]string{"code": "forbidden_permission"})
 		return false
 	}
 	return true
+}
+
+// requireDirectoryRead guards looking up single vendors/venues and the
+// picker list (ADR-0026). The Vendor & Venue menu itself (paginated
+// directory, export, project history) needs vendor.view; people who work on
+// projects or read the dashboard may still look vendors and venues up to
+// pick them for a project. A client principal (venue photo on the portal)
+// needs portal.vendor.view.
+func requireDirectoryRead(w http.ResponseWriter, r *http.Request) bool {
+	g := middleware.GrantsFrom(r.Context())
+	if claims, ok := middleware.FromContext(r.Context()); ok && claims.PrincipalType == "client" {
+		if g.Can("portal.vendor.view") {
+			return true
+		}
+	} else if g.Can("vendor.view") || g.Can("project.edit") || g.Can("project.create") || g.Can("finance.record") || g.Can("dashboard.view") {
+		return true
+	}
+	response.Error(w, http.StatusForbidden, "Peran Anda tidak memiliki izin untuk aksi ini", map[string]string{"code": "forbidden_permission"})
+	return false
 }
 
 func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +111,7 @@ func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Reques
 			response.OK(w, "ok", result)
 			return
 		}
-		if !requireOwnerRole(w, r) {
+		if !requirePermission(w, r, "vendor.category.manage") {
 			return
 		}
 		params := pagination.FromRequest(r)
@@ -109,7 +127,7 @@ func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Reques
 		}
 		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 	case http.MethodPost:
-		if !requireOwnerRole(w, r) {
+		if !requirePermission(w, r, "vendor.category.manage") {
 			return
 		}
 		h.create(w, r, tenantID)
@@ -142,7 +160,7 @@ func (h *VendorCategoryHandler) Item(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !requireOwnerRole(w, r) {
+	if !requirePermission(w, r, "vendor.category.manage") {
 		return
 	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/vendor-categories/")

@@ -7,6 +7,7 @@ import (
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
 
@@ -18,7 +19,7 @@ func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, projectID
 	}
 	result := make([]evidenceResponse, 0, len(list))
 	for _, e := range list {
-		if isClient && !clientCanSeeEvidence(e) {
+		if isClient && !clientCanSeeEvidence(e, middleware.GrantsFrom(r.Context()).Can) {
 			continue
 		}
 		resp := toEvidenceResponse(e)
@@ -113,7 +114,7 @@ func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, proje
 	// Same rule as listEvidence: a client who learns an internal document's
 	// id still cannot fetch its file. 404 (not 403) so the response doesn't
 	// confirm the document exists.
-	if isClient && !clientCanSeeEvidence(*e) {
+	if isClient && !clientCanSeeEvidence(*e, middleware.GrantsFrom(r.Context()).Can) {
 		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
 		return
 	}

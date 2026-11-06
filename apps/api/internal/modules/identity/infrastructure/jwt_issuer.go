@@ -36,6 +36,7 @@ func (i *JWTIssuer) IssueAccessToken(cred *domain.Credential, mfa bool, ttl time
 		PrincipalID:   cred.PrincipalID,
 		TenantID:      tenantID,
 		Role:          cred.Role,
+		RoleID:        cred.RoleID,
 		MFA:           mfa,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   cred.Username,
@@ -82,4 +83,3 @@ func (i *JWTIssuer) HashToken(plain string) string {
 	sum := sha256.Sum256([]byte(plain))
 	return hex.EncodeToString(sum[:])
 }
-

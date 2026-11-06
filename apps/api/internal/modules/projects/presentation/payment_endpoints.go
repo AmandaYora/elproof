@@ -104,8 +104,8 @@ func (h *Handler) updatePayment(w http.ResponseWriter, r *http.Request, claims s
 // comment, checked here rather than in the service so the service stays
 // agnostic of who's calling.
 func (h *Handler) deletePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
-	if !isOwnerOrAdmin(claims.role) {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner atau Admin yang dapat menghapus pembayaran secara permanen", nil)
+	if !claims.can("finance.payment.delete") {
+		forbiddenPermission(w, "Peran Anda tidak dapat menghapus pembayaran")
 		return
 	}
 	paymentID, err := parseInt64(paymentIDRaw)

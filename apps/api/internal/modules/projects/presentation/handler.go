@@ -201,7 +201,9 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 type staffClaims struct {
 	tenantID int64
 	staffID  int64
-	role     string
+	// grants: what the workspace role allows (ADR-0026); also set for
+	// clients (portal permissions).
+	grants *middleware.Grants
 	// isClient is true for a `client` principal (Client Portal). Read
 	// handlers use it to redact internal fields — see client_view.go.
 	isClient bool
@@ -223,7 +225,75 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 		response.Error(w, http.StatusForbidden, "Identitas staff tidak valid", nil)
 		return staffClaims{}, false
 	}
-	return staffClaims{tenantID: tenantID, staffID: staffID, role: claims.Role}, true
+	return staffClaims{tenantID: tenantID, staffID: staffID, grants: middleware.GrantsFrom(r.Context())}, true
+}
+
+func (c staffClaims) can(permission string) bool { return c.grants.Can(permission) }
+
+// assignedOnly: the role reaches only projects the person holds.
+func (c staffClaims) assignedOnly() bool { return c.grants == nil || !c.grants.AllProjects }
+
+func (c staffClaims) actor() application.ProjectActor {
+	return application.ProjectActor{StaffID: c.staffID, AssignedOnly: c.assignedOnly(), CanAssignPIC: c.can("project.assign_pic")}
+}
+
+func forbiddenPermission(w http.ResponseWriter, msg string) {
+	response.Error(w, http.StatusForbidden, msg, map[string]string{"code": "forbidden_permission"})
+}
+
+// staffWritePermission is the permission a staff write under
+// /projects/{id}/... needs (GETs need only project access). Checked once in
+// resolveProjectAccess so no sub-resource can be missed.
+func staffWritePermission(method string, rest []string) (perm string, alt string) {
+	if method == http.MethodGet || method == http.MethodHead {
+		return "", ""
+	}
+	if len(rest) == 0 {
+		if method == http.MethodDelete {
+			return "project.delete", ""
+		}
+		return "project.edit", ""
+	}
+	switch rest[0] {
+	case "toggle-archive":
+		return "project.archive", ""
+	case "duplicate":
+		return "project.duplicate", ""
+	case "payments", "client-payments", "venue-payments":
+		if method == http.MethodDelete {
+			return "finance.payment.delete", ""
+		}
+		return "finance.record", ""
+	case "evidence":
+		// Showing a document to the client is a project decision, not a
+		// finance one.
+		if len(rest) == 3 && rest[2] == "toggle-client-visible" {
+			return "project.edit", ""
+		}
+		// Payment proofs are uploaded here too.
+		return "project.edit", "finance.record"
+	}
+	return "project.edit", ""
+}
+
+// clientReadPermission is the portal permission a client GET needs.
+func clientReadPermission(rest []string) string {
+	if len(rest) == 0 {
+		return ""
+	}
+	switch rest[0] {
+	case "milestones":
+		return "portal.timeline.view"
+	case "vendors", "venue":
+		return "portal.vendor.view"
+	case "client-payments":
+		return "portal.finance.view"
+	case "issues":
+		return "portal.issues.view"
+	case "evidence", "documents":
+		return "portal.documents.view"
+	}
+	return ""
 }
 
 // resolveProjectAccess authorizes the /projects/{id}/... subtree for either
@@ -262,12 +332,12 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			writeAppError(w, err)
 			return staffClaims{}, false
 		}
-		if sc.role == "Staff" && p.PICStaffID != sc.staffID {
+		if sc.assignedOnly() && p.PICStaffID != sc.staffID && p.PICSalesStaffID != sc.staffID {
 			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
 			return staffClaims{}, false
 		}
-		if sc.role == "Sales" && p.PICSalesStaffID != sc.staffID {
-			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+		if perm, alt := staffWritePermission(r.Method, rest); perm != "" && !sc.can(perm) && (alt == "" || !sc.can(alt)) {
+			forbiddenPermission(w, "Peran Anda tidak memiliki izin untuk aksi ini")
 			return staffClaims{}, false
 		}
 		return sc, true
@@ -278,6 +348,11 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 		}
 		if !clientCanRead(rest) {
 			response.Error(w, http.StatusForbidden, "Data ini tidak tersedia untuk akun client", nil)
+			return staffClaims{}, false
+		}
+		grants := middleware.GrantsFrom(r.Context())
+		if perm := clientReadPermission(rest); perm != "" && !grants.Can(perm) {
+			forbiddenPermission(w, "Data ini tidak dibagikan untuk akun Anda")
 			return staffClaims{}, false
 		}
 		tenantID, ok := claims.TenantIDInt()
@@ -299,7 +374,7 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
 			return staffClaims{}, false
 		}
-		return staffClaims{tenantID: tenantID, isClient: true}, true
+		return staffClaims{tenantID: tenantID, isClient: true, grants: grants}, true
 	default:
 		response.Error(w, http.StatusForbidden, "Prinsipal ini tidak dapat mengakses project", nil)
 		return staffClaims{}, false

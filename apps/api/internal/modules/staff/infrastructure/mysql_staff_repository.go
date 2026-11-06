@@ -17,12 +17,12 @@ func NewMySQLStaffRepository(db *sql.DB) *MySQLStaffRepository {
 	return &MySQLStaffRepository{db: db}
 }
 
-const staffColumns = `id, tenant_id, name, title, initials, role, username, email, phone, is_active, created_at, updated_at`
+const staffColumns = `id, tenant_id, name, title, initials, role, IFNULL(role_id, 0), username, email, phone, is_active, created_at, updated_at`
 
 func scanStaff(scan func(dest ...interface{}) error) (*domain.StaffMember, error) {
 	var m domain.StaffMember
 	var role string
-	err := scan(&m.ID, &m.TenantID, &m.Name, &m.Title, &m.Initials, &role, &m.Username, &m.Email, &m.Phone, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+	err := scan(&m.ID, &m.TenantID, &m.Name, &m.Title, &m.Initials, &role, &m.RoleID, &m.Username, &m.Email, &m.Phone, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -66,8 +66,9 @@ func (r *MySQLStaffRepository) ListPaginated(ctx context.Context, tenantID int64
 		args = append(args, like, like)
 	}
 	if role != "" {
-		countQuery += ` AND role = ?`
-		listQuery += ` AND role = ?`
+		// Filter by workspace role id (Pengguna page's role filter).
+		countQuery += ` AND role_id = ?`
+		listQuery += ` AND role_id = ?`
 		args = append(args, role)
 	}
 
@@ -101,9 +102,9 @@ func (r *MySQLStaffRepository) FindByID(ctx context.Context, tenantID, id int64)
 
 func (r *MySQLStaffRepository) Create(ctx context.Context, member *domain.StaffMember) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO staff_members (tenant_id, name, title, initials, role, username, email, phone, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		member.TenantID, member.Name, member.Title, member.Initials, string(member.Role), member.Username, member.Email, member.Phone, member.IsActive,
+		`INSERT INTO staff_members (tenant_id, name, title, initials, role, role_id, username, email, phone, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		member.TenantID, member.Name, member.Title, member.Initials, string(member.Role), nullableRoleID(member.RoleID), member.Username, member.Email, member.Phone, member.IsActive,
 	)
 	if err != nil {
 		return err
@@ -118,8 +119,8 @@ func (r *MySQLStaffRepository) Create(ctx context.Context, member *domain.StaffM
 
 func (r *MySQLStaffRepository) Update(ctx context.Context, member *domain.StaffMember) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE staff_members SET name = ?, title = ?, role = ?, initials = ?, email = ?, phone = ? WHERE tenant_id = ? AND id = ?`,
-		member.Name, member.Title, string(member.Role), member.Initials, member.Email, member.Phone, member.TenantID, member.ID,
+		`UPDATE staff_members SET name = ?, title = ?, role = ?, role_id = ?, initials = ?, email = ?, phone = ? WHERE tenant_id = ? AND id = ?`,
+		member.Name, member.Title, string(member.Role), nullableRoleID(member.RoleID), member.Initials, member.Email, member.Phone, member.TenantID, member.ID,
 	)
 	return err
 }
@@ -163,4 +164,8 @@ func (r *MySQLStaffRepository) FindOwnerID(ctx context.Context, tenantID int64) 
 		return nil, err
 	}
 	return &id, nil
+}
+
+func nullableRoleID(id int64) sql.NullInt64 {
+	return sql.NullInt64{Int64: id, Valid: id > 0}
 }

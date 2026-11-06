@@ -92,7 +92,7 @@ func (c *SessionChecker) ValidateSession(ctx context.Context, claims *middleware
 	switch {
 	case cred == nil, !cred.IsActive:
 		return expired
-	case cred.Role != claims.Role: // role changed: the refreshed token carries the new one
+	case cred.Role != claims.Role, cred.RoleID != claims.RoleID: // role changed: the refreshed token carries the new one
 		return expired
 	case claims.MFA && !cred.TOTPEnabled: // two-factor was reset
 		return expired

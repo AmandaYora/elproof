@@ -60,8 +60,10 @@ type CreateCredentialInput struct {
 	// Pending creates a login with no way to sign in yet: the person
 	// activates it through an access link (staff/client invitations, Fase
 	// 3). Password and GoogleSub must be empty.
-	Pending     bool
-	Role        string
+	Pending bool
+	Role    string
+	// RoleID: workspace role (tenant_roles.id) for staff and clients.
+	RoleID      int64
 	DisplayName string
 }
 
@@ -124,6 +126,7 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		GoogleSub:     input.GoogleSub,
 		PasswordHash:  hash,
 		Role:          input.Role,
+		RoleID:        input.RoleID,
 		DisplayName:   input.DisplayName,
 		IsActive:      true,
 	})
@@ -170,8 +173,8 @@ func (s *ManagementService) SetActive(ctx context.Context, principalType domain.
 
 // UpdateRole syncs this table's own denormalized `role` column — see
 // CredentialRepository.UpdateRole's doc comment for why this exists at all.
-func (s *ManagementService) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error {
-	if err := s.credentials.UpdateRole(ctx, principalType, principalID, role); err != nil {
+func (s *ManagementService) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string, roleID int64) error {
+	if err := s.credentials.UpdateRole(ctx, principalType, principalID, role, roleID); err != nil {
 		return err
 	}
 	// Tokens carrying the old role stop working at once; the next refresh
@@ -344,4 +347,9 @@ func (s *ManagementService) LoginEmail(ctx context.Context, principalType domain
 		return "", err
 	}
 	return cred.Email, nil
+}
+
+// CountLoginsWithRole backs access's "role still in use" check.
+func (s *ManagementService) CountLoginsWithRole(ctx context.Context, tenantID, roleID int64) (int, error) {
+	return s.credentials.CountWithRole(ctx, tenantID, roleID)
 }

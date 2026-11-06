@@ -56,8 +56,8 @@ func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)
 		return
 	}
-	if claims.PrincipalType == "staff" && !claims.HasRole("Owner") {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengakses riwayat transaksi langganan", nil)
+	if claims.PrincipalType == "staff" && !middleware.GrantsFrom(r.Context()).Can("subscription.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat melihat riwayat transaksi langganan", map[string]string{"code": "forbidden_permission"})
 		return
 	}
 

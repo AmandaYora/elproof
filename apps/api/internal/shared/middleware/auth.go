@@ -25,6 +25,9 @@ type Claims struct {
 	// MFA is true when the session was established with a second factor
 	// (TOTP). Platform Console admins need it for everything but enrolment.
 	MFA bool `json:"mfa,omitempty"`
+	// RoleID is the workspace role (tenant_roles.id) of a staff member or
+	// client; their permissions are resolved from it per request (ADR-0026).
+	RoleID int64 `json:"rid,omitempty"`
 	jwt.RegisteredClaims
 }
 

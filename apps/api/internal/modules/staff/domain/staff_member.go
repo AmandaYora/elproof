@@ -5,25 +5,23 @@ package domain
 
 import "time"
 
+// StaffRole is the name of the member's workspace role (a snapshot shown
+// in lists); authority comes from RoleID and the access module (ADR-0026).
 type StaffRole string
 
-const (
-	RoleOwner StaffRole = "Owner"
-	RoleAdmin StaffRole = "Admin"
-	RoleStaff StaffRole = "Staff"
-	// RoleSales creates projects (unassigned PIC Wedding Planner until
-	// handover) and hands them over via projects.PICSalesStaffID -- see
-	// PLAN.md revisi-timeline-vendor-role-sales.
-	RoleSales StaffRole = "Sales"
-)
+// RoleOwner names the workspace's system role. There is exactly one Owner,
+// created at registration; it is never assigned or removed here.
+const RoleOwner StaffRole = "Owner"
 
 type StaffMember struct {
-	ID        int64
-	TenantID  int64
-	Name      string
-	Title     string
-	Initials  string
-	Role      StaffRole
+	ID       int64
+	TenantID int64
+	Name     string
+	Title    string
+	Initials string
+	Role     StaffRole
+	// RoleID is the workspace role (access module's tenant_roles.id).
+	RoleID    int64
 	Username  string
 	Email     string
 	Phone     string

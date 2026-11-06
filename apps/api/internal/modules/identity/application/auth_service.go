@@ -39,7 +39,8 @@ type CredentialRepository interface {
 	// Wedding Planner -> Admin) would silently never take effect for
 	// authorization purposes, since Login/Refresh never re-derive it from
 	// the owning module — they only ever read this column.
-	UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error
+	UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string, roleID int64) error
+	CountWithRole(ctx context.Context, tenantID, roleID int64) (int, error)
 	// Two-factor (TOTP) state — see mfa.go.
 	SetTOTPSecret(ctx context.Context, credentialID int64, enc []byte) (bool, error)
 	EnableTOTP(ctx context.Context, credentialID int64, step int64) (bool, error)

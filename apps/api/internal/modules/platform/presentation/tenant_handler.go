@@ -386,8 +386,9 @@ func selfTenantID(r *http.Request) (int64, bool) {
 // request parameter. Powers the WO Console's own "Langganan" page.
 func (h *TenantHandler) me(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengakses data ini", nil)
+	g := middleware.GrantsFrom(r.Context())
+	if !ok || claims.PrincipalType != "staff" || !(g.Can("subscription.manage") || g.Can("business_profile.manage")) {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengakses data workspace ini", map[string]string{"code": "forbidden_permission"})
 		return
 	}
 	tenantID, err := application.ParseTenantID(claims.TenantID)
@@ -544,8 +545,8 @@ func (h *TenantHandler) activateSubscription(w http.ResponseWriter, r *http.Requ
 // their own tenant via the JWT claim, never a request parameter.
 func (h *TenantHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengelola langganan", nil)
+	if !ok || claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("subscription.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola langganan", map[string]string{"code": "forbidden_permission"})
 		return
 	}
 	tenantID, err := application.ParseTenantID(claims.TenantID)
@@ -569,8 +570,8 @@ func (h *TenantHandler) Pay(w http.ResponseWriter, r *http.Request) {
 
 func (h *TenantHandler) PendingCharge(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengelola langganan", nil)
+	if !ok || claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("subscription.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola langganan", map[string]string{"code": "forbidden_permission"})
 		return
 	}
 	tenantID, err := application.ParseTenantID(claims.TenantID)
@@ -593,8 +594,8 @@ func (h *TenantHandler) PendingCharge(w http.ResponseWriter, r *http.Request) {
 
 func (h *TenantHandler) CancelPendingCharge(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "staff" || claims.Role != "Owner" {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat mengelola langganan", nil)
+	if !ok || claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("subscription.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola langganan", map[string]string{"code": "forbidden_permission"})
 		return
 	}
 	tenantID, err := application.ParseTenantID(claims.TenantID)

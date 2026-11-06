@@ -10,6 +10,8 @@ type Entry struct {
 	ActorType  string
 	ActorID    string
 	ActorRole  string
+	// TenantID is set for actions inside a workspace (nil for ElProof's team).
+	TenantID *int64
 	// Action is a readable label derived from method + path, e.g.
 	// "POST /tenants/{id}/toggle-suspension".
 	Action     string

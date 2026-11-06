@@ -27,6 +27,11 @@ func NewModule(db *sql.DB, projects projectscontracts.Contracts, identity identi
 	return &Module{handler: presentation.NewHandler(service), contracts: contracts.New(service), service: service}
 }
 
+// SetRoles plugs in the access module's portal roles (main.go).
+func (m *Module) SetRoles(r application.RoleResolver) {
+	m.service.SetRoles(r)
+}
+
 // SetTrialQuota plugs in the platform module's trial caps (main.go).
 func (m *Module) SetTrialQuota(q application.TrialQuota) {
 	m.service.SetTrialQuota(q)

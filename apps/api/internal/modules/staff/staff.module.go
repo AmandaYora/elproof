@@ -43,6 +43,14 @@ func (m *Module) SetProjectReferenceLookup(lookup application.ProjectReferenceLo
 	m.service.SetProjectReferenceLookup(lookup)
 }
 
+// RoleAccess is what the RoleResolver given to SetRoles returns.
+type RoleAccess = application.RoleAccess
+
+// SetRoles plugs in the access module's role lookups (main.go).
+func (m *Module) SetRoles(r application.RoleResolver) {
+	m.service.SetRoles(r)
+}
+
 // SetTrialQuota plugs in the platform module's trial caps (main.go).
 func (m *Module) SetTrialQuota(q application.TrialQuota) {
 	m.service.SetTrialQuota(q)

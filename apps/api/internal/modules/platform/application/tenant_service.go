@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	accesscontracts "elproof/internal/modules/access/contracts"
 	billingcontracts "elproof/internal/modules/billing/contracts"
 	clientscontracts "elproof/internal/modules/clients/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
@@ -91,6 +92,24 @@ type TenantService struct {
 	signupLocks keyedLocks
 	trialLimits TrialLimitsRepository
 	clients     clientscontracts.Contracts
+	roles       accesscontracts.Contracts
+}
+
+// SetAccess completes two-phase wiring with the access module: every new
+// workspace gets its built-in roles (ADR-0026).
+func (s *TenantService) SetAccess(a accesscontracts.Contracts) {
+	s.roles = a
+}
+
+// ownerRole seeds a workspace's built-in roles and returns its Owner role.
+func (s *TenantService) ownerRole(ctx context.Context, tenantID int64) (accesscontracts.RoleRef, error) {
+	if s.roles == nil {
+		return accesscontracts.RoleRef{}, apperror.Internal("Peran workspace belum dapat dibuat")
+	}
+	if err := s.roles.SeedDefaultRoles(ctx, tenantID); err != nil {
+		return accesscontracts.RoleRef{}, err
+	}
+	return s.roles.TemplateRole(ctx, tenantID, accesscontracts.TemplateOwner)
 }
 
 // SetManualActivations plugs in the manual-activation record store.
@@ -245,6 +264,10 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 // and a pending login exist, and issues the Owner's invitation. Every step
 // is idempotent, so ReinviteOwner can complete a failed registration.
 func (s *TenantService) provisionInvitedOwner(ctx context.Context, tenant *domain.Tenant) (*OwnerInvitation, error) {
+	owner, err := s.ownerRole(ctx, tenant.ID)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.vendors.SeedDefaultCategories(ctx, tenant.ID); err != nil {
 		return nil, err
 	}
@@ -257,7 +280,7 @@ func (s *TenantService) provisionInvitedOwner(ctx context.Context, tenant *domai
 	}
 	if ownerID == "" {
 		created, err := s.staff.CreateOwner(ctx, staffcontracts.CreateOwnerInput{
-			TenantID: tenant.ID, Name: tenant.OwnerName, Email: tenant.Email, Phone: tenant.Phone, Username: tenant.Username,
+			TenantID: tenant.ID, Name: tenant.OwnerName, Email: tenant.Email, Phone: tenant.Phone, Username: tenant.Username, RoleID: owner.ID,
 		})
 		if err != nil {
 			return nil, err
@@ -272,7 +295,7 @@ func (s *TenantService) provisionInvitedOwner(ctx context.Context, tenant *domai
 	if !hasLogin {
 		if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 			TenantID: &tenant.ID, PrincipalType: identitycontracts.PrincipalStaff, PrincipalID: ownerID,
-			Username: tenant.Username, Email: tenant.Email, Pending: true, Role: "Owner", DisplayName: tenant.OwnerName,
+			Username: tenant.Username, Email: tenant.Email, Pending: true, Role: "Owner", RoleID: owner.ID, DisplayName: tenant.OwnerName,
 		}); err != nil {
 			return nil, err
 		}

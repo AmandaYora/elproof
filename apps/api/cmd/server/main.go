@@ -16,6 +16,8 @@ import (
 	"elproof/internal/adminseed"
 	"elproof/internal/loginslides"
 	"elproof/internal/migrator"
+	"elproof/internal/modules/access"
+	accesscontracts "elproof/internal/modules/access/contracts"
 	"elproof/internal/modules/audit"
 	"elproof/internal/modules/billing"
 	"elproof/internal/modules/clients"
@@ -56,6 +58,39 @@ func (r staffNameResolver) GetName(ctx context.Context, tenantID, staffID int64)
 		return "", false, nil
 	}
 	return summary.Name, true, nil
+}
+
+// staffRoles / clientRoles adapt the access module's contract to the narrow
+// role ports staff and clients declare (they never import access).
+type staffRoles struct{ access accesscontracts.Contracts }
+
+func (r staffRoles) AssignableStaffRole(ctx context.Context, tenantID, roleID int64) (staff.RoleAccess, error) {
+	ref, err := r.access.RoleForAssignment(ctx, tenantID, roleID, accesscontracts.KindStaff)
+	return staff.RoleAccess{Name: ref.Name, Permissions: ref.Permissions, AllProjects: ref.AllProjects}, err
+}
+
+func (r staffRoles) RoleNames(ctx context.Context, tenantID int64) (map[int64]string, error) {
+	return r.access.RoleNames(ctx, tenantID)
+}
+
+type clientRoles struct{ access accesscontracts.Contracts }
+
+func (r clientRoles) DefaultClientRole(ctx context.Context, tenantID int64, family bool) (int64, error) {
+	key := accesscontracts.TemplateBride
+	if family {
+		key = accesscontracts.TemplateFamily
+	}
+	ref, err := r.access.TemplateRole(ctx, tenantID, key)
+	return ref.ID, err
+}
+
+func (r clientRoles) AssignableClientRole(ctx context.Context, tenantID, roleID int64) (string, error) {
+	ref, err := r.access.RoleForAssignment(ctx, tenantID, roleID, accesscontracts.KindClient)
+	return ref.Name, err
+}
+
+func (r clientRoles) RoleNames(ctx context.Context, tenantID int64) (map[int64]string, error) {
+	return r.access.RoleNames(ctx, tenantID)
 }
 
 // main dispatches on an optional subcommand so the one compiled binary this
@@ -211,6 +246,9 @@ func serve(cfg config.Config) {
 	// or loses two-factor, not only when they expire.
 	liveSession := &middleware.RequireLiveSession{}
 	liveSession.SetValidator(identityModule.SessionValidator())
+	// Staff and client permissions come from their workspace role (ADR-0026);
+	// resolved once per request, the resolver is the access module below.
+	loadGrants := &middleware.LoadGrants{}
 	restrictClients := middleware.RestrictPrincipal("client", clientPortalAllowed)
 	restrictAdmins := middleware.RestrictPrincipalBy("platform_admin", platformAdminPolicy)
 	tenantGate := middleware.NewTenantAccessGate(staffAllowedWhenRestricted)
@@ -219,7 +257,7 @@ func serve(cfg config.Config) {
 	// including refused attempts (audit sits before the role check).
 	auditAdmins := middleware.AuditTrail(auditModule.Recorder(), "platform_admin")
 	authed := func(next http.Handler) http.Handler {
-		return requireAuth(liveSession.Middleware(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(next))))))
+		return requireAuth(liveSession.Middleware(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(loadGrants.Middleware(next)))))))
 	}
 
 	mux.Handle("/api/v1/auth/me", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +283,12 @@ func serve(cfg config.Config) {
 		log.Fatalf("failed to init payment module: %v", err)
 	}
 
+	accessModule := access.NewModule(db)
+	accessModule.SetMemberCounter(identityModule.Contracts())
+	loadGrants.SetResolver(accessModule)
+
 	staffModule := staff.NewModule(db, identityModule.Contracts())
+	staffModule.SetRoles(staffRoles{accessModule.Contracts()})
 	// billing now takes two dependencies from payment (A5, same direct-
 	// contracts-injection pattern as platform receiving paymentModule.Client()
 	// below): AppRegistry for its own external/console App-token endpoints,
@@ -302,6 +345,8 @@ func serve(cfg config.Config) {
 	projectsModule.SetTrialQuota(platformModule)
 	clientsModule.SetTrialQuota(platformModule)
 	platformModule.SetClients(clientsModule.Contracts())
+	platformModule.SetAccess(accessModule.Contracts())
+	clientsModule.SetRoles(clientRoles{accessModule.Contracts()})
 	// Same bridging pattern: payment can't import platform (or any other App
 	// internal) to know its webhook consumer, so main.go registers it here,
 	// after both modules are built — see payment.module.go's Dispatcher doc.
@@ -322,6 +367,9 @@ func serve(cfg config.Config) {
 	platformModule.StartSubscriptionStatusSweeper(context.Background(), time.Hour)
 
 	identityModule.RegisterAuthedRoutes(mux, authed)
+	// A WO's changes to its own roles are audited like the platform team's.
+	auditStaff := middleware.AuditTrail(auditModule.Recorder(), "staff")
+	accessModule.RegisterRoutes(mux, func(h http.Handler) http.Handler { return authed(auditStaff(h)) })
 	auditModule.RegisterRoutes(mux, authed)
 	paymentModule.RegisterRoutes(mux, authed)
 	billingModule.RegisterRoutes(mux, authed)

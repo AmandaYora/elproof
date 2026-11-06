@@ -37,10 +37,12 @@ type Credential struct {
 	TOTPEnabled   bool
 	TOTPLastStep  int64
 	Role          string
-	DisplayName   string
-	IsActive      bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// RoleID: the workspace role (staff/client), 0 for platform admins.
+	RoleID      int64
+	DisplayName string
+	IsActive    bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // RefreshToken is a rotatable, revocable session token tied to one Credential.

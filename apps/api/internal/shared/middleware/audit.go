@@ -10,9 +10,11 @@ import (
 // AuditRecord is what AuditTrail hands to the recorder. It deliberately has
 // no request or response body, so no password, secret or key is ever logged.
 type AuditRecord struct {
-	ActorType  string
-	ActorID    string
-	ActorRole  string
+	ActorType string
+	ActorID   string
+	ActorRole string
+	// TenantID: the workspace of a staff actor ("" for ElProof's team).
+	TenantID   string
 	Method     string
 	Path       string
 	StatusCode int
@@ -45,7 +47,7 @@ func AuditTrail(recorder AuditRecorder, principalTypes ...string) func(http.Hand
 			sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(sw, r)
 			rec := AuditRecord{
-				ActorType: claims.PrincipalType, ActorID: claims.PrincipalID, ActorRole: claims.Role,
+				ActorType: claims.PrincipalType, ActorID: claims.PrincipalID, ActorRole: claims.Role, TenantID: claims.TenantID,
 				Method: r.Method, Path: r.URL.Path, StatusCode: sw.status,
 				IP: ClientIP(r), UserAgent: r.UserAgent(),
 			}

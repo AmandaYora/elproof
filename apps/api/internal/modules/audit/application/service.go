@@ -4,6 +4,7 @@ package application
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ func (s *Service) Record(ctx context.Context, rec middleware.AuditRecord) error 
 		ActorType:  rec.ActorType,
 		ActorID:    rec.ActorID,
 		ActorRole:  rec.ActorRole,
+		TenantID:   parseTenant(rec.TenantID),
 		Action:     ActionLabel(rec.Method, rec.Path),
 		Method:     rec.Method,
 		Path:       truncate(rec.Path, 255),
@@ -66,4 +68,15 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+func parseTenant(v string) *int64 {
+	if v == "" {
+		return nil
+	}
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &id
 }

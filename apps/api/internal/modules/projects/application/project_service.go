@@ -284,15 +284,25 @@ type ProjectInput struct {
 	VenueCharge      *int64
 }
 
-// callerRole == "Sales" forces PICSalesStaffID to actorStaffID regardless of
-// what input carries -- a Sales staff member can only ever create a project
-// they themselves are the PIC Sales of, mirroring ADR-0017's "only Owner/
-// Admin assign PIC" precedent extended to this second PIC slot. Every other
-// role (including "" for internal callers) passes input.PICSalesStaffID
-// through untouched, same as PICStaffID always has.
-func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffID int64, callerRole string, input ProjectInput) (*domain.Project, error) {
+// ProjectActor is the staff member acting and what their workspace role
+// allows on projects (ADR-0026). Internal callers use the zero value plus
+// CanAssignPIC.
+type ProjectActor struct {
+	StaffID int64
+	// AssignedOnly: the role reaches only projects where the person is PIC
+	// or PIC Sales.
+	AssignedOnly bool
+	// CanAssignPIC: may change PIC / PIC Sales (project.assign_pic).
+	CanAssignPIC bool
+}
+
+// Create: a person limited to their own projects must stay able to reach
+// the project they create, so unless they made themselves PIC they become
+// its PIC Sales (the former Sales rule, now for any such role).
+func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor ProjectActor, input ProjectInput) (*domain.Project, error) {
+	actorStaffID := actor.StaffID
 	picSalesStaffID := input.PICSalesStaffID
-	if callerRole == "Sales" {
+	if actor.AssignedOnly && input.PICStaffID != actorStaffID {
 		picSalesStaffID = actorStaffID
 	}
 	if isActiveProject(input.Status, false) {
@@ -327,16 +337,14 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffI
 // PICStaffID -- that's the handover mechanism (PLAN.md
 // revisi-timeline-vendor-role-sales); reaching this method at all as Sales
 // already implies resolveProjectAccess confirmed they own this project.
-func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorStaffID int64, callerRole string, input ProjectInput) (*domain.Project, error) {
+func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor ProjectActor, input ProjectInput) (*domain.Project, error) {
+	actorStaffID := actor.StaffID
 	p, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	if callerRole == "Staff" && input.PICStaffID != p.PICStaffID {
-		return nil, apperror.Forbidden("Hanya Owner atau Admin yang dapat menugaskan ulang PIC project")
-	}
-	if callerRole == "Sales" && input.PICSalesStaffID != p.PICSalesStaffID {
-		return nil, apperror.Forbidden("Sales tidak dapat memindahkan PIC Sales project ini")
+	if !actor.CanAssignPIC && (input.PICStaffID != p.PICStaffID || input.PICSalesStaffID != p.PICSalesStaffID) {
+		return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC project").WithCode("forbidden_permission")
 	}
 	if !isActiveProject(p.Status, p.IsArchived) && isActiveProject(input.Status, p.IsArchived) {
 		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {

@@ -47,14 +47,7 @@ func requireStaffTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 // mutation (create/update/toggle-active/upload/template/import) is
 // Owner/Admin only. Assumes requireStaffTenant already ran and succeeded
 // (so claims is guaranteed present) — called only from write branches below.
-func requireManagerRole(w http.ResponseWriter, r *http.Request) bool {
-	claims, _ := middleware.FromContext(r.Context())
-	if !claims.HasRole("Owner", "Admin") {
-		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat melakukan aksi ini", nil)
-		return false
-	}
-	return true
-}
+// (role checks: requirePermission in vendor_category_handler.go, ADR-0026)
 
 type VenueHandler struct {
 	venues   *application.VenueService
@@ -105,6 +98,9 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		if r.URL.Query().Get("all") == "true" {
+			if !requireDirectoryRead(w, r) {
+				return
+			}
 			venues, err := h.venues.List(r.Context(), tenantID)
 			if err != nil {
 				writeAppError(w, err)
@@ -115,6 +111,9 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 				result = append(result, toVenueResponse(v))
 			}
 			response.OK(w, "ok", result)
+			return
+		}
+		if !requirePermission(w, r, "vendor.view") {
 			return
 		}
 		params := pagination.FromRequest(r)
@@ -131,7 +130,7 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		}
 		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 	case http.MethodPost:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		h.create(w, r, tenantID)
@@ -149,7 +148,7 @@ func (h *VenueHandler) Export(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !requireManagerRole(w, r) {
+	if !requirePermission(w, r, "vendor.view") {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -274,31 +273,37 @@ func (h *VenueHandler) Item(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodGet:
+		if !requireDirectoryRead(w, r) {
+			return
+		}
 		h.get(w, r, tenantID, id)
 	case len(rest) == 0 && r.Method == http.MethodPatch:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		h.update(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "toggle-active" && r.Method == http.MethodPost:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		h.toggleActive(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodPut:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		h.uploadAttachment(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodGet:
+		if !requireDirectoryRead(w, r) {
+			return
+		}
 		h.downloadAttachment(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "delete-impact" && r.Method == http.MethodGet:
-		if !requireOwnerRole(w, r) {
+		if !requirePermission(w, r, "vendor.delete") {
 			return
 		}
 		h.deleteImpact(w, r, tenantID, id)
 	case len(rest) == 0 && r.Method == http.MethodDelete:
-		if !requireOwnerRole(w, r) {
+		if !requirePermission(w, r, "vendor.delete") {
 			return
 		}
 		if err := h.venues.Delete(r.Context(), tenantID, id); err != nil {
@@ -428,7 +433,7 @@ func (h *VenueHandler) Template(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireStaffTenant(w, r); !ok {
 		return
 	}
-	if !requireManagerRole(w, r) {
+	if !requirePermission(w, r, "vendor.manage") {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -530,7 +535,7 @@ func (h *VenueHandler) Import(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !requireManagerRole(w, r) {
+	if !requirePermission(w, r, "vendor.manage") {
 		return
 	}
 	if r.Method != http.MethodPost {

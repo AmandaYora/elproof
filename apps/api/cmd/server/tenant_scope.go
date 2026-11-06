@@ -16,6 +16,7 @@ func staffAllowedWhenRestricted(method, path string) bool {
 	case http.MethodGet, http.MethodHead:
 		switch {
 		case p == "/api/v1/auth/me",
+			p == "/api/v1/access/me",
 			p == "/api/v1/tenants/me",
 			strings.HasPrefix(p, "/api/v1/tenants/me/"),
 			p == "/api/v1/plans",

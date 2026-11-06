@@ -76,6 +76,9 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 			categoryID = &id
 		}
 		if r.URL.Query().Get("all") == "true" {
+			if !requireDirectoryRead(w, r) {
+				return
+			}
 			vendors, err := h.vendors.List(r.Context(), tenantID, categoryID)
 			if err != nil {
 				writeAppError(w, err)
@@ -86,6 +89,9 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 				result = append(result, toVendorResponse(v))
 			}
 			response.OK(w, "ok", result)
+			return
+		}
+		if !requirePermission(w, r, "vendor.view") {
 			return
 		}
 		params := pagination.FromRequest(r)
@@ -102,7 +108,7 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		}
 		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 	case http.MethodPost:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		h.create(w, r, tenantID)
@@ -121,7 +127,7 @@ func (h *VendorHandler) Export(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !requireManagerRole(w, r) {
+	if !requirePermission(w, r, "vendor.view") {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -266,7 +272,7 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodPatch:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		var body vendorInputBody
@@ -281,7 +287,7 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 		}
 		response.OK(w, "Vendor berhasil diperbarui", toVendorResponse(*vendor))
 	case len(rest) == 1 && rest[0] == "toggle-active" && r.Method == http.MethodPost:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		current, err := h.vendors.Get(r.Context(), tenantID, id)
@@ -296,24 +302,27 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 		}
 		response.OK(w, "Status vendor diperbarui", toVendorResponse(*vendor))
 	case len(rest) == 1 && rest[0] == "project-history" && r.Method == http.MethodGet:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.view") {
 			return
 		}
 		h.projectHistory(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodPut:
-		if !requireManagerRole(w, r) {
+		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
 		h.uploadAttachment(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodGet:
+		if !requireDirectoryRead(w, r) {
+			return
+		}
 		h.downloadAttachment(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "delete-impact" && r.Method == http.MethodGet:
-		if !requireOwnerRole(w, r) {
+		if !requirePermission(w, r, "vendor.delete") {
 			return
 		}
 		h.deleteImpact(w, r, tenantID, id)
 	case len(rest) == 0 && r.Method == http.MethodDelete:
-		if !requireOwnerRole(w, r) {
+		if !requirePermission(w, r, "vendor.delete") {
 			return
 		}
 		if err := h.vendors.Delete(r.Context(), tenantID, id); err != nil {
@@ -479,7 +488,7 @@ func (h *VendorHandler) Template(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !requireManagerRole(w, r) {
+	if !requirePermission(w, r, "vendor.manage") {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -584,7 +593,7 @@ func (h *VendorHandler) Import(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !requireManagerRole(w, r) {
+	if !requirePermission(w, r, "vendor.manage") {
 		return
 	}
 	if r.Method != http.MethodPost {

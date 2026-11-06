@@ -27,7 +27,7 @@ func clientPortalAllowed(method, path string) bool {
 	s = s[2:]
 
 	switch {
-	case match(s, "auth", "me"):
+	case match(s, "auth", "me"), match(s, "access", "me"):
 		return true
 	case match(s, "tenants", "me", "branding"), match(s, "tenants", "me", "logo"):
 		return true

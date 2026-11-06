@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	accesscontracts "elproof/internal/modules/access/contracts"
 	billingcontracts "elproof/internal/modules/billing/contracts"
 	clientscontracts "elproof/internal/modules/clients/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
@@ -73,6 +74,11 @@ func (m *Module) SetVendors(vendors vendorscontracts.Contracts) {
 // is built.
 func (m *Module) SetProjects(projects projectscontracts.Contracts) {
 	m.tenantService.SetProjects(projects)
+}
+
+// SetAccess completes two-phase wiring with the access module.
+func (m *Module) SetAccess(a accesscontracts.Contracts) {
+	m.tenantService.SetAccess(a)
 }
 
 // SetClients completes two-phase wiring with the clients module (client

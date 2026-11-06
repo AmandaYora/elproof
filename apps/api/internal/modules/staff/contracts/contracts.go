@@ -15,6 +15,8 @@ type CreateOwnerInput struct {
 	Email    string
 	Phone    string
 	Username string
+	// RoleID: the workspace's Owner role (access module).
+	RoleID int64
 }
 
 type CreateOwnerResult struct {
@@ -55,7 +57,7 @@ func New(service *application.StaffService) Contracts {
 }
 
 func (c *impl) CreateOwner(ctx context.Context, input CreateOwnerInput) (CreateOwnerResult, error) {
-	member, err := c.service.CreateOwner(ctx, input.TenantID, input.Name, input.Email, input.Phone, input.Username)
+	member, err := c.service.CreateOwner(ctx, input.TenantID, input.Name, input.Email, input.Phone, input.Username, input.RoleID)
 	if err != nil {
 		return CreateOwnerResult{}, err
 	}

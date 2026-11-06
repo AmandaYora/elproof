@@ -39,7 +39,35 @@ type ProjectReferenceLookup interface {
 	ListAffectedProjectsForStaff(ctx context.Context, tenantID, staffID int64) ([]projectscontracts.ProjectRef, error)
 }
 
+// RoleResolver is the narrow slice of the access module staff needs:
+// validating an assignable workspace role and naming roles. Declared here,
+// wired in cmd/server.
+type RoleResolver interface {
+	// AssignableStaffRole describes roleID if it may be given to a staff
+	// member (never the Owner role).
+	AssignableStaffRole(ctx context.Context, tenantID, roleID int64) (RoleAccess, error)
+	RoleNames(ctx context.Context, tenantID int64) (map[int64]string, error)
+}
+
+// RoleAccess is what staff needs to know about a workspace role.
+type RoleAccess struct {
+	Name        string
+	Permissions []string
+	AllProjects bool
+}
+
+// Grantor is the person managing the team (implemented by
+// *middleware.Grants); nil means the system itself. Someone may only hand
+// out, or manage people holding, roles their own role covers — so
+// team.manage never becomes a way to gain more access (ADR-0026).
+type Grantor interface {
+	Covers(permissions []string, allProjects bool) bool
+}
+
+var errBeyondGrantor = apperror.Forbidden("Peran ini memiliki akses yang tidak Anda miliki. Minta Owner untuk mengaturnya.")
+
 type StaffService struct {
+	roles    RoleResolver
 	repo     StaffRepository
 	identity identitycontracts.Contracts
 	projects ProjectReferenceLookup
@@ -48,6 +76,60 @@ type StaffService struct {
 
 func NewStaffService(repo StaffRepository, identity identitycontracts.Contracts) *StaffService {
 	return &StaffService{repo: repo, identity: identity}
+}
+
+// SetRoles completes two-phase wiring with the access module.
+func (s *StaffService) SetRoles(r RoleResolver) {
+	s.roles = r
+}
+
+// RoleNames maps role ids to their current names (nil when unavailable).
+func (s *StaffService) RoleNames(ctx context.Context, tenantID int64) map[int64]string {
+	if s.roles == nil {
+		return nil
+	}
+	names, err := s.roles.RoleNames(ctx, tenantID)
+	if err != nil {
+		logger.Error("role names for tenant %d: %v", tenantID, err)
+		return nil
+	}
+	return names
+}
+
+// assignableRole validates roleID and that `by` may hand it out.
+func (s *StaffService) assignableRole(ctx context.Context, tenantID, roleID int64, by Grantor) (string, error) {
+	if s.roles == nil {
+		return "", apperror.Internal("Peran belum dapat diperiksa")
+	}
+	role, err := s.roles.AssignableStaffRole(ctx, tenantID, roleID)
+	if err != nil {
+		return "", err
+	}
+	if by != nil && !by.Covers(role.Permissions, role.AllProjects) {
+		return "", errBeyondGrantor
+	}
+	return role.Name, nil
+}
+
+// CheckManageable refuses `by` changing, re-inviting, deactivating or
+// deleting a member whose role allows more than `by` holds (otherwise one
+// could, say, point an Admin's invitation at one's own Google account).
+// Owner rows have their own, stricter rules in each operation.
+func (s *StaffService) CheckManageable(ctx context.Context, tenantID, id int64, by Grantor) error {
+	if by == nil {
+		return nil
+	}
+	member, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if member.Role == domain.RoleOwner {
+		return nil
+	}
+	if _, err := s.assignableRole(ctx, tenantID, member.RoleID, by); err != nil {
+		return errBeyondGrantor
+	}
+	return nil
 }
 
 // SetProjectReferenceLookup completes the two-phase wiring described on
@@ -64,13 +146,14 @@ func (s *StaffService) SetProjectReferenceLookup(lookup ProjectReferenceLookup) 
 // with the same username right after — this just keeps a denormalized copy
 // here too (same pattern as `platform`'s Tenant/PlatformAdmin) so the Owner's
 // username can be displayed without a cross-module lookup on every read.
-func (s *StaffService) CreateOwner(ctx context.Context, tenantID int64, name, email, phone, username string) (*domain.StaffMember, error) {
+func (s *StaffService) CreateOwner(ctx context.Context, tenantID int64, name, email, phone, username string, ownerRoleID int64) (*domain.StaffMember, error) {
 	member := &domain.StaffMember{
 		TenantID: tenantID,
 		Name:     name,
 		Title:    "Owner",
 		Initials: computeInitials(name),
 		Role:     domain.RoleOwner,
+		RoleID:   ownerRoleID,
 		Username: username,
 		Email:    email,
 		Phone:    phone,
@@ -104,7 +187,8 @@ func (s *StaffService) Get(ctx context.Context, tenantID, id int64) (*domain.Sta
 type StaffInput struct {
 	Name  string
 	Title string
-	Role  domain.StaffRole
+	// RoleID is a workspace role (Owner excluded).
+	RoleID int64
 	// Email is the Google account the person must sign in with to accept
 	// the invitation (staff are Google-only, decision K5).
 	Email string
@@ -124,11 +208,10 @@ type Invitation struct {
 // invited email. Owner rows are only created by tenant registration.
 // identity is a separate module (no shared transaction), so a failed login
 // or link step deletes the staff row again.
-func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffInput) (*domain.StaffMember, *Invitation, error) {
-	if input.Role == domain.RoleOwner {
-		return nil, nil, apperror.Validation("Role Owner tidak dapat dibuat dari sini", map[string][]string{
-			"role": {"Akun Owner hanya dibuat otomatis saat registrasi tenant"},
-		})
+func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffInput, by Grantor) (*domain.StaffMember, *Invitation, error) {
+	roleName, err := s.assignableRole(ctx, tenantID, input.RoleID, by)
+	if err != nil {
+		return nil, nil, err
 	}
 	input.Email = strings.TrimSpace(input.Email)
 	if !utils.ValidEmail(input.Email) {
@@ -145,7 +228,7 @@ func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffIn
 	}
 	member := &domain.StaffMember{
 		TenantID: tenantID, Name: input.Name, Title: input.Title, Initials: computeInitials(input.Name),
-		Role: input.Role, Username: username, Email: input.Email, Phone: input.Phone, IsActive: true,
+		Role: domain.StaffRole(roleName), RoleID: input.RoleID, Username: username, Email: input.Email, Phone: input.Phone, IsActive: true,
 	}
 	if err := s.repo.Create(ctx, member); err != nil {
 		return nil, nil, err
@@ -158,7 +241,7 @@ func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffIn
 	}
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalStaff, PrincipalID: principalID,
-		Username: username, Email: input.Email, Pending: true, Role: string(input.Role), DisplayName: input.Name,
+		Username: username, Email: input.Email, Pending: true, Role: roleName, RoleID: input.RoleID, DisplayName: input.Name,
 	}); err != nil {
 		rollback()
 		return nil, nil, err
@@ -233,59 +316,69 @@ func (s *StaffService) freeUsername(ctx context.Context, email string) (string, 
 // only the Owner themselves may adjust it (business/privacy reasons) — no
 // other staff member may, even Admin. isSelf is true when the authenticated
 // caller's own staff ID equals id (see staff_handler.go's isSelf check).
-func (s *StaffService) Update(ctx context.Context, tenantID, id int64, isSelf bool, input StaffInput) (*domain.StaffMember, error) {
+func (s *StaffService) Update(ctx context.Context, tenantID, id int64, isSelf bool, input StaffInput, by Grantor) (*domain.StaffMember, error) {
 	member, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	if input.Role == domain.RoleOwner && member.Role != domain.RoleOwner {
-		return nil, apperror.Forbidden("Role Owner tidak dapat diberikan dari sini")
-	}
+	// The Owner keeps the Owner role and edits only their own row; nobody
+	// else may be given the Owner role (exactly one per workspace).
+	newRoleName, newRoleID := string(member.Role), member.RoleID
 	if member.Role == domain.RoleOwner {
 		if !isSelf {
 			return nil, apperror.Forbidden("Data akun Owner hanya dapat diubah oleh pemiliknya sendiri")
 		}
-		if input.Role != domain.RoleOwner {
-			return nil, apperror.Forbidden("Role Owner tidak dapat diubah dari sini")
+	} else if input.RoleID != member.RoleID {
+		if isSelf {
+			return nil, apperror.Forbidden("Anda tidak dapat mengubah peran Anda sendiri. Minta Owner untuk mengubahnya.")
 		}
+		name, err := s.assignableRole(ctx, tenantID, input.RoleID, by)
+		if err != nil {
+			return nil, err
+		}
+		newRoleName, newRoleID = name, input.RoleID
 	}
-	previousRole := member.Role
-	previousEmail := member.Email
+	previousRole, previousRoleID, previousEmail := member.Role, member.RoleID, member.Email
 	input.Email = strings.TrimSpace(input.Email)
 	if input.Email != previousEmail && !utils.ValidEmail(input.Email) {
 		return nil, apperror.Validation("Email tidak valid", map[string][]string{"email": {"Masukkan email akun Google orang ini"}})
 	}
 	member.Name = input.Name
 	member.Title = input.Title
-	member.Role = input.Role
+	member.Role, member.RoleID = domain.StaffRole(newRoleName), newRoleID
 	member.Email = input.Email
 	member.Phone = input.Phone
 	member.Initials = computeInitials(input.Name)
 	if err := s.repo.Update(ctx, member); err != nil {
 		return nil, err
 	}
-	// identity's own `credentials` table keeps a denormalized copy of role,
-	// baked into the JWT at login/refresh -- without this sync, a role edit
-	// would silently never take effect for authorization purposes (the bug
-	// this call fixes). Roll back the role change on this row if it fails,
-	// same compensating-write pattern Create uses on credential-creation
-	// failure, so the two tables never end up disagreeing about this
-	// member's role.
-	if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10), string(input.Role)); err != nil {
-		member.Role = previousRole
+	principalID := strconv.FormatInt(id, 10)
+	rollback := func(what string) {
+		member.Role, member.RoleID, member.Email = previousRole, previousRoleID, previousEmail
 		if rollbackErr := s.repo.Update(ctx, member); rollbackErr != nil {
-			logger.Error("failed to roll back staff member %d's role after credential role sync failed: %v", id, rollbackErr)
+			logger.Error("failed to roll back staff member %d after %s sync failed: %v", id, what, rollbackErr)
 		}
-		return nil, err
 	}
 	// The login's email is the Google account an invitation must be
-	// accepted with; keep it in step (and roll back on a clash).
+	// accepted with; keep it in step (and roll back on a clash). It goes
+	// first: it is the update that can fail on user input (email taken),
+	// and the role sync below is then the last step.
 	if member.Email != previousEmail {
-		if err := s.identity.UpdateEmail(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10), member.Email); err != nil {
-			member.Email = previousEmail
-			if rollbackErr := s.repo.Update(ctx, member); rollbackErr != nil {
-				logger.Error("failed to roll back staff member %d's email after credential sync failed: %v", id, rollbackErr)
+		if err := s.identity.UpdateEmail(ctx, identitycontracts.PrincipalStaff, principalID, member.Email); err != nil {
+			rollback("email")
+			return nil, err
+		}
+	}
+	// The login carries the role into every session; a changed role ends
+	// the member's current sessions (they continue with the new one).
+	if newRoleID != previousRoleID || newRoleName != string(previousRole) {
+		if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalStaff, principalID, newRoleName, newRoleID); err != nil {
+			if member.Email != previousEmail {
+				if undoErr := s.identity.UpdateEmail(ctx, identitycontracts.PrincipalStaff, principalID, previousEmail); undoErr != nil {
+					logger.Error("failed to roll back staff member %d's login email after role sync failed: %v", id, undoErr)
+				}
 			}
+			rollback("role")
 			return nil, err
 		}
 	}

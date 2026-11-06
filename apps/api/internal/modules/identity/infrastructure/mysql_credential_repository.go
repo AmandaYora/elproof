@@ -22,7 +22,7 @@ func NewMySQLCredentialRepository(db *sql.DB) *MySQLCredentialRepository {
 	return &MySQLCredentialRepository{db: db}
 }
 
-const credentialColumns = `id, tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, totp_secret_enc, totp_enabled, totp_last_step, role, display_name, is_active, created_at, updated_at`
+const credentialColumns = `id, tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, totp_secret_enc, totp_enabled, totp_last_step, role, IFNULL(role_id, 0), display_name, is_active, created_at, updated_at`
 
 func (r *MySQLCredentialRepository) FindByUsername(ctx context.Context, username string) (*domain.Credential, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+credentialColumns+` FROM credentials WHERE username = ? LIMIT 1`, username)
@@ -145,10 +145,10 @@ func (r *MySQLCredentialRepository) FindByPrincipal(ctx context.Context, princip
 
 func (r *MySQLCredentialRepository) Create(ctx context.Context, cred *domain.Credential) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO credentials (tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, role, display_name, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO credentials (tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, role, role_id, display_name, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		cred.TenantID, string(cred.PrincipalType), cred.PrincipalID, cred.Username, nullableEmail(cred.Email),
-		nullableString(cred.GoogleSub), nullableString(cred.PasswordHash), cred.Role, cred.DisplayName, cred.IsActive,
+		nullableString(cred.GoogleSub), nullableString(cred.PasswordHash), cred.Role, nullableID(cred.RoleID), cred.DisplayName, cred.IsActive,
 	)
 	if err != nil {
 		return err
@@ -177,12 +177,23 @@ func (r *MySQLCredentialRepository) SetActive(ctx context.Context, principalType
 	return err
 }
 
-func (r *MySQLCredentialRepository) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string) error {
+func (r *MySQLCredentialRepository) UpdateRole(ctx context.Context, principalType domain.PrincipalType, principalID string, role string, roleID int64) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE credentials SET role = ? WHERE principal_type = ? AND principal_id = ?`,
-		role, string(principalType), principalID,
+		`UPDATE credentials SET role = ?, role_id = ? WHERE principal_type = ? AND principal_id = ?`,
+		role, nullableID(roleID), string(principalType), principalID,
 	)
 	return err
+}
+
+// CountWithRole counts logins of a workspace holding a role.
+func (r *MySQLCredentialRepository) CountWithRole(ctx context.Context, tenantID, roleID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM credentials WHERE tenant_id = ? AND role_id = ?`, tenantID, roleID).Scan(&n)
+	return n, err
+}
+
+func nullableID(id int64) sql.NullInt64 {
+	return sql.NullInt64{Int64: id, Valid: id > 0}
 }
 
 // scanner is satisfied by both *sql.Row and *sql.Rows — one scan body serves
@@ -210,7 +221,7 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 	err := row.Scan(
 		&c.ID, &tenantID, &principalType, &c.PrincipalID, &c.Username, &email, &googleSub, &passwordHash,
 		&c.TOTPSecretEnc, &c.TOTPEnabled, &totpLastStep,
-		&c.Role, &c.DisplayName, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
+		&c.Role, &c.RoleID, &c.DisplayName, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 	)
 	c.TOTPLastStep = totpLastStep.Int64
 	if err != nil {

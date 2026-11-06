@@ -19,9 +19,9 @@ func NewMySQLAuditRepository(db *sql.DB) *MySQLAuditRepository {
 
 func (r *MySQLAuditRepository) Insert(ctx context.Context, e *domain.Entry) error {
 	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO audit_log (occurred_at, actor_type, actor_id, actor_role, action, method, path, status_code, ip, user_agent)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.OccurredAt, e.ActorType, e.ActorID, e.ActorRole, e.Action, e.Method, e.Path, e.StatusCode, e.IP, e.UserAgent,
+		`INSERT INTO audit_log (occurred_at, actor_type, actor_id, actor_role, tenant_id, action, method, path, status_code, ip, user_agent)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.OccurredAt, e.ActorType, e.ActorID, e.ActorRole, e.TenantID, e.Action, e.Method, e.Path, e.StatusCode, e.IP, e.UserAgent,
 	)
 	if err != nil {
 		return err

@@ -48,8 +48,8 @@ func requireOwnerForTemplates(w http.ResponseWriter, r *http.Request) (int64, bo
 		response.Error(w, http.StatusUnauthorized, "Tidak terautentikasi", nil)
 		return 0, false
 	}
-	if !claims.HasRole("Owner") {
-		response.Error(w, http.StatusForbidden, "Hanya Owner yang dapat mengelola timeline default", nil)
+	if claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("template.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola Timeline Default", map[string]string{"code": "forbidden_permission"})
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()

@@ -36,6 +36,9 @@ type clientResponse struct {
 	LastCredentialResetAt *string `json:"lastCredentialResetAt"`
 	// LoginStatus: "invited" until the client set their password.
 	LoginStatus string `json:"loginStatus,omitempty"`
+	// AccessRoleID / AccessRoleName: the portal role (what they see).
+	AccessRoleID   int64  `json:"accessRoleId"`
+	AccessRoleName string `json:"accessRoleName,omitempty"`
 }
 
 type accessLinkResponse struct {
@@ -56,6 +59,9 @@ type clientWithLinkResponse struct {
 func (h *Handler) withLoginStatus(r *http.Request, c domain.Client) clientResponse {
 	resp := toClientResponse(c)
 	resp.LoginStatus = h.clients.LoginStatus(r.Context(), c.ID)
+	if names := h.clients.RoleNames(r.Context(), c.TenantID); names != nil {
+		resp.AccessRoleName = names[c.AccessRoleID]
+	}
 	return resp
 }
 
@@ -68,6 +74,7 @@ func toClientResponse(c domain.Client) clientResponse {
 	return clientResponse{
 		ID: c.ID, ProjectID: c.ProjectID, Role: string(c.Role), Username: c.Username, RelationNote: c.RelationNote,
 		Name: c.Name, Phone: c.Phone, Email: c.Email, IsActive: c.IsActive, LastCredentialResetAt: lastReset,
+		AccessRoleID: c.AccessRoleID,
 	}
 }
 
@@ -95,40 +102,36 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return tenantID, true
 }
 
-// requireManagerRole is the extra gate the standalone (non-project-scoped)
-// list needs on top of requireTenant — mirrors vendors/venue_handler.go's
-// own requireManagerRole exactly: Owner/Admin only, since a tenant-wide
-// client list has no single project to scope a Wedding Planner or Sales
-// staff member against.
-func requireManagerRole(w http.ResponseWriter, r *http.Request) bool {
-	claims, _ := middleware.FromContext(r.Context())
-	if !claims.HasRole("Owner", "Admin") {
-		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat melakukan aksi ini", nil)
+// requireTenantWideClients gates the tenant-wide client list (and global
+// search): client.manage with every-project scope — a person limited to
+// their own projects has no single project to scope that list to.
+func requireTenantWideClients(w http.ResponseWriter, r *http.Request) bool {
+	g := middleware.GrantsFrom(r.Context())
+	if !g.Can("client.manage") || !g.AllProjects {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat melihat seluruh client", map[string]string{"code": "forbidden_permission"})
 		return false
 	}
 	return true
 }
 
-// requireManagerOrProjectSales is the extra gate every Client **write**
-// action needs on top of requireTenant — Owner/Admin write freely across
-// every project (same as before); a Sales staff member additionally gets
-// full write access, but only within the one project they're PIC Sales of
-// (PLAN.md revisi-timeline-vendor-role-sales, confirmed: Sales gets full
-// Client write, unlike a Wedding Planner who stays read-only everywhere —
-// see VerifyProjectReadAccess). Every other role (notably "Staff") is
-// rejected outright, same scope requireManagerRole always had.
-func (h *Handler) requireManagerOrProjectSales(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) bool {
-	claims, _ := middleware.FromContext(r.Context())
-	if claims.HasRole("Owner", "Admin") {
+// requireClientManager is the gate every Client write needs: client.manage,
+// and — for a role scoped to its own projects — being PIC or PIC Sales of
+// the client's project (ADR-0026).
+func (h *Handler) requireClientManager(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) bool {
+	g := middleware.GrantsFrom(r.Context())
+	if !g.Can("client.manage") {
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak memiliki izin mengelola client", map[string]string{"code": "forbidden_permission"})
+		return false
+	}
+	if g.AllProjects {
 		return true
 	}
-	if claims.HasRole("Sales") {
-		staffID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
-		if err == nil && h.clients.VerifyProjectSalesOwner(r.Context(), tenantID, projectID, staffID) == nil {
-			return true
-		}
+	claims, _ := middleware.FromContext(r.Context())
+	staffID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
+	if err == nil && h.clients.VerifyAssignedProject(r.Context(), tenantID, projectID, staffID) == nil {
+		return true
 	}
-	response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses untuk melakukan aksi ini", nil)
+	response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
 	return false
 }
 
@@ -161,9 +164,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		// (Owner/Admin) reads any project's clients freely.
 		claims, _ := middleware.FromContext(r.Context())
 		staffID, _ := strconv.ParseInt(claims.PrincipalID, 10, 64)
-		if err := h.clients.VerifyProjectReadAccess(r.Context(), tenantID, projectID, staffID, claims.Role); err != nil {
-			writeAppError(w, err)
-			return
+		if !middleware.GrantsFrom(r.Context()).AllProjects {
+			if err := h.clients.VerifyAssignedProject(r.Context(), tenantID, projectID, staffID); err != nil {
+				writeAppError(w, err)
+				return
+			}
 		}
 		list, err := h.clients.ListByProject(r.Context(), tenantID, projectID)
 		if err != nil {
@@ -183,7 +188,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 	// projects in one shot; otherwise this is the tenant-wide Client list
 	// page. Both are Owner/Admin only (a Wedding Planner has no legitimate
 	// need to see clients across projects that aren't theirs).
-	if !requireManagerRole(w, r) {
+	if !requireTenantWideClients(w, r) {
 		return
 	}
 	if r.URL.Query().Get("all") == "true" {
@@ -222,6 +227,7 @@ type createClientBody struct {
 	Phone        string `json:"phone"`
 	Username     string `json:"username"`
 	Email        string `json:"email"`
+	AccessRoleID int64  `json:"accessRoleId"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64) {
@@ -230,12 +236,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	if !h.requireManagerOrProjectSales(w, r, tenantID, body.ProjectID) {
+	if !h.requireClientManager(w, r, tenantID, body.ProjectID) {
 		return
 	}
 	c, link, err := h.clients.Create(r.Context(), tenantID, application.CreateClientInput{
 		ProjectID: body.ProjectID, Role: domain.ClientRole(body.Role), RelationNote: body.RelationNote,
-		Name: body.Name, Phone: body.Phone, Username: body.Username, Email: body.Email,
+		Name: body.Name, Phone: body.Phone, Username: body.Username, Email: body.Email, AccessRoleID: body.AccessRoleID,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -274,7 +280,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	if !h.requireManagerOrProjectSales(w, r, tenantID, c.ProjectID) {
+	if !h.requireClientManager(w, r, tenantID, c.ProjectID) {
 		return
 	}
 
@@ -298,6 +304,8 @@ type contactBody struct {
 	Name  string `json:"name"`
 	Phone string `json:"phone"`
 	Email string `json:"email"`
+	// AccessRoleID, when set, changes the client's portal role.
+	AccessRoleID int64 `json:"accessRoleId"`
 }
 
 func (h *Handler) updateContact(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
@@ -306,12 +314,18 @@ func (h *Handler) updateContact(w http.ResponseWriter, r *http.Request, tenantID
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	if body.AccessRoleID > 0 {
+		if _, err := h.clients.SetAccessRole(r.Context(), tenantID, id, body.AccessRoleID); err != nil {
+			writeAppError(w, err)
+			return
+		}
+	}
 	c, err := h.clients.UpdateContact(r.Context(), tenantID, id, application.UpdateContactInput{Name: body.Name, Phone: body.Phone, Email: body.Email})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kontak client berhasil diperbarui", toClientResponse(*c))
+	response.OK(w, "Kontak client berhasil diperbarui", h.withLoginStatus(r, *c))
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

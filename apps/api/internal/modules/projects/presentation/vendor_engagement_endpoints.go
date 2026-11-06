@@ -74,20 +74,20 @@ func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, 
 }
 
 type vendorEngagementInputBody struct {
-	VendorID         int64  `json:"vendorId"`
-	CategoryID       int64  `json:"categoryId"`
-	Scope            string `json:"scope"`
-	ContractValue    int64  `json:"contractValue"`
-	PricingTier      string `json:"pricingTier"`
-	EngagementStatus string `json:"engagementStatus"`
+	VendorID         int64   `json:"vendorId"`
+	CategoryID       int64   `json:"categoryId"`
+	Scope            string  `json:"scope"`
+	ContractValue    int64   `json:"contractValue"`
+	PricingTier      string  `json:"pricingTier"`
+	EngagementStatus string  `json:"engagementStatus"`
 	BookingDate      string  `json:"bookingDate"`
 	EventDate        string  `json:"eventDate"`
 	EventStartTime   *string `json:"eventStartTime"`
 	EventEndTime     *string `json:"eventEndTime"`
 	DPAmount         int64   `json:"dpAmount"`
-	DueDate          string `json:"dueDate"`
-	PICStaffID       int64  `json:"picStaffId"`
-	Notes            string `json:"notes"`
+	DueDate          string  `json:"dueDate"`
+	PICStaffID       int64   `json:"picStaffId"`
+	Notes            string  `json:"notes"`
 }
 
 func toVendorEngagementInput(body vendorEngagementInputBody) (application.VendorEngagementInput, error) {

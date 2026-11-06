@@ -47,10 +47,18 @@ func clientCanRead(rest []string) bool {
 // to a kendala or a vendor deliverable (both rendered in the portal), and
 // general documents a staff member explicitly opted in. Vendor/venue payment
 // proofs, booking proofs and internal Timeline attachments stay internal.
-func clientCanSeeEvidence(e domain.Evidence) bool {
+//
+// can is the client's portal permission check (ADR-0026): a payment receipt
+// is finance data, so a role without portal.finance.view (Keluarga by
+// default) never sees it; issue and vendor photos follow their own tabs.
+func clientCanSeeEvidence(e domain.Evidence, can func(string) bool) bool {
 	switch e.RelatedKind {
-	case domain.RelatedClientPayment, domain.RelatedIssue, domain.RelatedVendorMilestone:
-		return true
+	case domain.RelatedClientPayment:
+		return can("portal.finance.view")
+	case domain.RelatedIssue:
+		return can("portal.issues.view")
+	case domain.RelatedVendorMilestone:
+		return can("portal.vendor.view")
 	case domain.RelatedGeneral:
 		return e.IsClientVisible
 	default:

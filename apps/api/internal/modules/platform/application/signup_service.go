@@ -203,6 +203,10 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 	if err != nil {
 		return err
 	}
+	owner, err := s.ownerRole(ctx, tenantID)
+	if err != nil {
+		return err
+	}
 
 	if err := s.vendors.SeedDefaultCategories(ctx, tenantID); err != nil {
 		return err
@@ -217,7 +221,7 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 	}
 	if ownerID == "" {
 		created, err := s.staff.CreateOwner(ctx, staffcontracts.CreateOwnerInput{
-			TenantID: tenantID, Name: req.OwnerName, Email: req.Email, Username: tenant.Username,
+			TenantID: tenantID, Name: req.OwnerName, Email: req.Email, Username: tenant.Username, RoleID: owner.ID,
 		})
 		if err != nil {
 			return err
@@ -260,6 +264,7 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 			Email:         email,
 			GoogleSub:     req.GoogleSub,
 			Role:          "Owner",
+			RoleID:        owner.ID,
 			DisplayName:   req.OwnerName,
 		}); err != nil {
 			return err

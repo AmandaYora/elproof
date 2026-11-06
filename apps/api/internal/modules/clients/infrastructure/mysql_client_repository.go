@@ -17,14 +17,14 @@ func NewMySQLClientRepository(db *sql.DB) *MySQLClientRepository {
 	return &MySQLClientRepository{db: db}
 }
 
-const clientColumns = `id, tenant_id, project_id, role, username, relation_note, name, phone, email, is_active,
+const clientColumns = `id, tenant_id, project_id, role, IFNULL(access_role_id, 0), username, relation_note, name, phone, email, is_active,
 	last_credential_reset_at, created_at, updated_at`
 
 func scanClient(scan func(dest ...interface{}) error) (*domain.Client, error) {
 	var c domain.Client
 	var role string
 	var lastReset sql.NullTime
-	err := scan(&c.ID, &c.TenantID, &c.ProjectID, &role, &c.Username, &c.RelationNote, &c.Name, &c.Phone, &c.Email, &c.IsActive,
+	err := scan(&c.ID, &c.TenantID, &c.ProjectID, &role, &c.AccessRoleID, &c.Username, &c.RelationNote, &c.Name, &c.Phone, &c.Email, &c.IsActive,
 		&lastReset, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -118,9 +118,9 @@ func (r *MySQLClientRepository) FindByID(ctx context.Context, tenantID, id int64
 
 func (r *MySQLClientRepository) Create(ctx context.Context, c *domain.Client) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO clients (tenant_id, project_id, role, username, relation_note, name, phone, email, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.TenantID, c.ProjectID, string(c.Role), c.Username, c.RelationNote, c.Name, c.Phone, c.Email, c.IsActive,
+		`INSERT INTO clients (tenant_id, project_id, role, access_role_id, username, relation_note, name, phone, email, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.TenantID, c.ProjectID, string(c.Role), sql.NullInt64{Int64: c.AccessRoleID, Valid: c.AccessRoleID > 0}, c.Username, c.RelationNote, c.Name, c.Phone, c.Email, c.IsActive,
 	)
 	if err != nil {
 		return err
@@ -138,6 +138,12 @@ func (r *MySQLClientRepository) Update(ctx context.Context, c *domain.Client) er
 		`UPDATE clients SET name = ?, phone = ?, email = ?, relation_note = ? WHERE tenant_id = ? AND id = ?`,
 		c.Name, c.Phone, c.Email, c.RelationNote, c.TenantID, c.ID,
 	)
+	return err
+}
+
+// UpdateAccessRole changes the client's portal role.
+func (r *MySQLClientRepository) UpdateAccessRole(ctx context.Context, tenantID, id, roleID int64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE clients SET access_role_id = ? WHERE tenant_id = ? AND id = ?`, roleID, tenantID, id)
 	return err
 }
 

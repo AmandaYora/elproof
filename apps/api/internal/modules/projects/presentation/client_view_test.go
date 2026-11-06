@@ -46,10 +46,19 @@ func TestClientCanSeeEvidence(t *testing.T) {
 		{domain.RelatedProjectMilestone, false, false},
 	}
 	for _, c := range cases {
-		got := clientCanSeeEvidence(domain.Evidence{RelatedKind: c.kind, IsClientVisible: c.visible})
+		got := clientCanSeeEvidence(domain.Evidence{RelatedKind: c.kind, IsClientVisible: c.visible}, func(string) bool { return true })
 		if got != c.want {
 			t.Errorf("kind=%s visible=%v: got %v, want %v", c.kind, c.visible, got, c.want)
 		}
+	}
+	// Without portal.finance.view (Keluarga) payment receipts stay hidden,
+	// while documents the WO shared remain visible.
+	noFinance := func(p string) bool { return p != "portal.finance.view" }
+	if clientCanSeeEvidence(domain.Evidence{RelatedKind: domain.RelatedClientPayment}, noFinance) {
+		t.Error("payment receipt visible without portal.finance.view")
+	}
+	if !clientCanSeeEvidence(domain.Evidence{RelatedKind: domain.RelatedGeneral, IsClientVisible: true}, noFinance) {
+		t.Error("shared document hidden without portal.finance.view")
 	}
 }
 

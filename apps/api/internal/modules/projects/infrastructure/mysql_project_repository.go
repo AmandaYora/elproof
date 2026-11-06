@@ -59,13 +59,9 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64) ([]domain.Project, error) {
 	query := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ?`
 	args := []interface{}{tenantID}
-	if picStaffID != nil {
-		query += ` AND pic_staff_id = ?`
-		args = append(args, *picStaffID)
-	}
-	if picSalesStaffID != nil {
-		query += ` AND pic_sales_staff_id = ?`
-		args = append(args, *picSalesStaffID)
+	if cond, condArgs := picFilter(picStaffID, picSalesStaffID); cond != "" {
+		query += cond
+		args = append(args, condArgs...)
 	}
 	query += ` ORDER BY event_date DESC, id DESC`
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -198,15 +194,10 @@ func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int
 	countQuery := `SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = ?`
 	listQuery := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ? AND is_archived = ?`
 	args := []interface{}{tenantID, showArchived}
-	if picStaffID != nil {
-		countQuery += ` AND pic_staff_id = ?`
-		listQuery += ` AND pic_staff_id = ?`
-		args = append(args, *picStaffID)
-	}
-	if picSalesStaffID != nil {
-		countQuery += ` AND pic_sales_staff_id = ?`
-		listQuery += ` AND pic_sales_staff_id = ?`
-		args = append(args, *picSalesStaffID)
+	if cond, condArgs := picFilter(picStaffID, picSalesStaffID); cond != "" {
+		countQuery += cond
+		listQuery += cond
+		args = append(args, condArgs...)
 	}
 	var conditions []string
 	if search != "" {
@@ -485,4 +476,18 @@ func (r *MySQLProjectRepository) CountActive(ctx context.Context, tenantID int64
 		`SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = FALSE AND status NOT IN ('Completed', 'Cancelled')`,
 		tenantID).Scan(&n)
 	return n, err
+}
+
+// picFilter scopes a project list. Both set means "projects this person
+// holds" (PIC or PIC Sales) — a role scoped to its own projects (ADR-0026).
+func picFilter(picStaffID, picSalesStaffID *int64) (string, []interface{}) {
+	switch {
+	case picStaffID != nil && picSalesStaffID != nil:
+		return ` AND (pic_staff_id = ? OR pic_sales_staff_id = ?)`, []interface{}{*picStaffID, *picSalesStaffID}
+	case picStaffID != nil:
+		return ` AND pic_staff_id = ?`, []interface{}{*picStaffID}
+	case picSalesStaffID != nil:
+		return ` AND pic_sales_staff_id = ?`, []interface{}{*picSalesStaffID}
+	}
+	return "", nil
 }

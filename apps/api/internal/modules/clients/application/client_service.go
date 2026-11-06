@@ -27,10 +27,23 @@ type ClientRepository interface {
 	SetCredentialResetAt(ctx context.Context, tenantID, id int64, when time.Time) error
 	Delete(ctx context.Context, tenantID, id int64) error
 	CountActive(ctx context.Context, tenantID int64) (int, error)
+	UpdateAccessRole(ctx context.Context, tenantID, id, roleID int64) error
 	UpdateUsername(ctx context.Context, tenantID, id int64, username string) error
 }
 
+// RoleResolver is the slice of the access module clients need (portal
+// roles). Declared here, wired in cmd/server.
+type RoleResolver interface {
+	// DefaultClientRole is the built-in portal role for a client relation
+	// (Pengantin for bride/groom, Keluarga for family).
+	DefaultClientRole(ctx context.Context, tenantID int64, family bool) (int64, error)
+	// AssignableClientRole validates a portal role id.
+	AssignableClientRole(ctx context.Context, tenantID, roleID int64) (string, error)
+	RoleNames(ctx context.Context, tenantID int64) (map[int64]string, error)
+}
+
 type ClientService struct {
+	roles    RoleResolver
 	repo     ClientRepository
 	projects projectscontracts.Contracts
 	identity identitycontracts.Contracts
@@ -45,46 +58,25 @@ func (s *ClientService) ListByProject(ctx context.Context, tenantID, projectID i
 	return s.repo.ListByProject(ctx, tenantID, projectID)
 }
 
-// VerifyProjectReadAccess scopes a Wedding Planner ("Staff" role) or Sales
-// staff member to reading client data only for a project they're
-// PIC/PIC Sales of — the same restriction `projects` itself already
-// enforces on every one of its own sub-resources (see handler.go's
-// resolveProjectAccess there); Owner/Admin pass through unconditionally,
-// matching their full-tenant access everywhere else.
-func (s *ClientService) VerifyProjectReadAccess(ctx context.Context, tenantID, projectID, staffID int64, role string) error {
-	switch role {
-	case "Staff":
-		picStaffID, err := s.projects.ProjectPICStaffID(ctx, tenantID, projectID)
-		if err != nil {
-			return err
-		}
-		if picStaffID != staffID {
-			return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
-		}
-	case "Sales":
-		if err := s.VerifyProjectSalesOwner(ctx, tenantID, projectID, staffID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// VerifyProjectSalesOwner confirms a Sales-role caller is the PIC Sales of
-// projectID — used both by VerifyProjectReadAccess above and by the
-// handler's write-side gate (requireManagerOrProjectSales), since a Sales
-// staff member's write access to Client (PLAN.md
-// revisi-timeline-vendor-role-sales, confirmed: full write, unlike a
-// Wedding Planner's read-only) is scoped to their own project the same way
-// their read access is.
-func (s *ClientService) VerifyProjectSalesOwner(ctx context.Context, tenantID, projectID, staffID int64) error {
-	picSalesStaffID, err := s.projects.ProjectPICSalesStaffID(ctx, tenantID, projectID)
+// VerifyAssignedProject confirms a staff member whose role only reaches
+// their own projects (scope "assigned", ADR-0026) is PIC or PIC Sales of
+// projectID — the same rule `projects` applies to its own sub-resources.
+func (s *ClientService) VerifyAssignedProject(ctx context.Context, tenantID, projectID, staffID int64) error {
+	pic, err := s.projects.ProjectPICStaffID(ctx, tenantID, projectID)
 	if err != nil {
 		return err
 	}
-	if picSalesStaffID != staffID {
-		return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
+	if pic == staffID {
+		return nil
 	}
-	return nil
+	picSales, err := s.projects.ProjectPICSalesStaffID(ctx, tenantID, projectID)
+	if err != nil {
+		return err
+	}
+	if picSales == staffID {
+		return nil
+	}
+	return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
 }
 
 // ListByTenant powers the WO Console's global search, which needs to match
@@ -118,6 +110,8 @@ type CreateClientInput struct {
 	// their own password through the invitation link.
 	Username string
 	Email    string
+	// AccessRoleID is optional: 0 uses the default portal role for Role.
+	AccessRoleID int64
 }
 
 // AccessLinkResult is a client invitation or reset link (/undangan/{Token}).
@@ -146,10 +140,14 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 	if err != nil {
 		return nil, nil, err
 	}
+	accessRoleID, err := s.portalRole(ctx, tenantID, input.AccessRoleID, input.Role)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	c := &domain.Client{
 		TenantID: tenantID, ProjectID: input.ProjectID, Role: input.Role, Username: input.Username, RelationNote: input.RelationNote,
-		Name: input.Name, Phone: input.Phone, Email: input.Email, IsActive: true,
+		Name: input.Name, Phone: input.Phone, Email: input.Email, IsActive: true, AccessRoleID: accessRoleID,
 	}
 	if err := s.repo.Create(ctx, c); err != nil {
 		return nil, nil, err
@@ -166,7 +164,7 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 	// since that also resolves through identity by principal.
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalClient, PrincipalID: formatID(c.ID),
-		Username: input.Username, Email: input.Email, Pending: true, Role: string(input.Role), DisplayName: input.Name,
+		Username: input.Username, Email: input.Email, Pending: true, Role: string(input.Role), RoleID: accessRoleID, DisplayName: input.Name,
 	}); err != nil {
 		if delErr := s.repo.Delete(ctx, tenantID, c.ID); delErr != nil {
 			logger.Error("failed to roll back orphaned client %d after credential creation failed: %v", c.ID, delErr)
@@ -423,4 +421,60 @@ func (s *ClientService) ReplaceRepresentative(ctx context.Context, tenantID, id 
 		return nil, nil, err
 	}
 	return c, &AccessLinkResult{Token: link.Token, Purpose: link.Purpose, ExpiresAt: link.ExpiresAt}, nil
+}
+
+// SetRoles completes two-phase wiring with the access module.
+func (s *ClientService) SetRoles(r RoleResolver) {
+	s.roles = r
+}
+
+// portalRole picks the client's portal role: the requested one (validated)
+// or the default for their relation.
+func (s *ClientService) portalRole(ctx context.Context, tenantID, requested int64, relation domain.ClientRole) (int64, error) {
+	if s.roles == nil {
+		return 0, apperror.Internal("Peran portal belum dapat diperiksa")
+	}
+	if requested > 0 {
+		if _, err := s.roles.AssignableClientRole(ctx, tenantID, requested); err != nil {
+			return 0, err
+		}
+		return requested, nil
+	}
+	return s.roles.DefaultClientRole(ctx, tenantID, relation == domain.RoleFamilyRepresentative)
+}
+
+// SetAccessRole changes what a client sees in the portal (their portal
+// role); the change reaches their sessions at once.
+func (s *ClientService) SetAccessRole(ctx context.Context, tenantID, id, roleID int64) (*domain.Client, error) {
+	c, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if roleID == c.AccessRoleID {
+		return c, nil
+	}
+	if _, err := s.roles.AssignableClientRole(ctx, tenantID, roleID); err != nil {
+		return nil, err
+	}
+	if err := s.repo.UpdateAccessRole(ctx, tenantID, id, roleID); err != nil {
+		return nil, err
+	}
+	if err := s.identity.UpdateRole(ctx, identitycontracts.PrincipalClient, formatID(c.ID), string(c.Role), roleID); err != nil {
+		_ = s.repo.UpdateAccessRole(ctx, tenantID, id, c.AccessRoleID)
+		return nil, err
+	}
+	c.AccessRoleID = roleID
+	return c, nil
+}
+
+// RoleNames maps role ids to names (nil when unavailable).
+func (s *ClientService) RoleNames(ctx context.Context, tenantID int64) map[int64]string {
+	if s.roles == nil {
+		return nil
+	}
+	m, err := s.roles.RoleNames(ctx, tenantID)
+	if err != nil {
+		return nil
+	}
+	return m
 }

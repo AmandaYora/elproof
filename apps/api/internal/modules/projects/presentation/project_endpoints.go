@@ -23,11 +23,9 @@ func parseDate(s string) (time.Time, error) {
 // existed.
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims staffClaims) {
 	var picStaffID, picSalesStaffID *int64
-	if claims.role == "Staff" {
-		picStaffID = &claims.staffID
-	}
-	if claims.role == "Sales" {
-		picSalesStaffID = &claims.staffID
+	if claims.assignedOnly() {
+		// Only projects this person holds (PIC or PIC Sales).
+		picStaffID, picSalesStaffID = &claims.staffID, &claims.staffID
 	}
 	if r.URL.Query().Get("all") == "true" {
 		projects, err := h.projects.List(r.Context(), claims.tenantID, picStaffID, picSalesStaffID)
@@ -146,8 +144,8 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
 // their own (see ProjectService.Create's callerRole handling for how their
 // PICSalesStaffID gets forced to themselves).
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims staffClaims) {
-	if claims.role == "Staff" {
-		response.Error(w, http.StatusForbidden, "Hanya Owner, Admin, atau Sales yang dapat membuat project baru", nil)
+	if !claims.can("project.create") {
+		forbiddenPermission(w, "Peran Anda tidak dapat membuat project baru")
 		return
 	}
 	var body projectInputBody
@@ -160,7 +158,7 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims s
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	p, err := h.projects.Create(r.Context(), claims.tenantID, claims.staffID, claims.role, input)
+	p, err := h.projects.Create(r.Context(), claims.tenantID, claims.actor(), input)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -220,6 +218,9 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	resp.PICName = h.projects.ResolvePICName(r.Context(), tenantID, p.PICStaffID)
 	if isClient {
 		redactProjectForClient(&resp)
+		if !middleware.GrantsFrom(r.Context()).Can("portal.finance.view") {
+			resp.ContractValue = 0
+		}
 	}
 	response.OK(w, "ok", resp)
 }
@@ -235,7 +236,7 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	p, err := h.projects.Update(r.Context(), claims.tenantID, projectID, claims.staffID, claims.role, input)
+	p, err := h.projects.Update(r.Context(), claims.tenantID, projectID, claims.actor(), input)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -301,8 +302,8 @@ func (h *Handler) toggleArchiveProject(w http.ResponseWriter, r *http.Request, c
 // itself, not just here, so it can never be bypassed by a differently-shaped
 // request.
 func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
-	if claims.role != "Owner" {
-		response.Error(w, http.StatusForbidden, "Hanya akun Owner yang dapat menghapus project secara permanen", nil)
+	if !claims.can("project.delete") {
+		forbiddenPermission(w, "Peran Anda tidak dapat menghapus project secara permanen")
 		return
 	}
 	if err := h.projects.Delete(r.Context(), claims.tenantID, projectID); err != nil {
@@ -325,8 +326,8 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 	// reached) doesn't matter; neither role is allowed to create the
 	// resulting copy. Sales explicitly keeps only "create new" + "handover",
 	// never "duplicate as template" (PLAN.md revisi-timeline-vendor-role-sales).
-	if claims.role == "Staff" || claims.role == "Sales" {
-		response.Error(w, http.StatusForbidden, "Hanya Owner atau Admin yang dapat menduplikasi project", nil)
+	if !claims.can("project.duplicate") {
+		forbiddenPermission(w, "Peran Anda tidak dapat menduplikasi project")
 		return
 	}
 	var body projectInputBody
