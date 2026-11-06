@@ -141,6 +141,12 @@ func (r *MySQLClientRepository) Update(ctx context.Context, c *domain.Client) er
 	return err
 }
 
+// UpdateUsername records the login name (renamed with a new representative).
+func (r *MySQLClientRepository) UpdateUsername(ctx context.Context, tenantID, id int64, username string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE clients SET username = ? WHERE tenant_id = ? AND id = ?`, username, tenantID, id)
+	return err
+}
+
 func (r *MySQLClientRepository) SetActive(ctx context.Context, tenantID, id int64, isActive bool) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE clients SET is_active = ? WHERE tenant_id = ? AND id = ?`, isActive, tenantID, id)
 	return err

@@ -24,6 +24,7 @@ import (
 	"elproof/internal/shared/compress"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
+	"elproof/internal/shared/utils"
 	"elproof/internal/shared/validator"
 )
 
@@ -167,84 +168,146 @@ func (s *TenantService) GetBrandingByDomain(ctx context.Context, host string) (*
 type RegisterTenantInput struct {
 	BusinessName string
 	OwnerName    string
-	Username     string
-	Email        string
-	Phone        string
-	City         string
-	Password     string
+	// Email is the Google account the Owner must accept the invitation
+	// with (Owners sign in with Google only, decision K5).
+	Email string
+	Phone string
+	City  string
+}
+
+// OwnerInvitation is a one-time link (/undangan/{Token}) for a tenant's
+// Owner, created by ElProof's team (sales-assisted path).
+type OwnerInvitation struct {
+	Token     string
+	ExpiresAt time.Time
+	// Email is the Google account that must accept it.
+	Email string
 }
 
 type RegisterTenantResult struct {
-	Tenant   domain.Tenant
-	Username string
+	Tenant     domain.Tenant
+	Invitation OwnerInvitation
 }
 
-// Register orchestrates three modules in one flow: creates the tenant row
-// (platform), creates the Owner staff row (staff), and creates the Owner's
-// login credential (identity) — see ADR-0008. Each module still only writes
-// its own tables. The tenant starts unbound to any plan (PlanID nil,
-// StatusPendingPayment) — no transaction is recorded here, since none exists
-// yet: the Owner hasn't chosen a plan or paid, and the Platform Console
-// hasn't manually activated one either. The first transaction row this
-// tenant ever gets is whichever real subscription event happens first (Pay
-// or ActivateSubscription), so there is never a placeholder row left
-// dangling forever if the tenant is instead activated manually.
+// Register is the sales-assisted path (PLAN.md §3): ElProof's team creates
+// the workspace and the Owner receives an invitation link instead of a
+// password typed by an admin. It reuses the self-service saga's idempotent
+// steps (seeds, Owner row) but has no signup row to resume from, so a
+// failure leaves a tenant without Owner login that the team can complete
+// with "Undang ulang Owner" (ReinviteOwner) — never a usable half-account.
 func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput) (*RegisterTenantResult, error) {
-	if err := validator.Username(input.Username); err != nil {
+	input.Email = strings.TrimSpace(input.Email)
+	if !utils.ValidEmail(input.Email) {
+		return nil, apperror.Validation("Email Owner tidak valid", map[string][]string{
+			"email": {"Masukkan email akun Google Owner"},
+		})
+	}
+	name := normalizeName(input.BusinessName)
+	if err := validateBusinessName(name); err != nil {
 		return nil, err
 	}
-
-	username := input.Username
-	// Every new tenant starts on a free trial (product decision K1); the
-	// lifecycle (domain.ComputeLifecycle) takes it from there.
+	if taken, err := s.identity.EmailTaken(ctx, input.Email); err != nil {
+		return nil, err
+	} else if taken {
+		return nil, apperror.Validation("Email sudah dipakai", map[string][]string{
+			"email": {"Email ini sudah dipakai akun ElProof lain"},
+		})
+	}
+	username, err := s.newOwnerUsername(ctx, input.Email)
+	if err != nil {
+		return nil, err
+	}
 	trialEndsAt := time.Now().Truncate(time.Second).AddDate(0, 0, domain.DefaultSubscriptionPolicy.TrialDays)
-
 	tenant := &domain.Tenant{
-		BusinessName:       input.BusinessName,
-		OwnerName:          input.OwnerName,
+		BusinessName:       name,
+		OwnerName:          normalizeName(input.OwnerName),
 		Username:           username,
 		Email:              input.Email,
-		Phone:              input.Phone,
-		City:               input.City,
+		Phone:              NormalizeWhatsAppOrRaw(input.Phone),
+		City:               normalizeName(input.City),
 		JoinedAt:           time.Now(),
-		PlanID:             nil,
 		SubscriptionStatus: domain.StatusTrialing,
 		TrialEndsAt:        &trialEndsAt,
 		BrandColorPreset:   domain.DefaultBrandColorPreset,
+		SignupSource:       domain.SignupSourcePlatform,
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
 		return nil, err
 	}
-
-	if err := s.vendors.SeedDefaultCategories(ctx, tenant.ID); err != nil {
-		return nil, err
-	}
-
-	if err := s.projects.SeedDefaultMilestoneTemplate(ctx, tenant.ID); err != nil {
-		return nil, err
-	}
-
-	ownerResult, err := s.staff.CreateOwner(ctx, staffcontracts.CreateOwnerInput{
-		TenantID: tenant.ID, Name: input.OwnerName, Email: input.Email, Phone: input.Phone, Username: username,
-	})
+	inv, err := s.provisionInvitedOwner(ctx, tenant)
 	if err != nil {
 		return nil, err
 	}
+	return &RegisterTenantResult{Tenant: *tenant, Invitation: *inv}, nil
+}
 
-	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
-		TenantID:      &tenant.ID,
-		PrincipalType: identitycontracts.PrincipalStaff,
-		PrincipalID:   ownerResult.StaffID,
-		Username:      username,
-		Email:         input.Email,
-		Password:      input.Password,
-		Role:          "Owner",
-		DisplayName:   input.OwnerName,
-	}); err != nil {
+// provisionInvitedOwner seeds the workspace, ensures the Owner staff row
+// and a pending login exist, and issues the Owner's invitation. Every step
+// is idempotent, so ReinviteOwner can complete a failed registration.
+func (s *TenantService) provisionInvitedOwner(ctx context.Context, tenant *domain.Tenant) (*OwnerInvitation, error) {
+	if err := s.vendors.SeedDefaultCategories(ctx, tenant.ID); err != nil {
 		return nil, err
 	}
+	if err := s.projects.SeedDefaultMilestoneTemplate(ctx, tenant.ID); err != nil {
+		return nil, err
+	}
+	ownerID, err := s.staff.FindOwner(ctx, tenant.ID)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID == "" {
+		created, err := s.staff.CreateOwner(ctx, staffcontracts.CreateOwnerInput{
+			TenantID: tenant.ID, Name: tenant.OwnerName, Email: tenant.Email, Phone: tenant.Phone, Username: tenant.Username,
+		})
+		if err != nil {
+			return nil, err
+		}
+		ownerID = created.StaffID
+	}
+	hasLogin, err := s.identity.CredentialExists(ctx, identitycontracts.PrincipalStaff, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	inviteEmail := tenant.Email
+	if !hasLogin {
+		if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
+			TenantID: &tenant.ID, PrincipalType: identitycontracts.PrincipalStaff, PrincipalID: ownerID,
+			Username: tenant.Username, Email: tenant.Email, Pending: true, Role: "Owner", DisplayName: tenant.OwnerName,
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		// The invitation goes to the email already on the Owner's login (the
+		// Owner keeps it current from Pengguna). tenants.email is a contact
+		// field the Platform Console can edit; letting it redirect the
+		// Owner's login would let any Support account take over a workspace.
+		// It is used only when the login has no email at all.
+		current, err := s.identity.LoginEmail(ctx, identitycontracts.PrincipalStaff, ownerID)
+		if err != nil {
+			return nil, err
+		}
+		if current == "" {
+			if err := s.identity.UpdateEmail(ctx, identitycontracts.PrincipalStaff, ownerID, tenant.Email); err != nil {
+				return nil, err
+			}
+		} else {
+			inviteEmail = current
+		}
+	}
+	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalStaff, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return &OwnerInvitation{Token: link.Token, ExpiresAt: link.ExpiresAt, Email: inviteEmail}, nil
+}
 
-	return &RegisterTenantResult{Tenant: *tenant, Username: username}, nil
+// NormalizeWhatsAppOrRaw normalises an Indonesian number when it looks like
+// one, otherwise keeps what was typed (Platform Console free-form field).
+func NormalizeWhatsAppOrRaw(v string) string {
+	if n := NormalizeWhatsApp(v); waNumber.MatchString(n) {
+		return n
+	}
+	return strings.TrimSpace(v)
 }
 
 type UpdateTenantInput struct {
@@ -416,28 +479,29 @@ func (s *TenantService) SetSuspended(ctx context.Context, id int64, suspended bo
 	return s.Get(ctx, id)
 }
 
-type ResetCredentialResult struct {
-	Username string
-}
-
-func (s *TenantService) ResetCredential(ctx context.Context, id int64, newPassword string) (*ResetCredentialResult, error) {
+// ReinviteOwner gives a tenant's Owner a new invitation link — the Owner
+// lost access to their Google account, never accepted the first one, or a
+// registration stopped half-way. Accepting it links the login to the
+// Google account of the tenant's current Owner email. Earlier links stop
+// working; the Owner's current sessions end when the new link is accepted.
+func (s *TenantService) ReinviteOwner(ctx context.Context, id int64) (*OwnerInvitation, error) {
 	tenant, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
-	// The Owner's principal_id is the staff row created at registration —
-	// identity resolves it by (principal_type, principal_id); platform never
-	// stores or looks up the staff_members.id itself (no cross-module FK).
-	// ResetPassword is looked up by username since that is the value both
-	// `tenants` and `credentials` share as a plain, unenforced value.
-	if err := s.identity.ResetPasswordByUsername(ctx, tenant.Username, newPassword); err != nil {
+	if !utils.ValidEmail(tenant.Email) {
+		return nil, apperror.Validation("Email Owner tidak valid", map[string][]string{
+			"email": {"Perbaiki email Owner tenant ini dulu"},
+		})
+	}
+	inv, err := s.provisionInvitedOwner(ctx, tenant)
+	if err != nil {
 		return nil, err
 	}
 	if err := s.repo.SetCredentialResetAt(ctx, id, time.Now()); err != nil {
 		return nil, err
 	}
-	return &ResetCredentialResult{Username: tenant.Username}, nil
+	return inv, nil
 }
 
 // ActivateSubscription is the Platform Console's manual-activation flow —

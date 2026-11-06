@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"elproof/internal/modules/staff/application"
 	"elproof/internal/modules/staff/domain"
@@ -32,6 +33,25 @@ type staffResponse struct {
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	IsActive bool   `json:"isActive"`
+	// LoginStatus: "invited" until the invitation was accepted, then
+	// "active" (or "inactive").
+	LoginStatus string `json:"loginStatus,omitempty"`
+}
+
+type invitationResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func toInvitationResponse(inv *application.Invitation) invitationResponse {
+	return invitationResponse{Token: inv.Token, ExpiresAt: inv.ExpiresAt.Format(time.RFC3339)}
+}
+
+// withLoginStatus adds the invitation state (Pengguna list).
+func (h *Handler) withLoginStatus(r *http.Request, m domain.StaffMember) staffResponse {
+	resp := toStaffResponse(m)
+	resp.LoginStatus = h.staff.LoginStatus(r.Context(), m.ID)
+	return resp
 }
 
 func toStaffResponse(m domain.StaffMember) staffResponse {
@@ -125,7 +145,7 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 			}
 			result := make([]staffResponse, 0, len(members))
 			for _, m := range members {
-				result = append(result, toStaffResponse(m))
+				result = append(result, h.withLoginStatus(r, m))
 			}
 			response.OK(w, "ok", result)
 			return
@@ -140,7 +160,7 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 		}
 		result := make([]staffResponse, 0, len(members))
 		for _, m := range members {
-			result = append(result, toStaffResponse(m))
+			result = append(result, h.withLoginStatus(r, m))
 		}
 		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 	case http.MethodPost:
@@ -151,13 +171,16 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 }
 
 type staffInputBody struct {
-	Name     string `json:"name"`
-	Title    string `json:"title"`
-	Role     string `json:"role"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	Role  string `json:"role"`
+	Email string `json:"email"`
+	Phone string `json:"phone"`
+}
+
+type createStaffResponse struct {
+	Staff      staffResponse      `json:"staff"`
+	Invitation invitationResponse `json:"invitation"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64) {
@@ -166,15 +189,16 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	member, err := h.staff.Create(r.Context(), tenantID, application.StaffInput{
-		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role),
-		Username: body.Username, Password: body.Password, Email: body.Email, Phone: body.Phone,
+	member, inv, err := h.staff.Create(r.Context(), tenantID, application.StaffInput{
+		Name: body.Name, Title: body.Title, Role: domain.StaffRole(body.Role), Email: body.Email, Phone: body.Phone,
 	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Pengguna berhasil ditambahkan", toStaffResponse(*member))
+	resp := toStaffResponse(*member)
+	resp.LoginStatus = "invited"
+	response.Created(w, "Undangan dibuat. Kirim link-nya ke orang tersebut.", createStaffResponse{Staff: resp, Invitation: toInvitationResponse(inv)})
 }
 
 func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +222,13 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.update(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
 		h.toggleActive(w, r, tenantID, id)
+	case len(segments) == 2 && segments[1] == "invite" && r.Method == http.MethodPost:
+		inv, err := h.staff.Reinvite(r.Context(), tenantID, id)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Link undangan baru dibuat", toInvitationResponse(inv))
 	case len(segments) == 2 && segments[1] == "delete-impact" && r.Method == http.MethodGet:
 		h.deleteImpact(w, r, tenantID, id)
 	case len(segments) == 1 && r.Method == http.MethodDelete:

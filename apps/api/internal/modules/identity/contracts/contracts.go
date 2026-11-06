@@ -29,7 +29,10 @@ type CreateCredentialInput struct {
 	Email         string
 	Password      string
 	// GoogleSub creates a Google-only login (Password must be empty).
-	GoogleSub   string
+	GoogleSub string
+	// Pending creates a login activated later through an access link
+	// (invitation); Password and GoogleSub must be empty.
+	Pending     bool
 	Role        string
 	DisplayName string
 }
@@ -77,6 +80,33 @@ type Contracts interface {
 	EmailTaken(ctx context.Context, email string) (bool, error)
 	UsernameTaken(ctx context.Context, username string) (bool, error)
 	CredentialExists(ctx context.Context, principalType PrincipalType, principalID string) (bool, error)
+
+	// Access links (PLAN.md Fase 3). IssueAccessLink returns a one-time
+	// link token for a staff invitation, client invitation or client
+	// password reset (chosen from the login's state); earlier open links of
+	// that login stop working.
+	IssueAccessLink(ctx context.Context, principalType PrincipalType, principalID string) (AccessLink, error)
+	// UpdateEmail syncs a login's email with the owning module.
+	UpdateEmail(ctx context.Context, principalType PrincipalType, principalID string, email string) error
+	// ResetSignIn removes every way to sign in and ends sessions and links
+	// (the person behind the login changed); a non-empty newUsername renames
+	// the login. Issue a new link after it.
+	ResetSignIn(ctx context.Context, principalType PrincipalType, principalID string, newUsername string) error
+	// LoginStatus: "invited", "active", "inactive" or "none".
+	LoginStatus(ctx context.Context, principalType PrincipalType, principalID string) (string, error)
+	// DeleteCredential removes a login with its sessions and links (person
+	// deleted, invitation rolled back); its username and email become free.
+	DeleteCredential(ctx context.Context, principalType PrincipalType, principalID string) error
+	// LoginEmail is the email on a principal's login ("" when none).
+	LoginEmail(ctx context.Context, principalType PrincipalType, principalID string) (string, error)
+}
+
+// AccessLink is a freshly issued one-time link: the web app's URL is
+// /undangan/{Token}. Purpose is staff_invite, client_invite or client_reset.
+type AccessLink struct {
+	Token     string
+	Purpose   string
+	ExpiresAt time.Time
 }
 
 type impl struct {
@@ -100,6 +130,7 @@ func (c *impl) CreateCredential(ctx context.Context, input CreateCredentialInput
 		Email:         input.Email,
 		Password:      input.Password,
 		GoogleSub:     input.GoogleSub,
+		Pending:       input.Pending,
 		Role:          input.Role,
 		DisplayName:   input.DisplayName,
 	})
@@ -161,4 +192,35 @@ func (c *impl) CredentialExists(ctx context.Context, principalType PrincipalType
 
 func (c *impl) EmailTaken(ctx context.Context, email string) (bool, error) {
 	return c.management.EmailTaken(ctx, email)
+}
+
+func (c *impl) IssueAccessLink(ctx context.Context, principalType PrincipalType, principalID string) (AccessLink, error) {
+	if c.auth == nil {
+		return AccessLink{}, errors.New("identity: instance Contracts ini dibuat tanpa AuthService")
+	}
+	l, err := c.auth.IssueAccessLink(ctx, domain.PrincipalType(principalType), principalID)
+	if err != nil {
+		return AccessLink{}, err
+	}
+	return AccessLink{Token: l.Token, Purpose: string(l.Purpose), ExpiresAt: l.ExpiresAt}, nil
+}
+
+func (c *impl) UpdateEmail(ctx context.Context, principalType PrincipalType, principalID string, email string) error {
+	return c.management.UpdateEmail(ctx, domain.PrincipalType(principalType), principalID, email)
+}
+
+func (c *impl) ResetSignIn(ctx context.Context, principalType PrincipalType, principalID string, newUsername string) error {
+	return c.management.ResetSignIn(ctx, domain.PrincipalType(principalType), principalID, newUsername)
+}
+
+func (c *impl) LoginStatus(ctx context.Context, principalType PrincipalType, principalID string) (string, error) {
+	return c.management.LoginStatus(ctx, domain.PrincipalType(principalType), principalID)
+}
+
+func (c *impl) DeleteCredential(ctx context.Context, principalType PrincipalType, principalID string) error {
+	return c.management.DeleteCredential(ctx, domain.PrincipalType(principalType), principalID)
+}
+
+func (c *impl) LoginEmail(ctx context.Context, principalType PrincipalType, principalID string) (string, error) {
+	return c.management.LoginEmail(ctx, domain.PrincipalType(principalType), principalID)
 }

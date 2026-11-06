@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"elproof/internal/modules/clients/application"
 	"elproof/internal/modules/clients/domain"
@@ -33,6 +34,29 @@ type clientResponse struct {
 	Email                 string  `json:"email"`
 	IsActive              bool    `json:"isActive"`
 	LastCredentialResetAt *string `json:"lastCredentialResetAt"`
+	// LoginStatus: "invited" until the client set their password.
+	LoginStatus string `json:"loginStatus,omitempty"`
+}
+
+type accessLinkResponse struct {
+	Token     string `json:"token"`
+	Purpose   string `json:"purpose"` // client_invite | client_reset
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func toAccessLinkResponse(l *application.AccessLinkResult) accessLinkResponse {
+	return accessLinkResponse{Token: l.Token, Purpose: l.Purpose, ExpiresAt: l.ExpiresAt.Format(time.RFC3339)}
+}
+
+type clientWithLinkResponse struct {
+	Client     clientResponse     `json:"client"`
+	AccessLink accessLinkResponse `json:"accessLink"`
+}
+
+func (h *Handler) withLoginStatus(r *http.Request, c domain.Client) clientResponse {
+	resp := toClientResponse(c)
+	resp.LoginStatus = h.clients.LoginStatus(r.Context(), c.ID)
+	return resp
 }
 
 func toClientResponse(c domain.Client) clientResponse {
@@ -148,7 +172,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		}
 		result := make([]clientResponse, 0, len(list))
 		for _, c := range list {
-			result = append(result, toClientResponse(c))
+			result = append(result, h.withLoginStatus(r, c))
 		}
 		response.OK(w, "ok", result)
 		return
@@ -170,7 +194,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		}
 		result := make([]clientResponse, 0, len(list))
 		for _, c := range list {
-			result = append(result, toClientResponse(c))
+			result = append(result, h.withLoginStatus(r, c))
 		}
 		response.OK(w, "ok", result)
 		return
@@ -185,7 +209,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 	}
 	result := make([]clientResponse, 0, len(list))
 	for _, c := range list {
-		result = append(result, toClientResponse(c))
+		result = append(result, h.withLoginStatus(r, c))
 	}
 	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
 }
@@ -198,7 +222,6 @@ type createClientBody struct {
 	Phone        string `json:"phone"`
 	Username     string `json:"username"`
 	Email        string `json:"email"`
-	Password     string `json:"password"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64) {
@@ -210,15 +233,18 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 	if !h.requireManagerOrProjectSales(w, r, tenantID, body.ProjectID) {
 		return
 	}
-	c, err := h.clients.Create(r.Context(), tenantID, application.CreateClientInput{
+	c, link, err := h.clients.Create(r.Context(), tenantID, application.CreateClientInput{
 		ProjectID: body.ProjectID, Role: domain.ClientRole(body.Role), RelationNote: body.RelationNote,
-		Name: body.Name, Phone: body.Phone, Username: body.Username, Email: body.Email, Password: body.Password,
+		Name: body.Name, Phone: body.Phone, Username: body.Username, Email: body.Email,
 	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Client berhasil ditambahkan", toClientResponse(*c))
+	resp := toClientResponse(*c)
+	resp.LoginStatus = "invited"
+	response.Created(w, "Client ditambahkan. Kirim link undangan agar client mengatur kata sandinya sendiri.",
+		clientWithLinkResponse{Client: resp, AccessLink: toAccessLinkResponse(link)})
 }
 
 // Item only ever dispatches write actions (update/delete/toggle-active/
@@ -259,8 +285,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.delete(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
 		h.toggleActive(w, r, tenantID, id)
-	case len(segments) == 2 && segments[1] == "reset-credential" && r.Method == http.MethodPost:
-		h.resetCredential(w, r, tenantID, id)
+	case len(segments) == 2 && segments[1] == "access-link" && r.Method == http.MethodPost:
+		h.accessLink(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "replace-representative" && r.Method == http.MethodPost:
 		h.replaceRepresentative(w, r, tenantID, id)
 	default:
@@ -310,22 +336,19 @@ func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID,
 	response.OK(w, "Status client diperbarui", toClientResponse(*c))
 }
 
-type resetCredentialBody struct {
-	Password string `json:"password"`
-}
-
-func (h *Handler) resetCredential(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
-	var body resetCredentialBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
-		return
-	}
-	c, err := h.clients.ResetCredential(r.Context(), tenantID, id, body.Password)
+// accessLink is POST /clients/{id}/access-link: a new invitation (client
+// never set a password) or password-reset link to send by WhatsApp.
+func (h *Handler) accessLink(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	link, err := h.clients.AccessLink(r.Context(), tenantID, id)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kredensial client berhasil direset", toClientResponse(*c))
+	msg := "Link undangan baru dibuat"
+	if link.Purpose == "client_reset" {
+		msg = "Link atur ulang kata sandi dibuat"
+	}
+	response.OK(w, msg, toAccessLinkResponse(link))
 }
 
 type replaceRepresentativeBody struct {
@@ -341,13 +364,16 @@ func (h *Handler) replaceRepresentative(w http.ResponseWriter, r *http.Request, 
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	c, err := h.clients.ReplaceRepresentative(r.Context(), tenantID, id,
+	c, link, err := h.clients.ReplaceRepresentative(r.Context(), tenantID, id,
 		application.UpdateContactInput{Name: body.Name, Phone: body.Phone, Email: body.Email}, body.RelationNote)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Perwakilan keluarga berhasil diganti", toClientResponse(*c))
+	resp := toClientResponse(*c)
+	resp.LoginStatus = "invited"
+	response.OK(w, "Perwakilan keluarga diganti. Akses perwakilan lama sudah dicabut; kirim link undangan ke perwakilan baru.",
+		clientWithLinkResponse{Client: resp, AccessLink: toAccessLinkResponse(link)})
 }
 
 func writeAppError(w http.ResponseWriter, err error) {

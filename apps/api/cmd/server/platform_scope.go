@@ -91,7 +91,7 @@ func platformWriteAction(method, path string) string {
 		return "tenant-manage" // edit a tenant
 	case s[0] == "tenants" && len(s) == 3 && isID(s[1]):
 		switch s[2] {
-		case "logo", "reset-credential":
+		case "logo", "owner-invite":
 			return "tenant-manage"
 		case "activate-subscription":
 			return "activate-subscription"

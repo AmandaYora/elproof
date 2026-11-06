@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 
 	"elproof/internal/modules/identity/domain"
 	"elproof/internal/shared/apperror"
@@ -17,6 +18,12 @@ type ManagementService struct {
 	refreshTokens RefreshTokenRepository
 	hasher        PasswordHasher
 	sessions      *SessionChecker
+	links         AccessLinkRepository
+}
+
+// SetAccessLinks lets deactivation and replacement revoke open links.
+func (s *ManagementService) SetAccessLinks(repo AccessLinkRepository) {
+	s.links = repo
 }
 
 // SetSessionChecker lets account changes invalidate cached session state
@@ -49,7 +56,11 @@ type CreateCredentialInput struct {
 	Password      string
 	// GoogleSub creates a Google-only login (no password): Password must
 	// then be empty.
-	GoogleSub   string
+	GoogleSub string
+	// Pending creates a login with no way to sign in yet: the person
+	// activates it through an access link (staff/client invitations, Fase
+	// 3). Password and GoogleSub must be empty.
+	Pending     bool
 	Role        string
 	DisplayName string
 }
@@ -79,7 +90,11 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 	}
 
 	var hash string
-	if input.GoogleSub != "" {
+	if input.Pending {
+		if input.Password != "" || input.GoogleSub != "" {
+			return apperror.Internal("Akun undangan tidak memakai kata sandi atau Google")
+		}
+	} else if input.GoogleSub != "" {
 		if input.Password != "" {
 			return apperror.Internal("Akun Google tidak memakai kata sandi")
 		}
@@ -144,6 +159,11 @@ func (s *ManagementService) SetActive(ctx context.Context, principalType domain.
 	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
 	if err != nil {
 		return err
+	}
+	if cred != nil && s.links != nil {
+		if err := s.links.RevokeAll(ctx, cred.ID); err != nil {
+			return err
+		}
 	}
 	return s.revokeSessions(ctx, cred)
 }
@@ -246,4 +266,82 @@ func (s *ManagementService) CheckGoogleSignup(ctx context.Context, sub, email st
 func (s *ManagementService) EmailTaken(ctx context.Context, email string) (bool, error) {
 	byEmail, err := s.credentials.FindAllByEmail(ctx, email)
 	return len(byEmail) > 0, err
+}
+
+// UpdateEmail keeps the login's email in step with the owning module (for a
+// pending staff invitation it is the Google account that must accept).
+func (s *ManagementService) UpdateEmail(ctx context.Context, principalType domain.PrincipalType, principalID string, email string) error {
+	err := s.credentials.UpdateEmail(ctx, principalType, principalID, email)
+	if errors.Is(err, domain.ErrEmailTaken) {
+		return apperror.Conflict("Email sudah digunakan akun lain")
+	}
+	return err
+}
+
+// ResetSignIn removes every way to sign in to a login and ends its sessions
+// and open links — used when the person behind it changes (a client's
+// family representative is replaced); a new invitation follows. A non-empty
+// newUsername renames the login for the new person.
+func (s *ManagementService) ResetSignIn(ctx context.Context, principalType domain.PrincipalType, principalID string, newUsername string) error {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil {
+		return err
+	}
+	if cred == nil {
+		return apperror.NotFound("Akun login tidak ditemukan")
+	}
+	if newUsername != "" && newUsername != cred.Username {
+		if err := s.credentials.UpdateUsername(ctx, cred.ID, newUsername); err != nil {
+			if errors.Is(err, domain.ErrUsernameTaken) {
+				return apperror.Conflict("Nama pengguna sudah dipakai")
+			}
+			return err
+		}
+	}
+	if err := s.credentials.ClearSignIn(ctx, cred.ID); err != nil {
+		return err
+	}
+	if s.links != nil {
+		if err := s.links.RevokeAll(ctx, cred.ID); err != nil {
+			return err
+		}
+	}
+	return s.revokeSessions(ctx, cred)
+}
+
+// LoginStatus is "invited" (no way to sign in yet), "active" or "inactive";
+// "none" when the principal has no login at all.
+func (s *ManagementService) LoginStatus(ctx context.Context, principalType domain.PrincipalType, principalID string) (string, error) {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil || cred == nil {
+		return "none", err
+	}
+	switch {
+	case !cred.IsActive:
+		return "inactive", nil
+	case cred.PasswordHash == "" && cred.GoogleSub == "":
+		return "invited", nil
+	}
+	return "active", nil
+}
+
+// DeleteCredential removes a principal's login entirely (sessions and links
+// included), freeing its username and email — when the owning module deletes
+// the person or rolls back a failed invitation. Missing logins are fine.
+func (s *ManagementService) DeleteCredential(ctx context.Context, principalType domain.PrincipalType, principalID string) error {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil || cred == nil {
+		return err
+	}
+	s.sessions.Invalidate(principalType, principalID)
+	return s.credentials.Delete(ctx, cred.ID)
+}
+
+// LoginEmail is the email stored on a principal's login ("" when none).
+func (s *ManagementService) LoginEmail(ctx context.Context, principalType domain.PrincipalType, principalID string) (string, error) {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	if err != nil || cred == nil {
+		return "", err
+	}
+	return cred.Email, nil
 }

@@ -23,6 +23,11 @@ type CredentialRepository interface {
 	FindByGoogleSub(ctx context.Context, sub string) (*domain.Credential, error)
 	LinkGoogle(ctx context.Context, credentialID int64, sub string) (bool, error)
 	UsernameTaken(ctx context.Context, username string) (bool, error)
+	// Access links (access_links.go) and owning-module sync.
+	UpdateEmail(ctx context.Context, principalType domain.PrincipalType, principalID string, email string) error
+	ClearSignIn(ctx context.Context, credentialID int64) error
+	UpdateUsername(ctx context.Context, credentialID int64, username string) error
+	Delete(ctx context.Context, credentialID int64) error
 	FindByPrincipal(ctx context.Context, principalType domain.PrincipalType, principalID string) (*domain.Credential, error)
 	Create(ctx context.Context, cred *domain.Credential) error
 	UpdatePasswordHash(ctx context.Context, principalType domain.PrincipalType, principalID string, passwordHash string) error
@@ -91,6 +96,8 @@ type AuthService struct {
 	tenantGuard   TenantGuard
 	mfa           MFAEngine
 	google        GoogleVerifier
+	links         AccessLinkRepository
+	tenantNames   TenantNameResolver
 	challenges    *mfaChallenges
 	sessions      *SessionChecker
 	// Failed attempts are counted per credential (not per typed string,
@@ -240,6 +247,11 @@ func (s *AuthService) Login(ctx context.Context, identifier, password string) (*
 // completeLogin runs after the password matched: an admin with two-factor
 // on gets a challenge instead of a session.
 func (s *AuthService) completeLogin(ctx context.Context, cred *domain.Credential) (*LoginResult, error) {
+	// WO staff sign in with Google only (decision K5). The password was
+	// right, so saying how to sign in leaks nothing new.
+	if cred.PrincipalType == domain.PrincipalStaff {
+		return nil, apperror.Forbidden("Tim WO masuk dengan tombol \"Masuk dengan Google\". Akun lama yang belum terhubung: klik tombol tersebut, lalu konfirmasi kata sandi ini sekali.").WithCode("use_google")
+	}
 	if requiresMFA(cred) && cred.TOTPEnabled {
 		// A frozen tenant is checked again in issueSession; admins have no
 		// tenant, so nothing else to check before the second factor.

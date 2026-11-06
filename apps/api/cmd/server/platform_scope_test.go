@@ -12,7 +12,7 @@ func TestPlatformAdminAllowed(t *testing.T) {
 	var (
 		register   = req{http.MethodPost, "/api/v1/tenants"}
 		editTenant = req{http.MethodPatch, "/api/v1/tenants/4"}
-		resetOwner = req{http.MethodPost, "/api/v1/tenants/4/reset-credential"}
+		resetOwner = req{http.MethodPost, "/api/v1/tenants/4/owner-invite"}
 		freeze     = req{http.MethodPost, "/api/v1/tenants/4/toggle-suspension"}
 		activate   = req{http.MethodPost, "/api/v1/tenants/4/activate-subscription"}
 		createPlan = req{http.MethodPost, "/api/v1/plans"}

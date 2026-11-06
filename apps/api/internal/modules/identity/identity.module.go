@@ -27,6 +27,12 @@ func (m *Module) SessionValidator() *application.SessionChecker {
 	return m.sessions
 }
 
+// SetTenantNames lets invitation pages name the WO (implemented by
+// `platform`, wired in cmd/server).
+func (m *Module) SetTenantNames(r application.TenantNameResolver) {
+	m.auth.SetTenantNames(r)
+}
+
 // SetTenantGuard lets cmd/server plug in the platform module's tenant check
 // (frozen tenants cannot log in or refresh) after both modules exist.
 func (m *Module) SetTenantGuard(guard application.TenantGuard) {
@@ -58,6 +64,9 @@ func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration
 	}
 	authService.SetGoogleVerifier(infrastructure.NewGoogleVerifier(google.ClientID, jwksURL))
 	managementService := application.NewManagementService(credentialRepo, refreshTokenRepo, hasher)
+	linkRepo := infrastructure.NewMySQLAccessLinkRepository(db)
+	authService.SetAccessLinks(linkRepo)
+	managementService.SetAccessLinks(linkRepo)
 	sessions := application.NewSessionChecker(credentialRepo)
 	managementService.SetSessionChecker(sessions)
 	authService.SetSessionChecker(sessions)
@@ -84,6 +93,8 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/mfa/verify", httpx.Method(http.MethodPost, m.handler.VerifyMFA))
 	mux.HandleFunc("/api/v1/auth/google", httpx.Method(http.MethodPost, m.handler.LoginGoogle))
 	mux.HandleFunc("/api/v1/auth/google/link", httpx.Method(http.MethodPost, m.handler.LinkGoogle))
+	// One-time invitation / password-reset links (Fase 3).
+	mux.HandleFunc("/api/v1/auth/links/", m.handler.Links)
 }
 
 // RegisterAuthedRoutes registers endpoints that need a signed-in principal.

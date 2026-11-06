@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	identitycontracts "elproof/internal/modules/identity/contracts"
@@ -11,6 +12,7 @@ import (
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
+	"elproof/internal/shared/utils"
 	"elproof/internal/shared/validator"
 )
 
@@ -25,6 +27,7 @@ type ClientRepository interface {
 	SetCredentialResetAt(ctx context.Context, tenantID, id int64, when time.Time) error
 	Delete(ctx context.Context, tenantID, id int64) error
 	CountActive(ctx context.Context, tenantID int64) (int, error)
+	UpdateUsername(ctx context.Context, tenantID, id int64, username string) error
 }
 
 type ClientService struct {
@@ -111,29 +114,37 @@ type CreateClientInput struct {
 	RelationNote string
 	Name         string
 	Phone        string
-	Username     string
-	Email        string
-	Password     string
+	// Username is optional: empty derives one from Name. The client sets
+	// their own password through the invitation link.
+	Username string
+	Email    string
+}
+
+// AccessLinkResult is a client invitation or reset link (/undangan/{Token}).
+type AccessLinkResult struct {
+	Token     string
+	Purpose   string // client_invite or client_reset
+	ExpiresAt time.Time
 }
 
 // Create validates project_id belongs to the caller's tenant via the
 // `projects` module's contract (no cross-module FK — see ADR-0004) and
 // provisions a real login credential in the same flow, mirroring how
 // `platform`'s tenant registration works (ADR-0008).
-func (s *ClientService) Create(ctx context.Context, tenantID int64, input CreateClientInput) (*domain.Client, error) {
-	if err := validator.Username(input.Username); err != nil {
-		return nil, err
-	}
-
+func (s *ClientService) Create(ctx context.Context, tenantID int64, input CreateClientInput) (*domain.Client, *AccessLinkResult, error) {
 	exists, err := s.projects.ProjectExists(ctx, tenantID, input.ProjectID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !exists {
-		return nil, apperror.Validation("Project tidak valid", map[string][]string{"projectId": {"Project tidak ditemukan"}})
+		return nil, nil, apperror.Validation("Project tidak valid", map[string][]string{"projectId": {"Project tidak ditemukan"}})
 	}
 	if err := s.checkClientQuota(ctx, tenantID); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	input.Username, err = s.freeUsername(ctx, input.Username, input.Name)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	c := &domain.Client{
@@ -141,7 +152,7 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 		Name: input.Name, Phone: input.Phone, Email: input.Email, IsActive: true,
 	}
 	if err := s.repo.Create(ctx, c); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// identity.CreateCredential can fail on its own terms (e.g. username
@@ -155,14 +166,24 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 	// since that also resolves through identity by principal.
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
 		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalClient, PrincipalID: formatID(c.ID),
-		Username: input.Username, Email: input.Email, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
+		Username: input.Username, Email: input.Email, Pending: true, Role: string(input.Role), DisplayName: input.Name,
 	}); err != nil {
 		if delErr := s.repo.Delete(ctx, tenantID, c.ID); delErr != nil {
 			logger.Error("failed to roll back orphaned client %d after credential creation failed: %v", c.ID, delErr)
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	return c, nil
+	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalClient, formatID(c.ID))
+	if err != nil {
+		if delErr := s.identity.DeleteCredential(ctx, identitycontracts.PrincipalClient, formatID(c.ID)); delErr != nil {
+			logger.Error("failed to remove login of client %d after invitation failed: %v", c.ID, delErr)
+		}
+		if delErr := s.repo.Delete(ctx, tenantID, c.ID); delErr != nil {
+			logger.Error("failed to roll back client %d after invitation failed: %v", c.ID, delErr)
+		}
+		return nil, nil, err
+	}
+	return c, &AccessLinkResult{Token: link.Token, Purpose: link.Purpose, ExpiresAt: link.ExpiresAt}, nil
 }
 
 type UpdateContactInput struct {
@@ -176,13 +197,33 @@ func (s *ClientService) UpdateContact(ctx context.Context, tenantID, id int64, i
 	if err != nil {
 		return nil, err
 	}
+	previousEmail := c.Email
 	c.Name = input.Name
 	c.Phone = input.Phone
 	c.Email = input.Email
 	if err := s.repo.Update(ctx, c); err != nil {
 		return nil, err
 	}
+	if err := s.syncEmail(ctx, c, previousEmail); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+// syncEmail keeps the login's email (clients may sign in with it) in step,
+// rolling the row back if another login already uses it.
+func (s *ClientService) syncEmail(ctx context.Context, c *domain.Client, previousEmail string) error {
+	if c.Email == previousEmail {
+		return nil
+	}
+	if err := s.identity.UpdateEmail(ctx, identitycontracts.PrincipalClient, formatID(c.ID), c.Email); err != nil {
+		c.Email = previousEmail
+		if rollbackErr := s.repo.Update(ctx, c); rollbackErr != nil {
+			logger.Error("failed to roll back client %d email after credential sync failed: %v", c.ID, rollbackErr)
+		}
+		return err
+	}
+	return nil
 }
 
 // Delete permanently removes a client row — the one hard-delete in this
@@ -201,8 +242,9 @@ func (s *ClientService) Delete(ctx context.Context, tenantID, id int64) error {
 	if err != nil {
 		return err
 	}
-	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalClient, formatID(c.ID), false); err != nil {
-		logger.Error("failed to deactivate credential for client %d before delete: %v", c.ID, err)
+	// Remove the login entirely so its username and email are free again.
+	if err := s.identity.DeleteCredential(ctx, identitycontracts.PrincipalClient, formatID(c.ID)); err != nil {
+		logger.Error("failed to remove login of client %d before delete: %v", c.ID, err)
 	}
 	return s.repo.Delete(ctx, tenantID, id)
 }
@@ -254,40 +296,131 @@ func (s *ClientService) SetActive(ctx context.Context, tenantID, id int64, isAct
 	return c, nil
 }
 
-func (s *ClientService) ResetCredential(ctx context.Context, tenantID, id int64, newPassword string) (*domain.Client, error) {
+// AccessLink issues a one-time link for the client: an invitation while
+// they never set a password (7 days), otherwise a password reset (24 hours).
+// The WO sends it by WhatsApp; the WO never types or sees the password
+// (PLAN.md §3). Earlier links stop working.
+func (s *ClientService) AccessLink(ctx context.Context, tenantID, id int64) (*AccessLinkResult, error) {
 	c, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.identity.ResetPassword(ctx, identitycontracts.PrincipalClient, formatID(c.ID), newPassword); err != nil {
+	if !c.IsActive {
+		return nil, apperror.Conflict("Aktifkan client ini dulu sebelum membuat link")
+	}
+	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalClient, formatID(c.ID))
+	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
-	if err := s.repo.SetCredentialResetAt(ctx, tenantID, id, now); err != nil {
-		return nil, err
+	if link.Purpose == "client_reset" {
+		now := time.Now()
+		if err := s.repo.SetCredentialResetAt(ctx, tenantID, id, now); err != nil {
+			logger.Error("record reset link for client %d: %v", id, err)
+		}
 	}
-	c.LastCredentialResetAt = &now
-	return c, nil
+	return &AccessLinkResult{Token: link.Token, Purpose: link.Purpose, ExpiresAt: link.ExpiresAt}, nil
+}
+
+// LoginStatus is "invited" until the client set their password.
+func (s *ClientService) LoginStatus(ctx context.Context, id int64) string {
+	st, err := s.identity.LoginStatus(ctx, identitycontracts.PrincipalClient, formatID(id))
+	if err != nil {
+		logger.Error("login status for client %d: %v", id, err)
+		return "unknown"
+	}
+	return st
+}
+
+// freeUsername returns the requested username (validated, must be free) or,
+// when none was given, one derived from the client's name.
+func (s *ClientService) freeUsername(ctx context.Context, requested, name string) (string, error) {
+	if requested != "" {
+		if err := validator.Username(requested); err != nil {
+			return "", err
+		}
+		taken, err := s.identity.UsernameTaken(ctx, requested)
+		if err != nil {
+			return "", err
+		}
+		if taken {
+			return "", apperror.Validation("Nama pengguna sudah dipakai", map[string][]string{"username": {"Nama pengguna ini sudah dipakai, pilih yang lain"}})
+		}
+		return requested, nil
+	}
+	base := utils.UsernameBase(name, "client.wo")
+	candidate := base
+	for attempt := 0; attempt < 8; attempt++ {
+		if attempt > 0 {
+			candidate = utils.UsernameWithSuffix(base)
+		}
+		taken, err := s.identity.UsernameTaken(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return candidate, nil
+		}
+	}
+	return "", apperror.Internal("Gagal membuat nama pengguna. Silakan coba lagi.")
 }
 
 // ReplaceRepresentative overwrites the same Family Representative row with
 // new contact details — no history is kept (matches the frontend mock's
 // existing behavior; see PLAN.md §6.3, an explicitly open decision, not an
 // oversight).
-func (s *ClientService) ReplaceRepresentative(ctx context.Context, tenantID, id int64, input UpdateContactInput, relationNote string) (*domain.Client, error) {
+//
+// The login now belongs to a different person: the previous
+// representative's password, sessions and links stop working at once, and
+// an invitation link for the new person is returned.
+func (s *ClientService) ReplaceRepresentative(ctx context.Context, tenantID, id int64, input UpdateContactInput, relationNote string) (*domain.Client, *AccessLinkResult, error) {
 	c, err := s.Get(ctx, tenantID, id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if c.Role != domain.RoleFamilyRepresentative {
-		return nil, apperror.Forbidden("Hanya Family Representative yang dapat diganti")
+		return nil, nil, apperror.Forbidden("Hanya Family Representative yang dapat diganti")
 	}
+	if !c.IsActive {
+		return nil, nil, apperror.Conflict("Aktifkan client ini dulu sebelum mengganti perwakilannya")
+	}
+	// Check what can fail before changing anything, then cut off the
+	// previous person first: a later failure must never leave them with
+	// access while the card already shows the new person.
+	input.Email = strings.TrimSpace(input.Email)
+	if input.Email != "" && !strings.EqualFold(input.Email, c.Email) {
+		taken, err := s.identity.EmailTaken(ctx, input.Email)
+		if err != nil {
+			return nil, nil, err
+		}
+		if taken {
+			return nil, nil, apperror.Validation("Email sudah dipakai", map[string][]string{"email": {"Email ini sudah dipakai akun lain"}})
+		}
+	}
+	username, err := s.freeUsername(ctx, "", input.Name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.identity.ResetSignIn(ctx, identitycontracts.PrincipalClient, formatID(c.ID), username); err != nil {
+		return nil, nil, err
+	}
+	previousEmail := c.Email
 	c.Name = input.Name
 	c.Phone = input.Phone
 	c.Email = input.Email
 	c.RelationNote = relationNote
+	c.Username = username
 	if err := s.repo.Update(ctx, c); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return c, nil
+	if err := s.repo.UpdateUsername(ctx, tenantID, c.ID, username); err != nil {
+		return nil, nil, err
+	}
+	if err := s.syncEmail(ctx, c, previousEmail); err != nil {
+		return nil, nil, err
+	}
+	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalClient, formatID(c.ID))
+	if err != nil {
+		return nil, nil, err
+	}
+	return c, &AccessLinkResult{Token: link.Token, Purpose: link.Purpose, ExpiresAt: link.ExpiresAt}, nil
 }

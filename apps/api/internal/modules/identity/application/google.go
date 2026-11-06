@@ -45,7 +45,11 @@ type GoogleLoginResult struct {
 	Session        *Session
 	LinkRequired   bool
 	SignupRequired bool
-	Identity       *GoogleIdentity
+	// Invited: a staff invitation waits for this email — the person should
+	// open the link their WO sent instead of creating a workspace. The
+	// invitation is never accepted silently (the WO name stays private).
+	Invited  bool
+	Identity *GoogleIdentity
 }
 
 // LoginWithGoogle signs a WO Owner/staff member in with their Google
@@ -96,7 +100,7 @@ func (s *AuthService) LoginWithGoogle(ctx context.Context, idToken string) (*Goo
 	case !staff.IsActive:
 		return nil, inactiveAccount()
 	case staff.PasswordHash == "":
-		return &GoogleLoginResult{SignupRequired: true, Identity: identity}, nil
+		return &GoogleLoginResult{SignupRequired: true, Invited: true, Identity: identity}, nil
 	}
 	return &GoogleLoginResult{LinkRequired: true, Identity: identity}, nil
 }

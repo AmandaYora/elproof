@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	identitycontracts "elproof/internal/modules/identity/contracts"
 	projectscontracts "elproof/internal/modules/projects/contracts"
@@ -12,7 +13,7 @@ import (
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
-	"elproof/internal/shared/validator"
+	"elproof/internal/shared/utils"
 )
 
 type StaffRepository interface {
@@ -101,51 +102,128 @@ func (s *StaffService) Get(ctx context.Context, tenantID, id int64) (*domain.Sta
 }
 
 type StaffInput struct {
-	Name     string
-	Title    string
-	Role     domain.StaffRole
-	Username string
-	Password string
-	Email    string
-	Phone    string
+	Name  string
+	Title string
+	Role  domain.StaffRole
+	// Email is the Google account the person must sign in with to accept
+	// the invitation (staff are Google-only, decision K5).
+	Email string
+	Phone string
 }
 
-// Create rejects role=Owner — the Owner row is only ever created via
-// `platform`'s tenant-registration orchestration (CreateOwner above). It
-// provisions a real login credential (identity module) for the new
-// Admin/Staff account, mirroring clients' ClientService.Create — including
-// the same compensating rollback if identity.CreateCredential fails after
-// the staff_members row already committed (e.g. username taken by ANY
-// principal on the platform — usernames aren't tenant-scoped).
-func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffInput) (*domain.StaffMember, error) {
+// Invitation is a staff invitation link (token for /undangan/{token}).
+type Invitation struct {
+	Token     string
+	ExpiresAt time.Time
+}
+
+// Create invites a new Admin/Wedding Planner/Sales member (PLAN.md §3
+// "Undangan staf"): the staff row and a login with no way to sign in yet
+// are created, plus a 7-day one-time link the Owner sends by WhatsApp or
+// copy. The person accepts by signing in with the Google account of the
+// invited email. Owner rows are only created by tenant registration.
+// identity is a separate module (no shared transaction), so a failed login
+// or link step deletes the staff row again.
+func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffInput) (*domain.StaffMember, *Invitation, error) {
 	if input.Role == domain.RoleOwner {
-		return nil, apperror.Validation("Role Owner tidak dapat dibuat dari sini", map[string][]string{
+		return nil, nil, apperror.Validation("Role Owner tidak dapat dibuat dari sini", map[string][]string{
 			"role": {"Akun Owner hanya dibuat otomatis saat registrasi tenant"},
 		})
 	}
-	if err := validator.Username(input.Username); err != nil {
-		return nil, err
+	input.Email = strings.TrimSpace(input.Email)
+	if !utils.ValidEmail(input.Email) {
+		return nil, nil, apperror.Validation("Email tidak valid", map[string][]string{
+			"email": {"Masukkan email akun Google orang ini"},
+		})
 	}
 	if err := s.checkStaffQuota(ctx, tenantID); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	username, err := s.freeUsername(ctx, input.Email)
+	if err != nil {
+		return nil, nil, err
 	}
 	member := &domain.StaffMember{
 		TenantID: tenantID, Name: input.Name, Title: input.Title, Initials: computeInitials(input.Name),
-		Role: input.Role, Username: input.Username, Email: input.Email, Phone: input.Phone, IsActive: true,
+		Role: input.Role, Username: username, Email: input.Email, Phone: input.Phone, IsActive: true,
 	}
 	if err := s.repo.Create(ctx, member); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	principalID := strconv.FormatInt(member.ID, 10)
+	rollback := func() {
+		if delErr := s.repo.Delete(ctx, tenantID, member.ID); delErr != nil {
+			logger.Error("failed to roll back staff member %d after invitation failed: %v", member.ID, delErr)
+		}
 	}
 	if err := s.identity.CreateCredential(ctx, identitycontracts.CreateCredentialInput{
-		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalStaff, PrincipalID: strconv.FormatInt(member.ID, 10),
-		Username: input.Username, Email: input.Email, Password: input.Password, Role: string(input.Role), DisplayName: input.Name,
+		TenantID: &tenantID, PrincipalType: identitycontracts.PrincipalStaff, PrincipalID: principalID,
+		Username: username, Email: input.Email, Pending: true, Role: string(input.Role), DisplayName: input.Name,
 	}); err != nil {
-		if delErr := s.repo.Delete(ctx, tenantID, member.ID); delErr != nil {
-			logger.Error("failed to roll back orphaned staff member %d after credential creation failed: %v", member.ID, delErr)
+		rollback()
+		return nil, nil, err
+	}
+	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalStaff, principalID)
+	if err != nil {
+		if delErr := s.identity.DeleteCredential(ctx, identitycontracts.PrincipalStaff, principalID); delErr != nil {
+			logger.Error("failed to remove login of staff %d after invitation failed: %v", member.ID, delErr)
 		}
+		rollback()
+		return nil, nil, err
+	}
+	return member, &Invitation{Token: link.Token, ExpiresAt: link.ExpiresAt}, nil
+}
+
+// Reinvite issues a new invitation link for a member — not yet accepted,
+// or who lost access to their Google account (accepting re-links the login
+// to the Google account of the member's current email). Earlier links stop
+// working.
+func (s *StaffService) Reinvite(ctx context.Context, tenantID, id int64) (*Invitation, error) {
+	member, err := s.Get(ctx, tenantID, id)
+	if err != nil {
 		return nil, err
 	}
-	return member, nil
+	if member.Role == domain.RoleOwner {
+		return nil, apperror.Forbidden("Undangan ulang Owner dibuat oleh tim ElProof")
+	}
+	if !member.IsActive {
+		return nil, apperror.Conflict("Aktifkan pengguna ini dulu sebelum mengirim undangan")
+	}
+	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10))
+	if err != nil {
+		return nil, err
+	}
+	return &Invitation{Token: link.Token, ExpiresAt: link.ExpiresAt}, nil
+}
+
+// LoginStatus is "invited" until the member accepted their invitation.
+func (s *StaffService) LoginStatus(ctx context.Context, id int64) string {
+	st, err := s.identity.LoginStatus(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10))
+	if err != nil {
+		logger.Error("login status for staff %d: %v", id, err)
+		return "unknown"
+	}
+	return st
+}
+
+// freeUsername derives an internal username (staff sign in with Google and
+// never type it) that no login uses yet.
+func (s *StaffService) freeUsername(ctx context.Context, email string) (string, error) {
+	base := utils.UsernameBase(email, "staf.wo")
+	candidate := base
+	for attempt := 0; attempt < 8; attempt++ {
+		if attempt > 0 {
+			candidate = utils.UsernameWithSuffix(base)
+		}
+		taken, err := s.identity.UsernameTaken(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return candidate, nil
+		}
+	}
+	return "", apperror.Internal("Gagal membuat nama pengguna. Silakan coba lagi.")
 }
 
 // Update rejects assigning role=Owner to a non-Owner row — the Owner seat is
@@ -172,6 +250,11 @@ func (s *StaffService) Update(ctx context.Context, tenantID, id int64, isSelf bo
 		}
 	}
 	previousRole := member.Role
+	previousEmail := member.Email
+	input.Email = strings.TrimSpace(input.Email)
+	if input.Email != previousEmail && !utils.ValidEmail(input.Email) {
+		return nil, apperror.Validation("Email tidak valid", map[string][]string{"email": {"Masukkan email akun Google orang ini"}})
+	}
 	member.Name = input.Name
 	member.Title = input.Title
 	member.Role = input.Role
@@ -194,6 +277,17 @@ func (s *StaffService) Update(ctx context.Context, tenantID, id int64, isSelf bo
 			logger.Error("failed to roll back staff member %d's role after credential role sync failed: %v", id, rollbackErr)
 		}
 		return nil, err
+	}
+	// The login's email is the Google account an invitation must be
+	// accepted with; keep it in step (and roll back on a clash).
+	if member.Email != previousEmail {
+		if err := s.identity.UpdateEmail(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(id, 10), member.Email); err != nil {
+			member.Email = previousEmail
+			if rollbackErr := s.repo.Update(ctx, member); rollbackErr != nil {
+				logger.Error("failed to roll back staff member %d's email after credential sync failed: %v", id, rollbackErr)
+			}
+			return nil, err
+		}
 	}
 	return member, nil
 }
@@ -254,8 +348,11 @@ func (s *StaffService) Delete(ctx context.Context, tenantID, id int64) error {
 	if member.Role == domain.RoleOwner {
 		return apperror.Forbidden("Akun Owner tidak dapat dihapus")
 	}
-	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(member.ID, 10), false); err != nil {
-		logger.Error("failed to deactivate credential for staff %d before delete: %v", member.ID, err)
+	// Remove the login entirely (not just deactivate it) so the email and
+	// username are free again: the same person can be invited later, and
+	// their own Google sign-in is not stuck on an inactive login.
+	if err := s.identity.DeleteCredential(ctx, identitycontracts.PrincipalStaff, strconv.FormatInt(member.ID, 10)); err != nil {
+		return err
 	}
 	return s.repo.Delete(ctx, tenantID, id)
 }

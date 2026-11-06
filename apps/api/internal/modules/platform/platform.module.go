@@ -88,6 +88,16 @@ func (m *Module) TrialLimit(ctx context.Context, tenantID int64, resource string
 	return m.tenantService.TrialLimit(ctx, tenantID, resource)
 }
 
+// TenantName implements identity's TenantNameResolver (invitation pages
+// name the WO).
+func (m *Module) TenantName(ctx context.Context, tenantID int64) (string, error) {
+	t, err := m.tenantService.Get(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	return t.BusinessName, nil
+}
+
 // ApplyWebhookEvent makes *Module itself satisfy
 // `paymentcontracts.WebhookConsumer` — main.go registers this module
 // directly with the payment module's Dispatcher

@@ -179,11 +179,20 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 type registerTenantBody struct {
 	BusinessName string `json:"businessName"`
 	OwnerName    string `json:"ownerName"`
-	Username     string `json:"username"`
 	Email        string `json:"email"`
 	Phone        string `json:"phone"`
 	City         string `json:"city"`
-	Password     string `json:"password"`
+}
+
+type ownerInvitationResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+	// Email: the Google account that must accept the invitation.
+	Email string `json:"email"`
+}
+
+func toOwnerInvitation(inv application.OwnerInvitation) ownerInvitationResponse {
+	return ownerInvitationResponse{Token: inv.Token, ExpiresAt: inv.ExpiresAt.Format(time.RFC3339), Email: inv.Email}
 }
 
 func (h *TenantHandler) register(w http.ResponseWriter, r *http.Request) {
@@ -193,16 +202,15 @@ func (h *TenantHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.tenants.Register(r.Context(), application.RegisterTenantInput{
-		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Username: body.Username, Email: body.Email,
-		Phone: body.Phone, City: body.City, Password: body.Password,
+		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Email: body.Email, Phone: body.Phone, City: body.City,
 	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Tenant berhasil didaftarkan", map[string]interface{}{
-		"tenant":   toTenantResponse(result.Tenant),
-		"username": result.Username,
+	response.Created(w, "Tenant didaftarkan. Kirim link undangan ke Owner.", map[string]interface{}{
+		"tenant":     toTenantResponse(result.Tenant),
+		"invitation": toOwnerInvitation(result.Invitation),
 	})
 }
 
@@ -262,8 +270,8 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 		h.downloadLogo(w, r, id)
 	case len(segments) == 2 && segments[1] == "toggle-suspension" && r.Method == http.MethodPost:
 		h.toggleSuspension(w, r, id)
-	case len(segments) == 2 && segments[1] == "reset-credential" && r.Method == http.MethodPost:
-		h.resetCredential(w, r, id)
+	case len(segments) == 2 && segments[1] == "owner-invite" && r.Method == http.MethodPost:
+		h.reinviteOwner(w, r, id)
 	case len(segments) == 2 && segments[1] == "activate-subscription" && r.Method == http.MethodPost:
 		h.activateSubscription(w, r, id)
 	default:
@@ -492,20 +500,15 @@ type resetCredentialBody struct {
 	Password string `json:"password"`
 }
 
-func (h *TenantHandler) resetCredential(w http.ResponseWriter, r *http.Request, id int64) {
-	var body resetCredentialBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
-		return
-	}
-	result, err := h.tenants.ResetCredential(r.Context(), id, body.Password)
+// reinviteOwner is POST /tenants/{id}/owner-invite (Support/Super Admin):
+// a new Owner invitation link; no password is ever set by the team.
+func (h *TenantHandler) reinviteOwner(w http.ResponseWriter, r *http.Request, id int64) {
+	inv, err := h.tenants.ReinviteOwner(r.Context(), id)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	// The new password is never echoed back: the admin typed it, and a
-	// response body is one more place a secret could be logged or cached.
-	response.OK(w, "Kredensial tenant berhasil direset", map[string]string{"username": result.Username})
+	response.OK(w, "Link undangan Owner dibuat", toOwnerInvitation(*inv))
 }
 
 type activateSubscriptionBody struct {

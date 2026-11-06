@@ -257,6 +257,7 @@ func serve(cfg config.Config) {
 	// platform team can neither log in nor refresh, and every request is
 	// checked against the tenant's subscription lifecycle.
 	identityModule.SetTenantGuard(platformModule)
+	identityModule.SetTenantNames(platformModule)
 	tenantGate.SetResolver(platformModule)
 	// Pre-auth, Host-header-resolved tenant branding (ADR-0015) — registered
 	// unwrapped, same style as identityModule.RegisterRoutes(mux) above.

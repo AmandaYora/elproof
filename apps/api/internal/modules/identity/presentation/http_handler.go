@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"elproof/internal/modules/identity/application"
@@ -18,11 +19,15 @@ type Handler struct {
 	// attempts per *account* are capped inside AuthService (by credential
 	// id), so spelling variants of one identifier share one budget.
 	loginIP *middleware.RateLimiter
+	// linkIP caps one-time link requests per IP separately, so opening an
+	// invitation page never uses up the visitor's login attempts.
+	linkIP *middleware.RateLimiter
 }
 
 const (
 	loginWindow   = 15 * time.Minute
 	loginMaxPerIP = 30
+	linkMaxPerIP  = 60
 	// Auth request bodies are tiny; anything larger is refused before
 	// decoding (memory safety).
 	maxAuthBodyBytes = 16 << 10
@@ -34,6 +39,7 @@ func NewHandler(auth *application.AuthService) *Handler {
 	return &Handler{
 		auth:    auth,
 		loginIP: middleware.NewRateLimiter(loginMaxPerIP, loginWindow),
+		linkIP:  middleware.NewRateLimiter(linkMaxPerIP, loginWindow),
 	}
 }
 
@@ -250,6 +256,7 @@ type googleLoginRequest struct {
 type googleSignupResponse struct {
 	SignupRequired bool   `json:"signupRequired,omitempty"`
 	LinkRequired   bool   `json:"linkRequired,omitempty"`
+	Invited        bool   `json:"invited,omitempty"`
 	Email          string `json:"email"`
 	Name           string `json:"name"`
 }
@@ -283,7 +290,7 @@ func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
 	}
 	if result.SignupRequired {
 		response.OK(w, "Akun Google ini belum terdaftar", googleSignupResponse{
-			SignupRequired: true, Email: result.Identity.Email, Name: result.Identity.Name,
+			SignupRequired: true, Invited: result.Invited, Email: result.Identity.Email, Name: result.Identity.Name,
 		})
 		return
 	}
@@ -319,4 +326,79 @@ func (h *Handler) LinkGoogle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.OK(w, "Akun Google terhubung", toSessionResponse(session))
+}
+
+type linkInfoResponse struct {
+	Purpose     string `json:"purpose"`
+	TenantName  string `json:"tenantName"`
+	DisplayName string `json:"displayName"`
+	Username    string `json:"username,omitempty"`
+	Email       string `json:"email,omitempty"`
+	ExpiresAt   string `json:"expiresAt"`
+}
+
+type linkPasswordRequest struct {
+	Password string `json:"password"`
+}
+
+const maxLinkTokenLen = 128
+
+// Links serves the public one-time access links (PLAN.md Fase 3):
+//
+//	GET  /auth/links/{token}           what the link is for (invitation page)
+//	POST /auth/links/{token}/google    staff: accept with Google  {credential}
+//	POST /auth/links/{token}/password  client: set own password   {password}
+func (h *Handler) Links(w http.ResponseWriter, r *http.Request) {
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/auth/links/"), "/")
+	token, action, _ := strings.Cut(rest, "/")
+	if token == "" || len(token) > maxLinkTokenLen {
+		response.Error(w, http.StatusNotFound, "Link tidak dikenali", map[string]string{"code": "link_invalid"})
+		return
+	}
+	if !h.linkIP.Allow(middleware.ClientIP(r)) {
+		h.tooManyAttempts(w, h.linkIP)
+		return
+	}
+	// The token itself is a credential: never let a shared cache keep it.
+	w.Header().Set("Cache-Control", "no-store")
+	switch {
+	case action == "" && r.Method == http.MethodGet:
+		info, err := h.auth.AccessLinkInfo(r.Context(), token)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "ok", linkInfoResponse{
+			Purpose: string(info.Purpose), TenantName: info.TenantName, DisplayName: info.DisplayName,
+			Username: info.Username, Email: info.Email, ExpiresAt: info.ExpiresAt.Format(time.RFC3339),
+		})
+	case action == "google" && r.Method == http.MethodPost:
+		limitBody(w, r)
+		var req googleLoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Credential == "" || len(req.Credential) > maxGoogleCredentialLen {
+			response.Error(w, http.StatusBadRequest, "Data login Google tidak valid", nil)
+			return
+		}
+		session, err := h.auth.AcceptStaffInvite(r.Context(), token, req.Credential)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Undangan diterima", toSessionResponse(session))
+	case action == "password" && r.Method == http.MethodPost:
+		limitBody(w, r)
+		var req linkPasswordRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+			return
+		}
+		session, err := h.auth.SetPasswordWithLink(r.Context(), token, req.Password)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.OK(w, "Kata sandi tersimpan", toSessionResponse(session))
+	default:
+		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
+	}
 }

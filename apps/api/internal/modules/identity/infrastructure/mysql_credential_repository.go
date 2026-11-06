@@ -75,6 +75,54 @@ func (r *MySQLCredentialRepository) LinkGoogle(ctx context.Context, credentialID
 	return n == 1, err
 }
 
+// UpdateEmail changes a login's email (synced from the owning module).
+func (r *MySQLCredentialRepository) UpdateEmail(ctx context.Context, principalType domain.PrincipalType, principalID string, email string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET email = ? WHERE principal_type = ? AND principal_id = ?`,
+		nullableEmail(email), string(principalType), principalID)
+	if isDuplicateKey(err) {
+		return domain.ErrEmailTaken
+	}
+	return err
+}
+
+// UpdateUsername renames a login (a client representative was replaced).
+func (r *MySQLCredentialRepository) UpdateUsername(ctx context.Context, credentialID int64, username string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE credentials SET username = ? WHERE id = ?`, username, credentialID)
+	if isDuplicateKey(err) {
+		return domain.ErrUsernameTaken
+	}
+	return err
+}
+
+// Delete removes a login with its sessions and links (the owning module
+// deleted the person, or rolled back a failed invitation), freeing its
+// username and email.
+func (r *MySQLCredentialRepository) Delete(ctx context.Context, credentialID int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`DELETE FROM auth_tokens WHERE credential_id = ?`,
+		`DELETE FROM refresh_tokens WHERE credential_id = ?`,
+		`DELETE FROM credentials WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, credentialID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ClearSignIn removes every way to sign in (password and Google link):
+// the login waits for a new invitation (client representative replaced).
+func (r *MySQLCredentialRepository) ClearSignIn(ctx context.Context, credentialID int64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE credentials SET password_hash = NULL, google_sub = NULL WHERE id = ?`, credentialID)
+	return err
+}
+
 // UsernameTaken reports whether any login already uses username.
 func (r *MySQLCredentialRepository) UsernameTaken(ctx context.Context, username string) (bool, error) {
 	var n int
