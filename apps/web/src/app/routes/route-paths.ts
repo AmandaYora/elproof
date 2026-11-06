@@ -22,6 +22,8 @@ export const ROUTE_PATHS = {
   // Self-service WO registration (Fase 2): Google first, then one form.
   signup: "/daftar",
   signupWorkspace: "/daftar/workspace",
+  // One-time invitation / password-reset links (Fase 3).
+  invitation: (token: string) => `/undangan/${token}`,
   // Marketing site lives at the root since Fase 2 ("/" was a redirect to
   // /login). The old /homepage/* paths redirect here (homepage.routes.tsx).
   homepage: "/",

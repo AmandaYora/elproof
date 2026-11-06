@@ -39,7 +39,7 @@ export default function WorkspaceSetupPage() {
     // never written to storage — and expires with the ID token (~1 hour).
     return <Navigate to={ROUTE_PATHS.signup} replace />;
   }
-  const { credential, email, name } = signup;
+  const { credential, email, name, invited } = signup;
 
   function set<K extends keyof WorkspaceFormValues>(key: K, value: WorkspaceFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -123,6 +123,13 @@ export default function WorkspaceSetupPage() {
         </div>
 
         <div className="mt-8 flex flex-col gap-5">
+          {invited && (
+            <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning">
+              Ada undangan staf untuk {email}. Jika Anda staf di sebuah WO, jangan buat workspace baru: buka link undangan yang
+              dikirim WO Anda (lewat WhatsApp), lalu masuk dengan Google dari sana.
+            </p>
+          )}
+
           {formError && (
             <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
               {formError}

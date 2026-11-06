@@ -6,9 +6,11 @@ export interface GoogleSignupState {
   credential: string;
   email: string;
   name: string;
+  /** A staff invitation waits for this email (open the WO's link instead). */
+  invited?: boolean;
 }
 
 /** POST /auth/google: a session, or what the person must do next. */
 export type GoogleAuthOutcome =
-  | { signupRequired: true; email: string; name: string }
+  | { signupRequired: true; email: string; name: string; invited?: boolean }
   | { linkRequired: true; email: string; name: string };

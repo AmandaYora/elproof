@@ -24,6 +24,8 @@ export interface StaffMember {
   email: string;
   phone: string;
   isActive: boolean;
+  /** "invited" until the person accepted their invitation with Google. */
+  loginStatus?: "invited" | "active" | "inactive" | "none" | "unknown";
 }
 
 // Public-safe subset (any staff role, unlike StaffMember's Owner-only

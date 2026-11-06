@@ -158,12 +158,22 @@ export default function LoginPage() {
 
   const [googleBusy, setGoogleBusy] = useState(false);
 
+  // Back to the page that sent the person here (an expired session, a
+  // bookmarked deep link), when it belongs to their own console.
+  const returnTo = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
   const finishLogin = useCallback(
     (session: AuthSession) => {
       useAuthStore.getState().login(session);
-      navigate(landingPathFor(session));
+      const path = returnTo?.pathname ?? "";
+      const fits =
+        session.principalType === "client"
+          ? path.startsWith("/portal")
+          : session.principalType === "platform_admin"
+            ? session.mfa === true && path.startsWith("/platform/") && path !== ROUTE_PATHS.platformSecurity
+            : path !== "" && !path.startsWith("/portal") && !path.startsWith("/platform");
+      navigate(fits ? path + (returnTo?.search ?? "") : landingPathFor(session), { replace: true });
     },
-    [navigate],
+    [navigate, returnTo],
   );
 
   // Sign in with Google (WO Owner and staff). A Google account with no
@@ -181,7 +191,7 @@ export default function LoginPage() {
           return;
         }
         if ("signupRequired" in data) {
-          const state: GoogleSignupState = { credential, email: data.email, name: data.name };
+          const state: GoogleSignupState = { credential, email: data.email, name: data.name, invited: data.invited };
           navigate(ROUTE_PATHS.signupWorkspace, { state });
           return;
         }
@@ -425,24 +435,38 @@ export default function LoginPage() {
                   atau dengan nama pengguna
                   <span className="h-px flex-1 bg-border" />
                 </div>
-                <Field label="Nama Pengguna atau Email" required hint={errors.username}>
+                <form
+                  className="flex flex-col gap-5"
+                  noValidate
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSubmit();
+                  }}
+                >
+                <Field label="Nama Pengguna atau Email" htmlFor="login-username" required error={errors.username}>
                   <Input
+                    id="login-username"
+                    name="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={values.username}
                     onChange={(e) => set("username", e.target.value)}
                     placeholder="Masukkan nama pengguna atau email Anda"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                   />
                 </Field>
 
-                <Field label="Kata Sandi" required hint={errors.password}>
+                <Field label="Kata Sandi" htmlFor="login-password" required error={errors.password}>
                   <div className="relative">
                     <Input
+                      id="login-password"
+                      name="password"
+                      autoComplete="current-password"
                       type={showPassword ? "text" : "password"}
                       value={values.password}
                       onChange={(e) => set("password", e.target.value)}
                       placeholder="Masukkan kata sandi Anda"
                       className="pr-10"
-                      onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                     />
                     <button
                       type="button"
@@ -456,13 +480,18 @@ export default function LoginPage() {
                 </Field>
 
                 <Button
+                  type="submit"
                   variant={branding ? "primary" : "neutral"}
                   className="mt-2 w-full justify-center"
-                  onClick={handleSubmit}
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? "Memproses..." : "Masuk"}
                 </Button>
+                <p className="text-[12.5px] leading-relaxed text-text-secondary">
+                  <span className="font-medium text-text-primary">Lupa kata sandi?</span> Client: minta link atur ulang ke WO Anda. Tim
+                  WO: masuk dengan tombol Google di atas.
+                </p>
+                </form>
               </>
             )}
           </div>

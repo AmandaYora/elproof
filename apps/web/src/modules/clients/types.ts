@@ -11,4 +11,6 @@ export interface Client {
   email: string;
   isActive: boolean;
   lastCredentialResetAt: string | null;
+  /** "invited" until the client set their own password. */
+  loginStatus?: "invited" | "active" | "inactive" | "none" | "unknown";
 }

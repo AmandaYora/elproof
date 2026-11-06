@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, KeyRound, UserCheck, UserX, Repeat, Trash2, AlertTriangle } from "lucide-react";
-import { Badge } from "@/shared/components/ui/Badge";
+import { Pencil, Send, UserCheck, UserX, Repeat, Trash2, AlertTriangle } from "lucide-react";
 import { Avatar } from "@/shared/components/ui/Avatar";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
-import { Select, Input, Field } from "@/shared/components/ui/Input";
-import { Modal } from "@/shared/components/ui/Modal";
+import { Select } from "@/shared/components/ui/Input";
 import { Button } from "@/shared/components/ui/Button";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
@@ -22,6 +20,21 @@ import type { Project } from "@/modules/projects/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatDate } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { AccessLinkDialog } from "@/shared/components/AccessLinkDialog";
+import type { AccessLink, AccessLinkRecipient } from "@/shared/lib/access-link";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { APP_NAME } from "@/shared/constants/brand";
+import { ClientLoginStatusBadge, clientLinkActionLabel } from "@/modules/clients/components/ClientLoginStatus";
+
+interface LinkShare {
+  link: AccessLink;
+  recipient: AccessLinkRecipient;
+  notice?: string;
+}
+
+function clientRecipient(c: Pick<Client, "name" | "phone" | "username">): AccessLinkRecipient {
+  return { name: c.name, phone: c.phone, username: c.username };
+}
 
 const ROLE_OPTIONS: ClientRole[] = ["Bride", "Groom", "Family Representative"];
 
@@ -31,7 +44,7 @@ const ROLE_FILTER_LABEL: Record<ClientRole, string> = {
   "Family Representative": "Wedding Representative",
 };
 
-type ModalMode = "edit" | "replace" | "reset";
+type ModalMode = "edit" | "replace";
 
 interface ModalTarget {
   clientId: string;
@@ -47,8 +60,10 @@ export default function ClientListPage() {
   const updateContact = useClientStore((s) => s.updateContact);
   const toggleActive = useClientStore((s) => s.toggleActive);
   const deleteClient = useClientStore((s) => s.deleteClient);
-  const resetCredential = useClientStore((s) => s.resetCredential);
+  const issueAccessLink = useClientStore((s) => s.issueAccessLink);
   const replaceRepresentative = useClientStore((s) => s.replaceRepresentative);
+  const woName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
+  const [linkShare, setLinkShare] = useState<LinkShare | null>(null);
 
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"Semua" | ClientRole>("Semua");
@@ -103,7 +118,11 @@ export default function ClientListPage() {
     setActionError(null);
     try {
       if (modalTarget.mode === "replace") {
-        await replaceRepresentative(modalTarget.projectId, modalTarget.clientId, { ...values, relationNote: activeTarget.relationNote });
+        const { client, link } = await replaceRepresentative(modalTarget.projectId, modalTarget.clientId, {
+          ...values,
+          relationNote: activeTarget.relationNote,
+        });
+        setLinkShare({ link, recipient: clientRecipient(client), notice: "Perwakilan diganti. Akses perwakilan lama sudah dicabut." });
       } else {
         await updateContact(modalTarget.projectId, modalTarget.clientId, values);
       }
@@ -114,15 +133,14 @@ export default function ClientListPage() {
     }
   }
 
-  async function handleResetSubmit(password: string) {
-    if (!modalTarget) return;
+  async function handleSendLink(projectId: string, client: Client) {
     setActionError(null);
     try {
-      await resetCredential(modalTarget.projectId, modalTarget.clientId, password);
+      const link = await issueAccessLink(projectId, client.id);
       await fetchAllClients();
-      setModalTarget(null);
+      setLinkShare({ link, recipient: clientRecipient(client) });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mereset kredensial client"));
+      setActionError(getApiErrorMessage(err, "Gagal membuat link"));
     }
   }
 
@@ -170,7 +188,7 @@ export default function ClientListPage() {
                 clients={projectClients}
                 onEdit={(id) => setModalTarget({ clientId: id, projectId: project.id, mode: "edit" })}
                 onReplace={(id) => setModalTarget({ clientId: id, projectId: project.id, mode: "replace" })}
-                onReset={(id) => setModalTarget({ clientId: id, projectId: project.id, mode: "reset" })}
+                onSendLink={(c) => void handleSendLink(project.id, c)}
                 onToggleActive={(id) => void handleToggleActive(project.id, id)}
                 onDelete={(id) => void handleDelete(project.id, id)}
               />
@@ -193,56 +211,21 @@ export default function ClientListPage() {
           title={modalTarget.mode === "replace" ? "Ganti Wedding Representative" : "Ubah Kontak Client"}
           description={
             modalTarget.mode === "replace"
-              ? "Perbarui data wedding representative untuk project ini. Kredensial login yang sudah ada tetap dipakai."
+              ? "Akses login perwakilan lama langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru."
               : "Perbarui nama dan informasi kontak client."
           }
         />
       )}
 
-      {modalTarget && activeTarget && modalTarget.mode === "reset" && (
-        <ResetCredentialModal client={activeTarget} onClose={() => setModalTarget(null)} onSubmit={(password) => void handleResetSubmit(password)} />
-      )}
+      <AccessLinkDialog
+        open={linkShare !== null}
+        onClose={() => setLinkShare(null)}
+        link={linkShare?.link ?? null}
+        recipient={linkShare?.recipient ?? { name: "" }}
+        woName={woName}
+        notice={linkShare?.notice}
+      />
     </div>
-  );
-}
-
-function ResetCredentialModal({
-  client,
-  onClose,
-  onSubmit,
-}: {
-  client: Client;
-  onClose: () => void;
-  onSubmit: (password: string) => void;
-}) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  function handleSubmit() {
-    if (password.length < 6) {
-      setError("Password minimal 6 karakter");
-      return;
-    }
-    onSubmit(password);
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Reset Credential"
-      description={`Atur password login baru untuk ${client.name}.`}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Reset Password</Button>
-        </>
-      }
-    >
-      <Field label="Password Baru" required hint={error ?? undefined}>
-        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimal 6 karakter" />
-      </Field>
-    </Modal>
   );
 }
 
@@ -251,7 +234,7 @@ function ProjectClientGroup({
   clients,
   onEdit,
   onReplace,
-  onReset,
+  onSendLink,
   onToggleActive,
   onDelete,
 }: {
@@ -259,7 +242,7 @@ function ProjectClientGroup({
   clients: Client[];
   onEdit: (id: string) => void;
   onReplace: (id: string) => void;
-  onReset: (id: string) => void;
+  onSendLink: (client: Client) => void;
   onToggleActive: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
@@ -281,7 +264,7 @@ function ProjectClientGroup({
             client={c}
             onEdit={() => onEdit(c.id)}
             onReplace={() => onReplace(c.id)}
-            onReset={() => onReset(c.id)}
+            onSendLink={() => onSendLink(c)}
             onToggleActive={() => onToggleActive(c.id)}
             onDelete={() => onDelete(c.id)}
           />
@@ -295,14 +278,14 @@ function ClientRow({
   client: c,
   onEdit,
   onReplace,
-  onReset,
+  onSendLink,
   onToggleActive,
   onDelete,
 }: {
   client: Client;
   onEdit: () => void;
   onReplace: () => void;
-  onReset: () => void;
+  onSendLink: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
 }) {
@@ -318,19 +301,19 @@ function ClientRow({
               <span className="font-semibold text-text-primary">{c.name}</span>
               <ClientRoleBadge role={c.role} />
             </div>
-            <p className="truncate text-[12.5px] text-text-secondary">{c.phone} · {c.email}</p>
+            <p className="truncate text-[12.5px] text-text-secondary">{[c.username, c.phone, c.email].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-right">
-            {c.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
-            <p className="mt-1 text-[11.5px] text-text-secondary">
-              {c.lastCredentialResetAt ? `Reset: ${formatDate(c.lastCredentialResetAt)}` : "Belum pernah direset"}
-            </p>
+            <ClientLoginStatusBadge client={c} />
+            {c.lastCredentialResetAt && (
+              <p className="mt-1 text-[11.5px] text-text-secondary">Link atur ulang: {formatDate(c.lastCredentialResetAt)}</p>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             <IconActionButton icon={Pencil} label="Ubah Kontak" tone="neutral" onClick={onEdit} />
-            <IconActionButton icon={KeyRound} label="Reset Credential" tone="info" onClick={onReset} />
+            {c.isActive && <IconActionButton icon={Send} label={clientLinkActionLabel(c)} tone="info" onClick={onSendLink} />}
             {c.isActive ? (
               <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={onToggleActive} />
             ) : (

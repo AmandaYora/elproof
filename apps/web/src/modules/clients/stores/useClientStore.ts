@@ -3,6 +3,7 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { Client, ClientRole } from "@/modules/clients/types";
 import type { ClientContactFormValues, ClientCreateFormValues, RepresentativeFormValues } from "@/modules/clients/schemas/client.schema";
+import type { AccessLink } from "@/shared/lib/access-link";
 
 interface RawClient {
   id: number;
@@ -15,6 +16,7 @@ interface RawClient {
   email: string;
   isActive: boolean;
   lastCredentialResetAt: string | null;
+  loginStatus?: Client["loginStatus"];
 }
 
 function toClient(raw: RawClient): Client {
@@ -29,7 +31,13 @@ function toClient(raw: RawClient): Client {
     email: raw.email,
     isActive: raw.isActive,
     lastCredentialResetAt: raw.lastCredentialResetAt,
+    loginStatus: raw.loginStatus,
   };
+}
+
+interface ClientWithLink {
+  client: RawClient;
+  accessLink: AccessLink;
 }
 
 interface ClientState {
@@ -38,12 +46,15 @@ interface ClientState {
 
   fetchClients: (projectId: string) => Promise<void>;
   fetchAllClients: () => Promise<void>;
-  createClient: (projectId: string, role: ClientRole, values: ClientCreateFormValues) => Promise<void>;
+  /** Creates the client and returns their invitation link (they set their own password). */
+  createClient: (projectId: string, role: ClientRole, values: ClientCreateFormValues) => Promise<{ client: Client; link: AccessLink }>;
   updateContact: (projectId: string, clientId: string, values: ClientContactFormValues) => Promise<void>;
   toggleActive: (projectId: string, clientId: string) => Promise<void>;
   deleteClient: (projectId: string, clientId: string) => Promise<void>;
-  resetCredential: (projectId: string, clientId: string, password: string) => Promise<void>;
-  replaceRepresentative: (projectId: string, clientId: string, values: RepresentativeFormValues) => Promise<void>;
+  /** New invitation (no password yet) or 24-hour password-reset link. */
+  issueAccessLink: (projectId: string, clientId: string) => Promise<AccessLink>;
+  /** Replaces the person; the old one loses access, the new one gets an invitation. */
+  replaceRepresentative: (projectId: string, clientId: string, values: RepresentativeFormValues) => Promise<{ client: Client; link: AccessLink }>;
 }
 
 // Backed by the real `clients` module (Fase 4) — clients only exist scoped to
@@ -67,7 +78,7 @@ export const useClientStore = create<ClientState>((set, get) => ({
   },
 
   createClient: async (projectId, role, values) => {
-    await httpClient.post(API.clients.base, {
+    const res = await httpClient.post(API.clients.base, {
       projectId: Number(projectId),
       role,
       relationNote: values.relationNote,
@@ -75,9 +86,11 @@ export const useClientStore = create<ClientState>((set, get) => ({
       phone: values.phone,
       email: values.email,
       username: values.username,
-      password: values.password,
     });
-    await get().fetchClients(projectId);
+    const data = res.data.data as ClientWithLink;
+    // The one-time link must reach the screen even if the list refresh fails.
+    await get().fetchClients(projectId).catch(() => undefined);
+    return { client: toClient(data.client), link: data.accessLink };
   },
 
   updateContact: async (projectId, clientId, values) => {
@@ -99,13 +112,17 @@ export const useClientStore = create<ClientState>((set, get) => ({
     await get().fetchClients(projectId);
   },
 
-  resetCredential: async (projectId, clientId, password) => {
-    await httpClient.post(API.clients.resetCredential(clientId), { password });
-    await get().fetchClients(projectId);
+  issueAccessLink: async (projectId, clientId) => {
+    const res = await httpClient.post(API.clients.accessLink(clientId));
+    await get().fetchClients(projectId).catch(() => undefined);
+    return res.data.data as AccessLink;
   },
 
   replaceRepresentative: async (projectId, clientId, values) => {
-    await httpClient.post(API.clients.replaceRepresentative(clientId), values);
-    await get().fetchClients(projectId);
+    const res = await httpClient.post(API.clients.replaceRepresentative(clientId), values);
+    const data = res.data.data as ClientWithLink;
+    // The one-time link must reach the screen even if the list refresh fails.
+    await get().fetchClients(projectId).catch(() => undefined);
+    return { client: toClient(data.client), link: data.accessLink };
   },
 }));

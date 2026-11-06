@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, UserCheck, UserX, KeyRound, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, UserCheck, UserX, Send, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -14,7 +14,10 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { UserRoleBadge } from "@/modules/users/components/UserRoleBadge";
 import { UserFormModal } from "@/modules/users/components/UserFormModal";
-import { STAFF_ROLE_OPTIONS, type UserFormValues, type UserCreateFormValues } from "@/modules/users/schemas/user.schema";
+import { STAFF_ROLE_OPTIONS, type UserFormValues } from "@/modules/users/schemas/user.schema";
+import { AccessLinkDialog } from "@/shared/components/AccessLinkDialog";
+import type { AccessLink, AccessLinkRecipient } from "@/shared/lib/access-link";
+import { ROLE_LABELS } from "@/modules/users/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
@@ -24,10 +27,21 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
-interface CredentialReveal {
-  name: string;
-  username: string;
-  password: string;
+interface LinkShare {
+  link: AccessLink;
+  recipient: AccessLinkRecipient;
+  notice?: string;
+}
+
+function recipientFor(user: Pick<StaffMember, "name" | "phone" | "email" | "role">): AccessLinkRecipient {
+  return { name: user.name, phone: user.phone, email: user.email, roleLabel: ROLE_LABELS[user.role] };
+}
+
+/** Status column: invitation state first, then active/inactive. */
+function StaffStatusBadge({ user }: { user: StaffMember }) {
+  if (!user.isActive) return <Badge tone="neutral">Nonaktif</Badge>;
+  if (user.loginStatus === "invited") return <Badge tone="warning">Menunggu undangan</Badge>;
+  return <Badge tone="success">Aktif</Badge>;
 }
 
 export default function UserListPage() {
@@ -37,6 +51,7 @@ export default function UserListPage() {
   const meta = useStaffStore((s) => s.staffPageMeta);
   const fetchStaffPage = useStaffStore((s) => s.fetchStaffPage);
   const createStaff = useStaffStore((s) => s.createStaff);
+  const reinviteStaff = useStaffStore((s) => s.reinviteStaff);
   const updateStaff = useStaffStore((s) => s.updateStaff);
   const toggleStaffActive = useStaffStore((s) => s.toggleStaffActive);
   const fetchStaffDeleteImpact = useStaffStore((s) => s.fetchStaffDeleteImpact);
@@ -48,7 +63,8 @@ export default function UserListPage() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<StaffMember | undefined>(undefined);
-  const [credentialReveal, setCredentialReveal] = useState<CredentialReveal | null>(null);
+  const [linkShare, setLinkShare] = useState<LinkShare | null>(null);
+  const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
@@ -64,11 +80,13 @@ export default function UserListPage() {
   }, [fetchStaffPage, page, debouncedQuery, roleFilter]);
 
   function openCreateModal() {
+    setActionError(null);
     setEditingUser(undefined);
     setModalOpen(true);
   }
 
   function openEditModal(user: StaffMember) {
+    setActionError(null);
     setEditingUser(user);
     setModalOpen(true);
   }
@@ -78,16 +96,37 @@ export default function UserListPage() {
     setEditingUser(undefined);
   }
 
-  async function handleCreate(values: UserCreateFormValues) {
+  async function handleCreate(values: UserFormValues) {
     setActionError(null);
+    setCreating(true);
     try {
       const result = await createStaff(values);
       closeModal();
       await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
-      setCredentialReveal({ name: result.staff.name, username: result.username, password: result.password });
+      setLinkShare({ link: result.invitation, recipient: recipientFor(result.staff), notice: `${result.staff.name} ditambahkan.` });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan pengguna"));
+      setActionError(getApiErrorMessage(err, "Gagal membuat undangan"));
+    } finally {
+      setCreating(false);
     }
+  }
+
+  async function handleReinvite(user: StaffMember) {
+    setActionError(null);
+    try {
+      const link = await reinviteStaff(user.id);
+      setLinkShare({
+        link,
+        recipient: recipientFor(user),
+        notice: user.loginStatus === "invited" ? "Link baru dibuat. Link sebelumnya tidak berlaku lagi." : "Saat link ini diterima, akun Google lama tidak bisa dipakai masuk lagi.",
+      });
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal membuat link undangan"));
+    }
+  }
+
+  function reinviteLabel(user: StaffMember) {
+    return user.loginStatus === "invited" ? "Kirim ulang undangan" : "Undang ulang (ganti akun Google)";
   }
 
   async function handleEdit(values: UserFormValues) {
@@ -156,11 +195,11 @@ export default function UserListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola akun staff internal yang dapat mengakses {businessName}.</p>
         </div>
         <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-          Tambah Pengguna
+          Undang Pengguna
         </Button>
       </div>
 
-      {actionError && (
+      {actionError && !modalOpen && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
       )}
 
@@ -198,7 +237,7 @@ export default function UserListPage() {
                       <Avatar name={user.name} />
                       <span className="truncate font-semibold text-text-primary">{user.name}</span>
                     </div>
-                    {user.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                    <StaffStatusBadge user={user} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <CardListField label="Jabatan" value={user.title} />
@@ -211,6 +250,9 @@ export default function UserListPage() {
                   ) : (
                     <div className="flex items-center gap-1.5 pt-1">
                       <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
+                      {!isOwner && user.isActive && (
+                        <IconActionButton icon={Send} label={reinviteLabel(user)} tone="neutral" onClick={() => void handleReinvite(user)} />
+                      )}
                       {!isOwner && (user.isActive ? (
                         <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
                       ) : (
@@ -256,7 +298,7 @@ export default function UserListPage() {
                     <span className="block text-[12.5px] text-text-secondary">{user.email}</span>
                   </TD>
                   <TD>
-                    {user.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
+                    <StaffStatusBadge user={user} />
                   </TD>
                   <TD>
                     {isOwner && !isSelf ? (
@@ -264,6 +306,9 @@ export default function UserListPage() {
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
+                      {!isOwner && user.isActive && (
+                        <IconActionButton icon={Send} label={reinviteLabel(user)} tone="neutral" onClick={() => void handleReinvite(user)} />
+                      )}
                         {!isOwner && (user.isActive ? (
                           <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
                         ) : (
@@ -293,33 +338,18 @@ export default function UserListPage() {
         onSubmitCreate={(values) => void handleCreate(values)}
         onSubmitEdit={(values) => void handleEdit(values)}
         initialUser={editingUser}
+        submitting={creating}
+        error={modalOpen ? actionError : null}
       />
 
-      <Modal
-        open={credentialReveal !== null}
-        onClose={() => setCredentialReveal(null)}
-        title="Pengguna Berhasil Ditambahkan"
-        description={credentialReveal ? `${credentialReveal.name} kini dapat masuk ke ${businessName} dengan kredensial berikut.` : undefined}
-        size="sm"
-        footer={<Button onClick={() => setCredentialReveal(null)}>Selesai</Button>}
-      >
-        {credentialReveal && (
-          <div className="flex flex-col gap-3 text-[13px]">
-            <div className="flex items-center gap-2 text-text-secondary">
-              <KeyRound className="h-3.5 w-3.5 shrink-0" />
-              Kredensial akun:
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
-              <span className="text-text-secondary">Username</span>
-              <span className="font-semibold text-text-primary">{credentialReveal.username}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
-              <span className="text-text-secondary">Password</span>
-              <span className="font-mono font-semibold text-text-primary">{credentialReveal.password}</span>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <AccessLinkDialog
+        open={linkShare !== null}
+        onClose={() => setLinkShare(null)}
+        link={linkShare?.link ?? null}
+        recipient={linkShare?.recipient ?? { name: "" }}
+        woName={businessName}
+        notice={linkShare?.notice}
+      />
 
       <Modal
         open={deleteTarget !== null}

@@ -35,7 +35,12 @@ export default function SignupPage() {
         const res = await httpClient.post(API.auth.google, { credential });
         const data = res.data.data as GoogleAuthResponse;
         if ("signupRequired" in data || "linkRequired" in data) {
-          const state: GoogleSignupState = { credential, email: data.email, name: data.name };
+          const state: GoogleSignupState = {
+            credential,
+            email: data.email,
+            name: data.name,
+            invited: "signupRequired" in data ? data.invited : undefined,
+          };
           // A staff login already uses this email: confirm it on the
           // login page (or choose to create a new workspace there).
           if ("linkRequired" in data) navigate(ROUTE_PATHS.login, { state: { googleLink: state } });

@@ -17,6 +17,10 @@ export const API = {
     google: "/api/v1/auth/google",
     // Link Google to an existing staff login by confirming its password once.
     googleLink: "/api/v1/auth/google/link",
+    // One-time invitation / password-reset links (Fase 3).
+    link: (token: string) => `/api/v1/auth/links/${encodeURIComponent(token)}`,
+    linkGoogle: (token: string) => `/api/v1/auth/links/${encodeURIComponent(token)}/google`,
+    linkPassword: (token: string) => `/api/v1/auth/links/${encodeURIComponent(token)}/password`,
   },
   billing: {
     plans: "/api/v1/plans",
@@ -58,7 +62,8 @@ export const API = {
     trialLimits: "/api/v1/trial-limits",
     tenantLogo: (id: string) => `/api/v1/tenants/${id}/logo`,
     tenantToggleSuspension: (id: string) => `/api/v1/tenants/${id}/toggle-suspension`,
-    tenantResetCredential: (id: string) => `/api/v1/tenants/${id}/reset-credential`,
+    // New Owner invitation link (Fase 3) — the team never sets a password.
+    tenantOwnerInvite: (id: string) => `/api/v1/tenants/${id}/owner-invite`,
     tenantActivateSubscription: (id: string) => `/api/v1/tenants/${id}/activate-subscription`,
     subscriptionsPay: "/api/v1/subscriptions/pay",
     subscriptionsPendingCharge: "/api/v1/subscriptions/pending-charge",
@@ -89,6 +94,8 @@ export const API = {
     base: "/api/v1/staff",
     item: (id: string) => `/api/v1/staff/${id}`,
     toggleActive: (id: string) => `/api/v1/staff/${id}/toggle-active`,
+    // New one-time invitation link (Fase 3).
+    invite: (id: string) => `/api/v1/staff/${id}/invite`,
     // Public-safe within the tenant (any staff role) — {id, name, title}
     // only, powers every PIC picker/label across the `projects` module.
     // `base` above is Owner-only now (Pengguna management).
@@ -180,7 +187,8 @@ export const API = {
     byProject: (projectId: string) => `/api/v1/clients?projectId=${projectId}`,
     item: (id: string) => `/api/v1/clients/${id}`,
     toggleActive: (id: string) => `/api/v1/clients/${id}/toggle-active`,
-    resetCredential: (id: string) => `/api/v1/clients/${id}/reset-credential`,
+    // New invitation or password-reset link (Fase 3); the WO never sets a client password.
+    accessLink: (id: string) => `/api/v1/clients/${id}/access-link`,
     replaceRepresentative: (id: string) => `/api/v1/clients/${id}/replace-representative`,
   },
 } as const;

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pencil, RefreshCw, UserCog, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Pencil, Send, UserCog, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
-import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Field } from "@/shared/components/ui/Input";
@@ -18,6 +17,11 @@ import {
 import type { Client, ClientRole } from "@/modules/clients/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatDate } from "@/shared/lib/formatters";
+import { AccessLinkDialog } from "@/shared/components/AccessLinkDialog";
+import type { AccessLink, AccessLinkRecipient } from "@/shared/lib/access-link";
+import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { APP_NAME } from "@/shared/constants/brand";
+import { ClientLoginStatusBadge, clientLinkActionLabel } from "@/modules/clients/components/ClientLoginStatus";
 
 const ROLE_ORDER: ClientRole[] = ["Bride", "Groom", "Family Representative"];
 
@@ -27,7 +31,17 @@ const ROLE_LABEL: Record<ClientRole, string> = {
   "Family Representative": "Wedding Representative Keluarga",
 };
 
-type ModalMode = "contact" | "replace" | "reset";
+type ModalMode = "contact" | "replace";
+
+interface LinkShare {
+  link: AccessLink;
+  recipient: AccessLinkRecipient;
+  notice?: string;
+}
+
+function clientRecipient(c: Pick<Client, "name" | "phone" | "username">): AccessLinkRecipient {
+  return { name: c.name, phone: c.phone, username: c.username };
+}
 
 interface ModalTarget {
   clientId: string;
@@ -51,8 +65,10 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   const updateContact = useClientStore((s) => s.updateContact);
   const toggleActive = useClientStore((s) => s.toggleActive);
   const deleteClient = useClientStore((s) => s.deleteClient);
-  const resetCredential = useClientStore((s) => s.resetCredential);
+  const issueAccessLink = useClientStore((s) => s.issueAccessLink);
   const replaceRepresentative = useClientStore((s) => s.replaceRepresentative);
+  const woName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
+  const [linkShare, setLinkShare] = useState<LinkShare | null>(null);
 
   const [modalTarget, setModalTarget] = useState<ModalTarget | null>(null);
   const [createRole, setCreateRole] = useState<ClientRole | null>(null);
@@ -99,21 +115,25 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
     if (!modalTarget) return;
     setActionError(null);
     try {
-      await replaceRepresentative(projectId, modalTarget.clientId, values);
+      const { client, link } = await replaceRepresentative(projectId, modalTarget.clientId, values);
       setModalTarget(null);
+      setLinkShare({
+        link,
+        recipient: clientRecipient(client),
+        notice: "Perwakilan diganti. Akses perwakilan lama sudah dicabut.",
+      });
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengganti wedding representative"));
     }
   }
 
-  async function handleResetSubmit(password: string) {
-    if (!modalTarget) return;
+  async function handleSendLink(client: Client) {
     setActionError(null);
     try {
-      await resetCredential(projectId, modalTarget.clientId, password);
-      setModalTarget(null);
+      const link = await issueAccessLink(projectId, client.id);
+      setLinkShare({ link, recipient: clientRecipient(client) });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mereset kredensial client"));
+      setActionError(getApiErrorMessage(err, "Gagal membuat link"));
     }
   }
 
@@ -121,8 +141,9 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
     if (!createRole) return;
     setActionError(null);
     try {
-      await createClient(projectId, createRole, values);
+      const { client, link } = await createClient(projectId, createRole, values);
       setCreateRole(null);
+      setLinkShare({ link, recipient: clientRecipient(client), notice: `${client.name} ditambahkan dengan nama pengguna ${client.username}.` });
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menambahkan client"));
     }
@@ -149,7 +170,15 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                 >
                   <span>Belum ada data {ROLE_LABEL[role]}.</span>
                   {canManage && (
-                    <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setCreateRole(role)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<Plus className="h-3.5 w-3.5" />}
+                      onClick={() => {
+                        setActionError(null);
+                        setCreateRole(role);
+                      }}
+                    >
                       Tambah {ROLE_LABEL[role]}
                     </Button>
                   )}
@@ -166,18 +195,15 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                     {client.relationNote && <p className="mt-1 text-[13px] text-text-secondary">{client.relationNote}</p>}
                     <p className="mt-1.5 text-sm font-semibold text-text-primary">{client.name}</p>
                     <p className="text-[13px] text-text-secondary">
-                      {client.phone} &middot; {client.email}
+                      {[client.phone, client.email].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <Badge tone={client.isActive ? "success" : "neutral"}>{client.isActive ? "Aktif" : "Nonaktif"}</Badge>
+                  <ClientLoginStatusBadge client={client} />
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-text-secondary">
-                  <span>
-                    {client.lastCredentialResetAt
-                      ? `Direset terakhir: ${formatDate(client.lastCredentialResetAt)}`
-                      : "Belum pernah direset"}
-                  </span>
+                  <span>Nama pengguna: {client.username}</span>
+                  {client.lastCredentialResetAt && <span>· Link atur ulang terakhir: {formatDate(client.lastCredentialResetAt)}</span>}
                 </div>
 
                 {canManage && (
@@ -190,14 +216,16 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                     >
                       Ubah Kontak
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      icon={<RefreshCw className="h-3.5 w-3.5" />}
-                      onClick={() => setModalTarget({ clientId: client.id, mode: "reset" })}
-                    >
-                      Reset Credential
-                    </Button>
+                    {client.isActive && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<Send className="h-3.5 w-3.5" />}
+                        onClick={() => void handleSendLink(client)}
+                      >
+                        {clientLinkActionLabel(client)}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant={client.isActive ? "danger" : "secondary"}
@@ -263,19 +291,23 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
         />
       )}
 
-      {activeTarget && modalTarget?.mode === "reset" && (
-        <ResetCredentialModal
-          key={activeTarget.id}
-          client={activeTarget}
-          onClose={() => setModalTarget(null)}
-          onSubmit={(password) => void handleResetSubmit(password)}
-        />
-      )}
+      <AccessLinkDialog
+        open={linkShare !== null}
+        onClose={() => setLinkShare(null)}
+        link={linkShare?.link ?? null}
+        recipient={linkShare?.recipient ?? { name: "" }}
+        woName={woName}
+        notice={linkShare?.notice}
+      />
 
       {createRole && (
         <CreateClientModal
           role={createRole}
-          onClose={() => setCreateRole(null)}
+          error={actionError}
+          onClose={() => {
+            setCreateRole(null);
+            setActionError(null);
+          }}
           onSubmit={(values) => void handleCreateSubmit(values)}
         />
       )}
@@ -329,10 +361,10 @@ function EditContactModal({
         <Field label="Nama" required hint={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} />
         </Field>
-        <Field label="No. Telepon" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} />
+        <Field label="Nomor WhatsApp" required error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" />
         </Field>
-        <Field label="Email" required hint={errors.email}>
+        <Field label="Email" error={errors.email} hint="Opsional">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
         <Field label="Username">
@@ -377,11 +409,11 @@ function ReplaceRepresentativeModal({
       open
       onClose={onClose}
       title="Ganti Wedding Representative"
-      description={`Data representative keluarga saat ini (${client.name}) akan digantikan oleh data baru. Kredensial login yang sudah ada tetap dipakai (gunakan Reset Credential terpisah bila perlu).`}
+      description={`${client.name} akan digantikan. Akses login ${client.name} langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Representative Baru</Button>
+          <Button onClick={handleSubmit}>Ganti dan buat undangan</Button>
         </>
       }
     >
@@ -396,10 +428,10 @@ function ReplaceRepresentativeModal({
             placeholder="cth. Ayah kandung mempelai wanita"
           />
         </Field>
-        <Field label="No. Telepon" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} />
+        <Field label="Nomor WhatsApp" required error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" />
         </Field>
-        <Field label="Email" required hint={errors.email}>
+        <Field label="Email" error={errors.email} hint="Opsional">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
         <Field label="Username">
@@ -410,56 +442,19 @@ function ReplaceRepresentativeModal({
   );
 }
 
-function ResetCredentialModal({
-  client,
-  onClose,
-  onSubmit,
-}: {
-  client: Client;
-  onClose: () => void;
-  onSubmit: (password: string) => void;
-}) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  function handleSubmit() {
-    if (password.length < 6) {
-      setError("Password minimal 6 karakter");
-      return;
-    }
-    onSubmit(password);
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Reset Credential"
-      description={`Atur password login baru untuk ${client.name}.`}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Reset Password</Button>
-        </>
-      }
-    >
-      <Field label="Password Baru" required hint={error ?? undefined}>
-        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimal 6 karakter" />
-      </Field>
-    </Modal>
-  );
-}
-
 function CreateClientModal({
   role,
+  error,
   onClose,
   onSubmit,
 }: {
   role: ClientRole;
+  /** Server refusal (e.g. trial limit), shown inside the form. */
+  error: string | null;
   onClose: () => void;
   onSubmit: (values: ClientCreateFormValues) => void;
 }) {
-  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", username: "", password: "" });
+  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", username: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof ClientCreateFormValues, string>>>({});
 
   function set<K extends keyof ClientCreateFormValues>(key: K, value: ClientCreateFormValues[K]) {
@@ -484,16 +479,21 @@ function CreateClientModal({
       open
       onClose={onClose}
       title={`Tambah ${ROLE_LABEL[role]}`}
-      description="Membuat data client baru sekaligus akun login untuk Client Portal."
+      description="Client menerima link undangan dan membuat kata sandinya sendiri untuk Client Portal."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Client</Button>
+          <Button onClick={handleSubmit}>Simpan dan buat undangan</Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label="Nama" required hint={errors.name}>
+        {error && (
+          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+            {error}
+          </p>
+        )}
+        <Field label="Nama" required error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap" />
         </Field>
         {role === "Family Representative" && (
@@ -505,17 +505,14 @@ function CreateClientModal({
             />
           </Field>
         )}
-        <Field label="No. Telepon" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} />
+        <Field label="Nomor WhatsApp" required error={errors.phone} hint="Link undangan dikirim ke nomor ini">
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0812 3456 7890" inputMode="tel" />
         </Field>
-        <Field label="Email" required hint={errors.email}>
+        <Field label="Email" error={errors.email} hint="Opsional. Client juga bisa masuk memakai email ini.">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
-        <Field label="Username" required hint={errors.username}>
-          <Input value={values.username} onChange={(e) => set("username", e.target.value)} placeholder="cth. budi.rahman" />
-        </Field>
-        <Field label="Password Login" required hint={errors.password}>
-          <Input type="password" value={values.password} onChange={(e) => set("password", e.target.value)} placeholder="Minimal 6 karakter" />
+        <Field label="Nama pengguna" error={errors.username} hint="Opsional. Kosongkan agar dibuat otomatis dari nama.">
+          <Input value={values.username} onChange={(e) => set("username", e.target.value.toLowerCase())} placeholder="cth. budi.rahman" />
         </Field>
       </div>
     </Modal>

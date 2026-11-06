@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { AccessLink } from "@/shared/lib/access-link";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { PlatformAdmin, SubscriptionTransaction, Tenant } from "@/modules/platform-admin/data/types";
@@ -12,14 +13,21 @@ import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawP
 
 export interface RegisterTenantResult {
   tenant: Tenant;
-  username: string;
-  password: string;
+  /** The Owner's invitation (accepted with Google). */
+  invitation: AccessLink;
+  /** Google account that must accept it. */
+  email: string;
 }
 
-export interface ResetTenantCredentialResult {
-  username: string;
-  /** The password the admin just typed — the API never echoes it back. */
-  password: string;
+interface OwnerInvitationRaw {
+  token: string;
+  expiresAt: string;
+  email: string;
+}
+
+export interface OwnerInviteResult {
+  link: AccessLink;
+  email: string;
 }
 
 /** Manual activation: reason and proof are mandatory (backend validates). */
@@ -144,7 +152,8 @@ interface PlatformAdminState {
   updateTenant: (id: string, values: TenantFormValues) => Promise<void>;
   uploadTenantLogo: (id: string, file: CompressedFilePayload) => Promise<void>;
   toggleTenantSuspension: (id: string) => Promise<void>;
-  resetTenantCredential: (id: string, password: string) => Promise<ResetTenantCredentialResult>;
+  /** New Owner invitation link (lost Google account, never accepted, …). */
+  reinviteTenantOwner: (id: string) => Promise<OwnerInviteResult>;
   activateTenantSubscription: (tenantId: string, input: ManualActivationInput) => Promise<void>;
   // Tenant Owner's own self-service "Bayar Sekarang" — scoped to their own
   // tenant server-side via the JWT claim, not a request parameter. Returns
@@ -227,9 +236,10 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
 
   registerTenant: async (values) => {
     const res = await httpClient.post(API.platform.tenants, values);
-    const { tenant, username } = res.data.data as { tenant: RawTenant; username: string };
-    await Promise.all([get().fetchTenants(), get().fetchTransactions()]);
-    return { tenant: toTenant(tenant), username, password: values.password };
+    const { tenant, invitation } = res.data.data as { tenant: RawTenant; invitation: OwnerInvitationRaw };
+    // The one-time link must reach the screen even if the list refresh fails.
+    await Promise.all([get().fetchTenants(), get().fetchTransactions()]).catch(() => undefined);
+    return { tenant: toTenant(tenant), invitation: { token: invitation.token, expiresAt: invitation.expiresAt, purpose: "staff_invite" }, email: invitation.email };
   },
 
   updateTenant: async (id, values) => {
@@ -247,11 +257,11 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
     await get().fetchTenants();
   },
 
-  resetTenantCredential: async (id, password) => {
-    const res = await httpClient.post(API.platform.tenantResetCredential(id), { password });
-    await get().fetchTenants();
-    const { username } = res.data.data as { username: string };
-    return { username, password };
+  reinviteTenantOwner: async (id) => {
+    const res = await httpClient.post(API.platform.tenantOwnerInvite(id));
+    await get().fetchTenants().catch(() => undefined);
+    const inv = res.data.data as OwnerInvitationRaw;
+    return { link: { token: inv.token, expiresAt: inv.expiresAt, purpose: "staff_invite" }, email: inv.email };
   },
 
   activateTenantSubscription: async (tenantId, input) => {

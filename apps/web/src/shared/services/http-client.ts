@@ -99,7 +99,8 @@ httpClient.interceptors.response.use(
       originalRequest?.url === API.auth.mfaVerify ||
       originalRequest?.url === API.auth.google ||
       originalRequest?.url === API.auth.googleLink ||
-      originalRequest?.url === API.public.signupWorkspace;
+      originalRequest?.url === API.public.signupWorkspace ||
+      Boolean(originalRequest?.url?.startsWith("/api/v1/auth/links/"));
 
     handleAccessError(accessErrorCode(error));
 

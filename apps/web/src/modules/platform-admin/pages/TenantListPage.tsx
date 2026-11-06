@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, KeyRound, Zap, UserX, UserCheck } from "lucide-react";
+import { Plus, Pencil, Send, Zap, UserX, UserCheck } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { Modal } from "@/shared/components/ui/Modal";
 import { Badge } from "@/shared/components/ui/Badge";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
@@ -13,13 +12,14 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
 import { TenantFormModal } from "@/modules/platform-admin/components/TenantFormModal";
-import { TenantResetPasswordModal } from "@/modules/platform-admin/components/TenantResetPasswordModal";
+import { AccessLinkDialog } from "@/shared/components/AccessLinkDialog";
+import type { AccessLink } from "@/shared/lib/access-link";
 import { ActivateSubscriptionModal } from "@/modules/platform-admin/components/ActivateSubscriptionModal";
 import { daysUntilExpiry, periodEndsAt } from "@/modules/platform-admin/data";
 import type { Tenant } from "@/modules/platform-admin/data";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
-import type { TenantCreateFormValues, TenantFormValues, ResetTenantPasswordFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
+import type { TenantCreateFormValues, TenantFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
 import type { ActivateSubscriptionFormValues } from "@/modules/platform-admin/schemas/activate-subscription.schema";
 import { TENANT_STATUS_FILTERS, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
@@ -28,9 +28,13 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 
-type CredentialReveal =
-  | { kind: "create"; tenant: Tenant; username: string; password: string }
-  | { kind: "reset"; tenant: Tenant; username: string; password: string };
+interface OwnerLinkShare {
+  tenant: Tenant;
+  link: AccessLink;
+  /** Google account that must accept the invitation. */
+  email: string;
+  notice: string;
+}
 
 export default function TenantListPage() {
   const tenants = usePlatformAdminStore((s) => s.tenantPage);
@@ -42,7 +46,7 @@ export default function TenantListPage() {
   const updateTenant = usePlatformAdminStore((s) => s.updateTenant);
   const uploadTenantLogo = usePlatformAdminStore((s) => s.uploadTenantLogo);
   const toggleTenantSuspension = usePlatformAdminStore((s) => s.toggleTenantSuspension);
-  const resetTenantCredential = usePlatformAdminStore((s) => s.resetTenantCredential);
+  const reinviteTenantOwner = usePlatformAdminStore((s) => s.reinviteTenantOwner);
   const activateTenantSubscription = usePlatformAdminStore((s) => s.activateTenantSubscription);
 
   const [query, setQuery] = useState("");
@@ -51,10 +55,9 @@ export default function TenantListPage() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | undefined>(undefined);
-  const [resetPasswordTenant, setResetPasswordTenant] = useState<Tenant | undefined>(undefined);
   const [activatingTenant, setActivatingTenant] = useState<Tenant | undefined>(undefined);
   const [isActivating, setIsActivating] = useState(false);
-  const [credentialReveal, setCredentialReveal] = useState<CredentialReveal | null>(null);
+  const [ownerLink, setOwnerLink] = useState<OwnerLinkShare | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activationError, setActivationError] = useState<string | null>(null);
   const [suspensionTarget, setSuspensionTarget] = useState<Tenant | undefined>(undefined);
@@ -102,7 +105,12 @@ export default function TenantListPage() {
       const result = await registerTenant(values);
       closeModal();
       await refetch();
-      setCredentialReveal({ kind: "create", tenant: result.tenant, username: result.username, password: result.password });
+      setOwnerLink({
+        tenant: result.tenant,
+        link: result.invitation,
+        email: result.email,
+        notice: `${result.tenant.businessName} didaftarkan dengan masa coba 14 hari.`,
+      });
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mendaftarkan tenant"));
     }
@@ -120,16 +128,19 @@ export default function TenantListPage() {
     }
   }
 
-  async function handleResetPasswordSubmit(values: ResetTenantPasswordFormValues) {
-    if (!resetPasswordTenant) return;
+  async function handleReinviteOwner(tenant: Tenant) {
     setActionError(null);
     try {
-      const result = await resetTenantCredential(resetPasswordTenant.id, values.password);
-      setCredentialReveal({ kind: "reset", tenant: resetPasswordTenant, username: result.username, password: result.password });
+      const { link, email } = await reinviteTenantOwner(tenant.id);
+      setOwnerLink({
+        tenant,
+        link,
+        email,
+        notice: "Link lama tidak berlaku lagi. Setelah link ini diterima, sesi Owner yang masih terbuka berakhir.",
+      });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mereset password tenant"));
+      setActionError(getApiErrorMessage(err, "Gagal membuat undangan Owner"));
     }
-    setResetPasswordTenant(undefined);
   }
 
   function openActivation(tenant: Tenant) {
@@ -258,10 +269,10 @@ export default function TenantListPage() {
                     <div className="flex items-center gap-1.5 pt-1">
                       <IconActionButton icon={Pencil} label="Ubah Tenant" tone="neutral" onClick={() => openEditModal(tenant)} />
                       <IconActionButton
-                        icon={KeyRound}
-                        label="Reset Password"
+                        icon={Send}
+                        label="Undang ulang Owner"
                         tone="info"
-                        onClick={() => setResetPasswordTenant(tenant)}
+                        onClick={() => void handleReinviteOwner(tenant)}
                       />
                       <IconActionButton
                         icon={Zap}
@@ -347,10 +358,10 @@ export default function TenantListPage() {
                         <div className="flex items-center gap-1.5">
                           <IconActionButton icon={Pencil} label="Ubah Tenant" tone="neutral" onClick={() => openEditModal(tenant)} />
                           <IconActionButton
-                            icon={KeyRound}
-                            label="Reset Password"
+                            icon={Send}
+                            label="Undang ulang Owner"
                             tone="info"
-                            onClick={() => setResetPasswordTenant(tenant)}
+                            onClick={() => void handleReinviteOwner(tenant)}
                           />
                           <IconActionButton
                             icon={Zap}
@@ -396,12 +407,17 @@ export default function TenantListPage() {
         onUploadLogo={uploadTenantLogo}
       />
 
-      <TenantResetPasswordModal
-        key={resetPasswordTenant?.id ?? "reset-none"}
-        open={resetPasswordTenant !== undefined}
-        onClose={() => setResetPasswordTenant(undefined)}
-        tenantName={resetPasswordTenant?.businessName}
-        onSubmit={handleResetPasswordSubmit}
+      <AccessLinkDialog
+        open={ownerLink !== null}
+        onClose={() => setOwnerLink(null)}
+        link={ownerLink?.link ?? null}
+        recipient={
+          ownerLink
+            ? { name: ownerLink.tenant.ownerName, phone: ownerLink.tenant.phone, email: ownerLink.email, roleLabel: "Owner" }
+            : { name: "" }
+        }
+        woName={ownerLink?.tenant.businessName ?? ""}
+        notice={ownerLink?.notice}
       />
 
       <ActivateSubscriptionModal
@@ -439,45 +455,6 @@ export default function TenantListPage() {
         )}
       </ConfirmDialog>
 
-      <Modal
-        open={credentialReveal !== null}
-        onClose={() => setCredentialReveal(null)}
-        title={credentialReveal?.kind === "create" ? "Tenant Berhasil Didaftarkan" : "Password Berhasil Direset"}
-        description={
-          credentialReveal
-            ? credentialReveal.kind === "create"
-              ? `${credentialReveal.tenant.businessName} kini dapat masuk ke WO Console dengan kredensial berikut.`
-              : `Kredensial login owner ${credentialReveal.tenant.businessName} telah diperbarui.`
-            : undefined
-        }
-        size="sm"
-        footer={<Button onClick={() => setCredentialReveal(null)}>Selesai</Button>}
-      >
-        {credentialReveal && (
-          <div className="flex flex-col gap-3 text-[13px]">
-            <div className="flex items-center gap-2 text-text-secondary">
-              <KeyRound className="h-3.5 w-3.5 shrink-0" />
-              Kredensial akun owner:
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
-              <span className="text-text-secondary">Username</span>
-              <span className="font-semibold text-text-primary">{credentialReveal.username}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
-              <span className="text-text-secondary">Password</span>
-              <span className="font-mono font-semibold text-text-primary">{credentialReveal.password}</span>
-            </div>
-            {credentialReveal.kind === "create" ? (
-              <p className="text-[12px] text-text-secondary">
-                Kredensial ini juga otomatis dikirim ke email owner. Owner dapat login dan memilih paket langganannya sendiri, atau tunggu
-                Anda mengaktifkan langganannya dari sini.
-              </p>
-            ) : (
-              <p className="text-[12px] text-text-secondary">Kredensial baru ini juga otomatis dikirim ke email owner.</p>
-            )}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

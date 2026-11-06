@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
@@ -21,17 +21,13 @@ import {
   type BrandColorPresetKey,
 } from "@/theme/brandPresets";
 
-interface FormState extends TenantFormValues {
-  username: string;
-  password: string;
-  confirmPassword: string;
-}
+type FormState = TenantFormValues;
 
 function toFormState(tenant?: Tenant): FormState {
   if (!tenant) {
     return {
       businessName: "", ownerName: "", email: "", phone: "", city: "",
-      brandColorPreset: "navy", customDomain: "", username: "", password: "", confirmPassword: "",
+      brandColorPreset: "navy", customDomain: "",
     };
   }
   return {
@@ -42,9 +38,6 @@ function toFormState(tenant?: Tenant): FormState {
     city: tenant.city,
     brandColorPreset: (tenant.brandColorPreset as BrandColorPresetKey) || "navy",
     customDomain: tenant.customDomain ?? "",
-    username: tenant.username,
-    password: "",
-    confirmPassword: "",
   };
 }
 
@@ -68,7 +61,6 @@ export function TenantFormModal({
   const isEditing = Boolean(initialTenant);
   const [values, setValues] = useState<FormState>(() => toFormState(initialTenant));
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
-  const [showPassword, setShowPassword] = useState(false);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -203,53 +195,12 @@ export function TenantFormModal({
         <Field label="Nama Owner" required hint={errors.ownerName}>
           <Input value={values.ownerName} onChange={(e) => set("ownerName", e.target.value)} placeholder="Nama owner WO" />
         </Field>
-        <Field label="Email Owner" required hint={errors.email}>
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="owner@contoh.id" />
+        <Field label="Email akun Google Owner" required hint={errors.email ?? (isEditing ? undefined : "Owner menerima link undangan dan masuk dengan akun Google ini")}>
+          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="owner@gmail.com" />
         </Field>
         <Field label="No. HP Owner" required hint={errors.phone}>
           <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" />
         </Field>
-        <Field label="Username" required={!isEditing} hint={errors.username}>
-          <Input
-            value={values.username}
-            disabled={isEditing}
-            onChange={(e) => set("username", e.target.value)}
-            placeholder="cth. budi.rahman"
-          />
-        </Field>
-
-        {!isEditing && (
-          <>
-            <Field label="Password Owner" required hint={errors.password}>
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={values.password}
-                  onChange={(e) => set("password", e.target.value)}
-                  placeholder="Minimal 8 karakter"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </Field>
-            <Field label="Konfirmasi Password" required hint={errors.confirmPassword}>
-              <Input
-                type={showPassword ? "text" : "password"}
-                value={values.confirmPassword}
-                onChange={(e) => set("confirmPassword", e.target.value)}
-                placeholder="Ulangi password"
-              />
-            </Field>
-          </>
-        )}
-
         {isEditing && (
           <>
             <Field label="Warna Brand" required hint={errors.brandColorPreset}>

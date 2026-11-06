@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { usernameSchema } from "@/shared/lib/validators";
 import { isBrandColorPresetKey, type BrandColorPresetKey } from "@/theme/brandPresets";
 
 const tenantBaseSchema = z.object({
@@ -35,27 +34,9 @@ export const tenantSchema = tenantBaseSchema.extend({
 
 export type TenantFormValues = z.infer<typeof tenantSchema>;
 
-export const tenantCreateSchema = tenantBaseSchema
-  .extend({
-    username: usernameSchema,
-    password: z.string().min(8, "Password minimal 8 karakter"),
-    confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    message: "Konfirmasi password tidak sama",
-    path: ["confirmPassword"],
-  });
+// Sales-assisted registration: no username or password — the Owner gets an
+// invitation link and signs in with the Google account of this email
+// (PLAN.md Fase 3, decision K5).
+export const tenantCreateSchema = tenantBaseSchema;
 
 export type TenantCreateFormValues = z.infer<typeof tenantCreateSchema>;
-
-export const resetTenantPasswordSchema = z
-  .object({
-    password: z.string().min(8, "Password minimal 8 karakter"),
-    confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    message: "Konfirmasi password tidak sama",
-    path: ["confirmPassword"],
-  });
-
-export type ResetTenantPasswordFormValues = z.infer<typeof resetTenantPasswordSchema>;

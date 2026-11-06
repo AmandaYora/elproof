@@ -60,14 +60,14 @@ export function ClientContactFormModal({
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Field label="Nama" required hint={errors.name}>
+          <Field label="Nama" required error={errors.name}>
             <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap" />
           </Field>
         </div>
-        <Field label="Nomor Telepon" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" />
+        <Field label="Nomor WhatsApp" required error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" inputMode="tel" />
         </Field>
-        <Field label="Email" required hint={errors.email}>
+        <Field label="Email" error={errors.email} hint="Opsional">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@email.com" />
         </Field>
         {username !== undefined && (

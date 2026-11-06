@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { StaffMember, StaffSummary } from "@/modules/users/types";
-import type { UserFormValues, UserCreateFormValues } from "@/modules/users/schemas/user.schema";
+import type { UserFormValues } from "@/modules/users/schemas/user.schema";
+import type { AccessLink } from "@/shared/lib/access-link";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 import { toAffectedProjects, type AffectedProject, type RawDeleteImpact } from "@/shared/types/delete-impact";
 
@@ -16,6 +17,7 @@ interface RawStaffMember {
   email: string;
   phone: string;
   isActive: boolean;
+  loginStatus?: StaffMember["loginStatus"];
 }
 
 function toStaffMember(raw: RawStaffMember): StaffMember {
@@ -34,8 +36,12 @@ function toStaffSummary(raw: RawStaffSummary): StaffSummary {
 
 export interface CreateStaffResult {
   staff: StaffMember;
-  username: string;
-  password: string;
+  invitation: AccessLink;
+}
+
+interface RawInvitation {
+  token: string;
+  expiresAt: string;
 }
 
 interface StaffState {
@@ -50,7 +56,10 @@ interface StaffState {
   // Owner-only now (Pengguna management, see staff_handler.go's
   // requireOwnerTenant).
   fetchStaffSummaries: () => Promise<void>;
-  createStaff: (values: UserCreateFormValues) => Promise<CreateStaffResult>;
+  /** Invites a member; returns the one-time invitation link to send. */
+  createStaff: (values: UserFormValues) => Promise<CreateStaffResult>;
+  /** New invitation link (not accepted yet, or lost Google account). */
+  reinviteStaff: (id: string) => Promise<AccessLink>;
   updateStaff: (id: string, values: UserFormValues) => Promise<void>;
   toggleStaffActive: (id: string) => Promise<void>;
   // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
@@ -91,9 +100,15 @@ export const useStaffStore = create<StaffState>((set, get) => ({
 
   createStaff: async (values) => {
     const res = await httpClient.post(API.staff.base, values);
-    const member = toStaffMember(res.data.data as RawStaffMember);
-    await get().fetchStaff();
-    return { staff: member, username: values.username, password: values.password };
+    const data = res.data.data as { staff: RawStaffMember; invitation: RawInvitation };
+    // The one-time link must reach the screen even if the list refresh fails.
+    await get().fetchStaff().catch(() => undefined);
+    return { staff: toStaffMember(data.staff), invitation: { ...data.invitation, purpose: "staff_invite" } };
+  },
+
+  reinviteStaff: async (id) => {
+    const res = await httpClient.post(API.staff.invite(id));
+    return { ...(res.data.data as RawInvitation), purpose: "staff_invite" };
   },
 
   updateStaff: async (id, values) => {
