@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"elproof/internal/modules/staff/domain"
 	"elproof/internal/shared/pagination"
@@ -140,4 +141,26 @@ func (r *MySQLStaffRepository) SetActive(ctx context.Context, tenantID, id int64
 func (r *MySQLStaffRepository) Delete(ctx context.Context, tenantID, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM staff_members WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
+}
+
+// CountActiveNonOwner counts active staff other than the Owner (trial cap).
+func (r *MySQLStaffRepository) CountActiveNonOwner(ctx context.Context, tenantID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM staff_members WHERE tenant_id = ? AND is_active = TRUE AND role <> 'Owner'`, tenantID).Scan(&n)
+	return n, err
+}
+
+// FindOwnerID returns the Owner's staff id (nil when the tenant has none).
+func (r *MySQLStaffRepository) FindOwnerID(ctx context.Context, tenantID int64) (*int64, error) {
+	var id int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id FROM staff_members WHERE tenant_id = ? AND role = 'Owner' ORDER BY id LIMIT 1`, tenantID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
 }

@@ -49,14 +49,25 @@ type Tenant struct {
 	TrialEndsAt *time.Time
 	// IsSuspended is a freeze by ElProof's platform team (abuse, fraud) —
 	// separate from the billing lifecycle and blocks every principal.
-	IsSuspended bool
+	IsSuspended           bool
 	LastCredentialResetAt *time.Time
 	BrandColorPreset      string
 	LogoStoragePath       *string
 	CustomDomain          *string
+	// SignupSource: self-service signup (Fase 2) or created by ElProof's team.
+	SignupSource SignupSource
+	// OnboardingDismissedAt: the Owner closed the "Mulai di sini" checklist.
+	OnboardingDismissedAt *time.Time
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }
+
+type SignupSource string
+
+const (
+	SignupSourcePlatform    SignupSource = "platform"
+	SignupSourceSelfService SignupSource = "self_service"
+)
 
 // ErrDuplicateCustomDomain signals a unique-key collision on custom_domain —
 // the repository returns this instead of a raw driver error so the

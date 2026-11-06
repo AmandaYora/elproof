@@ -34,6 +34,9 @@ type ProjectRepository interface {
 	// referencing it — see the infrastructure implementation's doc comment
 	// (ADR-0013) for the exact deletion order and why it matters.
 	DeleteCascade(ctx context.Context, tenantID, id int64) error
+	// CountActive counts projects that are not completed, cancelled or
+	// archived (trial cap, PLAN.md K6).
+	CountActive(ctx context.Context, tenantID int64) (int, error)
 }
 
 // ClientCleaner is the narrow shape ProjectService needs from `clients` to
@@ -107,6 +110,7 @@ type ProjectService struct {
 	clients            ClientCleaner
 	venues             VenueResolver
 	staff              StaffNameResolver
+	quota              TrialQuota
 }
 
 func NewProjectService(
@@ -291,6 +295,11 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actorStaffI
 	if callerRole == "Sales" {
 		picSalesStaffID = actorStaffID
 	}
+	if isActiveProject(input.Status, false) {
+		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
+	}
 	p := &domain.Project{
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
 		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
@@ -328,6 +337,11 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actorSt
 	}
 	if callerRole == "Sales" && input.PICSalesStaffID != p.PICSalesStaffID {
 		return nil, apperror.Forbidden("Sales tidak dapat memindahkan PIC Sales project ini")
+	}
+	if !isActiveProject(p.Status, p.IsArchived) && isActiveProject(input.Status, p.IsArchived) {
+		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
 	}
 	p.Name = input.Name
 	p.BrideName = input.BrideName
@@ -383,6 +397,11 @@ func (s *ProjectService) SetArchived(ctx context.Context, tenantID, id, actorSta
 	p, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
+	}
+	if !archived && p.IsArchived && isActiveProject(p.Status, false) {
+		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.repo.SetArchived(ctx, tenantID, id, archived); err != nil {
 		return nil, err
@@ -458,6 +477,11 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 	source, err := s.Get(ctx, tenantID, sourceID)
 	if err != nil {
 		return nil, err
+	}
+	if isActiveProject(input.Status, false) {
+		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
 	}
 
 	p := &domain.Project{

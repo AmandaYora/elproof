@@ -313,7 +313,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 			response.Error(w, status, appErr.Message, appErr.Fields)
 			return
 		}
-		response.Error(w, status, appErr.Message, nil)
+		response.Error(w, status, appErr.Message, appErr.Details())
 		return
 	}
 	logger.Error("unhandled error: %v", err)

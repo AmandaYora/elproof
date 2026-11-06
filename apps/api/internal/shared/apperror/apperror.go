@@ -25,6 +25,26 @@ type AppError struct {
 	Kind    Kind
 	Message string
 	Fields  map[string][]string // field -> validation messages, only set for KindValidation
+	// Code is an optional machine-readable reason (e.g.
+	// "trial_limit_reached") the frontend can react to without parsing
+	// the human message. Sent as errors.code.
+	Code string
+}
+
+// WithCode returns a copy of e carrying a machine-readable code.
+func (e *AppError) WithCode(code string) *AppError {
+	c := *e
+	c.Code = code
+	return &c
+}
+
+// Details is the `errors` payload for a non-validation error: {code} when
+// a code is set, otherwise nothing.
+func (e *AppError) Details() any {
+	if e.Code == "" {
+		return nil
+	}
+	return map[string]string{"code": e.Code}
 }
 
 func (e *AppError) Error() string {

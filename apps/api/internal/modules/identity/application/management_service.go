@@ -47,8 +47,11 @@ type CreateCredentialInput struct {
 	Username      string
 	Email         string
 	Password      string
-	Role          string
-	DisplayName   string
+	// GoogleSub creates a Google-only login (no password): Password must
+	// then be empty.
+	GoogleSub   string
+	Role        string
+	DisplayName string
 }
 
 func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCredentialInput) error {
@@ -75,9 +78,26 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		}
 	}
 
-	hash, err := s.hasher.Hash(input.Password)
-	if err != nil {
-		return apperror.Internal("Gagal memproses password")
+	var hash string
+	if input.GoogleSub != "" {
+		if input.Password != "" {
+			return apperror.Internal("Akun Google tidak memakai kata sandi")
+		}
+		linked, err := s.credentials.FindByGoogleSub(ctx, input.GoogleSub)
+		if err != nil {
+			return err
+		}
+		if linked != nil {
+			return apperror.Conflict("Akun Google ini sudah terhubung ke akun ElProof lain")
+		}
+	} else {
+		if input.Password == "" {
+			return apperror.Internal("Kata sandi wajib untuk akun tanpa Google")
+		}
+		hash, err = s.hasher.Hash(input.Password)
+		if err != nil {
+			return apperror.Internal("Gagal memproses password")
+		}
 	}
 
 	return s.credentials.Create(ctx, &domain.Credential{
@@ -86,6 +106,7 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		PrincipalID:   input.PrincipalID,
 		Username:      input.Username,
 		Email:         input.Email,
+		GoogleSub:     input.GoogleSub,
 		PasswordHash:  hash,
 		Role:          input.Role,
 		DisplayName:   input.DisplayName,
@@ -182,4 +203,47 @@ func (s *ManagementService) MFAEnabled(ctx context.Context, principalType domain
 		return false, err
 	}
 	return cred.TOTPEnabled, nil
+}
+
+// UsernameTaken reports whether a login already uses username.
+func (s *ManagementService) UsernameTaken(ctx context.Context, username string) (bool, error) {
+	return s.credentials.UsernameTaken(ctx, username)
+}
+
+// CredentialExists reports whether a principal already has a login.
+func (s *ManagementService) CredentialExists(ctx context.Context, principalType domain.PrincipalType, principalID string) (bool, error) {
+	cred, err := s.credentials.FindByPrincipal(ctx, principalType, principalID)
+	return cred != nil, err
+}
+
+// CheckGoogleSignup refuses a new workspace for a Google account that is
+// already linked to a login, or whose email belongs to a login linked to a
+// Google account (that person should sign in). An email used by a login
+// without Google does NOT block signup — a WO Owner could otherwise squat
+// anyone's address by adding it as staff; the new Owner login is then
+// created without the email (see EmailTaken).
+func (s *ManagementService) CheckGoogleSignup(ctx context.Context, sub, email string) error {
+	linked, err := s.credentials.FindByGoogleSub(ctx, sub)
+	if err != nil {
+		return err
+	}
+	if linked != nil {
+		return apperror.Conflict("Akun Google ini sudah terdaftar. Silakan masuk.").WithCode("google_account_exists")
+	}
+	byEmail, err := s.credentials.FindAllByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	for _, c := range byEmail {
+		if c.GoogleSub != "" {
+			return apperror.Conflict("Email " + email + " sudah terhubung ke akun ElProof lain. Silakan masuk.").WithCode("email_in_use")
+		}
+	}
+	return nil
+}
+
+// EmailTaken reports whether any login already uses email.
+func (s *ManagementService) EmailTaken(ctx context.Context, email string) (bool, error) {
+	byEmail, err := s.credentials.FindAllByEmail(ctx, email)
+	return len(byEmail) > 0, err
 }

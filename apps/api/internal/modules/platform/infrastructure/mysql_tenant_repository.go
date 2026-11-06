@@ -23,19 +23,20 @@ func NewMySQLTenantRepository(db *sql.DB) *MySQLTenantRepository {
 
 const tenantColumns = `id, business_name, owner_name, username, email, phone, city, joined_at, plan_id,
 	subscription_status, subscription_expires_at, trial_ends_at, is_suspended, last_credential_reset_at,
-	brand_color_preset, logo_storage_path, custom_domain, created_at, updated_at`
+	brand_color_preset, logo_storage_path, custom_domain, signup_source, onboarding_dismissed_at, created_at, updated_at`
 
 func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	var t domain.Tenant
 	var planID sql.NullInt64
 	var status string
-	var expiresAt, trialEndsAt, lastReset sql.NullTime
+	var expiresAt, trialEndsAt, lastReset, onboardingDismissed sql.NullTime
 	var logoStoragePath, customDomain sql.NullString
+	var signupSource string
 
 	err := scan(
 		&t.ID, &t.BusinessName, &t.OwnerName, &t.Username, &t.Email, &t.Phone, &t.City, &t.JoinedAt, &planID,
 		&status, &expiresAt, &trialEndsAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &customDomain,
-		&t.CreatedAt, &t.UpdatedAt,
+		&signupSource, &onboardingDismissed, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -62,6 +63,10 @@ func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	}
 	if customDomain.Valid {
 		t.CustomDomain = &customDomain.String
+	}
+	t.SignupSource = domain.SignupSource(signupSource)
+	if onboardingDismissed.Valid {
+		t.OnboardingDismissedAt = &onboardingDismissed.Time
 	}
 	return &t, nil
 }
@@ -144,10 +149,11 @@ func (r *MySQLTenantRepository) FindByDomain(ctx context.Context, host string) (
 
 func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenant) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at, brand_color_preset, signup_source)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tenant.BusinessName, tenant.OwnerName, tenant.Username, tenant.Email, tenant.Phone, tenant.City,
 		tenant.JoinedAt, tenant.PlanID, string(tenant.SubscriptionStatus), tenant.TrialEndsAt,
+		brandPresetOrDefault(tenant.BrandColorPreset), signupSourceOrDefault(tenant.SignupSource),
 	)
 	if err != nil {
 		return err
@@ -200,5 +206,77 @@ func (r *MySQLTenantRepository) UpdateSubscription(ctx context.Context, id int64
 		`UPDATE tenants SET plan_id = ?, subscription_status = ?, subscription_expires_at = ? WHERE id = ?`,
 		planID, string(status), expiresAt, id,
 	)
+	return err
+}
+
+func brandPresetOrDefault(p string) string {
+	if p == "" {
+		return domain.DefaultBrandColorPreset
+	}
+	return p
+}
+
+func signupSourceOrDefault(s domain.SignupSource) string {
+	if s == "" {
+		return string(domain.SignupSourcePlatform)
+	}
+	return string(s)
+}
+
+// CreateForSignup inserts a self-service tenant and records it on its signup
+// row in one transaction, so a crash can never leave a tenant no signup
+// owns. ok=false (nothing written) when the signup already has a tenant.
+func (r *MySQLTenantRepository) CreateForSignup(ctx context.Context, tenant *domain.Tenant, signupID int64) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at, brand_color_preset, signup_source)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tenant.BusinessName, tenant.OwnerName, tenant.Username, tenant.Email, tenant.Phone, tenant.City,
+		tenant.JoinedAt, tenant.PlanID, string(tenant.SubscriptionStatus), tenant.TrialEndsAt,
+		brandPresetOrDefault(tenant.BrandColorPreset), signupSourceOrDefault(tenant.SignupSource),
+	)
+	if err != nil {
+		return false, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return false, err
+	}
+	upd, err := tx.ExecContext(ctx,
+		`UPDATE signup_requests SET tenant_id = ? WHERE id = ? AND tenant_id IS NULL`, id, signupID)
+	if err != nil {
+		return false, err
+	}
+	if n, err := upd.RowsAffected(); err != nil || n != 1 {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	tenant.ID = id
+	return true, nil
+}
+
+// UpdateUsername replaces the Owner username recorded on a tenant.
+func (r *MySQLTenantRepository) UpdateUsername(ctx context.Context, id int64, username string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET username = ? WHERE id = ?`, username, id)
+	return err
+}
+
+// UpdateProfile is the WO Owner's own edit (Lengkapi Profil): business
+// name, WhatsApp number and city only.
+func (r *MySQLTenantRepository) UpdateProfile(ctx context.Context, id int64, businessName, phone, city string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tenants SET business_name = ?, phone = ?, city = ? WHERE id = ?`, businessName, phone, city, id)
+	return err
+}
+
+// SetOnboardingDismissed records that the Owner closed the checklist.
+func (r *MySQLTenantRepository) SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET onboarding_dismissed_at = ? WHERE id = ?`, when, id)
 	return err
 }

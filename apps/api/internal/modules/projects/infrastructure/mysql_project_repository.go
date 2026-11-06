@@ -476,3 +476,13 @@ func (r *MySQLMilestoneRepository) Reorder(ctx context.Context, projectID int64,
 	}
 	return tx.Commit()
 }
+
+// CountActive counts projects still in progress: not completed, cancelled or
+// archived (trial cap, PLAN.md decision K6).
+func (r *MySQLProjectRepository) CountActive(ctx context.Context, tenantID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = FALSE AND status NOT IN ('Completed', 'Cancelled')`,
+		tenantID).Scan(&n)
+	return n, err
+}

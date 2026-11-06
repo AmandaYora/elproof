@@ -39,6 +39,11 @@ type Contracts interface {
 	// degrades to "no name available" rather than breaking the whole
 	// response it's embedded in.
 	GetSummary(ctx context.Context, tenantID, staffID int64) (*Summary, error)
+	// FindOwner returns the tenant's Owner staff id ("" when none yet) —
+	// lets workspace provisioning resume without creating a second Owner.
+	FindOwner(ctx context.Context, tenantID int64) (string, error)
+	// CountActiveStaff counts active staff other than the Owner.
+	CountActiveStaff(ctx context.Context, tenantID int64) (int, error)
 }
 
 type impl struct {
@@ -66,4 +71,16 @@ func (c *impl) GetSummary(ctx context.Context, tenantID, staffID int64) (*Summar
 		return nil, err
 	}
 	return &Summary{ID: member.ID, Name: member.Name}, nil
+}
+
+func (c *impl) FindOwner(ctx context.Context, tenantID int64) (string, error) {
+	id, err := c.service.FindOwner(ctx, tenantID)
+	if err != nil || id == nil {
+		return "", err
+	}
+	return strconv.FormatInt(*id, 10), nil
+}
+
+func (c *impl) CountActiveStaff(ctx context.Context, tenantID int64) (int, error) {
+	return c.service.CountActiveNonOwner(ctx, tenantID)
 }

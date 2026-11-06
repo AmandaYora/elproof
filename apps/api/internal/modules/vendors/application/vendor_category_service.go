@@ -106,11 +106,23 @@ var defaultCategoryTemplate = []struct {
 	{"Percetakan", "Undangan, souvenir, dan kebutuhan cetak lainnya"},
 }
 
-// SeedDefaultCategories is called once, from `platform`'s tenant registration
-// flow (via vendors/contracts), to give a newly registered tenant a starting
-// set of vendor categories instead of an empty list.
+// SeedDefaultCategories is called from `platform`'s tenant registration
+// flow (via vendors/contracts) to give a newly registered tenant a starting
+// set of vendor categories instead of an empty list. It is idempotent: a
+// retried workspace setup only adds the categories still missing.
 func (s *VendorCategoryService) SeedDefaultCategories(ctx context.Context, tenantID int64) error {
+	existing, err := s.repo.List(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	have := make(map[string]bool, len(existing))
+	for _, c := range existing {
+		have[c.Name] = true
+	}
 	for _, tmpl := range defaultCategoryTemplate {
+		if have[tmpl.Name] {
+			continue
+		}
 		category := &domain.VendorCategory{TenantID: tenantID, Name: tmpl.Name, Description: tmpl.Description, IsActive: true}
 		if err := s.repo.Create(ctx, category); err != nil {
 			return err

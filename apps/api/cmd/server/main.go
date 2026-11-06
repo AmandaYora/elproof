@@ -6,6 +6,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -178,8 +179,28 @@ func serve(cfg config.Config) {
 		response.OK(w, "ok", nil)
 	})
 
-	identityModule := identity.NewModule(db, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
+	googleJWKS := ""
+	if cfg.GoogleJWKSURL != "" {
+		// Only end-to-end tests point this elsewhere (a local fake Google);
+		// a non-local URL is refused so a misconfigured server can never
+		// trust someone else's signing keys.
+		if cfg.AppEnv == "production" || !isLocalURL(cfg.GoogleJWKSURL) {
+			log.Fatalf("GOOGLE_JWKS_URL is only for local tests; remove it from this environment")
+		}
+		googleJWKS = cfg.GoogleJWKSURL
+	}
+	identityModule := identity.NewModule(db, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL,
+		identity.GoogleConfig{ClientID: cfg.GoogleClientID, JWKSURL: googleJWKS})
 	identityModule.RegisterRoutes(mux)
+
+	// Public, non-secret settings the web app needs before sign-in.
+	mux.HandleFunc("/api/v1/public/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			response.Error(w, http.StatusMethodNotAllowed, "Metode tidak diizinkan", nil)
+			return
+		}
+		response.OK(w, "ok", map[string]string{"googleClientId": cfg.GoogleClientID})
+	})
 
 	// Every authenticated route: verify the JWT, hold `client` principals to
 	// the Client Portal's own allowlist (client_scope.go), then enforce the
@@ -273,6 +294,13 @@ func serve(cfg config.Config) {
 	// clientsModule.Contracts() satisfies both ClientAccessResolver and
 	// ClientCleaner, so this is the same object as the call above.
 	projectsModule.SetClientCleaner(clientsModule.Contracts())
+	// Free-trial caps (PLAN.md decision K6): staff, projects and clients each
+	// count their own rows; platform says whether the tenant is on trial
+	// and what the cap is. The onboarding checklist reads client usage.
+	staffModule.SetTrialQuota(platformModule)
+	projectsModule.SetTrialQuota(platformModule)
+	clientsModule.SetTrialQuota(platformModule)
+	platformModule.SetClients(clientsModule.Contracts())
 	// Same bridging pattern: payment can't import platform (or any other App
 	// internal) to know its webhook consumer, so main.go registers it here,
 	// after both modules are built — see payment.module.go's Dispatcher doc.
@@ -407,4 +435,17 @@ func injectTenantSiteMeta(raw []byte, meta platform.SiteMeta, host string) []byt
 		page = strings.Replace(page, headCloseTag, imageTag+"\n  "+headCloseTag, 1)
 	}
 	return []byte(page)
+}
+
+// isLocalURL reports whether raw points at this machine (loopback only).
+func isLocalURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }

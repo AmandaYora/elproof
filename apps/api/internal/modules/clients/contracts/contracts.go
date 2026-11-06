@@ -13,6 +13,8 @@ import (
 )
 
 type Contracts interface {
+	// CountActiveClients counts active client accounts (onboarding/trial usage).
+	CountActiveClients(ctx context.Context, tenantID int64) (int, error)
 	// ProjectIDForClient resolves the one project a client principal may
 	// read. Returns a NotFound apperror if the client row doesn't exist
 	// (or belongs to a different tenant) — callers should treat any error
@@ -45,4 +47,8 @@ func (c *impl) ProjectIDForClient(ctx context.Context, tenantID, clientID int64)
 
 func (c *impl) DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error {
 	return c.clients.DeleteAllForProject(ctx, tenantID, projectID)
+}
+
+func (c *impl) CountActiveClients(ctx context.Context, tenantID int64) (int, error) {
+	return c.clients.CountActive(ctx, tenantID)
 }

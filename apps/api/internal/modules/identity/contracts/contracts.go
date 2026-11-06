@@ -28,8 +28,18 @@ type CreateCredentialInput struct {
 	Username      string
 	Email         string
 	Password      string
-	Role          string
-	DisplayName   string
+	// GoogleSub creates a Google-only login (Password must be empty).
+	GoogleSub   string
+	Role        string
+	DisplayName string
+}
+
+// GoogleIdentity is a Google account proven by a verified ID token.
+type GoogleIdentity struct {
+	Sub       string
+	Email     string
+	Name      string
+	ExpiresAt time.Time
 }
 
 // Contracts is what other modules depend on to provision/rotate/deactivate a
@@ -55,6 +65,18 @@ type Contracts interface {
 	ResetMFA(ctx context.Context, principalType PrincipalType, principalID string) error
 	// MFAEnabled reports whether a principal has confirmed two-factor.
 	MFAEnabled(ctx context.Context, principalType PrincipalType, principalID string) (bool, error)
+
+	// Sign in with Google / self-service signup (PLAN.md Fase 2).
+	// VerifyGoogleIDToken validates a Google ID token without signing in.
+	VerifyGoogleIDToken(ctx context.Context, idToken string) (GoogleIdentity, error)
+	// CheckGoogleSignup errors when this Google account (or a Google-linked
+	// login with its email) already exists (codes google_account_exists,
+	// email_in_use).
+	CheckGoogleSignup(ctx context.Context, sub, email string) error
+	// EmailTaken reports whether any login uses this email.
+	EmailTaken(ctx context.Context, email string) (bool, error)
+	UsernameTaken(ctx context.Context, username string) (bool, error)
+	CredentialExists(ctx context.Context, principalType PrincipalType, principalID string) (bool, error)
 }
 
 type impl struct {
@@ -77,6 +99,7 @@ func (c *impl) CreateCredential(ctx context.Context, input CreateCredentialInput
 		Username:      input.Username,
 		Email:         input.Email,
 		Password:      input.Password,
+		GoogleSub:     input.GoogleSub,
 		Role:          input.Role,
 		DisplayName:   input.DisplayName,
 	})
@@ -111,4 +134,31 @@ func (c *impl) IssueServiceToken(ctx context.Context, principalType string, prin
 		return "", errors.New("identity: instance Contracts ini dibuat tanpa AuthService, tidak bisa menerbitkan token")
 	}
 	return c.auth.IssueServiceToken(ctx, principalType, principalID, ttl)
+}
+
+func (c *impl) VerifyGoogleIDToken(ctx context.Context, idToken string) (GoogleIdentity, error) {
+	if c.auth == nil {
+		return GoogleIdentity{}, errors.New("identity: instance Contracts ini dibuat tanpa AuthService")
+	}
+	id, err := c.auth.VerifyGoogle(ctx, idToken)
+	if err != nil {
+		return GoogleIdentity{}, err
+	}
+	return GoogleIdentity{Sub: id.Sub, Email: id.Email, Name: id.Name, ExpiresAt: id.ExpiresAt}, nil
+}
+
+func (c *impl) CheckGoogleSignup(ctx context.Context, sub, email string) error {
+	return c.management.CheckGoogleSignup(ctx, sub, email)
+}
+
+func (c *impl) UsernameTaken(ctx context.Context, username string) (bool, error) {
+	return c.management.UsernameTaken(ctx, username)
+}
+
+func (c *impl) CredentialExists(ctx context.Context, principalType PrincipalType, principalID string) (bool, error) {
+	return c.management.CredentialExists(ctx, domain.PrincipalType(principalType), principalID)
+}
+
+func (c *impl) EmailTaken(ctx context.Context, email string) (bool, error) {
+	return c.management.EmailTaken(ctx, email)
 }

@@ -163,7 +163,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 			response.Error(w, status, appErr.Message, appErr.Fields)
 			return
 		}
-		response.Error(w, status, appErr.Message, nil)
+		response.Error(w, status, appErr.Message, appErr.Details())
 		return
 	}
 	response.Error(w, status, "Terjadi kesalahan pada server", nil)
@@ -238,4 +238,85 @@ func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.OK(w, "Verifikasi dua langkah aktif", toSessionResponse(session))
+}
+
+type googleLoginRequest struct {
+	Credential string `json:"credential"`
+}
+
+// googleSignupResponse is returned instead of a session when the Google
+// account has no ElProof login yet: the frontend continues to the
+// workspace form (POST /public/signup/workspace) with the same credential.
+type googleSignupResponse struct {
+	SignupRequired bool   `json:"signupRequired,omitempty"`
+	LinkRequired   bool   `json:"linkRequired,omitempty"`
+	Email          string `json:"email"`
+	Name           string `json:"name"`
+}
+
+// maxGoogleCredentialLen bounds the ID token (a few KB in practice).
+const maxGoogleCredentialLen = 8 << 10
+
+// LoginGoogle is POST /auth/google (public): Sign in with Google for WO
+// Owners and staff.
+func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
+	var req googleLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Credential == "" || len(req.Credential) > maxGoogleCredentialLen {
+		response.Error(w, http.StatusBadRequest, "Data login Google tidak valid", nil)
+		return
+	}
+	if !h.loginIP.Allow(middleware.ClientIP(r)) {
+		h.tooManyAttempts(w, h.loginIP)
+		return
+	}
+	result, err := h.auth.LoginWithGoogle(r.Context(), req.Credential)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if result.LinkRequired {
+		response.OK(w, "Konfirmasi kata sandi untuk menghubungkan akun Google", googleSignupResponse{
+			LinkRequired: true, Email: result.Identity.Email, Name: result.Identity.Name,
+		})
+		return
+	}
+	if result.SignupRequired {
+		response.OK(w, "Akun Google ini belum terdaftar", googleSignupResponse{
+			SignupRequired: true, Email: result.Identity.Email, Name: result.Identity.Name,
+		})
+		return
+	}
+	response.OK(w, "Login berhasil", toSessionResponse(result.Session))
+}
+
+type googleLinkRequest struct {
+	Credential string `json:"credential"`
+	Password   string `json:"password"`
+}
+
+// LinkGoogle is POST /auth/google/link (public): connect a Google account to
+// the existing staff login with the same email by confirming that login's
+// ElProof password once.
+func (h *Handler) LinkGoogle(w http.ResponseWriter, r *http.Request) {
+	limitBody(w, r)
+	var req googleLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Credential == "" || len(req.Credential) > maxGoogleCredentialLen {
+		response.Error(w, http.StatusBadRequest, "Data login Google tidak valid", nil)
+		return
+	}
+	if req.Password == "" || len(req.Password) > maxPasswordLen {
+		response.Error(w, http.StatusUnprocessableEntity, "Kata sandi wajib diisi", map[string][]string{"password": {"Kata sandi wajib diisi"}})
+		return
+	}
+	if !h.loginIP.Allow(middleware.ClientIP(r)) {
+		h.tooManyAttempts(w, h.loginIP)
+		return
+	}
+	session, err := h.auth.LinkGoogleWithPassword(r.Context(), req.Credential, req.Password)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Akun Google terhubung", toSessionResponse(session))
 }

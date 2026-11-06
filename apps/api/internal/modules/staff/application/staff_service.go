@@ -23,6 +23,8 @@ type StaffRepository interface {
 	Update(ctx context.Context, member *domain.StaffMember) error
 	SetActive(ctx context.Context, tenantID, id int64, isActive bool) error
 	Delete(ctx context.Context, tenantID, id int64) error
+	CountActiveNonOwner(ctx context.Context, tenantID int64) (int, error)
+	FindOwnerID(ctx context.Context, tenantID int64) (*int64, error)
 }
 
 // ProjectReferenceLookup is the narrow shape StaffService needs from
@@ -40,6 +42,7 @@ type StaffService struct {
 	repo     StaffRepository
 	identity identitycontracts.Contracts
 	projects ProjectReferenceLookup
+	quota    TrialQuota
 }
 
 func NewStaffService(repo StaffRepository, identity identitycontracts.Contracts) *StaffService {
@@ -123,6 +126,9 @@ func (s *StaffService) Create(ctx context.Context, tenantID int64, input StaffIn
 	if err := validator.Username(input.Username); err != nil {
 		return nil, err
 	}
+	if err := s.checkStaffQuota(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	member := &domain.StaffMember{
 		TenantID: tenantID, Name: input.Name, Title: input.Title, Initials: computeInitials(input.Name),
 		Role: input.Role, Username: input.Username, Email: input.Email, Phone: input.Phone, IsActive: true,
@@ -199,6 +205,11 @@ func (s *StaffService) SetActive(ctx context.Context, tenantID, id int64, isActi
 	}
 	if member.Role == domain.RoleOwner {
 		return nil, apperror.Forbidden("Akun Owner tidak dapat dinonaktifkan dari sini")
+	}
+	if isActive && !member.IsActive {
+		if err := s.checkStaffQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.repo.SetActive(ctx, tenantID, id, isActive); err != nil {
 		return nil, err

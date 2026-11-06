@@ -159,3 +159,10 @@ func (r *MySQLClientRepository) Delete(ctx context.Context, tenantID, id int64) 
 	_, err := r.db.ExecContext(ctx, `DELETE FROM clients WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }
+
+// CountActive counts active client accounts (trial cap, PLAN.md K6).
+func (r *MySQLClientRepository) CountActive(ctx context.Context, tenantID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND is_active = TRUE`, tenantID).Scan(&n)
+	return n, err
+}

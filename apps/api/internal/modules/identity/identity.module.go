@@ -33,7 +33,14 @@ func (m *Module) SetTenantGuard(guard application.TenantGuard) {
 	m.auth.SetTenantGuard(guard)
 }
 
-func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration) *Module {
+// GoogleConfig configures Sign in with Google. ClientID is the OAuth web
+// client ID (public); JWKSURL is Google's key set (overridable for tests).
+type GoogleConfig struct {
+	ClientID string
+	JWKSURL  string
+}
+
+func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration, google GoogleConfig) *Module {
 	credentialRepo := infrastructure.NewMySQLCredentialRepository(db)
 	refreshTokenRepo := infrastructure.NewMySQLRefreshTokenRepository(db)
 	issuer := infrastructure.NewJWTIssuer(jwtSecret)
@@ -45,6 +52,11 @@ func NewModule(db *sql.DB, jwtSecret string, accessTTL, refreshTTL time.Duration
 		panic("identity: cannot initialise TOTP: " + err.Error())
 	}
 	authService.SetMFAEngine(totp)
+	jwksURL := google.JWKSURL
+	if jwksURL == "" {
+		jwksURL = infrastructure.GoogleJWKSURL
+	}
+	authService.SetGoogleVerifier(infrastructure.NewGoogleVerifier(google.ClientID, jwksURL))
 	managementService := application.NewManagementService(credentialRepo, refreshTokenRepo, hasher)
 	sessions := application.NewSessionChecker(credentialRepo)
 	managementService.SetSessionChecker(sessions)
@@ -70,6 +82,8 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/refresh", httpx.Method(http.MethodPost, m.handler.Refresh))
 	mux.HandleFunc("/api/v1/auth/logout", httpx.Method(http.MethodPost, m.handler.Logout))
 	mux.HandleFunc("/api/v1/auth/mfa/verify", httpx.Method(http.MethodPost, m.handler.VerifyMFA))
+	mux.HandleFunc("/api/v1/auth/google", httpx.Method(http.MethodPost, m.handler.LoginGoogle))
+	mux.HandleFunc("/api/v1/auth/google/link", httpx.Method(http.MethodPost, m.handler.LinkGoogle))
 }
 
 // RegisterAuthedRoutes registers endpoints that need a signed-in principal.

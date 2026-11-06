@@ -11,6 +11,7 @@ import (
 	"time"
 
 	billingcontracts "elproof/internal/modules/billing/contracts"
+	clientscontracts "elproof/internal/modules/clients/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform/application"
@@ -27,6 +28,7 @@ type Module struct {
 	tenantHandler      *presentation.TenantHandler
 	adminHandler       *presentation.PlatformAdminHandler
 	loginSlidesHandler *presentation.LoginSlidesHandler
+	signupHandler      *presentation.SignupHandler
 	tenantService      *application.TenantService
 }
 
@@ -46,12 +48,15 @@ func NewModule(
 		tenantRepo, pendingChargeRepo, staff, identity, billing, payment, storageClient, storage.BuildKey,
 	)
 	tenantService.SetManualActivations(infrastructure.NewMySQLManualActivationRepository(db))
+	tenantService.SetSignups(infrastructure.NewMySQLSignupRepository(db))
+	tenantService.SetTrialLimits(infrastructure.NewMySQLTrialLimitsRepository(db))
 	adminService := application.NewPlatformAdminService(adminRepo, identity)
 
 	return &Module{
 		tenantHandler:      presentation.NewTenantHandler(tenantService),
 		adminHandler:       presentation.NewPlatformAdminHandler(adminService),
 		loginSlidesHandler: presentation.NewLoginSlidesHandler(storageClient),
+		signupHandler:      presentation.NewSignupHandler(tenantService),
 		tenantService:      tenantService,
 	}
 }
@@ -68,6 +73,19 @@ func (m *Module) SetVendors(vendors vendorscontracts.Contracts) {
 // is built.
 func (m *Module) SetProjects(projects projectscontracts.Contracts) {
 	m.tenantService.SetProjects(projects)
+}
+
+// SetClients completes two-phase wiring with the clients module (client
+// usage on the onboarding checklist).
+func (m *Module) SetClients(clients clientscontracts.Contracts) {
+	m.tenantService.SetClients(clients)
+}
+
+// TrialLimit implements the TrialQuota port that staff, projects and
+// clients declare (wired in cmd/server): the cap for one resource while the
+// tenant is on its free trial.
+func (m *Module) TrialLimit(ctx context.Context, tenantID int64, resource string) (int, bool, error) {
+	return m.tenantService.TrialLimit(ctx, tenantID, resource)
 }
 
 // ApplyWebhookEvent makes *Module itself satisfy
@@ -136,6 +154,9 @@ func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/public/logo", httpx.Method(http.MethodGet, m.tenantHandler.PublicLogo))
 	mux.Handle("/api/v1/public/login-slides", httpx.Method(http.MethodGet, m.loginSlidesHandler.List))
 	mux.Handle("/api/v1/public/login-slides/", httpx.Method(http.MethodGet, m.loginSlidesHandler.Slide))
+	// Self-service WO registration (PLAN.md §3): Google credential + the
+	// one-screen workspace form.
+	mux.Handle("/api/v1/public/signup/workspace", httpx.Method(http.MethodPost, m.signupHandler.CreateWorkspace))
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
@@ -144,6 +165,7 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/subscriptions/pay", authed(httpx.Method(http.MethodPost, m.tenantHandler.Pay)))
 	mux.Handle("/api/v1/subscriptions/pending-charge", authed(httpx.Method(http.MethodGet, m.tenantHandler.PendingCharge)))
 	mux.Handle("/api/v1/subscriptions/pending-charge/cancel", authed(httpx.Method(http.MethodPost, m.tenantHandler.CancelPendingCharge)))
+	mux.Handle("/api/v1/trial-limits", authed(http.HandlerFunc(m.tenantHandler.TrialLimits)))
 	mux.Handle("/api/v1/platform-admins", authed(http.HandlerFunc(m.adminHandler.Collection)))
 	mux.Handle("/api/v1/platform-admins/", authed(http.HandlerFunc(m.adminHandler.Item)))
 }

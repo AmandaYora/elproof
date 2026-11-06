@@ -33,6 +33,9 @@ type ProjectRef struct {
 
 type Contracts interface {
 	ProjectExists(ctx context.Context, tenantID, projectID int64) (bool, error)
+	// CountActiveProjects counts projects not completed, cancelled or
+	// archived (onboarding checklist / trial usage).
+	CountActiveProjects(ctx context.Context, tenantID int64) (int, error)
 	// ProjectPICStaffID resolves a project's current PIC — used by `clients`
 	// to scope a Wedding Planner's client-read access to only projects
 	// they're PIC of (see PLAN.md's RBAC section).
@@ -150,4 +153,8 @@ func (c *impl) ListAffectedProjectsForStaff(ctx context.Context, tenantID, staff
 
 func (c *impl) SeedDefaultMilestoneTemplate(ctx context.Context, tenantID int64) error {
 	return c.milestoneTemplates.SeedDefaults(ctx, tenantID)
+}
+
+func (c *impl) CountActiveProjects(ctx context.Context, tenantID int64) (int, error) {
+	return c.projects.CountActive(ctx, tenantID)
 }

@@ -19,6 +19,10 @@ type CredentialRepository interface {
 	// why this returns every match instead of one.
 	FindAllByEmail(ctx context.Context, email string) ([]*domain.Credential, error)
 	FindByID(ctx context.Context, id int64) (*domain.Credential, error)
+	// Sign in with Google (google.go).
+	FindByGoogleSub(ctx context.Context, sub string) (*domain.Credential, error)
+	LinkGoogle(ctx context.Context, credentialID int64, sub string) (bool, error)
+	UsernameTaken(ctx context.Context, username string) (bool, error)
 	FindByPrincipal(ctx context.Context, principalType domain.PrincipalType, principalID string) (*domain.Credential, error)
 	Create(ctx context.Context, cred *domain.Credential) error
 	UpdatePasswordHash(ctx context.Context, principalType domain.PrincipalType, principalID string, passwordHash string) error
@@ -86,6 +90,7 @@ type AuthService struct {
 	refreshTTL    time.Duration
 	tenantGuard   TenantGuard
 	mfa           MFAEngine
+	google        GoogleVerifier
 	challenges    *mfaChallenges
 	sessions      *SessionChecker
 	// Failed attempts are counted per credential (not per typed string,
@@ -110,6 +115,10 @@ func tooManyAttempts() error {
 // checkPassword tries one candidate, honouring and updating its failure
 // budget. ok=false with err=nil means "wrong password".
 func (s *AuthService) checkPassword(cred *domain.Credential, password string) (bool, error) {
+	if cred.PasswordHash == "" {
+		// Google-only account: it has no password, so none can match.
+		return false, nil
+	}
 	key := credentialKey(cred.ID)
 	if s.passwordFailures.Exceeded(key) {
 		return false, tooManyAttempts()

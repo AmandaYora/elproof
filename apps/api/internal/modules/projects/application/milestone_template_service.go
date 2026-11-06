@@ -132,8 +132,21 @@ var defaultMilestoneTemplateSeed = []struct {
 // SeedDefaults is called once, from `platform`'s tenant registration flow
 // (via projects/contracts), to give a newly registered tenant a starting
 // Timeline Default template instead of an empty one.
+//
+// Idempotent: a retried workspace setup only adds the steps still missing.
 func (s *MilestoneTemplateService) SeedDefaults(ctx context.Context, tenantID int64) error {
+	existing, err := s.repo.List(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	have := make(map[string]bool, len(existing))
+	for _, t := range existing {
+		have[t.Name] = true
+	}
 	for i, tmpl := range defaultMilestoneTemplateSeed {
+		if have[tmpl.Name] {
+			continue
+		}
 		t := &domain.ProjectMilestoneTemplate{TenantID: tenantID, SortOrder: i + 1, Name: tmpl.Name, DaysBeforeEvent: tmpl.DaysBeforeEvent}
 		if err := s.repo.Create(ctx, t); err != nil {
 			return err

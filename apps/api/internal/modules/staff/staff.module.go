@@ -43,6 +43,11 @@ func (m *Module) SetProjectReferenceLookup(lookup application.ProjectReferenceLo
 	m.service.SetProjectReferenceLookup(lookup)
 }
 
+// SetTrialQuota plugs in the platform module's trial caps (main.go).
+func (m *Module) SetTrialQuota(q application.TrialQuota) {
+	m.service.SetTrialQuota(q)
+}
+
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/staff", authed(http.HandlerFunc(m.handler.Collection)))
 	mux.Handle("/api/v1/staff/summary", authed(http.HandlerFunc(m.handler.Summary)))

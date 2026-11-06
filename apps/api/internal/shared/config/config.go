@@ -50,7 +50,20 @@ type Config struct {
 	// SubscriptionChargeMaxAge is how long a subscription charge can stay
 	// `unpaid` before the reconciler force-resolves it as `expired`.
 	SubscriptionChargeMaxAge time.Duration
+
+	// GoogleClientID is the OAuth web client ID for Sign in with Google
+	// (public: it is also shipped to the browser via /public/config).
+	GoogleClientID string
+	// GoogleJWKSURL overrides Google's signing-key URL. Only honoured
+	// outside production (end-to-end tests sign their own tokens).
+	GoogleJWKSURL string
 }
+
+// DefaultGoogleClientID is ElProof's own OAuth web client (decision K9). It
+// is public by design (Google Identity Services shows it in every page), so
+// it ships as the default; GOOGLE_CLIENT_ID overrides it, e.g. for a
+// staging client with different authorised origins.
+const DefaultGoogleClientID = "145222647838-e9nhkpkaoiupcd0ume68qg2bqmlhcq58.apps.googleusercontent.com"
 
 // Load reads .env from the repo root (or the current directory) into the process
 // environment, without overriding variables already set by the real OS environment,
@@ -82,6 +95,9 @@ func Load() Config {
 
 		SubscriptionReconcileInterval: getDuration("SUBSCRIPTION_RECONCILE_INTERVAL", 3*time.Minute),
 		SubscriptionChargeMaxAge:      getDuration("SUBSCRIPTION_CHARGE_MAX_AGE", 24*time.Hour),
+
+		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", DefaultGoogleClientID),
+		GoogleJWKSURL:  getEnv("GOOGLE_JWKS_URL", ""),
 	}
 }
 

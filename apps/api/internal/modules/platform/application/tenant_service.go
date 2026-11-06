@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	billingcontracts "elproof/internal/modules/billing/contracts"
+	clientscontracts "elproof/internal/modules/clients/contracts"
 	identitycontracts "elproof/internal/modules/identity/contracts"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform/domain"
@@ -38,6 +39,10 @@ type TenantRepository interface {
 	SetCredentialResetAt(ctx context.Context, id int64, when time.Time) error
 	UpdateSubscription(ctx context.Context, id int64, planID int64, status domain.SubscriptionStatus, expiresAt time.Time) error
 	SetSubscriptionStatus(ctx context.Context, id int64, status domain.SubscriptionStatus) error
+	UpdateProfile(ctx context.Context, id int64, businessName, phone, city string) error
+	SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error
+	CreateForSignup(ctx context.Context, tenant *domain.Tenant, signupID int64) (bool, error)
+	UpdateUsername(ctx context.Context, id int64, username string) error
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -79,6 +84,12 @@ type TenantService struct {
 	// (tenant_access.go).
 	access      *accessCache
 	activations ManualActivationRepository
+	// Self-service signup (signup_service.go) and trial caps /
+	// onboarding (onboarding_service.go).
+	signups     SignupRepository
+	signupLocks keyedLocks
+	trialLimits TrialLimitsRepository
+	clients     clientscontracts.Contracts
 }
 
 // SetManualActivations plugs in the manual-activation record store.

@@ -25,7 +25,11 @@ type Credential struct {
 	PrincipalID   string
 	Username      string
 	Email         string
-	PasswordHash  string
+	// GoogleSub links the login to a Google account (Sign in with Google,
+	// PLAN.md Fase 2); "" when not linked.
+	GoogleSub string
+	// PasswordHash is "" for a Google-only account (no ElProof password).
+	PasswordHash string
 	// TOTPSecretEnc is the AES-GCM-encrypted TOTP secret (nil when never
 	// set up); TOTPEnabled is true once the admin confirmed a first code;
 	// TOTPLastStep is the last accepted time step (replay protection).
@@ -46,8 +50,8 @@ type RefreshToken struct {
 	TokenHash    string
 	// MFA: the session this token extends was established with a second
 	// factor; refreshed sessions inherit it.
-	MFA          bool
-	ExpiresAt    time.Time
-	RevokedAt    *time.Time
-	CreatedAt    time.Time
+	MFA       bool
+	ExpiresAt time.Time
+	RevokedAt *time.Time
+	CreatedAt time.Time
 }

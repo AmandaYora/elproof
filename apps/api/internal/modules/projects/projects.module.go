@@ -80,6 +80,11 @@ func (m *Module) SetClientCleaner(cleaner application.ClientCleaner) {
 // SetVenueResolver completes the same two-phase wiring, for resolving a
 // project's attached venue_id into display data (ADR-0016) — see
 // application.VenueResolver's doc comment.
+// SetTrialQuota plugs in the platform module's trial caps (main.go).
+func (m *Module) SetTrialQuota(q application.TrialQuota) {
+	m.projectService.SetTrialQuota(q)
+}
+
 func (m *Module) SetVenueResolver(resolver application.VenueResolver) {
 	m.projectService.SetVenueResolver(resolver)
 }

@@ -24,12 +24,14 @@ type ClientRepository interface {
 	SetActive(ctx context.Context, tenantID, id int64, isActive bool) error
 	SetCredentialResetAt(ctx context.Context, tenantID, id int64, when time.Time) error
 	Delete(ctx context.Context, tenantID, id int64) error
+	CountActive(ctx context.Context, tenantID int64) (int, error)
 }
 
 type ClientService struct {
 	repo     ClientRepository
 	projects projectscontracts.Contracts
 	identity identitycontracts.Contracts
+	quota    TrialQuota
 }
 
 func NewClientService(repo ClientRepository, projects projectscontracts.Contracts, identity identitycontracts.Contracts) *ClientService {
@@ -129,6 +131,9 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 	}
 	if !exists {
 		return nil, apperror.Validation("Project tidak valid", map[string][]string{"projectId": {"Project tidak ditemukan"}})
+	}
+	if err := s.checkClientQuota(ctx, tenantID); err != nil {
+		return nil, err
 	}
 
 	c := &domain.Client{
@@ -230,6 +235,11 @@ func (s *ClientService) SetActive(ctx context.Context, tenantID, id int64, isAct
 	c, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
+	}
+	if isActive && !c.IsActive {
+		if err := s.checkClientQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.repo.SetActive(ctx, tenantID, id, isActive); err != nil {
 		return nil, err

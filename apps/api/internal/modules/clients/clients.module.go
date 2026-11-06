@@ -18,12 +18,18 @@ import (
 type Module struct {
 	handler   *presentation.Handler
 	contracts contracts.Contracts
+	service   *application.ClientService
 }
 
 func NewModule(db *sql.DB, projects projectscontracts.Contracts, identity identitycontracts.Contracts) *Module {
 	repo := infrastructure.NewMySQLClientRepository(db)
 	service := application.NewClientService(repo, projects, identity)
-	return &Module{handler: presentation.NewHandler(service), contracts: contracts.New(service)}
+	return &Module{handler: presentation.NewHandler(service), contracts: contracts.New(service), service: service}
+}
+
+// SetTrialQuota plugs in the platform module's trial caps (main.go).
+func (m *Module) SetTrialQuota(q application.TrialQuota) {
+	m.service.SetTrialQuota(q)
 }
 
 func (m *Module) Contracts() contracts.Contracts {

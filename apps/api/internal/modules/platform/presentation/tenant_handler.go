@@ -45,6 +45,8 @@ type tenantResponse struct {
 	HasLogo               bool    `json:"hasLogo"`
 	CustomDomain          *string `json:"customDomain"`
 	TrialEndsAt           *string `json:"trialEndsAt"`
+	// SignupSource: "self_service" (Fase 2 signup) or "platform".
+	SignupSource string `json:"signupSource"`
 	// Lifecycle is computed at read time (domain.ComputeLifecycle);
 	// SubscriptionStatus above mirrors Lifecycle.Status.
 	Lifecycle lifecycleResponse `json:"lifecycle"`
@@ -100,7 +102,7 @@ func toTenantResponse(t domain.Tenant) tenantResponse {
 		SubscriptionExpiresAt: dateOrNil(t.SubscriptionExpiresAt), IsSuspended: t.IsSuspended,
 		LastCredentialResetAt: dateOrNil(t.LastCredentialResetAt),
 		BrandColorPreset:      t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
-		CustomDomain: t.CustomDomain,
+		CustomDomain: t.CustomDomain, SignupSource: string(t.SignupSource),
 	}
 }
 
@@ -226,6 +228,14 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 			h.myLogo(w, r)
 		case len(segments) == 2 && segments[1] == "subscription" && r.Method == http.MethodGet:
 			h.mySubscription(w, r)
+		case len(segments) == 2 && segments[1] == "profile" && r.Method == http.MethodPatch:
+			h.updateMyProfile(w, r)
+		case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodPut:
+			h.uploadMyLogo(w, r)
+		case len(segments) == 2 && segments[1] == "onboarding" && r.Method == http.MethodGet:
+			h.myOnboarding(w, r)
+		case len(segments) == 3 && segments[1] == "onboarding" && segments[2] == "dismiss" && r.Method == http.MethodPost:
+			h.dismissMyOnboarding(w, r)
 		default:
 			response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 		}
@@ -613,7 +623,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 			response.Error(w, status, appErr.Message, appErr.Fields)
 			return
 		}
-		response.Error(w, status, appErr.Message, nil)
+		response.Error(w, status, appErr.Message, appErr.Details())
 		return
 	}
 	logger.Error("unhandled error: %v", err)

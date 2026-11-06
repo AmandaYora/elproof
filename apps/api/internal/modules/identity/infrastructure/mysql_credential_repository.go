@@ -9,6 +9,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
+
 	"elproof/internal/modules/identity/domain"
 )
 
@@ -20,7 +22,7 @@ func NewMySQLCredentialRepository(db *sql.DB) *MySQLCredentialRepository {
 	return &MySQLCredentialRepository{db: db}
 }
 
-const credentialColumns = `id, tenant_id, principal_type, principal_id, username, email, password_hash, totp_secret_enc, totp_enabled, totp_last_step, role, display_name, is_active, created_at, updated_at`
+const credentialColumns = `id, tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, totp_secret_enc, totp_enabled, totp_last_step, role, display_name, is_active, created_at, updated_at`
 
 func (r *MySQLCredentialRepository) FindByUsername(ctx context.Context, username string) (*domain.Credential, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+credentialColumns+` FROM credentials WHERE username = ? LIMIT 1`, username)
@@ -50,6 +52,36 @@ func (r *MySQLCredentialRepository) FindAllByEmail(ctx context.Context, email st
 	return creds, rows.Err()
 }
 
+// FindByGoogleSub resolves a Google account to its ElProof login (nil when
+// none is linked).
+func (r *MySQLCredentialRepository) FindByGoogleSub(ctx context.Context, sub string) (*domain.Credential, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT `+credentialColumns+` FROM credentials WHERE google_sub = ? LIMIT 1`, sub)
+	return scanCredential(row)
+}
+
+// LinkGoogle attaches a Google account to an existing login, only if that
+// login has none yet — a concurrent link to a different account loses
+// (false) instead of being overwritten.
+func (r *MySQLCredentialRepository) LinkGoogle(ctx context.Context, credentialID int64, sub string) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE credentials SET google_sub = ? WHERE id = ? AND google_sub IS NULL`, sub, credentialID)
+	if err != nil {
+		if isDuplicateKey(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// UsernameTaken reports whether any login already uses username.
+func (r *MySQLCredentialRepository) UsernameTaken(ctx context.Context, username string) (bool, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM credentials WHERE username = ?`, username).Scan(&n)
+	return n > 0, err
+}
+
 func (r *MySQLCredentialRepository) FindByID(ctx context.Context, id int64) (*domain.Credential, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+credentialColumns+` FROM credentials WHERE id = ? LIMIT 1`, id)
 	return scanCredential(row)
@@ -65,9 +97,10 @@ func (r *MySQLCredentialRepository) FindByPrincipal(ctx context.Context, princip
 
 func (r *MySQLCredentialRepository) Create(ctx context.Context, cred *domain.Credential) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO credentials (tenant_id, principal_type, principal_id, username, email, password_hash, role, display_name, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		cred.TenantID, string(cred.PrincipalType), cred.PrincipalID, cred.Username, nullableEmail(cred.Email), cred.PasswordHash, cred.Role, cred.DisplayName, cred.IsActive,
+		`INSERT INTO credentials (tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, role, display_name, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		cred.TenantID, string(cred.PrincipalType), cred.PrincipalID, cred.Username, nullableEmail(cred.Email),
+		nullableString(cred.GoogleSub), nullableString(cred.PasswordHash), cred.Role, cred.DisplayName, cred.IsActive,
 	)
 	if err != nil {
 		return err
@@ -123,11 +156,11 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 	var c domain.Credential
 	var tenantID sql.NullInt64
 	var principalType string
-	var email sql.NullString
+	var email, googleSub, passwordHash sql.NullString
 	var totpLastStep sql.NullInt64
 
 	err := row.Scan(
-		&c.ID, &tenantID, &principalType, &c.PrincipalID, &c.Username, &email, &c.PasswordHash,
+		&c.ID, &tenantID, &principalType, &c.PrincipalID, &c.Username, &email, &googleSub, &passwordHash,
 		&c.TOTPSecretEnc, &c.TOTPEnabled, &totpLastStep,
 		&c.Role, &c.DisplayName, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 	)
@@ -135,6 +168,8 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.GoogleSub = googleSub.String
+	c.PasswordHash = passwordHash.String
 
 	c.PrincipalType = domain.PrincipalType(principalType)
 	if tenantID.Valid {
@@ -150,6 +185,17 @@ func scanCredentialRow(row scanner) (*domain.Credential, error) {
 // email column is UNIQUE (migration 000016): MySQL allows many NULLs there
 // but only one empty string, so every second account created without an
 // email used to fail to insert.
+// nullableString stores "" as NULL (google_sub is UNIQUE; password_hash is
+// NULL for Google-only accounts).
+func nullableString(v string) sql.NullString {
+	return sql.NullString{String: v, Valid: v != ""}
+}
+
+func isDuplicateKey(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
+}
+
 func nullableEmail(email string) sql.NullString {
 	email = strings.TrimSpace(email)
 	return sql.NullString{String: email, Valid: email != ""}

@@ -17,16 +17,17 @@ func TestPlatformAdminAllowed(t *testing.T) {
 		activate   = req{http.MethodPost, "/api/v1/tenants/4/activate-subscription"}
 		createPlan = req{http.MethodPost, "/api/v1/plans"}
 		mapPlans   = req{http.MethodPut, "/api/v1/app-plans"}
+		trialCaps  = req{http.MethodPut, "/api/v1/trial-limits"}
 		newAdmin   = req{http.MethodPost, "/api/v1/platform-admins"}
 		gateway    = req{http.MethodPut, "/api/v1/payment/gateway-config"}
 		appSecret  = req{http.MethodPost, "/api/v1/payment/apps/app_1/reset-secret"}
 		readAny    = req{http.MethodGet, "/api/v1/payment/gateway-config"}
 	)
 	matrix := map[string]map[req]bool{
-		roleSuperAdmin: {register: true, editTenant: true, resetOwner: true, freeze: true, activate: true, createPlan: true, mapPlans: true, newAdmin: true, gateway: true, appSecret: true, readAny: true},
-		roleBilling:    {register: false, editTenant: false, resetOwner: false, freeze: false, activate: true, createPlan: true, mapPlans: true, newAdmin: false, gateway: false, appSecret: false, readAny: true},
-		roleSupport:    {register: true, editTenant: true, resetOwner: true, freeze: false, activate: false, createPlan: false, mapPlans: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
-		roleReadOnly:   {register: false, editTenant: false, resetOwner: false, freeze: false, activate: false, createPlan: false, mapPlans: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleSuperAdmin: {register: true, editTenant: true, resetOwner: true, freeze: true, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: true, gateway: true, appSecret: true, readAny: true},
+		roleBilling:    {register: false, editTenant: false, resetOwner: false, freeze: false, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleSupport:    {register: true, editTenant: true, resetOwner: true, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleReadOnly:   {register: false, editTenant: false, resetOwner: false, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
 		"":             {register: false, freeze: false, readAny: true},
 	}
 	for role, cases := range matrix {
