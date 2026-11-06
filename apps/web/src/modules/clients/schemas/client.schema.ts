@@ -15,6 +15,8 @@ export const clientContactSchema = z.object({
     .trim()
     .refine((v) => v.replace(/\D/g, "").length >= 9, "Masukkan nomor WhatsApp yang valid"),
   email: optionalEmail,
+  /** Portal role (ADR-0026); 0 / absent = keep / default. */
+  accessRoleId: z.number().int().nonnegative().optional(),
 });
 
 export type ClientContactFormValues = z.infer<typeof clientContactSchema>;

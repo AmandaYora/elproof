@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, FileText } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -130,7 +131,7 @@ export function VendorMilestoneEditModal({
             <Field label="Status">
               <Select value={fields.status} onChange={(e) => set("status", e.target.value as MilestoneStatus)}>
                 {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                  <option key={s} value={s}>{MILESTONE_STATUS_LABELS.staff[s]}</option>
                 ))}
               </Select>
             </Field>

@@ -14,15 +14,15 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { UserRoleBadge } from "@/modules/users/components/UserRoleBadge";
 import { UserFormModal } from "@/modules/users/components/UserFormModal";
-import { STAFF_ROLE_OPTIONS, type UserFormValues } from "@/modules/users/schemas/user.schema";
+import type { UserFormValues } from "@/modules/users/schemas/user.schema";
+import { useRolesStore } from "@/modules/access/stores/useRolesStore";
 import { AccessLinkDialog } from "@/shared/components/AccessLinkDialog";
 import type { AccessLink, AccessLinkRecipient } from "@/shared/lib/access-link";
-import { ROLE_LABELS } from "@/modules/users/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
-import type { StaffMember, StaffRole } from "@/modules/users/types";
+import type { StaffMember } from "@/modules/users/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { AffectedProject } from "@/shared/types/delete-impact";
@@ -34,7 +34,7 @@ interface LinkShare {
 }
 
 function recipientFor(user: Pick<StaffMember, "name" | "phone" | "email" | "role">): AccessLinkRecipient {
-  return { name: user.name, phone: user.phone, email: user.email, roleLabel: ROLE_LABELS[user.role] };
+  return { name: user.name, phone: user.phone, email: user.email, roleLabel: user.role };
 }
 
 /** Status column: invitation state first, then active/inactive. */
@@ -59,7 +59,13 @@ export default function UserListPage() {
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
-  const [roleFilter, setRoleFilter] = useState<"Semua" | StaffRole>("Semua");
+  // "Semua" or a role id.
+  const [roleFilter, setRoleFilter] = useState<string>("Semua");
+  const staffRoles = useRolesStore((s) => s.roles.staff);
+  const fetchRoles = useRolesStore((s) => s.fetchRoles);
+  useEffect(() => {
+    void fetchRoles("staff").catch(() => undefined);
+  }, [fetchRoles]);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<StaffMember | undefined>(undefined);
@@ -210,10 +216,12 @@ export default function UserListPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <Select className="w-44" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as "Semua" | StaffRole)}>
-          <option value="Semua">Semua Role</option>
-          {STAFF_ROLE_OPTIONS.map((r) => (
-            <option key={r} value={r}>{r}</option>
+        <Select className="w-48" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+          <option value="Semua">Semua Peran</option>
+          {staffRoles.map((r) => (
+            <option key={r.id} value={String(r.id)}>
+              {r.name}
+            </option>
           ))}
         </Select>
       </div>

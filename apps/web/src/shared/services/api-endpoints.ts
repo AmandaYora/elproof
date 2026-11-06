@@ -22,6 +22,13 @@ export const API = {
     linkGoogle: (token: string) => `/api/v1/auth/links/${encodeURIComponent(token)}/google`,
     linkPassword: (token: string) => `/api/v1/auth/links/${encodeURIComponent(token)}/password`,
   },
+  // Workspace roles and permissions (Fase 3a, ADR-0026).
+  access: {
+    me: "/api/v1/access/me",
+    catalog: "/api/v1/access/catalog",
+    roles: "/api/v1/access/roles",
+    role: (id: number | string) => `/api/v1/access/roles/${id}`,
+  },
   billing: {
     plans: "/api/v1/plans",
     plan: (id: string) => `/api/v1/plans/${id}`,

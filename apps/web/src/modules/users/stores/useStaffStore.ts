@@ -12,7 +12,8 @@ interface RawStaffMember {
   name: string;
   title: string;
   initials: string;
-  role: StaffMember["role"];
+  role: string;
+  roleId: number;
   username: string;
   email: string;
   phone: string;
@@ -50,6 +51,7 @@ interface StaffState {
   staffPageMeta: PaginationMeta;
   staffSummaries: StaffSummary[];
   fetchStaff: () => Promise<void>;
+  /** role: a role id ("" = every role). */
   fetchStaffPage: (page: number, search: string, role: string) => Promise<void>;
   // Public-safe {id, name, title} list (any staff role) — what every PIC
   // picker/label across the `projects` module should use; `staff` above is

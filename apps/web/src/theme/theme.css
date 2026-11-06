@@ -36,6 +36,14 @@
   --radius-md: 10px;
   --radius-lg: 14px;
 
+  /* Density (PLAN.md Fase 3b): the WO Console is compact (lots of data),
+     the Client Portal comfortable (read on phones). Set data-density on
+     a layout root; components read these instead of fixed spacing. */
+  --density-pad-x: 1.25rem;
+  --density-gap: 1rem;
+  --density-row-y: 0.625rem;
+  --density-text: 13.5px;
+
   --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, sans-serif;
   /* Display face for marketing/homepage headings only — see modules/homepage.
      Body copy and every app UI element stay on --font-sans (Inter). */
@@ -85,4 +93,33 @@ body {
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+[data-density="compact"] {
+  --density-pad-x: 1.25rem;
+  --density-gap: 1rem;
+  --density-row-y: 0.625rem;
+  --density-text: 13.5px;
+}
+
+[data-density="comfortable"] {
+  --density-pad-x: 1.5rem;
+  --density-gap: 1.5rem;
+  --density-row-y: 0.875rem;
+  --density-text: 15px;
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

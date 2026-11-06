@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ISSUE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
@@ -155,7 +156,7 @@ export function IssueFormModal({
           <Field label="Status" required>
             <Select value={values.status} onChange={(e) => set("status", e.target.value as IssueStatus)}>
               {ISSUE_STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{ISSUE_STATUS_LABELS.staff[s]}</option>
               ))}
             </Select>
           </Field>

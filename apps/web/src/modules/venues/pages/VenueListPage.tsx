@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -20,7 +21,6 @@ import type { Venue } from "@/modules/venues/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
@@ -35,7 +35,8 @@ export default function VenueListPage() {
   const exportVenues = useVenueStore((s) => s.exportVenues);
   const fetchVenueDeleteImpact = useVenueStore((s) => s.fetchVenueDeleteImpact);
   const deleteVenue = useVenueStore((s) => s.deleteVenue);
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // Destructive/management actions follow the role's permissions (ADR-0026).
+  const isOwner = useCan("vendor.delete");
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);

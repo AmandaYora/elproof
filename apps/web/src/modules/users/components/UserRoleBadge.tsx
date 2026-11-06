@@ -1,14 +1,7 @@
 import { Badge } from "@/shared/components/ui/Badge";
-import type { BadgeTone } from "@/shared/components/ui/Badge";
-import { ROLE_LABELS, type StaffRole } from "@/modules/users/types";
+import { OWNER_ROLE_NAME } from "@/modules/users/types";
 
-const ROLE_TONE: Record<StaffRole, BadgeTone> = {
-  Owner: "navy",
-  Admin: "info",
-  Staff: "neutral",
-  Sales: "success",
-};
-
-export function UserRoleBadge({ role }: { role: StaffRole }) {
-  return <Badge tone={ROLE_TONE[role]}>{ROLE_LABELS[role]}</Badge>;
+/** The member's workspace role (names are set by each WO). */
+export function UserRoleBadge({ role }: { role: string }) {
+  return <Badge tone={role === OWNER_ROLE_NAME ? "navy" : "neutral"}>{role}</Badge>;
 }

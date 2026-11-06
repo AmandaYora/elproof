@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { useOutletContext } from "react-router-dom";
 import { Building2, ExternalLink } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
@@ -21,6 +22,8 @@ import { formatCurrency } from "@/shared/lib/formatters";
 // from GET /venues/{id} once currentProject.venueId is known, rather than
 // the public-safe GET /projects/{id}/venue summary (see ADR-0016).
 export default function ProjectVenueTabPage() {
+  // Attaching or changing the venue is a project change (ADR-0026).
+  const canEdit = useCan("project.edit");
   const { projectId } = useOutletContext<ProjectDetailContext>();
   const currentProject = useProjectStore((s) => s.currentProject);
   const setProjectVenue = useProjectStore((s) => s.setProjectVenue);
@@ -148,8 +151,8 @@ export default function ProjectVenueTabPage() {
         <Card>
           <EmptyState
             title="Belum ada venue terpasang"
-            description="Pilih venue dari direktori untuk project ini."
-            action={<Button onClick={openPicker}>Pilih Venue</Button>}
+            description={canEdit ? "Pilih venue dari direktori untuk project ini." : "Venue project ini belum dipilih."}
+            action={canEdit ? <Button onClick={openPicker}>Pilih Venue</Button> : undefined}
           />
         </Card>
       ) : (
@@ -167,14 +170,16 @@ export default function ProjectVenueTabPage() {
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={openPicker}>
-                Ubah Venue
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => void handleDetach()}>
-                Lepas
-              </Button>
-            </div>
+            {canEdit && (
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={openPicker}>
+                  Ubah Venue
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => void handleDetach()}>
+                  Lepas
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border-light pt-4 sm:grid-cols-3">

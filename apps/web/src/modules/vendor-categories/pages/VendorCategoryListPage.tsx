@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -17,7 +18,6 @@ import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import type { VendorCategory } from "@/modules/vendor-categories/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 
 export default function VendorCategoryListPage() {
   const categories = useVendorCategoryStore((s) => s.categoryPage);
@@ -29,7 +29,8 @@ export default function VendorCategoryListPage() {
   const deleteCategory = useVendorCategoryStore((s) => s.deleteCategory);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // Destructive/management actions follow the role's permissions (ADR-0026).
+  const isOwner = useCan("vendor.category.manage");
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);

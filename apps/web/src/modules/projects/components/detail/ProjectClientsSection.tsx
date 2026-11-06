@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Pencil, Send, UserCog, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { useClientStore } from "@/modules/clients/stores/useClientStore";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import {
   clientContactSchema,
   clientCreateSchema,
@@ -22,6 +22,7 @@ import type { AccessLink, AccessLinkRecipient } from "@/shared/lib/access-link";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { ClientLoginStatusBadge, clientLinkActionLabel } from "@/modules/clients/components/ClientLoginStatus";
+import { PortalRoleSelect } from "@/modules/clients/components/PortalRoleSelect";
 
 const ROLE_ORDER: ClientRole[] = ["Bride", "Groom", "Family Representative"];
 
@@ -58,7 +59,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   // already scopes it), but every write action here is Owner/Admin only
   // (see PLAN.md's RBAC section) — hide the buttons for that role instead of
   // letting them click through to a 403.
-  const canManage = useAuthStore((s) => s.session?.role) !== "Staff";
+  const canManage = useCan("client.manage");
   const clients = useClientStore((s) => s.clientsByProject[projectId] ?? EMPTY_CLIENTS);
   const fetchClients = useClientStore((s) => s.fetchClients);
   const createClient = useClientStore((s) => s.createClient);
@@ -203,6 +204,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
 
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-text-secondary">
                   <span>Nama pengguna: {client.username}</span>
+                  {client.accessRoleName && <span>· Akses portal: {client.accessRoleName}</span>}
                   {client.lastCredentialResetAt && <span>· Link atur ulang terakhir: {formatDate(client.lastCredentialResetAt)}</span>}
                 </div>
 
@@ -324,7 +326,12 @@ function EditContactModal({
   onClose: () => void;
   onSubmit: (values: ClientContactFormValues) => void;
 }) {
-  const [values, setValues] = useState<ClientContactFormValues>({ name: client.name, phone: client.phone, email: client.email });
+  const [values, setValues] = useState<ClientContactFormValues>({
+    name: client.name,
+    phone: client.phone,
+    email: client.email,
+    accessRoleId: client.accessRoleId,
+  });
   const [errors, setErrors] = useState<Partial<Record<keyof ClientContactFormValues, string>>>({});
 
   function set<K extends keyof ClientContactFormValues>(key: K, value: ClientContactFormValues[K]) {
@@ -367,6 +374,7 @@ function EditContactModal({
         <Field label="Email" error={errors.email} hint="Opsional">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
+        <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} />
         <Field label="Username">
           <Input value={client.username} disabled />
         </Field>
@@ -454,7 +462,7 @@ function CreateClientModal({
   onClose: () => void;
   onSubmit: (values: ClientCreateFormValues) => void;
 }) {
-  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", username: "" });
+  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", username: "", accessRoleId: 0 });
   const [errors, setErrors] = useState<Partial<Record<keyof ClientCreateFormValues, string>>>({});
 
   function set<K extends keyof ClientCreateFormValues>(key: K, value: ClientCreateFormValues[K]) {
@@ -511,6 +519,7 @@ function CreateClientModal({
         <Field label="Email" error={errors.email} hint="Opsional. Client juga bisa masuk memakai email ini.">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
         </Field>
+        <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} allowDefault />
         <Field label="Nama pengguna" error={errors.username} hint="Opsional. Kosongkan agar dibuat otomatis dari nama.">
           <Input value={values.username} onChange={(e) => set("username", e.target.value.toLowerCase())} placeholder="cth. budi.rahman" />
         </Field>

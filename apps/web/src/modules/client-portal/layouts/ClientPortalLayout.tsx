@@ -1,5 +1,6 @@
+import { Toaster } from "@/shared/components/ui/Toaster";
 import { Suspense, useEffect, useState } from "react";
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Heart, Loader2, LogOut } from "lucide-react";
 import { TabNav } from "@/shared/components/ui/TabNav";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
@@ -9,6 +10,7 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { ClientProjectHeaderCard } from "@/modules/client-portal/components/ClientProjectHeaderCard";
+import { hasPermission, usePermissionStore } from "@/shared/stores/usePermissionStore";
 
 export interface ClientPortalContext {
   projectId: string;
@@ -25,12 +27,15 @@ export interface ClientPortalContext {
 // existing tabs (PLAN.md) — it's a new, separate capability (general project
 // documents the staff explicitly opted to share), not a replacement or
 // reordering of anything already here.
+//
+// Each tab shows only when the client's portal role allows it (ADR-0026):
+// e.g. Keluarga has no "Pembayaran".
 const TABS = [
-  { to: ROUTE_PATHS.portal("vendor"), label: "Vendor" },
-  { to: ROUTE_PATHS.portal("timeline"), label: "Timeline" },
-  { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran" },
-  { to: ROUTE_PATHS.portal("kendala"), label: "Kendala" },
-  { to: ROUTE_PATHS.portal("dokumen"), label: "Dokumen" },
+  { to: ROUTE_PATHS.portal("vendor"), label: "Vendor", requires: "portal.vendor.view" },
+  { to: ROUTE_PATHS.portal("timeline"), label: "Timeline", requires: "portal.timeline.view" },
+  { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran", requires: "portal.finance.view" },
+  { to: ROUTE_PATHS.portal("kendala"), label: "Kendala", requires: "portal.issues.view" },
+  { to: ROUTE_PATHS.portal("dokumen"), label: "Dokumen", requires: "portal.documents.view" },
 ];
 
 export default function ClientPortalLayout() {
@@ -42,6 +47,14 @@ export default function ClientPortalLayout() {
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
   const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
   const [status, setStatus] = useState<"loading" | "ready" | "denied">("loading");
+  const location = useLocation();
+  const grants = usePermissionStore((s) => s.grants);
+  const grantsLoaded = usePermissionStore((s) => s.loaded);
+  const fetchGrants = usePermissionStore((s) => s.fetch);
+
+  useEffect(() => {
+    void fetchGrants();
+  }, [fetchGrants]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +78,7 @@ export default function ClientPortalLayout() {
     return <Navigate to={ROUTE_PATHS.login} replace />;
   }
 
-  if (status === "loading" || !project || !brandingHydrated) {
+  if (status === "loading" || !project || !brandingHydrated || !grantsLoaded) {
     // Also waits on brandingHydrated, not just fetchMyProject -- the header
     // below reads logoUrl/brandName and `text-navy-950` (a live
     // --brand-navy-* CSS var) straight off useTenantBrandingStore; painting
@@ -78,11 +91,20 @@ export default function ClientPortalLayout() {
     );
   }
 
+  const tabs = TABS.filter((t) => hasPermission(grants, t.requires));
+  // A tab the role cannot open (old bookmark, the default "vendor") goes to
+  // the first one it can.
+  const onAllowedTab = tabs.some((t) => location.pathname.startsWith(t.to));
+  if (!onAllowedTab && tabs.length > 0 && TABS.some((t) => location.pathname.startsWith(t.to))) {
+    return <Navigate to={tabs[0].to} replace />;
+  }
+
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
   const d = daysUntil(project.eventDate);
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
+    <div className="min-h-screen bg-background relative overflow-hidden" data-density="comfortable">
+      <Toaster />
       {/* Decorative grid background for depth */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
@@ -136,14 +158,20 @@ export default function ClientPortalLayout() {
         </div>
 
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <TabNav items={TABS} sticky={false} />
+          <TabNav items={tabs} sticky={false} />
         </div>
       </div>
 
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10 sm:gap-8 relative z-10">
         <ClientProjectHeaderCard projectId={project.id} />
         <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary animate-pulse">Memuat...</div>}>
-          <Outlet context={{ projectId: project.id } satisfies ClientPortalContext} />
+          {tabs.length === 0 ? (
+            <p className="py-16 text-center text-sm text-text-secondary">
+              Akses portal Anda belum diatur. Hubungi wedding organizer Anda.
+            </p>
+          ) : (
+            <Outlet context={{ projectId: project.id } satisfies ClientPortalContext} />
+          )}
         </Suspense>
       </main>
     </div>

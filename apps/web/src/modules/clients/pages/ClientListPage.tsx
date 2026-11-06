@@ -206,7 +206,11 @@ export default function ClientListPage() {
           open
           onClose={() => setModalTarget(null)}
           onSubmit={(values) => void handleContactSubmit(values)}
-          initialValues={modalTarget.mode === "replace" ? { name: "", phone: "", email: "" } : { name: activeTarget.name, phone: activeTarget.phone, email: activeTarget.email }}
+          initialValues={
+            modalTarget.mode === "replace"
+              ? { name: "", phone: "", email: "" }
+              : { name: activeTarget.name, phone: activeTarget.phone, email: activeTarget.email, accessRoleId: activeTarget.accessRoleId }
+          }
           username={activeTarget.username}
           title={modalTarget.mode === "replace" ? "Ganti Wedding Representative" : "Ubah Kontak Client"}
           description={
@@ -301,7 +305,9 @@ function ClientRow({
               <span className="font-semibold text-text-primary">{c.name}</span>
               <ClientRoleBadge role={c.role} />
             </div>
-            <p className="truncate text-[12.5px] text-text-secondary">{[c.username, c.phone, c.email].filter(Boolean).join(" · ")}</p>
+            <p className="truncate text-[12.5px] text-text-secondary">
+              {[c.username, c.phone, c.email, c.accessRoleName && `Portal: ${c.accessRoleName}`].filter(Boolean).join(" · ")}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">

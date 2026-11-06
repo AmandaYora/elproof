@@ -13,4 +13,7 @@ export interface Client {
   lastCredentialResetAt: string | null;
   /** "invited" until the client set their own password. */
   loginStatus?: "invited" | "active" | "inactive" | "none" | "unknown";
+  /** Portal role deciding what this client sees (ADR-0026). */
+  accessRoleId: number;
+  accessRoleName?: string;
 }

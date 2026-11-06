@@ -1,25 +1,17 @@
 // Real backend types for the `staff` module — see docs/API_CONTRACT.md.
 
-export type StaffRole = "Owner" | "Admin" | "Staff" | "Sales";
-
-// ROLE_LABELS is a display-only relabeling — "Staff" is shown to users as
-// "Wedding Planner" (the role's real-world business name), but the value
-// stored in the database, sent to the API, and carried in the JWT stays the
-// literal string "Staff" everywhere. Never compare against these labels;
-// always compare against the raw StaffRole value.
-export const ROLE_LABELS: Record<StaffRole, string> = {
-  Owner: "Owner",
-  Admin: "Admin",
-  Staff: "Wedding Planner",
-  Sales: "Sales",
-};
+// Staff roles are per workspace (Pengaturan → Peran & Akses, ADR-0026):
+// `role` is the role's current name, `roleId` its id. The Owner role is
+// always named "Owner".
+export const OWNER_ROLE_NAME = "Owner";
 
 export interface StaffMember {
   id: string;
   name: string;
   title: string;
   initials: string;
-  role: StaffRole;
+  role: string;
+  roleId: number;
   username: string;
   email: string;
   phone: string;

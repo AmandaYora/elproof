@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ENGAGEMENT_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, Eye } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -265,7 +266,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
         <Field label="Status Keterlibatan" required>
           <Select value={values.engagementStatus} onChange={(e) => set("engagementStatus", e.target.value as ProjectVendorFormValues["engagementStatus"])}>
             {ENGAGEMENT_STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{ENGAGEMENT_STATUS_LABELS.staff[s]}</option>
             ))}
           </Select>
         </Field>

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
+import { PROJECT_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
@@ -10,7 +12,6 @@ import { ProjectCard } from "@/modules/projects/components/ProjectCard";
 import { PROJECT_STATUS_OPTIONS } from "@/modules/projects/schemas/project.schema";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
@@ -19,7 +20,7 @@ export default function ProjectListPage() {
   // do, then assign it to a planner (see PLAN.md's RBAC section). The
   // backend already rejects POST /projects for this role; hiding the button
   // too avoids a confusing 403 after filling out the whole form.
-  const canCreate = useAuthStore((s) => s.session?.role) !== "Staff";
+  const canCreate = useCan("project.create");
   const projects = useProjectStore((s) => s.projectPage);
   const meta = useProjectStore((s) => s.projectPageMeta);
   const fetchProjectPage = useProjectStore((s) => s.fetchProjectPage);
@@ -80,7 +81,7 @@ export default function ProjectListPage() {
         <Select className="w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="Semua">Semua Status</option>
           {PROJECT_STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s}>{PROJECT_STATUS_LABELS.staff[s]}</option>
           ))}
         </Select>
         <label className="flex items-center gap-2 rounded-md border border-border px-3 text-[13px] text-text-secondary">

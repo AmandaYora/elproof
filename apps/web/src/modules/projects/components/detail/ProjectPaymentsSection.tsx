@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -14,7 +15,6 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, VendorPaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import {
   paymentSchema,
   paymentUpdateSchema,
@@ -40,11 +40,10 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
   const deletePayment = useProjectStore((s) => s.deletePayment);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  // Hard delete is Owner-or-Admin (broadened from Owner-only per explicit
-  // user request) -- mirrors ProjectHeaderCard.tsx's own "!== \"Staff\"" idiom
-  // for the same Owner-or-Admin bar, since those are the only 3 roles. Edit
-  // has no role restriction at all.
-  const canDelete = useAuthStore((s) => s.session?.role) !== "Staff";
+  // What the workspace role allows (ADR-0026): hard delete needs
+  // finance.payment.delete; adding and editing payments finance.record.
+  const canDelete = useCan("finance.payment.delete");
+  const canRecord = useCan("finance.record");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -119,9 +118,9 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           title="Pembayaran ke Vendor"
           subtitle="Ringkasan nilai kerja sama dan seluruh riwayat pembayaran ke vendor pada project ini."
           action={
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+            canRecord && (<Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
               Tambah Pembayaran
-            </Button>
+            </Button>)
           }
         />
         <CardContent className="flex flex-col gap-5">
@@ -162,7 +161,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                     </div>
                     <div className="flex items-center gap-2 pt-1">
                       <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                      <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />
+                      {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                       {canDelete && (
                         <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
                       )}
@@ -203,7 +202,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       <TD>
                         <div className="flex items-center gap-2">
                           <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                          <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />
+                          {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                           {canDelete && (
                             <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
                           )}

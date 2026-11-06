@@ -43,6 +43,8 @@ export const ROUTE_PATHS = {
   venues: "/venues",
   users: "/pengguna",
   subscription: "/langganan",
+  // Pengaturan → Peran & Akses (Fase 3a).
+  roles: "/peran-akses",
   milestoneTemplates: "/timeline-default",
   portal: (tab: ClientPortalTab = "vendor") => `/portal/${tab}`,
   platformDashboard: "/platform/dashboard",

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, FolderKanban, Users, Tags, Store, Building2, UserCog, Sparkles, Settings, CalendarClock, ChevronDown, LogOut, X } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Tags, Store, Building2, UserCog, Sparkles, Settings, CalendarClock, ChevronDown, LogOut, X, ShieldCheck } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -9,15 +9,17 @@ import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
-import { ROLE_LABELS, type StaffRole } from "@/modules/users/types";
+import { usePermissionStore, type Grants } from "@/shared/stores/usePermissionStore";
 
 interface NavLinkItem {
   kind: "link";
   to: string;
   label: string;
   icon: LucideIcon;
-  // undefined = every role; otherwise only the listed roles see this item.
-  allowedRoles?: StaffRole[];
+  // Permissions the role needs to see this item (undefined = everyone).
+  requires?: string[];
+  // Also needs a role that reaches every project (tenant-wide pages).
+  allProjects?: boolean;
 }
 
 interface NavGroupItem {
@@ -29,28 +31,32 @@ interface NavGroupItem {
 
 type NavEntry = NavLinkItem | NavGroupItem;
 
-// "Pengaturan" groups the 3 lower-frequency admin pages behind one collapsible
-// entry instead of each sitting flat in the list. Role matrix (confirmed):
-// Owner sees everything; Admin sees everything except Pengaturan entirely;
-// Wedding Planner ("Staff") sees only Project.
+// Items follow the workspace role's permissions (ADR-0026) — the same
+// permissions the pages and their API calls require.
 const NAV_ITEMS: NavEntry[] = [
-  { kind: "link", to: ROUTE_PATHS.dashboard, label: "Dashboard", icon: LayoutDashboard, allowedRoles: ["Owner", "Admin"] },
+  { kind: "link", to: ROUTE_PATHS.dashboard, label: "Dashboard", icon: LayoutDashboard, requires: ["dashboard.view"], allProjects: true },
   { kind: "link", to: ROUTE_PATHS.projects, label: "Project", icon: FolderKanban },
-  { kind: "link", to: ROUTE_PATHS.clients, label: "Client", icon: Users, allowedRoles: ["Owner", "Admin"] },
-  { kind: "link", to: ROUTE_PATHS.vendors, label: "Vendor", icon: Store, allowedRoles: ["Owner", "Admin"] },
-  { kind: "link", to: ROUTE_PATHS.venues, label: "Venue", icon: Building2, allowedRoles: ["Owner", "Admin"] },
+  { kind: "link", to: ROUTE_PATHS.clients, label: "Client", icon: Users, requires: ["client.manage"], allProjects: true },
+  { kind: "link", to: ROUTE_PATHS.vendors, label: "Vendor", icon: Store, requires: ["vendor.view"] },
+  { kind: "link", to: ROUTE_PATHS.venues, label: "Venue", icon: Building2, requires: ["vendor.view"] },
   {
     kind: "group",
     label: "Pengaturan",
     icon: Settings,
     children: [
-      { kind: "link", to: ROUTE_PATHS.users, label: "Pengguna", icon: UserCog, allowedRoles: ["Owner"] },
-      { kind: "link", to: ROUTE_PATHS.subscription, label: "Langganan", icon: Sparkles, allowedRoles: ["Owner"] },
-      { kind: "link", to: ROUTE_PATHS.vendorCategories, label: "Kategori Vendor", icon: Tags, allowedRoles: ["Owner"] },
-      { kind: "link", to: ROUTE_PATHS.milestoneTemplates, label: "Timeline Default", icon: CalendarClock, allowedRoles: ["Owner"] },
+      { kind: "link", to: ROUTE_PATHS.users, label: "Pengguna", icon: UserCog, requires: ["team.manage"] },
+      { kind: "link", to: ROUTE_PATHS.roles, label: "Peran & Akses", icon: ShieldCheck, requires: ["role.manage"] },
+      { kind: "link", to: ROUTE_PATHS.subscription, label: "Langganan", icon: Sparkles, requires: ["subscription.manage"] },
+      { kind: "link", to: ROUTE_PATHS.vendorCategories, label: "Kategori Vendor", icon: Tags, requires: ["vendor.category.manage"] },
+      { kind: "link", to: ROUTE_PATHS.milestoneTemplates, label: "Timeline Default", icon: CalendarClock, requires: ["template.manage"] },
     ],
   },
 ];
+
+function canSee(item: NavLinkItem, grants: Grants | null): boolean {
+  if (item.requires?.some((p) => !grants?.permissions.includes(p))) return false;
+  return !item.allProjects || grants?.projectScope === "all";
+}
 
 interface SidebarProps {
   open: boolean;
@@ -63,8 +69,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const session = useAuthStore((s) => s.session);
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
-  const role = session?.role as StaffRole | undefined;
-  const canSee = (allowedRoles: StaffRole[] | undefined) => !allowedRoles || (role !== undefined && allowedRoles.includes(role));
+  const grants = usePermissionStore((s) => s.grants);
 
   // Flat items filtered by their own allowedRoles; a group is filtered by
   // its children's allowedRoles and dropped entirely if nothing remains
@@ -72,9 +77,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // one of its children is Owner-only).
   const visibleEntries: NavEntry[] = NAV_ITEMS.flatMap((entry): NavEntry[] => {
     if (entry.kind === "link") {
-      return canSee(entry.allowedRoles) ? [entry] : [];
+      return canSee(entry, grants) ? [entry] : [];
     }
-    const children = entry.children.filter((child) => canSee(child.allowedRoles));
+    const children = entry.children.filter((child) => canSee(child, grants));
     return children.length > 0 ? [{ ...entry, children }] : [];
   });
 
@@ -185,7 +190,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-semibold text-white">{session?.displayName ?? "Tidak diketahui"}</p>
             <p className="truncate text-[11.5px] text-white/55">
-              {session?.role ? (ROLE_LABELS[session.role as StaffRole] ?? session.role) : ""}
+              {grants?.roleName ?? session?.role ?? ""}
             </p>
           </div>
           <button

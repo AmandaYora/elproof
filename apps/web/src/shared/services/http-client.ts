@@ -3,11 +3,18 @@ import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
+import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { setLoginNotice } from "@/shared/lib/session-notice";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 /** Codes the API attaches to a 403 when access depends on account state. */
-type AccessErrorCode = "subscription_read_only" | "subscription_suspended" | "tenant_frozen" | "mfa_required";
+type AccessErrorCode =
+  | "subscription_read_only"
+  | "subscription_suspended"
+  | "tenant_frozen"
+  | "mfa_required"
+  | "forbidden_permission"
+  | "role_missing";
 
 function accessErrorCode(error: AxiosError): AccessErrorCode | undefined {
   if (error.response?.status !== 403) return undefined;
@@ -30,6 +37,17 @@ function handleAccessError(code: AccessErrorCode | undefined) {
       useAuthStore.getState().logout();
       useTenantBrandingStore.getState().reset();
       useSubscriptionStatusStore.getState().reset();
+      window.location.assign(ROUTE_PATHS.login);
+      break;
+    case "forbidden_permission":
+      // The role may have changed since the page loaded: refresh what the
+      // UI offers so it stops showing actions the role no longer has.
+      void usePermissionStore.getState().fetch();
+      break;
+    case "role_missing":
+      setLoginNotice("Peran Anda di workspace ini sudah dihapus. Hubungi Owner WO Anda.");
+      useAuthStore.getState().logout();
+      usePermissionStore.getState().reset();
       window.location.assign(ROUTE_PATHS.login);
       break;
     case "mfa_required":

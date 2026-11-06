@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, Ban, CheckCircle2, Pencil, ArrowUp, ArrowDown, Paperclip, List as ListIcon, GanttChartSquare } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -16,6 +17,7 @@ import { ProjectMilestoneGanttView } from "@/modules/projects/components/detail/
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
 import type { EvidenceUploadFormValues } from "@/modules/projects/schemas/evidence.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { computeMilestoneStats, isMilestoneOverdue } from "@/modules/projects/lib/dates";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -42,6 +44,11 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
   const updateMilestone = useProjectStore((s) => s.updateMilestone);
   const reorderMilestones = useProjectStore((s) => s.reorderMilestones);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
+  // Changing the timeline needs project.edit; proofs may also be attached by
+  // whoever records finance (ADR-0026).
+  const canEdit = useCan("project.edit");
+  const canRecordFinance = useCan("finance.record");
+  const canAttach = canEdit || canRecordFinance;
   const [addOpen, setAddOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
   const [evidenceMilestone, setEvidenceMilestone] = useState<ProjectMilestone | null>(null);
@@ -156,9 +163,11 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                   <GanttChartSquare className="h-3.5 w-3.5" /> Gantt
                 </button>
               </div>
-              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
-                Tambah Timeline
-              </Button>
+              {canEdit && (
+                <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
+                  Tambah Timeline
+                </Button>
+              )}
             </div>
           }
         />
@@ -195,7 +204,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                   <div className="flex items-start justify-between gap-3">
                     <span className={cn("font-medium text-text-primary", cancelled && "line-through")}>{m.order}. {m.name}</span>
                     <div className="flex shrink-0 items-center gap-1">
-                      {!cancelled && (
+                      {canEdit && !cancelled && (
                         <>
                           <IconActionButton
                             icon={ArrowUp}
@@ -213,9 +222,9 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                           />
                         </>
                       )}
-                      <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />
-                      <IconActionButton icon={Paperclip} label="Lampirkan Bukti" tone="info" onClick={() => setEvidenceMilestone(m)} />
-                      {cancelled ? (
+                      {canEdit && <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />}
+                      {canAttach && <IconActionButton icon={Paperclip} label="Lampirkan Bukti" tone="info" onClick={() => setEvidenceMilestone(m)} />}
+                      {canEdit && (cancelled ? (
                         <IconActionButton
                           icon={CheckCircle2}
                           label="Aktifkan kembali"
@@ -229,7 +238,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                           tone="danger"
                           onClick={() => void updateStatus(m.id, "Cancelled")}
                         />
-                      )}
+                      ))}
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -246,11 +255,12 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                   </div>
                   <Select
                     value={m.status}
+                    disabled={!canEdit}
                     onChange={(e) => void updateStatus(m.id, e.target.value as MilestoneStatus)}
                     className="h-9 w-full text-[13px]"
                   >
                     {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>{MILESTONE_STATUS_LABELS.staff[s]}</option>
                     ))}
                   </Select>
                 </>
@@ -279,11 +289,12 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                     <TD>
                       <Select
                         value={m.status}
+                        disabled={!canEdit}
                         onChange={(e) => void updateStatus(m.id, e.target.value as MilestoneStatus)}
                         className="h-8 w-40 text-[13px]"
                       >
                         {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
+                          <option key={s} value={s}>{MILESTONE_STATUS_LABELS.staff[s]}</option>
                         ))}
                       </Select>
                     </TD>
@@ -294,7 +305,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                     <TD>{formatDate(m.completedDate)}</TD>
                     <TD>
                       <div className="flex items-center gap-1">
-                        {!cancelled && (
+                        {canEdit && !cancelled && (
                           <>
                             <IconActionButton
                               icon={ArrowUp}
@@ -312,9 +323,9 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                             />
                           </>
                         )}
-                        <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />
-                      <IconActionButton icon={Paperclip} label="Lampirkan Bukti" tone="info" onClick={() => setEvidenceMilestone(m)} />
-                        {cancelled ? (
+                        {canEdit && <IconActionButton icon={Pencil} label="Edit timeline" tone="neutral" onClick={() => setEditingMilestone(m)} />}
+                      {canAttach && <IconActionButton icon={Paperclip} label="Lampirkan Bukti" tone="info" onClick={() => setEvidenceMilestone(m)} />}
+                        {canEdit && (cancelled ? (
                           <IconActionButton
                             icon={CheckCircle2}
                             label="Aktifkan kembali"
@@ -328,7 +339,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                             tone="danger"
                             onClick={() => void updateStatus(m.id, "Cancelled")}
                           />
-                        )}
+                        ))}
                       </div>
                     </TD>
                   </TR>

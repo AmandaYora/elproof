@@ -2,14 +2,16 @@ import { useState } from "react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Select, Field } from "@/shared/components/ui/Input";
-import { userSchema, STAFF_ROLE_OPTIONS, type UserFormValues } from "@/modules/users/schemas/user.schema";
-import { ROLE_LABELS, type StaffMember } from "@/modules/users/types";
+import { userSchema, type UserFormValues } from "@/modules/users/schemas/user.schema";
+import { OWNER_ROLE_NAME, type StaffMember } from "@/modules/users/types";
+import { useRolesStore } from "@/modules/access/stores/useRolesStore";
+import { useEffect } from "react";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 
 function toFormState(user?: StaffMember): UserFormValues {
-  if (!user) return { name: "", title: "", role: "Staff", email: "", phone: "" };
-  return { name: user.name, title: user.title, role: user.role, email: user.email, phone: user.phone };
+  if (!user) return { name: "", title: "", roleId: 0, email: "", phone: "" };
+  return { name: user.name, title: user.title, roleId: user.roleId, email: user.email, phone: user.phone };
 }
 
 interface UserFormModalProps {
@@ -30,6 +32,13 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
   const pendingInvite = initialUser?.loginStatus === "invited";
   const [values, setValues] = useState<UserFormValues>(() => toFormState(initialUser));
   const [errors, setErrors] = useState<Partial<Record<keyof UserFormValues, string>>>({});
+  const roles = useRolesStore((s) => s.roles.staff);
+  const fetchRoles = useRolesStore((s) => s.fetchRoles);
+  const assignable = roles.filter((r) => !r.isSystem);
+
+  useEffect(() => {
+    void fetchRoles("staff").catch(() => undefined);
+  }, [fetchRoles]);
 
   function set<K extends keyof UserFormValues>(key: K, value: UserFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -85,14 +94,17 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
         <Field label="Nama Lengkap" required error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Anisa Putri" />
         </Field>
-        <Field label="Role" required>
-          {initialUser?.role === "Owner" ? (
-            <Input value="Owner" disabled />
+        <Field label="Peran" required error={errors.roleId} hint="Izin tiap peran diatur di Pengaturan → Peran & Akses.">
+          {initialUser?.role === OWNER_ROLE_NAME ? (
+            <Input value={OWNER_ROLE_NAME} disabled />
           ) : (
-            <Select value={values.role} onChange={(e) => set("role", e.target.value as UserFormValues["role"])}>
-              {STAFF_ROLE_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
+            <Select value={values.roleId ? String(values.roleId) : ""} onChange={(e) => set("roleId", Number(e.target.value))}>
+              <option value="" disabled>
+                Pilih peran
+              </option>
+              {assignable.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
                 </option>
               ))}
             </Select>

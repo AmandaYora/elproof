@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -9,7 +10,6 @@ import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
@@ -28,7 +28,8 @@ function today(): string {
 }
 
 export default function SubscriptionPage() {
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // Paying and billing history need subscription.manage (ADR-0026).
+  const isOwner = useCan("subscription.manage");
   const businessName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
 
   const plans = useSubscriptionPlanStore((s) => s.plans);

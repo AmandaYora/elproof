@@ -5,9 +5,10 @@ import { Sidebar } from "@/shared/layouts/Sidebar";
 import { Topbar } from "@/shared/layouts/Topbar";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { usePermissionStore, hasPermission } from "@/shared/stores/usePermissionStore";
 import { SubscriptionBanner, SubscriptionLockedScreen } from "@/shared/layouts/SubscriptionBanner";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { Toaster } from "@/shared/components/ui/Toaster";
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,12 +16,26 @@ export function AppLayout() {
   const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
   const lifecycle = useSubscriptionStatusStore((s) => s.lifecycle);
   const fetchLifecycle = useSubscriptionStatusStore((s) => s.fetch);
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  const fetchGrants = usePermissionStore((s) => s.fetch);
+  const grantsLoaded = usePermissionStore((s) => s.loaded);
+  const canManageSubscription = usePermissionStore((s) => hasPermission(s.grants, "subscription.manage"));
   const { pathname } = useLocation();
 
   useEffect(() => {
     void hydrateBranding("WO Console");
-  }, [hydrateBranding]);
+    void fetchGrants();
+  }, [hydrateBranding, fetchGrants]);
+
+  // A role can be edited while someone is signed in (ADR-0026): refresh
+  // what they may do when they come back to the tab, so new menu entries
+  // show up and removed ones disappear without a reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchGrants();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchGrants]);
 
   // Subscription state for the banner: on entry and whenever the tab
   // regains focus (a payment may have completed in the meantime).
@@ -33,7 +48,7 @@ export function AppLayout() {
 
   const locked = lifecycle?.access === "billing_only" && pathname !== ROUTE_PATHS.subscription;
 
-  if (!brandingHydrated) {
+  if (!brandingHydrated || !grantsLoaded) {
     // Sidebar and every `variant="primary"` Button read their color live off
     // the `--brand-navy-*` CSS vars hydrate() overwrites — painting them
     // before that resolves shows ElProof's own navy default first, then a
@@ -48,14 +63,15 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" data-density="compact">
+      <Toaster />
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="lg:pl-64">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
         <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
-          {lifecycle && !locked && <SubscriptionBanner lifecycle={lifecycle} canManage={isOwner} />}
+          {lifecycle && !locked && <SubscriptionBanner lifecycle={lifecycle} canManage={canManageSubscription} />}
           {locked ? (
-            <SubscriptionLockedScreen canManage={isOwner} />
+            <SubscriptionLockedScreen canManage={canManageSubscription} />
           ) : (
             <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
               <Outlet />

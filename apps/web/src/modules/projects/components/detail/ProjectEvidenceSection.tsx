@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Eye, EyeOff } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -22,6 +23,10 @@ import type { Evidence, EvidenceRelatedKind, EvidenceType } from "@/modules/proj
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
+  // Proofs may be added by whoever edits the project or records finance;
+  // sharing a document with the client is a project decision (ADR-0026).
+  const canEdit = useCan("project.edit");
+  const canRecordFinance = useCan("finance.record");
   const evidence = useProjectStore((s) => s.evidence);
   const milestones = useProjectStore((s) => s.milestones);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
@@ -155,9 +160,11 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
           title="Dokumen & Evidence"
           subtitle="Seluruh dokumen pendukung timeline, pembayaran, kerja sama vendor, dan kendala pada project ini."
           action={
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-              Tambah Evidence
-            </Button>
+            (canEdit || canRecordFinance) && (
+              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+                Tambah Evidence
+              </Button>
+            )
           }
         />
         <CardContent className="flex flex-col gap-4">
@@ -199,7 +206,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <CardListField label="Tanggal Dokumen" value={formatDate(item.documentDate)} />
                     <CardListField label="Diunggah Oleh" value={staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"} />
                     <CardListField label="Konteks" value={contextLabel(item)} />
-                    {item.relatedKind === "general" && (
+                    {canEdit && item.relatedKind === "general" && (
                       <CardListField
                         label="Terlihat Client"
                         value={item.isClientVisible ? "Ya" : "Tidak"}
@@ -208,7 +215,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex items-center gap-2 pt-1">
                     <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
-                    {item.relatedKind === "general" && (
+                    {canEdit && item.relatedKind === "general" && (
                       <IconActionButton
                         icon={item.isClientVisible ? EyeOff : Eye}
                         label={item.isClientVisible ? "Sembunyikan dari Client" : "Tampilkan ke Client"}
@@ -242,7 +249,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <TD className="text-text-secondary">
                       <div className="flex items-center gap-2">
                         <span>{contextLabel(item)}</span>
-                        {item.relatedKind === "general" && (
+                        {canEdit && item.relatedKind === "general" && (
                           <Badge tone={item.isClientVisible ? "success" : "neutral"}>
                             {item.isClientVisible ? "Terlihat Client" : "Tersembunyi"}
                           </Badge>
@@ -252,7 +259,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <TD>
                       <div className="flex items-center gap-2">
                         <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
-                        {item.relatedKind === "general" && (
+                        {canEdit && item.relatedKind === "general" && (
                           <IconActionButton
                             icon={item.isClientVisible ? EyeOff : Eye}
                             label={item.isClientVisible ? "Sembunyikan dari Client" : "Tampilkan ke Client"}

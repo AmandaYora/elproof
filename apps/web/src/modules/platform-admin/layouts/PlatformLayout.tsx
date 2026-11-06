@@ -1,3 +1,4 @@
+import { Toaster } from "@/shared/components/ui/Toaster";
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
 import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, X } from "lucide-react";
@@ -52,7 +53,8 @@ function PlatformShell() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" data-density="compact">
+      <Toaster />
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-navy-950/50 lg:hidden"

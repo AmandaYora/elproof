@@ -3,12 +3,13 @@ import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { clientContactSchema, type ClientContactFormValues } from "@/modules/clients/schemas/client.schema";
+import { PortalRoleSelect } from "@/modules/clients/components/PortalRoleSelect";
 
 interface ClientContactFormModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (values: ClientContactFormValues) => void;
-  initialValues: { name: string; phone: string; email: string };
+  initialValues: { name: string; phone: string; email: string; accessRoleId?: number };
   username?: string;
   title?: string;
   description?: string;
@@ -70,6 +71,11 @@ export function ClientContactFormModal({
         <Field label="Email" error={errors.email} hint="Opsional">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@email.com" />
         </Field>
+        {values.accessRoleId !== undefined && (
+          <div className="sm:col-span-2">
+            <PortalRoleSelect value={values.accessRoleId} onChange={(id) => set("accessRoleId", id)} />
+          </div>
+        )}
         {username !== undefined && (
           <div className="sm:col-span-2">
             <Field label="Username">

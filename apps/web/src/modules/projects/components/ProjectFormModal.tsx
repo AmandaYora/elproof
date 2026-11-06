@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useCan, useAllProjects } from "@/shared/stores/usePermissionStore";
+import { PROJECT_STATUS_LABELS } from "@/shared/lib/labels";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
@@ -56,7 +58,8 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
 export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode }: ProjectFormModalProps) {
   const staffList = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
-  const role = useAuthStore((s) => s.session?.role);
+  const canAssignPIC = useCan("project.assign_pic");
+  const assignedOnly = !useAllProjects();
   const currentStaffId = useAuthStore((s) => s.currentStaffId);
   const [values, setValues] = useState<ProjectFormValues>(() => toFormValues(initialProject, "", mode));
   const [errors, setErrors] = useState<Partial<Record<keyof ProjectFormValues, string>>>({});
@@ -65,23 +68,25 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
   // (only Owner/Admin do — see PLAN.md's RBAC section); the backend already
   // rejects a changed picStaffId from this role, so this is a read-only
   // display for them, not a disabled-but-still-submittable control.
-  const picLocked = role === "Staff" && Boolean(initialProject) && mode !== "duplicate";
+  const picLocked = !canAssignPIC && Boolean(initialProject) && mode !== "duplicate";
   // Sales always creates a project as their own PIC Sales — the backend
   // forces this server-side regardless of what's submitted, so the field is
   // shown read-only (locked to self) for them rather than a disabled-but-
   // submittable control. Owner/Admin keep a free picker, including on an
   // existing project (mirrors picStaffId's own edit affordance).
-  const picSalesLocked = role === "Sales" && !initialProject;
+  // A role limited to its own projects becomes PIC Sales of what it creates
+  // (the API enforces it), so the field is shown locked to self.
+  const picSalesLocked = assignedOnly && !initialProject;
 
   useEffect(() => {
     void fetchStaff();
   }, [fetchStaff]);
 
   useEffect(() => {
-    if (!initialProject && !values.picStaffId && staffList.length > 0 && role !== "Sales") {
+    if (!initialProject && !values.picStaffId && staffList.length > 0 && !assignedOnly) {
       setValues((prev) => ({ ...prev, picStaffId: staffList[0].id }));
     }
-  }, [initialProject, staffList, values.picStaffId, role]);
+  }, [initialProject, staffList, values.picStaffId, assignedOnly]);
 
   useEffect(() => {
     if (!initialProject && picSalesLocked) {
@@ -105,7 +110,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
       return;
     }
     onSubmit(result.data);
-    setValues(toFormValues(undefined, role === "Sales" ? "" : staffList[0]?.id ?? ""));
+    setValues(toFormValues(undefined, assignedOnly ? "" : staffList[0]?.id ?? ""));
     setErrors({});
   }
 
@@ -136,7 +141,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
         <Field label="Status Project" required>
           <Select value={values.status} onChange={(e) => set("status", e.target.value as ProjectFormValues["status"])}>
             {PROJECT_STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{PROJECT_STATUS_LABELS.staff[s]}</option>
             ))}
           </Select>
         </Field>

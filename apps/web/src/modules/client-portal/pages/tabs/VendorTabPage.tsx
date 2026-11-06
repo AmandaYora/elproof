@@ -243,7 +243,7 @@ function VendorCard({
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> {categoryName} <span className="text-border mx-1">|</span> {projectVendor.scope}
           </p>
         </div>
-        <EngagementStatusBadge status={projectVendor.engagementStatus} />
+        <EngagementStatusBadge status={projectVendor.engagementStatus} audience="client" />
       </div>
 
       <div className="flex flex-col p-5 sm:p-6">
@@ -325,7 +325,7 @@ function MilestoneRow({
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <span className="text-[13.5px] font-semibold text-navy-950">{m.name}</span>
         <span className="flex items-center gap-2">
-          <MilestoneStatusBadge status={m.status} />
+          <MilestoneStatusBadge status={m.status} audience="client" />
           <span className="whitespace-nowrap text-[12px] font-medium text-text-secondary bg-surface-muted px-2 py-1 rounded-md">
             {m.status === "Completed" ? `Selesai ${formatDate(m.completedDate)}` : `Target ${formatDate(m.targetDate)}`}
           </span>

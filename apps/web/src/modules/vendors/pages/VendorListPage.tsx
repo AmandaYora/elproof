@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Link } from "react-router-dom";
 import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
@@ -25,7 +26,6 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatDate } from "@/shared/lib/formatters";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VendorListPage() {
@@ -41,7 +41,8 @@ export default function VendorListPage() {
   const exportVendors = useVendorStore((s) => s.exportVendors);
   const fetchVendorDeleteImpact = useVendorStore((s) => s.fetchVendorDeleteImpact);
   const deleteVendor = useVendorStore((s) => s.deleteVendor);
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // Destructive/management actions follow the role's permissions (ADR-0026).
+  const isOwner = useCan("vendor.delete");
   const categories = useVendorCategoryStore((s) => s.categories);
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
 

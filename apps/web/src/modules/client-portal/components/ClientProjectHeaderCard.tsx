@@ -8,6 +8,7 @@ import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { CLIENT_CONDITION_COPY } from "@/modules/client-portal/lib/condition";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { useCan } from "@/shared/stores/usePermissionStore";
 
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
@@ -37,12 +38,18 @@ export function ClientProjectHeaderCard({ projectId }: { projectId: string }) {
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
 
+  // What the portal role may see (ADR-0026); e.g. Keluarga has no finance.
+  const canTimeline = useCan("portal.timeline.view");
+  const canVendor = useCan("portal.vendor.view");
+  const canFinance = useCan("portal.finance.view");
+  const canIssues = useCan("portal.issues.view");
+
   useEffect(() => {
-    void fetchMilestones(projectId);
-    void fetchVendorSection(projectId);
-    void fetchClientPayments(projectId);
-    void fetchIssues(projectId);
-  }, [projectId, fetchMilestones, fetchVendorSection, fetchClientPayments, fetchIssues]);
+    if (canTimeline) void fetchMilestones(projectId).catch(() => undefined);
+    if (canVendor) void fetchVendorSection(projectId).catch(() => undefined);
+    if (canFinance) void fetchClientPayments(projectId).catch(() => undefined);
+    if (canIssues) void fetchIssues(projectId).catch(() => undefined);
+  }, [projectId, canTimeline, canVendor, canFinance, canIssues, fetchMilestones, fetchVendorSection, fetchClientPayments, fetchIssues]);
 
   if (!project) return null;
 
@@ -51,10 +58,10 @@ export function ClientProjectHeaderCard({ projectId }: { projectId: string }) {
   // shared helper exists yet for it.
   const totalReceived = clientPayments.reduce((sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount), 0);
   const outstanding = project.contractValue - totalReceived;
-  const openIssueCount = issues.filter((i) => i.status !== "Resolved" && i.status !== "Closed").length;
+  const openIssueCount = !canIssues ? 0 : issues.filter((i) => i.status !== "Resolved" && i.status !== "Closed").length;
 
   const progress = project.progress;
-  const segments = [...milestones, ...vendorMilestones];
+  const segments = [...(canTimeline ? milestones : []), ...(canVendor ? vendorMilestones : [])];
   const totalMilestones = (progress?.projectMilestoneStats.total ?? 0) + (progress?.vendorMilestoneStats.total ?? 0);
   const completedMilestones = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
   const conditionCopy = progress ? CLIENT_CONDITION_COPY[progress.condition] : null;
@@ -63,14 +70,20 @@ export function ClientProjectHeaderCard({ projectId }: { projectId: string }) {
     <div className="flex flex-col gap-5 rounded-3xl border border-border bg-white p-6 shadow-sm sm:p-8">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-navy-950">{project.name}</h1>
-        <ProjectStatusBadge status={project.status} />
+        <ProjectStatusBadge status={project.status} audience="client" />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div
+        className={
+          canFinance
+            ? "grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-5"
+            : "grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3"
+        }
+      >
         <InfoField label="Tanggal Acara" value={formatDate(project.eventDate)} />
         <InfoField label="Paket / Layanan" value={project.packageName} />
-        <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
-        <InfoField label="Sisa Tagihan" value={formatCurrency(outstanding)} />
+        {canFinance && <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />}
+        {canFinance && <InfoField label="Sisa Tagihan" value={formatCurrency(outstanding)} />}
         <InfoField label="Penanggung Jawab" value={project.picName || "-"} />
       </div>
 

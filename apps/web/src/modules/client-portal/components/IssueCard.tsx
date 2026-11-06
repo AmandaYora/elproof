@@ -34,8 +34,8 @@ export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = tr
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <IssueImpactBadge impact={issue.impact} />
-          <IssueStatusBadge status={issue.status} />
+          <IssueImpactBadge impact={issue.impact} audience="client" />
+          <IssueStatusBadge status={issue.status} audience="client" />
         </div>
       </div>
 

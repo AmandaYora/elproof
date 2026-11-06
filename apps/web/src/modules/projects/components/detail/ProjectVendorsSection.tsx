@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ISSUE_STATUS_LABELS, MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import { ChevronDown, ChevronRight, Plus, Pencil, FileWarning, Ban, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -27,6 +28,7 @@ import { IssueFormModal } from "@/modules/projects/components/IssueFormModal";
 import { ISSUE_STATUS_OPTIONS } from "@/modules/projects/schemas/issue.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import { useProjectStore, toIssueUpdateFields, type VendorMilestoneUpdateFields } from "@/modules/projects/stores/useProjectStore";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
@@ -58,6 +60,7 @@ function sortVendorMilestones(list: VendorMilestone[]): VendorMilestone[] {
 }
 
 export function ProjectVendorsSection({ projectId }: { projectId: string }) {
+  const canEdit = useCan("project.edit");
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const payments = useProjectStore((s) => s.payments);
@@ -302,9 +305,11 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
           title="Vendor Project"
           subtitle="Progress setiap vendor berdasarkan pencapaian timeline yang telah diselesaikan."
           action={
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
-              Tambah Vendor
-            </Button>
+            canEdit && (
+              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
+                Tambah Vendor
+              </Button>
+            )
           }
         />
         <CardContent className="p-0">
@@ -440,6 +445,8 @@ function VendorAccordionRow({
   evidenceComplete,
 }: VendorAccordionRowProps) {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  // Vendors, their timeline and issues change only with project.edit.
+  const canEdit = useCan("project.edit");
   const remaining = pv.contractValue - pv.paidAmount;
   const sortedMilestones = sortVendorMilestones(milestones);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(sortedMilestones);
@@ -449,7 +456,7 @@ function VendorAccordionRow({
     return issues.filter((i) => i.vendorMilestoneId === milestoneId && i.status !== "Resolved" && i.status !== "Closed").length;
   }
 
-  const actionIcons = (
+  const actionIcons = canEdit && (
     <>
       <span
         onClick={(e) => {
@@ -562,9 +569,11 @@ function VendorAccordionRow({
 
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Timeline Vendor</p>
-            <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={onAddMilestone}>
-              Tambah Timeline
-            </Button>
+            {canEdit && (
+              <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={onAddMilestone}>
+                Tambah Timeline
+              </Button>
+            )}
           </div>
 
           {milestones.length === 0 ? (
@@ -603,10 +612,11 @@ function VendorAccordionRow({
                           <Select
                             value={m.status}
                             onChange={(e) => onQuickStatusChange(m, e.target.value as MilestoneStatus)}
+                            disabled={!canEdit}
                             className="h-8 w-34 text-[12.5px]"
                           >
                             {MILESTONE_STATUS_OPTIONS.map((s) => (
-                              <option key={s} value={s}>{s}</option>
+                              <option key={s} value={s}>{MILESTONE_STATUS_LABELS.staff[s]}</option>
                             ))}
                           </Select>
                         </td>
@@ -622,7 +632,7 @@ function VendorAccordionRow({
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <div className="flex items-center gap-1.5">
+                          {canEdit && <div className="flex items-center gap-1.5">
                             <IconActionButton
                               icon={Pencil}
                               label="Edit Timeline"
@@ -650,7 +660,7 @@ function VendorAccordionRow({
                               tone="info"
                               onClick={() => onAddIssue(m)}
                             />
-                          </div>
+                          </div>}
                         </td>
                       </tr>
                     );
@@ -683,13 +693,15 @@ function VendorAccordionRow({
             <div className="rounded-md border border-border bg-white p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Kendala</p>
-                <button
-                  type="button"
-                  onClick={() => onAddIssue()}
-                  className="text-[12px] font-semibold text-navy-900 hover:underline"
-                >
-                  + Kendala
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onAddIssue()}
+                    className="text-[12px] font-semibold text-navy-900 hover:underline"
+                  >
+                    + Kendala
+                  </button>
+                )}
               </div>
               {issues.length === 0 ? (
                 <p className="text-[13px] text-text-secondary">Tidak ada kendala tercatat.</p>
@@ -706,16 +718,17 @@ function VendorAccordionRow({
                         </div>
                         <span className="flex shrink-0 items-center gap-1.5">
                           <IssueImpactBadge impact={i.impact} />
-                          <IconActionButton icon={Pencil} label="Ubah Kendala" tone="neutral" onClick={() => onEditIssue(i)} />
+                          {canEdit && <IconActionButton icon={Pencil} label="Ubah Kendala" tone="neutral" onClick={() => onEditIssue(i)} />}
                         </span>
                       </div>
                       <Select
                         value={i.status}
                         onChange={(e) => onIssueStatusChange(i, e.target.value as IssueStatus)}
+                        disabled={!canEdit}
                         className="h-8 w-full text-[12.5px]"
                       >
                         {ISSUE_STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
+                          <option key={s} value={s}>{ISSUE_STATUS_LABELS.staff[s]}</option>
                         ))}
                       </Select>
                     </li>

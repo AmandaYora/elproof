@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { useNavigate } from "react-router-dom";
 import { Pencil, AlertTriangle, Archive, ArchiveRestore, Copy } from "lucide-react";
 import { Card, CardContent } from "@/shared/components/ui/Card";
@@ -10,7 +11,6 @@ import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -33,20 +33,22 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
   const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // Actions follow the workspace role's permissions (ADR-0026).
+  const canDelete = useCan("project.delete");
+  const canEdit = useCan("project.edit");
+  const canArchive = useCan("project.archive");
   // Neither Wedding Planner nor Sales duplicates a project (duplicating
   // creates a new one — same restriction as creating from scratch, see
   // PLAN.md's RBAC section); the backend already rejects both roles' POST
   // .../duplicate.
-  const role = useAuthStore((s) => s.session?.role);
-  const canDuplicate = role !== "Staff" && role !== "Sales";
+  const canDuplicate = useCan("project.duplicate");
   // Margin/Keuntungan reveals vendor-cost/venue-cost business data — Wedding
   // Planner is not supposed to see this specific computed figure (confirmed
   // RBAC rule), even though the underlying vendor engagements and venue cost
   // snapshot it's derived from are already visible to every role via the
   // Vendor/Venue tabs themselves (no separate fetch to gate here anymore —
   // both now come from data already loaded for this project).
-  const canSeeMargin = useAuthStore((s) => s.session?.role) !== "Staff";
+  const canSeeMargin = useCan("finance.margin.view");
 
   const [editOpen, setEditOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -164,28 +166,32 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
-              Ubah Project
-            </Button>
+            {canEdit && (
+              <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
+                Ubah Project
+              </Button>
+            )}
             {canDuplicate && (
               <Button variant="secondary" size="sm" icon={<Copy className="h-3.5 w-3.5" />} onClick={() => setDuplicateOpen(true)}>
                 Duplikat Project
               </Button>
             )}
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={project.isArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-              onClick={() => void handleToggleArchive()}
-            >
-              {project.isArchived ? "Pulihkan dari Arsip" : "Arsipkan"}
-            </Button>
-            {isOpenProject && (
+            {canArchive && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={project.isArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                onClick={() => void handleToggleArchive()}
+              >
+                {project.isArchived ? "Pulihkan dari Arsip" : "Arsipkan"}
+              </Button>
+            )}
+            {canEdit && isOpenProject && (
               <Button variant="danger" size="sm" onClick={() => setConfirmingCancel(true)}>
                 Batalkan Project
               </Button>
             )}
-            {isOwner && (project.isArchived || project.status === "Cancelled") && (
+            {canDelete && (project.isArchived || project.status === "Cancelled") && (
               <Button variant="danger" size="sm" onClick={() => setConfirmingDelete(true)}>
                 Hapus Permanen
               </Button>

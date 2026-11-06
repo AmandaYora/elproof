@@ -2,7 +2,7 @@ import { lazy } from "react";
 import { Navigate, type RouteObject } from "react-router-dom";
 import { AppLayout } from "@/shared/layouts/AppLayout";
 import { RequireAuth } from "@/shared/components/RequireAuth";
-import { RequireRole } from "@/shared/components/RequireRole";
+import { RequirePermission } from "@/shared/components/RequirePermission";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 const DashboardPage = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
@@ -25,6 +25,7 @@ const VendorListPage = lazy(() => import("@/modules/vendors/pages/VendorListPage
 const VenueListPage = lazy(() => import("@/modules/venues/pages/VenueListPage"));
 const UserListPage = lazy(() => import("@/modules/users/pages/UserListPage"));
 const SubscriptionPage = lazy(() => import("@/modules/subscription/pages/SubscriptionPage"));
+const RolesPage = lazy(() => import("@/modules/access/pages/RolesPage"));
 
 export const protectedRoutes: RouteObject = {
   element: <RequireAuth allow={["staff"]} />,
@@ -59,24 +60,27 @@ export const protectedRoutes: RouteObject = {
             { path: "venue", element: <ProjectVenueTabPage /> },
           ],
         },
+        // Each page follows the workspace role's permissions (ADR-0026).
         {
-          element: <RequireRole allow={["Owner", "Admin"]} />,
+          element: <RequirePermission all={["dashboard.view"]} allProjects />,
+          children: [{ path: ROUTE_PATHS.dashboard, element: <DashboardPage /> }],
+        },
+        {
+          element: <RequirePermission all={["client.manage"]} allProjects />,
+          children: [{ path: ROUTE_PATHS.clients, element: <ClientListPage /> }],
+        },
+        {
+          element: <RequirePermission all={["vendor.view"]} />,
           children: [
-            { path: ROUTE_PATHS.dashboard, element: <DashboardPage /> },
-            { path: ROUTE_PATHS.clients, element: <ClientListPage /> },
             { path: ROUTE_PATHS.vendors, element: <VendorListPage /> },
             { path: ROUTE_PATHS.venues, element: <VenueListPage /> },
           ],
         },
-        {
-          element: <RequireRole allow={["Owner"]} />,
-          children: [
-            { path: ROUTE_PATHS.vendorCategories, element: <VendorCategoryListPage /> },
-            { path: ROUTE_PATHS.milestoneTemplates, element: <MilestoneTemplateListPage /> },
-            { path: ROUTE_PATHS.users, element: <UserListPage /> },
-            { path: ROUTE_PATHS.subscription, element: <SubscriptionPage /> },
-          ],
-        },
+        { element: <RequirePermission all={["vendor.category.manage"]} />, children: [{ path: ROUTE_PATHS.vendorCategories, element: <VendorCategoryListPage /> }] },
+        { element: <RequirePermission all={["template.manage"]} />, children: [{ path: ROUTE_PATHS.milestoneTemplates, element: <MilestoneTemplateListPage /> }] },
+        { element: <RequirePermission all={["team.manage"]} />, children: [{ path: ROUTE_PATHS.users, element: <UserListPage /> }] },
+        { element: <RequirePermission all={["role.manage"]} />, children: [{ path: ROUTE_PATHS.roles, element: <RolesPage /> }] },
+        { element: <RequirePermission all={["subscription.manage"]} />, children: [{ path: ROUTE_PATHS.subscription, element: <SubscriptionPage /> }] },
       ],
     },
   ],

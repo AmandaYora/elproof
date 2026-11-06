@@ -4,15 +4,15 @@ import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
+import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { disableGoogleAutoSelect } from "@/shared/lib/google-identity";
 
 /** Where a freshly signed-in principal lands. */
 export function landingPathFor(session: AuthSession): string {
-  if (session.principalType === "staff") {
-    // Neither Wedding Planner ("Staff") nor Sales has Dashboard access.
-    return session.role === "Staff" || session.role === "Sales" ? ROUTE_PATHS.projects : ROUTE_PATHS.dashboard;
-  }
+  // Staff land on the Dashboard; a role without it is sent on to Project
+  // by the route guard (RequirePermission).
+  if (session.principalType === "staff") return ROUTE_PATHS.dashboard;
   if (session.principalType === "client") return ROUTE_PATHS.portal();
   return session.mfa ? ROUTE_PATHS.platformDashboard : ROUTE_PATHS.platformSecurity;
 }
@@ -25,6 +25,7 @@ export async function logoutAndRedirect(navigate: NavigateFunction) {
   useAuthStore.getState().logout();
   useTenantBrandingStore.getState().reset();
   useSubscriptionStatusStore.getState().reset();
+  usePermissionStore.getState().reset();
   disableGoogleAutoSelect();
   navigate(ROUTE_PATHS.login);
 

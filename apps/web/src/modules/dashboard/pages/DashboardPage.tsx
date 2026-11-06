@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { StatCard } from "@/shared/components/ui/StatCard";
 import { AttentionQueue } from "@/modules/dashboard/components/AttentionQueue";
 import { UpcomingEvents } from "@/modules/dashboard/components/UpcomingEvents";
@@ -11,7 +12,6 @@ import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { formatCurrencyCompact } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useLocation } from "react-router-dom";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { OnboardingChecklist } from "@/modules/onboarding/components/OnboardingChecklist";
 
 export default function DashboardPage() {
@@ -19,7 +19,8 @@ export default function DashboardPage() {
   const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  const isOwner = useAuthStore((s) => s.session?.role === "Owner");
+  // The "Mulai di sini" checklist belongs to whoever runs the workspace.
+  const isOwner = usePermissionStore((s) => Boolean(s.grants?.isOwner));
   const welcome = Boolean((useLocation().state as { welcome?: boolean } | null)?.welcome);
 
   useEffect(() => {

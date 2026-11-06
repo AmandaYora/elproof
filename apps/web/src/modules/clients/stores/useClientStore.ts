@@ -17,6 +17,8 @@ interface RawClient {
   isActive: boolean;
   lastCredentialResetAt: string | null;
   loginStatus?: Client["loginStatus"];
+  accessRoleId: number;
+  accessRoleName?: string;
 }
 
 function toClient(raw: RawClient): Client {
@@ -32,6 +34,8 @@ function toClient(raw: RawClient): Client {
     isActive: raw.isActive,
     lastCredentialResetAt: raw.lastCredentialResetAt,
     loginStatus: raw.loginStatus,
+    accessRoleId: raw.accessRoleId,
+    accessRoleName: raw.accessRoleName,
   };
 }
 
@@ -86,6 +90,7 @@ export const useClientStore = create<ClientState>((set, get) => ({
       phone: values.phone,
       email: values.email,
       username: values.username,
+      accessRoleId: values.accessRoleId ?? 0,
     });
     const data = res.data.data as ClientWithLink;
     // The one-time link must reach the screen even if the list refresh fails.
