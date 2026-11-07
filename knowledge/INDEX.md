@@ -14,3 +14,4 @@ Routing for the project knowledge base. Read the file relevant to your task befo
 - [FRONTEND_GUIDE.md](FRONTEND_GUIDE.md) — frontend conventions
 - [BACKEND_GUIDE.md](BACKEND_GUIDE.md) — backend conventions
 - [decisions/](decisions/) — Architecture Decision Records
+- [DESIGN.md](DESIGN.md) — brief desain untuk revamp UI (temuan riset → keputusan, token, tata letak, sumber); rencana di `docs/plan/revamp-ui-shadcn/PLAN.md`
