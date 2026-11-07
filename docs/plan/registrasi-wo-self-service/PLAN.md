@@ -226,8 +226,13 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - **Belum / sengaja ditunda:** versi harga dan entitlement paket (belum ada pelanggan berbayar, K13); MRR ekspansi/kontraksi (belum ada riwayat ganti paket); sitemap (domain produksi belum tercatat); tab Aktivitas tenant hanya untuk Super Admin; pembacaan halaman 360° belum masuk audit; pembayaran di luar gateway masuk MRR tetapi tidak ke angka pendapatan 30 hari; hitung mundur QRIS dan unggah foto login belum diuji dengan gateway/penyimpanan sungguhan.
 - Kwitansi/invoice **klien** WO **tidak** termasuk di sini; sudah direncanakan di `docs/plan/invoice-kwitansi-client/`.
 
-**Fase 7 — Skala**
-- Pagination server-side di Platform Console & GlobalSearch (hapus `all=true`), tes isolasi tenant otomatis (token tenant A → ID tenant B = 404), indeks komposit `(tenant_id, …)`, presigned URL untuk file.
+**Fase 7 — Skala** — ✅ **SELESAI 8 Nov 2026** (branch `revamp/flow-ideal`; ADR-0031; diverifikasi unit test, build web, uji langsung di MySQL dan MinIO sementara, dan suite integrasi isolasi tenant)
+- Konsol Platform tidak lagi memuat seluruh tabel: grafik dashboard dari `GET /platform/trends`, nama tenant per halaman dari `GET /tenants/names`, admin sendiri dari `GET /platform-admins/{id}`, kuitansi dari `GET /subscription-transactions/{id}`; `all=true` dihapus dari `/tenants`, `/platform-admins`, `/subscription-transactions`. Pencarian global memakai endpoint paginated (4 hasil per jenis, debounce, permintaan basi dibatalkan).
+- Migrasi 64: indeks komposit untuk daftar proyek, transaksi langganan, dan tenant. Terukur pada 80 ribu proyek / 60 ribu transaksi: halaman proyek 46 ms → 0,2 ms, daftar transaksi 23 ms → 0,1 ms.
+- Tautan file langsung (presigned, 2 menit) untuk evidence: `GET /projects/{id}/evidence/{eid}/link`, aturan akses sama dengan `/file`, jatuh balik ke streaming bila `S3_PRESIGN=false`. Diuji ke MinIO asli.
+- Tes isolasi tenant otomatis (`apps/api/tests/isolation`, tag `integration`): 233 permintaan, token tenant A terhadap id tenant B harus 403/404 tanpa kebocoran data. **Menemukan dan memperbaiki** id asing yang dipercaya di body request (PIC staf, venue, vendor, kategori, engagement, `relatedId` evidence milik tenant lain), handler foto login yang terbuka untuk staf mana pun, dan jalur `/link` yang belum diizinkan untuk klien.
+- Juga: jenis evidence tak dikenal kini 422 sebelum file disimpan (dulu 500 setelah unggah); karakter `%`/`_` di pencarian dicocokkan apa adanya; semua waktu di respons transaksi berformat WIB.
+- **Belum / sengaja ditunda:** `all=true` pada daftar WO untuk dropdown (vendor, venue, klien, staf, proyek); metrik MRR masih membaca semua tenant di memori (pindah ke agregat SQL saat tenant puluhan ribu); suite isolasi belum membaca ekspor/impor xlsx dan lampiran vendor/venue; versi harga dan entitlement paket serta sitemap dari Fase 6 masih tertunda.
 
 ## 6. Keputusan produk yang dibutuhkan
 

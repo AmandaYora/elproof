@@ -609,6 +609,14 @@ One row (`id = 1`): `trial_days` 14, `expiring_soon_days` 7, `grace_days` 7, `re
 | expires_at | DATETIME | started + 60 minutes |
 | ended_at | DATETIME NULL | |
 
+### Composite indexes (Fase 7, migration 64)
+
+| Table | Added | Replaces | Serves |
+|---|---|---|---|
+| `projects` | `idx_projects_tenant_archived_event (tenant_id, is_archived, event_date, id)` | `idx_projects_tenant` | the paginated project list and its count |
+| `subscription_transactions` | `idx_subscription_transactions_created (created_at, id)`, `_status_created (status, created_at, id)`, `_tenant_created (tenant_id, created_at, id)`, `_status_paid (status, paid_at)` | `idx_subscription_transactions_tenant` | the platform list (with or without a status), one tenant's list, the paid-revenue window of the metrics |
+| `tenants` | `idx_tenants_joined (joined_at, id)` | | the tenant list order and the join counts of the dashboard |
+
 ---
 
 ## Module `payment` — **implemented, internal + external mode (Fase 9 + Fase 10)** — see `knowledge/MODULE_PAYMENT.md`

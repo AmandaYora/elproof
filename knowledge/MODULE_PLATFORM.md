@@ -180,3 +180,6 @@ Files: `domain/console.go`, `domain/platform_metrics.go`, `application/console_s
   `SetAuditRecorder`.
 - **Login photos**: `PUT /console/login-slides/{index}` (Super Admin) replaces one of the three fixed slots;
   the image is decoded, flattened to JPEG and compressed.
+- **Trends and names (Fase 7)**: `GET /platform/trends` (`domain.ComputeTrends`, pure and tested, buckets in
+  WIB) and `GET /tenants/names?ids=`; `GET /platform-admins/{id}`. `all=true` no longer exists on
+  `/tenants` and `/platform-admins`.

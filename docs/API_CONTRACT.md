@@ -10,8 +10,12 @@ Envelope reminder — success: `{ "success": true, "message": "...", "data": ...
 
 **Pagination — Fase 7, applies to every `GET` list endpoint marked "paginated" below:** default
 response is paginated (`?page=`/`?limit=`, default `page=1`/`limit=10`, `limit` capped at 100).
-Pass `?all=true` to instead get the old unpaginated shape (`response.OK`, no `meta`) — every
-dropdown/picker/global-search/dashboard-aggregation consumer in the frontend uses this. `?search=`
+Some **tenant-scoped rosters** of the WO Console (`/vendors`, `/venues`, `/vendor-categories`,
+`/clients`, `/staff`, `/projects`, `/plans`) still accept `?all=true` for the unpaginated shape
+(`response.OK`, no `meta`) — only the pickers and dropdowns use it, and each is bounded by one
+tenant. **The Platform Console endpoints do not:** `/tenants`, `/platform-admins` and
+`/subscription-transactions` are always paginated (Fase 7), and global search asks the paginated
+endpoints with `?search=&limit=4` instead of loading every list. `?search=`
 does a `LIKE` match (columns vary per endpoint, noted below); other filters (`role`, `categoryId`,
 `status`) apply at the SQL level too, so `search` + a filter + a page number combine correctly
 instead of a filter being applied only to one already-paginated page.
@@ -108,9 +112,14 @@ needs Support or Super Admin; announcements, policy, audit log and login photos 
 | GET | `/audit-log` | **Super Admin**, paginated; filters `actorType`, `actorId`, `tenantId`, `outcome=ok|failed`, `q`, `from`, `to` (WIB days) |
 | GET | `/audit-log/export` | **Super Admin**, same filters, CSV (max 10 000 rows); writes its own audit record |
 
-Platform dashboard charts (revenue and new-tenant trends) are still computed client-side from
-`GET /tenants?all=true` and `GET /subscription-transactions?all=true`; the headline numbers come from
-`/platform/metrics`.
+Fase 7 additions for the console (any platform role may read them):
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/platform/trends` | `?period=month|year` (default month; 400 otherwise). `{period, revenue[], newTenants[]}`, each point `{key, label, value}`; bars run from the 1st (or January) through today, bucketed in WIB. Replaces the client-side calculation over every tenant and transaction |
+| GET | `/tenants/names` | `?ids=1,2,3` (at most 100) → `{"1": "WO name"}`; unknown ids are absent. Lets a list page name the tenants of its own rows without loading the roster |
+| GET | `/platform-admins/{id}` | one admin; the console reads its own profile this way instead of listing the whole team |
+| GET | `/subscription-transactions/{id}` | one transaction. A staff Owner reaches only their tenant's (anyone else's id → 404, never 403); used by the receipt page |
 
 ## `billing` (read by both consoles; writes are `platform_admin`-only) — **implemented, Fase 2**; isolated per-App catalog + subscription ledger added `docs/plan/external-subscription-plans/PLAN.md`
 
@@ -261,6 +270,7 @@ afterward. **Wedding Planner**: rejected 403 if `picStaffId` in the body differs
 | POST | `/projects/{id}/evidence` | JSON body `{name, type, fileName, mimeType, base64Data, documentDate, description, relatedKind, relatedId, isClientVisible}` — base64, not multipart (see ADR-0006, ADR-0010); 15 MB decoded-size cap; `relatedKind` is one of `vendorMilestone`/`payment`/`projectVendor`/`issue`/`clientPayment`/`venuePayment`/`general` (migration `000035`, ADR-0020); `isClientVisible` is server-side re-normalized to `false` unless `relatedKind = "general"` (never trusted blindly from the request body, even for a `general` document it still defaults `false`) |
 | POST | `/projects/{id}/evidence/{evidenceId}/toggle-client-visible` | flips `is_client_visible` for one evidence row — rejected `422` unless `relatedKind = "general"` (visibility is meaningless for every other kind, see `DB_SCHEMA.md` and ADR-0020) |
 | GET | `/projects/{id}/documents` | Client Portal's own "Dokumen" tab feed (ADR-0020) — **always** only `relatedKind = "general"` **and** `isClientVisible = true`, unconditionally regardless of caller (reachable by staff too, harmlessly — the safety property is what the endpoint returns, not who can call it). Deliberately its own query/endpoint rather than a filter bolted onto `GET .../evidence`, so "only ever returns documents safe to show a client" stays trivially auditable |
+| GET | `/projects/{id}/evidence/{evidenceId}/link` | **Fase 7.** `{url, expiresAt}`: a direct, two-minute link to the stored file in object storage, so the bytes do not pass through the API. Same project scope and client-visibility rule as `/file` (an internal document is 404 for a client). `?disposition=attachment` makes the link force a download. `501` with `errors.code = presign_unavailable` when the deployment has `S3_PRESIGN=false`; the web then falls back to `/file`. Allowed for client principals |
 | GET | `/projects/{id}/evidence/{evidenceId}/file` | authenticated download (Bearer token required — not a public URL); streams the object exactly as stored (already compressed at upload time); frontend fetches it as a blob via `httpClient`, not a bare `<img src>` |
 | GET | `/projects/{id}/activity` | append-only, populated server-side on every mutation above; activity types actually emitted: `project_created`, `project_updated`, `project_status_changed`, `vendor_added`, `vendor_status_changed`, `milestone_updated`, `payment_recorded`/`payment_updated`/`payment_deleted` (each shared by vendor, client, and venue payments, distinguished only by `entityType`: `"vendor_payment"` vs. `"client_payment"` vs. `"venue_payment"`), `evidence_uploaded`, `issue_created`, `issue_updated`; response includes `projectId` (needed by the dashboard's cross-project activity feed, not by the per-project tab which already knows it from the URL) |
 

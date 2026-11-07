@@ -162,8 +162,15 @@ have no permission of their own. The API still refuses writes with `subscription
 - **Navigation** is grouped (Pelanggan, Produk, Sistem) in `PlatformLayout`; entries a role cannot use
   are hidden through `lib/capabilities.ts` (`usePlatformCan`), which mirrors the API's role policy in
   `cmd/server/platform_scope.go`. The API stays the real gate.
-- **Ringkasan** reads `GET /platform/metrics` (`useConsoleStore.fetchMetrics`); only the two trend charts
-  still compute from the full tenant/transaction lists.
+- **Ringkasan** reads `GET /platform/metrics` and `GET /platform/trends?period=` (`useConsoleStore`); the
+  console never loads every tenant or transaction. List pages name their rows' tenants with
+  `fetchTenantNames(ids)`, and the layout reads only the signed-in admin (`GET /platform-admins/{id}`).
+- **Global search** (`shared/layouts/GlobalSearch`) debounces, aborts stale requests and asks the paginated
+  project, vendor and client endpoints for four hits each; one of them failing (a Wedding Planner gets
+  403 for tenant-wide clients) never hides the others.
+- **Evidence files** open through `GET .../evidence/{id}/link` (direct storage URL, no bytes through the
+  API) and fall back to the authenticated `/file` blob on 501; the download link is requested on click
+  because it only lives two minutes.
 - **Tenant 360°** is `/platform/tenant/:id/:tab?` (`TenantDetailPage` + `components/tenant-detail/*`).
   The edit/activate/freeze/re-invite actions and their dialogs are the shared `useTenantActions` hook, used by
   the list and the detail page alike. Per-tenant data is returned by `useConsoleStore` calls, not cached.

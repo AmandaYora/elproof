@@ -29,6 +29,14 @@ never a live join.
   since `tenants` belongs to `platform`).
 - Tenant-scoped tables: `tenant_id BIGINT UNSIGNED NOT NULL` (see ADR-0004), always the first
   filter in any query.
+- Indexes follow the queries (Fase 7, migration 64): a list that filters by tenant and sorts needs one
+  composite index in that order, e.g. `projects (tenant_id, is_archived, event_date, id)` for
+  `WHERE tenant_id = ? AND is_archived = ? ORDER BY event_date DESC, id DESC`. Measured on 80 000
+  projects and 60 000 transactions: the project page went from a 46 ms filesort of the whole tenant to
+  0.2 ms, the platform transaction list from a 23 ms table scan to 0.1 ms. Drop the single-column index a
+  composite one covers (its leftmost prefix does the same job); InnoDB appends the primary key to every
+  secondary index, so `ORDER BY id` after an equality filter needs no extra column. Check with
+  `EXPLAIN FORMAT=TREE`; `LIKE '%x%'` searches cannot use an index and are bounded by the tenant filter.
 - Timestamps: `created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`, `updated_at TIMESTAMP NOT
   NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` where mutation history matters.
 - Soft state over hard delete: the frontend consistently uses `is_active`/status-toggle rather than

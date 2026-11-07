@@ -40,6 +40,16 @@ leaving a deliberately minimal clean slate: one Platform Console super admin
 through the app itself (Platform Console → Tenant → Tambah Tenant, which in
 turn provisions that tenant's own Owner login).
 
+### Object storage links (Fase 7)
+
+Evidence files can be opened through a direct, two-minute presigned link, so downloads do not pass
+through the API. It needs the S3 endpoint to be reachable **from browsers** (the IDCloudHost endpoint
+is). No bucket CORS rule is needed: the web shows the file in an `<img>`/`<iframe>` and downloads by
+navigation, never by `fetch` to the bucket. Settings: `S3_PRESIGN` (default `true`; `false` keeps
+streaming through the API, e.g. for a private bucket) and `S3_REGION` (optional; setting it saves a
+bucket-location lookup when signing). A link is a bearer secret for its two minutes, so it is created
+only after the caller was authorised for that exact document and is never logged.
+
 ## 4. Run locally (two processes, from the repo root)
 
 ```bash
