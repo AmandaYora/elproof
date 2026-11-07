@@ -4,6 +4,7 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
 import { Reveal } from "@/modules/homepage/components/Reveal";
 import { cn } from "@/shared/lib/cn";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const PARTIES = [
   {
@@ -54,6 +55,7 @@ const FEATURES = [
 ];
 
 export default function HomePage() {
+  usePageMeta({ title: "Kelola pernikahan klien dengan transparan", description: "ElProof membantu wedding organizer mengelola project, vendor, dan pembayaran, sambil memberi klien portal untuk memantau persiapan pernikahan mereka." });
   return (
     <div className="flex flex-col bg-background">
       {/* HERO SECTION */}

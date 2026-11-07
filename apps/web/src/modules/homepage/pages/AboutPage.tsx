@@ -4,6 +4,7 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
 import { Reveal } from "@/modules/homepage/components/Reveal";
 import { cn } from "@/shared/lib/cn";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const PARTIES = [
   {
@@ -40,6 +41,7 @@ const PRINCIPLES = [
 ];
 
 export default function AboutPage() {
+  usePageMeta({ title: "Tentang kami", description: "Kenali ElProof, aplikasi untuk wedding organizer yang ingin transparan kepada klien." });
   return (
     <div className="bg-background">
       {/* HEADER PAGE */}

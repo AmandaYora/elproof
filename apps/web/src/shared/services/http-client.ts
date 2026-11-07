@@ -5,6 +5,8 @@ import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { setLoginNotice } from "@/shared/lib/session-notice";
+import { toast } from "@/shared/stores/useToastStore";
+import { useContactStore } from "@/shared/stores/useContactStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 /** Codes the API attaches to a 403 when access depends on account state. */
@@ -13,6 +15,7 @@ type AccessErrorCode =
   | "subscription_suspended"
   | "tenant_frozen"
   | "mfa_required"
+  | "impersonation_read_only"
   | "forbidden_permission"
   | "role_missing";
 
@@ -50,6 +53,9 @@ function handleAccessError(code: AccessErrorCode | undefined) {
       usePermissionStore.getState().reset();
       window.location.assign(ROUTE_PATHS.login);
       break;
+    case "impersonation_read_only":
+      toast.error("Sesi dukungan hanya untuk melihat. Akhiri sesi untuk mengubah data.");
+      break;
     case "mfa_required":
       if (window.location.pathname !== ROUTE_PATHS.platformSecurity) window.location.assign(ROUTE_PATHS.platformSecurity);
       break;
@@ -80,9 +86,29 @@ const refreshClient = axios.create({
 
 let refreshInFlight: Promise<string | null> | null = null;
 
+/** A support session has no refresh token: when it lapses, go back to the admin's own session. */
+let leavingSupportSession = false;
+
+function leaveExpiredSupportSession(returnTo: NonNullable<ReturnType<typeof useAuthStore.getState>["session"]>) {
+  // Several requests can hit the 401 at once; only the first one leaves.
+  if (leavingSupportSession) return;
+  leavingSupportSession = true;
+  useAuthStore.getState().login(returnTo);
+  useTenantBrandingStore.getState().reset();
+  useSubscriptionStatusStore.getState().reset();
+  usePermissionStore.getState().reset();
+  useContactStore.getState().reset();
+  window.location.assign(ROUTE_PATHS.platformTenants);
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const session = useAuthStore.getState().session;
   if (!session) return null;
+  if (leavingSupportSession) return null;
+  if (session.impersonation) {
+    leaveExpiredSupportSession(session.impersonation.returnTo);
+    return null;
+  }
 
   if (!refreshInFlight) {
     refreshInFlight = refreshClient

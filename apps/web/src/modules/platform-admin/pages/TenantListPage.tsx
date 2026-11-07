@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Plus, Pencil, Send, Zap, UserX, UserCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Plus, Pencil, Send, Zap, UserX, UserCheck, Download, ArrowUpRight } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -9,180 +10,147 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { LoadError } from "@/shared/components/feedback/LoadError";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
 import { TenantFormModal } from "@/modules/platform-admin/components/TenantFormModal";
-import { AccessLinkDialog } from "@/shared/components/AccessLinkDialog";
-import type { AccessLink } from "@/shared/lib/access-link";
-import { ActivateSubscriptionModal } from "@/modules/platform-admin/components/ActivateSubscriptionModal";
 import { daysUntilExpiry, periodEndsAt } from "@/modules/platform-admin/data";
 import type { Tenant } from "@/modules/platform-admin/data";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
-import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
-import type { TenantCreateFormValues, TenantFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
-import type { ActivateSubscriptionFormValues } from "@/modules/platform-admin/schemas/activate-subscription.schema";
+import { useTenantActions } from "@/modules/platform-admin/hooks/useTenantActions";
+import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
+import type { TenantCreateFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
 import { TENANT_STATUS_FILTERS, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
-import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { downloadFile } from "@/shared/lib/download";
+import { toast } from "@/shared/stores/useToastStore";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { API } from "@/shared/services/api-endpoints";
 
-
-interface OwnerLinkShare {
-  tenant: Tenant;
-  link: AccessLink;
-  /** Google account that must accept the invitation. */
-  email: string;
-  notice: string;
-}
+const SOURCE_LABEL = { self_service: "Daftar mandiri", platform: "Dibuat tim ElProof" } as const;
 
 export default function TenantListPage() {
   const tenants = usePlatformAdminStore((s) => s.tenantPage);
   const meta = usePlatformAdminStore((s) => s.tenantPageMeta);
-  const plans = useSubscriptionPlanStore((s) => s.plans);
   const fetchTenantPage = usePlatformAdminStore((s) => s.fetchTenantPage);
-  const fetchPlans = useSubscriptionPlanStore((s) => s.fetchPlans);
   const registerTenant = usePlatformAdminStore((s) => s.registerTenant);
-  const updateTenant = usePlatformAdminStore((s) => s.updateTenant);
   const uploadTenantLogo = usePlatformAdminStore((s) => s.uploadTenantLogo);
-  const toggleTenantSuspension = usePlatformAdminStore((s) => s.toggleTenantSuspension);
-  const reinviteTenantOwner = usePlatformAdminStore((s) => s.reinviteTenantOwner);
-  const activateTenantSubscription = usePlatformAdminStore((s) => s.activateTenantSubscription);
+  const [params] = useSearchParams();
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
-  const [statusFilter, setStatusFilter] = useState<string>("Semua");
+  const [statusFilter, setStatusFilter] = useState<string>(params.get("status") ?? "Semua");
+  const [planFilter, setPlanFilter] = useState("Semua");
+  const [sourceFilter, setSourceFilter] = useState("Semua");
   const [page, setPage] = useState(1);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingTenant, setEditingTenant] = useState<Tenant | undefined>(undefined);
-  const [activatingTenant, setActivatingTenant] = useState<Tenant | undefined>(undefined);
-  const [isActivating, setIsActivating] = useState(false);
-  const [ownerLink, setOwnerLink] = useState<OwnerLinkShare | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [activationError, setActivationError] = useState<string | null>(null);
-  const [suspensionTarget, setSuspensionTarget] = useState<Tenant | undefined>(undefined);
-  const [suspensionError, setSuspensionError] = useState<string | null>(null);
-  const [isTogglingSuspension, setIsTogglingSuspension] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    void fetchPlans();
-  }, [fetchPlans]);
+  const canManage = usePlatformCan("tenant-manage");
+  const canActivate = usePlatformCan("activate-subscription");
+  const canFreeze = usePlatformCan("super-admin");
+  const canExport = usePlatformCan("internal-read");
+  // The detail page reads a workspace's internals, which Read-only may not.
+  const canOpen = canExport;
+
+  const status = statusFilter === "Semua" ? "" : statusFilter;
+  const extra = { planId: planFilter === "Semua" ? "" : planFilter, source: sourceFilter === "Semua" ? "" : sourceFilter };
+
+  const refetch = useCallback(async () => {
+    setFailed(false);
+    try {
+      await fetchTenantPage(page, debouncedQuery, status, { planId: extra.planId, source: extra.source });
+      setLoaded(true);
+    } catch {
+      setFailed(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchTenantPage, page, debouncedQuery, status, extra.planId, extra.source]);
+
+  const actions = useTenantActions(refetch);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, statusFilter]);
+  }, [debouncedQuery, statusFilter, planFilter, sourceFilter]);
 
   useEffect(() => {
-    void fetchTenantPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter);
-  }, [fetchTenantPage, page, debouncedQuery, statusFilter]);
-
-  function refetch() {
-    return fetchTenantPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter);
-  }
+    void refetch();
+  }, [refetch]);
 
   function planName(planId: string | null) {
-    return plans.find((p) => p.id === planId)?.name ?? "-";
-  }
-
-  function openCreateModal() {
-    setEditingTenant(undefined);
-    setModalOpen(true);
-  }
-
-  function openEditModal(tenant: Tenant) {
-    setEditingTenant(tenant);
-    setModalOpen(true);
-  }
-
-  function closeModal() {
-    setModalOpen(false);
-    setEditingTenant(undefined);
+    return actions.plans.find((p) => p.id === planId)?.name ?? "-";
   }
 
   async function handleRegister(values: TenantCreateFormValues) {
-    setActionError(null);
+    actions.clearActionError();
     try {
       const result = await registerTenant(values);
-      closeModal();
+      setCreateOpen(false);
       await refetch();
-      setOwnerLink({
+      actions.showOwnerLink({
         tenant: result.tenant,
         link: result.invitation,
         email: result.email,
         notice: `${result.tenant.businessName} didaftarkan dengan masa coba 14 hari.`,
       });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mendaftarkan tenant"));
+      actions.setActionError(getApiErrorMessage(err, "Gagal mendaftarkan tenant"));
     }
   }
 
-  async function handleEditSubmit(values: TenantFormValues) {
-    if (!editingTenant) return;
-    setActionError(null);
+  async function handleExport() {
+    setExporting(true);
     try {
-      await updateTenant(editingTenant.id, values);
-      closeModal();
-      await refetch();
+      await downloadFile(API.console.tenantsExport, { search: debouncedQuery || undefined, status: status || undefined, planId: extra.planId || undefined, source: extra.source || undefined }, "tenant.csv");
+      toast.success("Daftar tenant diunduh. Pengunduhan ini tercatat di audit log.");
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui tenant"));
-    }
-  }
-
-  async function handleReinviteOwner(tenant: Tenant) {
-    setActionError(null);
-    try {
-      const { link, email } = await reinviteTenantOwner(tenant.id);
-      setOwnerLink({
-        tenant,
-        link,
-        email,
-        notice: "Link lama tidak berlaku lagi. Setelah link ini diterima, sesi Owner yang masih terbuka berakhir.",
-      });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal membuat undangan Owner"));
-    }
-  }
-
-  function openActivation(tenant: Tenant) {
-    setActivationError(null);
-    setActivatingTenant(tenant);
-  }
-
-  async function handleActivateSubmit(values: ActivateSubscriptionFormValues) {
-    if (!activatingTenant) return;
-    setActivationError(null);
-    setIsActivating(true);
-    try {
-      await activateTenantSubscription(activatingTenant.id, values);
-      await refetch();
-      setActivatingTenant(undefined);
-    } catch (err) {
-      // Keep the dialog open with what was typed, so the admin can fix it.
-      setActivationError(getApiErrorMessage(err, "Gagal mengaktifkan langganan tenant"));
+      toast.error(getApiErrorMessage(err, "Daftar tenant belum bisa diunduh"));
     } finally {
-      setIsActivating(false);
+      setExporting(false);
     }
   }
 
-  function openSuspension(tenant: Tenant) {
-    setSuspensionError(null);
-    setSuspensionTarget(tenant);
+  function renderName(tenant: Tenant, className: string) {
+    return canOpen ? (
+      <Link to={ROUTE_PATHS.platformTenantDetail(tenant.id)} className={`${className} hover:underline`}>
+        {tenant.businessName}
+      </Link>
+    ) : (
+      <span className={className}>{tenant.businessName}</span>
+    );
   }
 
-  async function handleConfirmSuspension() {
-    if (!suspensionTarget) return;
-    setSuspensionError(null);
-    setIsTogglingSuspension(true);
-    try {
-      await toggleTenantSuspension(suspensionTarget.id);
-      await refetch();
-      setSuspensionTarget(undefined);
-    } catch (err) {
-      setSuspensionError(getApiErrorMessage(err, "Gagal mengubah status tenant"));
-    } finally {
-      setIsTogglingSuspension(false);
-    }
+  function renderRowActions(tenant: Tenant) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {canOpen && (
+          <Link
+            to={ROUTE_PATHS.platformTenantDetail(tenant.id)}
+            title="Buka detail tenant"
+            aria-label="Buka detail tenant"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text-primary pointer-coarse:h-11 pointer-coarse:w-11"
+          >
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        )}
+        {canManage && <IconActionButton icon={Pencil} label="Ubah Tenant" tone="neutral" onClick={() => actions.openEdit(tenant)} />}
+        {canManage && <IconActionButton icon={Send} label="Undang ulang Owner" tone="info" onClick={() => void actions.reinvite(tenant)} />}
+        {canActivate && <IconActionButton icon={Zap} label="Aktifkan Langganan" tone="success" onClick={() => actions.openActivation(tenant)} />}
+        {canFreeze &&
+          (tenant.isSuspended ? (
+            <IconActionButton icon={UserCheck} label="Aktifkan Kembali" tone="success" onClick={() => actions.openSuspension(tenant)} />
+          ) : (
+            <IconActionButton icon={UserX} label="Bekukan Tenant" tone="danger" onClick={() => actions.openSuspension(tenant)} />
+          ))}
+      </div>
+    );
   }
+
+  if (failed && !loaded) return <LoadError onRetry={() => void refetch()} />;
 
   return (
     <div className="flex flex-col gap-5">
@@ -191,19 +159,28 @@ export default function TenantListPage() {
           <h1 className="text-xl font-bold text-text-primary">Tenant</h1>
           <p className="mt-1 text-[13px] text-text-secondary">Seluruh WO yang terdaftar dan berlangganan platform ElProof.</p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-          Tambah Tenant
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canExport && (
+            <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExport()} disabled={exporting}>
+              {exporting ? "Menyiapkan..." : "Unduh CSV"}
+            </Button>
+          )}
+          {canManage && (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+              Tambah Tenant
+            </Button>
+          )}
+        </div>
       </div>
 
-      {actionError && (
-        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+      {actions.actionError && (
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actions.actionError}</p>
       )}
 
       <div className="flex flex-wrap gap-3">
         <SearchInput
           className="max-w-xs"
-          placeholder="Cari nama WO, pemilik, atau kota..."
+          placeholder="Cari nama WO, pemilik, atau email..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -215,11 +192,24 @@ export default function TenantListPage() {
             </option>
           ))}
         </Select>
+        <Select className="w-56" value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}>
+          <option value="Semua">Semua Paket</option>
+          {actions.plans.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </Select>
+        <Select className="w-56" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+          <option value="Semua">Semua Sumber Daftar</option>
+          <option value="self_service">{SOURCE_LABEL.self_service}</option>
+          <option value="platform">{SOURCE_LABEL.platform}</option>
+        </Select>
       </div>
 
       <Card>
         {tenants.length === 0 ? (
-          <EmptyState title="Tidak ada tenant ditemukan" description="Ubah kata kunci pencarian atau filter status." />
+          <EmptyState title="Tidak ada tenant ditemukan" description="Ubah kata kunci pencarian atau filter." />
         ) : (
           <>
             <CardList
@@ -232,7 +222,7 @@ export default function TenantListPage() {
                   <>
                     <div className="flex items-start justify-between gap-3">
                       <span className="flex flex-col gap-1">
-                        <span className="font-semibold text-text-primary">{tenant.businessName}</span>
+                        {renderName(tenant, "font-semibold text-text-primary")}
                         {tenant.signupSource === "self_service" && <span className="text-[12px] font-normal text-text-secondary">Daftar mandiri</span>}
                       </span>
                       <div className="flex shrink-0 flex-col items-end gap-1">
@@ -266,35 +256,8 @@ export default function TenantListPage() {
                         }
                       />
                     </div>
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <IconActionButton icon={Pencil} label="Ubah Tenant" tone="neutral" onClick={() => openEditModal(tenant)} />
-                      <IconActionButton
-                        icon={Send}
-                        label="Undang ulang Owner"
-                        tone="info"
-                        onClick={() => void handleReinviteOwner(tenant)}
-                      />
-                      <IconActionButton
-                        icon={Zap}
-                        label="Aktifkan Langganan"
-                        tone="success"
-                        onClick={() => openActivation(tenant)}
-                      />
-                      {tenant.isSuspended ? (
-                        <IconActionButton
-                          icon={UserCheck}
-                          label="Aktifkan Kembali"
-                          tone="success"
-                          onClick={() => openSuspension(tenant)}
-                        />
-                      ) : (
-                        <IconActionButton
-                          icon={UserX}
-                          label="Bekukan Tenant"
-                          tone="danger"
-                          onClick={() => openSuspension(tenant)}
-                        />
-                      )}
+                    <div className="pt-1">
+                      {renderRowActions(tenant)}
                     </div>
                   </>
                 );
@@ -320,7 +283,7 @@ export default function TenantListPage() {
                   return (
                     <TR key={tenant.id}>
                       <TD>
-                        <span className="block font-semibold text-text-primary">{tenant.businessName}</span>
+                        {renderName(tenant, "block font-semibold text-text-primary")}
                         {tenant.signupSource === "self_service" && <span className="block text-[12px] text-text-secondary">Daftar mandiri</span>}
                       </TD>
                       <TD>
@@ -355,36 +318,7 @@ export default function TenantListPage() {
                         )}
                       </TD>
                       <TD>
-                        <div className="flex items-center gap-1.5">
-                          <IconActionButton icon={Pencil} label="Ubah Tenant" tone="neutral" onClick={() => openEditModal(tenant)} />
-                          <IconActionButton
-                            icon={Send}
-                            label="Undang ulang Owner"
-                            tone="info"
-                            onClick={() => void handleReinviteOwner(tenant)}
-                          />
-                          <IconActionButton
-                            icon={Zap}
-                            label="Aktifkan Langganan"
-                            tone="success"
-                            onClick={() => openActivation(tenant)}
-                          />
-                          {tenant.isSuspended ? (
-                            <IconActionButton
-                              icon={UserCheck}
-                              label="Aktifkan Kembali"
-                              tone="success"
-                              onClick={() => openSuspension(tenant)}
-                            />
-                          ) : (
-                            <IconActionButton
-                              icon={UserX}
-                              label="Bekukan Tenant"
-                              tone="danger"
-                              onClick={() => openSuspension(tenant)}
-                            />
-                          )}
-                        </div>
+                        {renderRowActions(tenant)}
                       </TD>
                     </TR>
                   );
@@ -398,63 +332,15 @@ export default function TenantListPage() {
       </Card>
 
       <TenantFormModal
-        key={editingTenant?.id ?? "new"}
-        open={modalOpen}
-        onClose={closeModal}
-        initialTenant={editingTenant}
+        key="create"
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
         onSubmitCreate={handleRegister}
-        onSubmitEdit={handleEditSubmit}
+        onSubmitEdit={() => undefined}
         onUploadLogo={uploadTenantLogo}
       />
 
-      <AccessLinkDialog
-        open={ownerLink !== null}
-        onClose={() => setOwnerLink(null)}
-        link={ownerLink?.link ?? null}
-        recipient={
-          ownerLink
-            ? { name: ownerLink.tenant.ownerName, phone: ownerLink.tenant.phone, email: ownerLink.email, roleLabel: "Owner" }
-            : { name: "" }
-        }
-        woName={ownerLink?.tenant.businessName ?? ""}
-        notice={ownerLink?.notice}
-      />
-
-      <ActivateSubscriptionModal
-        key={activatingTenant?.id ?? "activate-none"}
-        open={activatingTenant !== undefined}
-        onClose={() => setActivatingTenant(undefined)}
-        tenant={activatingTenant}
-        plans={plans}
-        isSubmitting={isActivating}
-        error={activationError}
-        onSubmit={handleActivateSubmit}
-      />
-
-      <ConfirmDialog
-        open={suspensionTarget !== undefined}
-        title={suspensionTarget?.isSuspended ? "Aktifkan kembali tenant?" : "Bekukan tenant?"}
-        confirmLabel={suspensionTarget?.isSuspended ? "Aktifkan kembali" : "Bekukan tenant"}
-        tone={suspensionTarget?.isSuspended ? "primary" : "danger"}
-        confirmText={suspensionTarget?.isSuspended ? undefined : suspensionTarget?.businessName}
-        isSubmitting={isTogglingSuspension}
-        error={suspensionError}
-        onConfirm={() => void handleConfirmSuspension()}
-        onClose={() => setSuspensionTarget(undefined)}
-      >
-        {suspensionTarget?.isSuspended ? (
-          <p>
-            Staf dan klien {suspensionTarget.businessName} bisa masuk dan memakai ElProof lagi, sesuai status langganannya.
-          </p>
-        ) : (
-          <p>
-            Semua staf dan klien <span className="font-semibold text-text-primary">{suspensionTarget?.businessName}</span>{" "}
-            langsung keluar dan tidak bisa masuk sampai tenant diaktifkan kembali. Data tetap tersimpan. Gunakan hanya
-            untuk pelanggaran atau penyalahgunaan; tunggakan langganan sudah ditangani otomatis.
-          </p>
-        )}
-      </ConfirmDialog>
-
+      {actions.dialogs}
     </div>
   );
 }

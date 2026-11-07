@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useSubscriptionStatusStore, type SubscriptionLifecycle } from "@/shared/stores/useSubscriptionStatusStore";
 
 /** GET /access/me — what the signed-in staff member or client may do (ADR-0026). */
@@ -57,7 +58,10 @@ function isReadPermission(permission: string): boolean {
 
 /** True while the workspace may only be read; use for write buttons with no permission of their own. */
 export function useWriteLocked(): boolean {
-  return useSubscriptionStatusStore((s) => isWriteLocked(s.lifecycle));
+  const locked = useSubscriptionStatusStore((s) => isWriteLocked(s.lifecycle));
+  // A support session only looks: nothing may be changed, whatever the plan.
+  const supportSession = useAuthStore((s) => s.session?.impersonation !== undefined);
+  return locked || supportSession;
 }
 
 /**
@@ -69,7 +73,9 @@ export function useWriteLocked(): boolean {
  */
 export function useCan(permission: string): boolean {
   const granted = usePermissionStore((s) => hasPermission(s.grants, permission));
-  const locked = useWriteLocked();
+  const locked = useSubscriptionStatusStore((s) => isWriteLocked(s.lifecycle));
+  const supportSession = useAuthStore((s) => s.session?.impersonation !== undefined);
+  if (supportSession) return granted && permission.endsWith(".view");
   return granted && !(locked && !isReadPermission(permission));
 }
 

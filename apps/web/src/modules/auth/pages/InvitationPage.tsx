@@ -13,6 +13,7 @@ import { API } from "@/shared/services/api-endpoints";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatLinkExpiry, type AccessLinkPurpose } from "@/shared/lib/access-link";
 import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 interface LinkInfo {
   purpose: AccessLinkPurpose;
@@ -37,6 +38,7 @@ const MIN_PASSWORD = 8;
  * choose their own password. Either way the person ends up signed in.
  */
 export default function InvitationPage() {
+  usePageMeta({ title: "Undangan", description: "Terima undangan untuk bergabung di ElProof.", noindex: true });
   const { token = "" } = useParams();
   const navigate = useNavigate();
   const [info, setInfo] = useState<LinkInfo | null>(null);

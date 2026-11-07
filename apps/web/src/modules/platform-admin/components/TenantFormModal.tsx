@@ -10,6 +10,7 @@ import {
   type TenantCreateFormValues,
 } from "@/modules/platform-admin/schemas/tenant.schema";
 import type { Tenant } from "@/modules/platform-admin/data/types";
+import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { compressFileForUpload, type CompressedFilePayload } from "@/shared/lib/image-compression";
@@ -27,7 +28,7 @@ function toFormState(tenant?: Tenant): FormState {
   if (!tenant) {
     return {
       businessName: "", ownerName: "", email: "", phone: "", city: "",
-      brandColorPreset: "navy", customDomain: "",
+      brandColorPreset: "navy",
     };
   }
   return {
@@ -37,7 +38,6 @@ function toFormState(tenant?: Tenant): FormState {
     phone: tenant.phone,
     city: tenant.city,
     brandColorPreset: (tenant.brandColorPreset as BrandColorPresetKey) || "navy",
-    customDomain: tenant.customDomain ?? "",
   };
 }
 
@@ -59,6 +59,7 @@ export function TenantFormModal({
   onUploadLogo,
 }: TenantFormModalProps) {
   const isEditing = Boolean(initialTenant);
+  const canChangeEmail = usePlatformCan("super-admin");
   const [values, setValues] = useState<FormState>(() => toFormState(initialTenant));
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
@@ -195,8 +196,8 @@ export function TenantFormModal({
         <Field label="Nama Owner" required hint={errors.ownerName}>
           <Input value={values.ownerName} onChange={(e) => set("ownerName", e.target.value)} placeholder="Nama owner WO" />
         </Field>
-        <Field label="Email akun Google Owner" required hint={errors.email ?? (isEditing ? undefined : "Owner menerima link undangan dan masuk dengan akun Google ini")}>
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="owner@gmail.com" />
+        <Field label="Email akun Google Owner" required hint={errors.email ?? (isEditing ? (canChangeEmail ? undefined : "Hanya Super Admin yang dapat mengganti email Owner, karena email ini menentukan siapa yang menjadi Owner.") : "Owner menerima link undangan dan masuk dengan akun Google ini")}>
+          <Input type="email" value={values.email} disabled={isEditing && !canChangeEmail} onChange={(e) => set("email", e.target.value)} placeholder="owner@gmail.com" />
         </Field>
         <Field label="No. HP Owner" required hint={errors.phone}>
           <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" />
@@ -225,17 +226,6 @@ export function TenantFormModal({
                   );
                 })}
               </div>
-            </Field>
-
-            <Field label="Domain Kustom" hint={errors.customDomain}>
-              <Input
-                value={values.customDomain}
-                onChange={(e) => set("customDomain", e.target.value)}
-                placeholder="cth. app.namabisnis.com"
-              />
-              <p className="mt-1.5 text-[12px] text-text-secondary">
-                Kosongkan jika tenant belum punya domainnya sendiri. Arahkan DNS domain ke server terlebih dahulu.
-              </p>
             </Field>
 
             <Field label="Logo" hint={logoError ?? undefined}>

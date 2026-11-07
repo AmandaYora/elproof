@@ -4,6 +4,7 @@ import { ChevronDown, HelpCircle, ArrowRight } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Reveal } from "@/modules/homepage/components/Reveal";
 import { cn } from "@/shared/lib/cn";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const FAQS = [
   {
@@ -41,6 +42,7 @@ const FAQS = [
 ];
 
 export default function FaqPage() {
+  usePageMeta({ title: "Pertanyaan umum", description: "Jawaban atas pertanyaan yang sering diajukan tentang ElProof, langganan, dan keamanan data." });
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   const toggleOpen = (index: number) => {

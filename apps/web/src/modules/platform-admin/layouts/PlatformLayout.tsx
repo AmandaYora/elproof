@@ -1,7 +1,7 @@
 import { Toaster } from "@/shared/components/ui/Toaster";
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, X } from "lucide-react";
+import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, X, Megaphone, FileLock2, ScrollText, SlidersHorizontal, ImageIcon } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -11,15 +11,47 @@ import { getPlatformAdmin } from "@/modules/platform-admin/data";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { formatDate, todayISO } from "@/shared/lib/formatters";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
+import { roleCan, type PlatformCapability } from "@/modules/platform-admin/lib/capabilities";
 
-const NAV_ITEMS = [
-  { to: ROUTE_PATHS.platformDashboard, label: "Dashboard", icon: LayoutDashboard },
-  { to: ROUTE_PATHS.platformTenants, label: "Tenant", icon: Building2 },
-  { to: ROUTE_PATHS.platformPlans, label: "Paket", icon: Package },
-  { to: ROUTE_PATHS.platformTransactions, label: "Transaksi", icon: Receipt },
-  { to: ROUTE_PATHS.platformUsers, label: "Pengguna", icon: UserCog },
-  { to: ROUTE_PATHS.platformGatewayConfig, label: "Gateway Pembayaran", icon: Wallet },
-  { to: ROUTE_PATHS.platformApps, label: "Manajemen Aplikasi", icon: Boxes },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** Hidden from roles without it (the API refuses them anyway). */
+  needs?: PlatformCapability;
+}
+
+const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
+  {
+    label: null,
+    items: [{ to: ROUTE_PATHS.platformDashboard, label: "Ringkasan", icon: LayoutDashboard }],
+  },
+  {
+    label: "Pelanggan",
+    items: [
+      { to: ROUTE_PATHS.platformTenants, label: "Tenant", icon: Building2 },
+      { to: ROUTE_PATHS.platformTransactions, label: "Tagihan", icon: Receipt },
+      { to: ROUTE_PATHS.platformAnnouncements, label: "Pengumuman", icon: Megaphone },
+      { to: ROUTE_PATHS.platformDataRequests, label: "Data & Privasi", icon: FileLock2, needs: "internal-read" },
+    ],
+  },
+  {
+    label: "Produk",
+    items: [
+      { to: ROUTE_PATHS.platformPlans, label: "Paket", icon: Package },
+      { to: ROUTE_PATHS.platformPolicy, label: "Kebijakan Langganan", icon: SlidersHorizontal },
+    ],
+  },
+  {
+    label: "Sistem",
+    items: [
+      { to: ROUTE_PATHS.platformUsers, label: "Pengguna", icon: UserCog },
+      { to: ROUTE_PATHS.platformAudit, label: "Audit Log", icon: ScrollText, needs: "super-admin" },
+      { to: ROUTE_PATHS.platformLoginSlides, label: "Tampilan Login", icon: ImageIcon, needs: "super-admin" },
+      { to: ROUTE_PATHS.platformGatewayConfig, label: "Gateway Pembayaran", icon: Wallet },
+      { to: ROUTE_PATHS.platformApps, label: "Manajemen Aplikasi", icon: Boxes },
+    ],
+  },
 ];
 
 export default function PlatformLayout() {
@@ -84,23 +116,32 @@ function PlatformShell() {
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 px-3">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
-                  isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
-                )
-              }
-            >
-              <Icon className="h-[18px] w-[18px] shrink-0" />
-              {label}
-            </NavLink>
-          ))}
+        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter((item) => !item.needs || roleCan(admin.role, item.needs));
+            if (items.length === 0) return null;
+            return (
+              <div key={group.label ?? "main"} className="flex flex-col gap-1">
+                {group.label && <p className="px-3 pb-1 text-[11.5px] font-medium text-white/45">{group.label}</p>}
+                {items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
+                        isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
+                      )
+                    }
+                  >
+                    <Icon className="h-[18px] w-[18px] shrink-0" />
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="flex items-center gap-2.5 border-t border-white/10 px-5 py-4">

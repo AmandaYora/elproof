@@ -11,6 +11,12 @@ const PlatformTransactionsPage = lazy(() => import("@/modules/platform-admin/pag
 const PlatformUserListPage = lazy(() => import("@/modules/platform-admin/pages/PlatformUserListPage"));
 const GatewayConfigPage = lazy(() => import("@/modules/platform-admin/pages/GatewayConfigPage"));
 const AppListPage = lazy(() => import("@/modules/platform-admin/pages/AppListPage"));
+const TenantDetailPage = lazy(() => import("@/modules/platform-admin/pages/TenantDetailPage"));
+const AnnouncementsPage = lazy(() => import("@/modules/platform-admin/pages/AnnouncementsPage"));
+const DataRequestsPage = lazy(() => import("@/modules/platform-admin/pages/DataRequestsPage"));
+const AuditLogPage = lazy(() => import("@/modules/platform-admin/pages/AuditLogPage"));
+const SubscriptionPolicyPage = lazy(() => import("@/modules/platform-admin/pages/SubscriptionPolicyPage"));
+const LoginSlidesPage = lazy(() => import("@/modules/platform-admin/pages/LoginSlidesPage"));
 const MfaSetupPage = lazy(() => import("@/modules/platform-admin/pages/MfaSetupPage"));
 
 export const platformRoutes: RouteObject = {
@@ -29,6 +35,12 @@ export const platformRoutes: RouteObject = {
       children: [
         { path: ROUTE_PATHS.platformDashboard, element: <PlatformDashboardPage /> },
         { path: ROUTE_PATHS.platformTenants, element: <TenantListPage /> },
+        { path: `${ROUTE_PATHS.platformTenants}/:id/:tab?`, element: <TenantDetailPage /> },
+        { path: ROUTE_PATHS.platformAnnouncements, element: <AnnouncementsPage /> },
+        { path: ROUTE_PATHS.platformDataRequests, element: <DataRequestsPage /> },
+        { path: ROUTE_PATHS.platformAudit, element: <AuditLogPage /> },
+        { path: ROUTE_PATHS.platformPolicy, element: <SubscriptionPolicyPage /> },
+        { path: ROUTE_PATHS.platformLoginSlides, element: <LoginSlidesPage /> },
         { path: ROUTE_PATHS.platformPlans, element: <PlanListPage /> },
         { path: ROUTE_PATHS.platformTransactions, element: <PlatformTransactionsPage /> },
         { path: ROUTE_PATHS.platformUsers, element: <PlatformUserListPage /> },

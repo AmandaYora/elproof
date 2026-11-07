@@ -28,6 +28,7 @@ const VendorListPage = lazy(() => import("@/modules/vendors/pages/VendorListPage
 const VenueListPage = lazy(() => import("@/modules/venues/pages/VenueListPage"));
 const UserListPage = lazy(() => import("@/modules/users/pages/UserListPage"));
 const SubscriptionPage = lazy(() => import("@/modules/subscription/pages/SubscriptionPage"));
+const SubscriptionReceiptPage = lazy(() => import("@/modules/subscription/pages/SubscriptionReceiptPage"));
 const BusinessProfilePage = lazy(() => import("@/modules/business-profile/pages/BusinessProfilePage"));
 const RolesPage = lazy(() => import("@/modules/access/pages/RolesPage"));
 
@@ -91,7 +92,7 @@ export const protectedRoutes: RouteObject = {
         { element: <RequirePermission all={["team.manage"]} />, children: [{ path: ROUTE_PATHS.users, element: <UserListPage /> }] },
         { element: <RequirePermission all={["business_profile.manage"]} />, children: [{ path: ROUTE_PATHS.businessProfile, element: <BusinessProfilePage /> }] },
         { element: <RequirePermission all={["role.manage"]} />, children: [{ path: ROUTE_PATHS.roles, element: <RolesPage /> }] },
-        { element: <RequirePermission all={["subscription.manage"]} />, children: [{ path: ROUTE_PATHS.subscription, element: <SubscriptionPage /> }] },
+        { element: <RequirePermission all={["subscription.manage"]} />, children: [{ path: ROUTE_PATHS.subscription, element: <SubscriptionPage /> }, { path: "/langganan/kuitansi/:id", element: <SubscriptionReceiptPage /> }] },
       ],
     },
   ],

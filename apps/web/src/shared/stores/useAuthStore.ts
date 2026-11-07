@@ -2,6 +2,18 @@ import { create } from "zustand";
 
 export type PrincipalType = "staff" | "client" | "platform_admin";
 
+/**
+ * Set while a Platform Console admin looks at a workspace as its Owner
+ * (read-only support session, FLOW-IDEAL 1.5). `returnTo` is the admin's own
+ * session, restored when the session ends.
+ */
+export interface ImpersonationInfo {
+  sessionId: number;
+  tenantName: string;
+  expiresAt: string;
+  returnTo: AuthSession;
+}
+
 export interface AuthSession {
   accessToken: string;
   refreshToken: string;
@@ -14,6 +26,7 @@ export interface AuthSession {
   mfa?: boolean;
   /** A Platform Console admin must set up two-factor before anything else. */
   mfaSetupRequired?: boolean;
+  impersonation?: ImpersonationInfo;
 }
 
 const STORAGE_KEY = "elproof.session";

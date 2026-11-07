@@ -1,7 +1,6 @@
 import { lazy } from "react";
 import { Navigate, type RouteObject } from "react-router-dom";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
-import { isPlatformHost } from "@/shared/lib/platform-host";
 
 const MarketingLayout = lazy(() => import("@/modules/homepage/layouts/MarketingLayout"));
 const HomePage = lazy(() => import("@/modules/homepage/pages/HomePage"));
@@ -13,12 +12,8 @@ const RefundPolicyPage = lazy(() => import("@/modules/homepage/pages/RefundPolic
 const FaqPage = lazy(() => import("@/modules/homepage/pages/FaqPage"));
 const ContactPage = lazy(() => import("@/modules/homepage/pages/ContactPage"));
 
-// On a WO's custom domain "/" goes straight to that WO's branded login, as
-// before Fase 2 — never to ElProof's marketing site.
-const marketingElement = isPlatformHost() ? <MarketingLayout /> : <Navigate to={ROUTE_PATHS.login} replace />;
-
 export const homepageRoutes: RouteObject = {
-  element: marketingElement,
+  element: <MarketingLayout />,
   children: [
     { path: ROUTE_PATHS.homepage, element: <HomePage /> },
     { path: ROUTE_PATHS.homepageAbout, element: <AboutPage /> },

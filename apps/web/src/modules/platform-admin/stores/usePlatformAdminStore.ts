@@ -38,6 +38,12 @@ export interface ManualActivationInput {
   note: string;
 }
 
+/** Filters beyond search and status on the tenant list (Fase 6). */
+export interface TenantListExtraFilter {
+  planId?: string;
+  source?: string;
+}
+
 export interface RegisterPlatformAdminResult {
   admin: PlatformAdmin;
   username: string;
@@ -65,7 +71,7 @@ export interface PaymentCharge {
   status: string;
 }
 
-interface RawTenant {
+export interface RawTenant {
   id: number;
   businessName: string;
   ownerName: string;
@@ -84,14 +90,14 @@ interface RawTenant {
   lastCredentialResetAt: string | null;
   brandColorPreset: string;
   hasLogo: boolean;
-  customDomain: string | null;
 }
 
-function toTenant(raw: RawTenant): Tenant {
+/** Maps the API's tenant row; the Tenant 360° page maps its overview with this too. */
+export function toTenant(raw: RawTenant): Tenant {
   return { ...raw, id: String(raw.id), planId: raw.planId !== null ? String(raw.planId) : null };
 }
 
-interface RawTransaction {
+export interface RawTransaction {
   id: number;
   tenantId: number;
   type: SubscriptionTransaction["type"];
@@ -103,7 +109,7 @@ interface RawTransaction {
   paidAt: string | null;
 }
 
-function toTransaction(raw: RawTransaction): SubscriptionTransaction {
+export function toTransaction(raw: RawTransaction): SubscriptionTransaction {
   return { ...raw, id: String(raw.id), tenantId: String(raw.tenantId) };
 }
 
@@ -144,7 +150,7 @@ interface PlatformAdminState {
   // Backs the respective Platform Console list-page tables — real
   // server-side pagination + search/filter, separate from the full-roster
   // caches above (used by dropdowns and the "Langganan" self-service page).
-  fetchTenantPage: (page: number, search: string, status: string) => Promise<void>;
+  fetchTenantPage: (page: number, search: string, status: string, extra?: TenantListExtraFilter) => Promise<void>;
   fetchPlatformAdminPage: (page: number, search: string, role: string) => Promise<void>;
   fetchTransactionPage: (page: number, status: string) => Promise<void>;
 
@@ -206,9 +212,15 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
     set({ subscriptionTransactions: (res.data.data as RawTransaction[]).map(toTransaction) });
   },
 
-  fetchTenantPage: async (page, search, status) => {
+  fetchTenantPage: async (page, search, status, extra) => {
     const res = await httpClient.get(API.platform.tenants, {
-      params: { page, search: search || undefined, status: status || undefined },
+      params: {
+        page,
+        search: search || undefined,
+        status: status || undefined,
+        planId: extra?.planId || undefined,
+        source: extra?.source || undefined,
+      },
     });
     set({
       tenantPage: (res.data.data as RawTenant[]).map(toTenant),

@@ -10,6 +10,7 @@ import { API } from "@/shared/services/api-endpoints";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
 import type { GoogleAuthOutcome, GoogleSignupState } from "@/modules/auth/types";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const INCLUDED = [
   "Akses penuh semua fitur selama 14 hari",
@@ -20,6 +21,7 @@ const INCLUDED = [
 type GoogleAuthResponse = AuthSession | GoogleAuthOutcome;
 
 export default function SignupPage() {
+  usePageMeta({ title: "Daftar gratis", description: "Daftarkan wedding organizer Anda dan coba ElProof gratis selama masa percobaan, tanpa kartu kredit." });
   const navigate = useNavigate();
   const location = useLocation();
   const [busy, setBusy] = useState(false);

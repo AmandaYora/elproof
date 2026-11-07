@@ -12,6 +12,7 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
 import { workspaceSchema, type WorkspaceFormValues } from "@/modules/auth/schemas/workspace.schema";
 import type { GoogleSignupState } from "@/modules/auth/types";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const EXPIRED_NOTICE = "Sesi Google Anda sudah berakhir. Silakan daftar ulang dengan Google.";
 
@@ -26,6 +27,7 @@ function apiErrorCode(err: unknown): string | undefined {
  * credential.
  */
 export default function WorkspaceSetupPage() {
+  usePageMeta({ title: "Siapkan workspace", description: "Lengkapi data WO Anda untuk mulai memakai ElProof.", noindex: true });
   const navigate = useNavigate();
   const signup = useLocation().state as GoogleSignupState | null;
   const [values, setValues] = useState<WorkspaceFormValues>({ businessName: "", acceptTerms: false, marketingOptIn: false });

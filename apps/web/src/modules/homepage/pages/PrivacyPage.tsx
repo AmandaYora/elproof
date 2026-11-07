@@ -1,6 +1,7 @@
 import { ShieldAlert } from "lucide-react";
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const SECTIONS: LegalSection[] = [
   {
@@ -78,5 +79,6 @@ const SECTIONS: LegalSection[] = [
 ];
 
 export default function PrivacyPage() {
+  usePageMeta({ title: "Kebijakan privasi", description: "Cara ElProof mengumpulkan, memakai, dan melindungi data pribadi sesuai UU Pelindungan Data Pribadi." });
   return <LegalDocument icon={ShieldAlert} title="Kebijakan Privasi" updated={TERMS_UPDATED} sections={SECTIONS} />;
 }

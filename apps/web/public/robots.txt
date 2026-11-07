@@ -1,0 +1,11 @@
+# Marketing pages are public. The app itself is private and has nothing for search engines.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /platform/
+Disallow: /portal/
+Disallow: /login
+Disallow: /dashboard
+Disallow: /projects
+Disallow: /langganan
+Disallow: /daftar/workspace

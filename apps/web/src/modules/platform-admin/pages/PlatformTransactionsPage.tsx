@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Card } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
@@ -10,6 +11,8 @@ import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatfo
 import type { SubscriptionTransactionStatus } from "@/modules/platform-admin/data";
 import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LABEL } from "@/modules/platform-admin/lib/status";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 const STATUS_FILTERS: SubscriptionTransactionStatus[] = ["unpaid", "pending", "paid", "expired", "granted", "cancelled"];
 
@@ -19,6 +22,7 @@ export default function PlatformTransactionsPage() {
   const meta = usePlatformAdminStore((s) => s.transactionPageMeta);
   const fetchTenants = usePlatformAdminStore((s) => s.fetchTenants);
   const fetchTransactionPage = usePlatformAdminStore((s) => s.fetchTransactionPage);
+  const canOpen = usePlatformCan("internal-read");
   const [statusFilter, setStatusFilter] = useState<string>("Semua");
   const [page, setPage] = useState(1);
 
@@ -34,16 +38,22 @@ export default function PlatformTransactionsPage() {
     void fetchTransactionPage(page, statusFilter === "Semua" ? "" : statusFilter);
   }, [fetchTransactionPage, page, statusFilter]);
 
-  function tenantName(tenantId: string) {
-    return tenants.find((t) => t.id === tenantId)?.businessName ?? "-";
+  function tenantLink(tenantId: string) {
+    const name = tenants.find((t) => t.id === tenantId)?.businessName ?? `Tenant ${tenantId}`;
+    if (!canOpen) return name;
+    return (
+      <Link to={ROUTE_PATHS.platformTenantDetail(tenantId, "tagihan")} className="hover:underline">
+        {name}
+      </Link>
+    );
   }
 
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-text-primary">Transaksi</h1>
+        <h1 className="text-xl font-bold text-text-primary">Tagihan</h1>
         <p className="mt-1 text-[13px] text-text-secondary">
-          Riwayat transaksi langganan tenant, diproses otomatis oleh sistem pembayaran.
+          Semua tagihan langganan tenant. Pembayaran diproses otomatis oleh sistem pembayaran; pilih status "Menunggu Pembayaran" untuk tagihan yang perlu ditindaklanjuti.
         </p>
       </div>
 
@@ -60,7 +70,7 @@ export default function PlatformTransactionsPage() {
 
       <Card>
         {transactions.length === 0 ? (
-          <EmptyState title="Tidak ada transaksi ditemukan" description="Ubah filter status untuk melihat transaksi lainnya." />
+          <EmptyState title="Tidak ada tagihan ditemukan" description="Ubah filter status untuk melihat tagihan lainnya." />
         ) : (
           <>
             <CardList
@@ -70,7 +80,7 @@ export default function PlatformTransactionsPage() {
               renderItem={(tx) => (
                 <>
                   <div className="flex items-start justify-between gap-3">
-                    <span className="font-semibold text-text-primary">{tenantName(tx.tenantId)}</span>
+                    <span className="font-semibold text-text-primary">{tenantLink(tx.tenantId)}</span>
                     <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -101,7 +111,7 @@ export default function PlatformTransactionsPage() {
               <TBody>
                 {transactions.map((tx) => (
                   <TR key={tx.id}>
-                    <TD className="font-semibold text-text-primary">{tenantName(tx.tenantId)}</TD>
+                    <TD className="font-semibold text-text-primary">{tenantLink(tx.tenantId)}</TD>
                     <TD>{TRANSACTION_TYPE_LABEL[tx.type]}</TD>
                     <TD>{tx.paymentMethod}</TD>
                     <TD className="font-mono text-[12.5px]">{tx.paymentReference}</TD>

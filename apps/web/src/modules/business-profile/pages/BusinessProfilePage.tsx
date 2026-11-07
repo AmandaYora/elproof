@@ -1,3 +1,4 @@
+import { SupportAccessCard } from "@/modules/business-profile/components/SupportAccessCard";
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
@@ -183,6 +184,8 @@ export default function BusinessProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      <SupportAccessCard />
 
       {editingDetails && details && (
         <BusinessDetailsDrawer

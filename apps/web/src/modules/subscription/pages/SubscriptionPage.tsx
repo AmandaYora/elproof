@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle, XCircle, Receipt } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -9,7 +9,9 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { formatCurrency, formatDate, daysBetween } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, daysBetween, addMonths, todayISO } from "@/shared/lib/formatters";
+import { Link } from "react-router-dom";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
@@ -23,8 +25,46 @@ const POLL_INTERVAL_MS = 4000;
 
 const RENEWAL_WARNING_DAYS = 30;
 
+// Local calendar day (WIB for the people using this), not the UTC day.
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayISO();
+}
+
+/**
+ * The paid period a payment buys, as the API will grant it: it starts where
+ * current access ends (remaining paid time or trial is kept), or today when
+ * access has already lapsed.
+ */
+function newPeriod(periodEnd: string | null, durationMonths: number): { start: string; end: string } {
+  const now = today();
+  const start = periodEnd && periodEnd > now ? periodEnd : now;
+  return { start, end: addMonths(start, durationMonths) };
+}
+
+/** Time left on a QRIS code, as mm:ss. Calls onElapsed once when it reaches zero. */
+function ChargeCountdown({ expiresAt, onElapsed }: { expiresAt: string; onElapsed: () => void }) {
+  const [secondsLeft, setSecondsLeft] = useState(() => Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)));
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  useEffect(() => {
+    if (secondsLeft === 0) onElapsed();
+    // onElapsed only needs to fire when the time runs out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft === 0]);
+
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const ss = String(secondsLeft % 60).padStart(2, "0");
+  return (
+    <p className={`text-[13px] ${secondsLeft <= 60 ? "font-semibold text-danger" : "text-text-secondary"}`}>
+      Kode QRIS berlaku <span className="font-mono tabular-nums">{mm}:{ss}</span> lagi
+    </p>
+  );
 }
 
 export default function SubscriptionPage() {
@@ -53,7 +93,9 @@ export default function SubscriptionPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [activeCharge, setActiveCharge] = useState<PaymentCharge | null>(null);
-  const [chargeOutcome, setChargeOutcome] = useState<"paid" | "expired" | null>(null);
+  const [chargeOutcome, setChargeOutcome] = useState<"paid" | "expired" | "cancelled" | null>(null);
+  // The period the open charge will buy, fixed when the charge was created.
+  const [chargePeriod, setChargePeriod] = useState<{ start: string; end: string } | null>(null);
   // The Owner's one pending self-service charge, if any — backs the "Lihat
   // QR" row action in Riwayat Transaksi (for its live QR/pay code/checkout
   // URL, which the transaction row itself doesn't carry) and gates the plan
@@ -127,6 +169,8 @@ export default function SubscriptionPage() {
           setChargeOutcome("paid");
           await fetchMyTenant();
           void useSubscriptionStatusStore.getState().fetch();
+        } else if (match.status === "cancelled") {
+          setChargeOutcome("cancelled");
         } else {
           setChargeOutcome("expired");
         }
@@ -150,6 +194,7 @@ export default function SubscriptionPage() {
       setActiveCharge(charge);
       setPendingCharge(charge);
       setChargeOutcome(null);
+      setChargePeriod(newPeriod(periodEnd, selectedPlan.durationMonths));
       startPolling(charge.orderRef);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal memproses pembayaran"));
@@ -177,6 +222,7 @@ export default function SubscriptionPage() {
     setActionError(null);
     setActiveCharge(pendingCharge);
     setChargeOutcome(null);
+    setChargePeriod(null);
     startPolling(pendingCharge.orderRef);
   }
 
@@ -248,6 +294,16 @@ export default function SubscriptionPage() {
           </div>
         )}
       </div>
+    );
+  }
+
+  // Paid payments have a printable receipt.
+  function receiptLink(tx: (typeof transactions)[number]) {
+    if (tx.status !== "paid") return null;
+    return (
+      <Link to={ROUTE_PATHS.subscriptionReceipt(tx.id)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-navy-900 hover:underline">
+        <Receipt className="h-3.5 w-3.5" /> Kuitansi
+      </Link>
     );
   }
 
@@ -364,6 +420,7 @@ export default function SubscriptionPage() {
                       <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
                     </div>
                     {pendingRowActions(tx)}
+                    {receiptLink(tx)}
                   </>
                 )}
               />
@@ -393,7 +450,7 @@ export default function SubscriptionPage() {
                         <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
                       </TD>
                       <TD>{tx.paidAt ? formatDate(tx.paidAt) : "-"}</TD>
-                      <TD>{pendingRowActions(tx) ?? "-"}</TD>
+                      <TD>{pendingRowActions(tx) ?? receiptLink(tx) ?? "-"}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -437,6 +494,14 @@ export default function SubscriptionPage() {
             <span className="text-text-secondary">Masa Aktif</span>
             <span className="font-semibold text-text-primary">{selectedPlan?.durationMonths ?? 0} bulan</span>
           </div>
+          {selectedPlan && (
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-text-secondary">Periode baru</span>
+              <span className="text-right font-semibold text-text-primary">
+                {formatDate(newPeriod(periodEnd, selectedPlan.durationMonths).start)} sampai {formatDate(newPeriod(periodEnd, selectedPlan.durationMonths).end)}
+              </span>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -444,14 +509,24 @@ export default function SubscriptionPage() {
         open={activeCharge !== null}
         onClose={closeChargeModal}
         title={
-          chargeOutcome === "paid" ? "Pembayaran Berhasil" : chargeOutcome === "expired" ? "Pembayaran Kedaluwarsa" : "Selesaikan Pembayaran"
+          chargeOutcome === "paid"
+            ? "Pembayaran Berhasil"
+            : chargeOutcome === "expired"
+              ? "Kode QRIS Kedaluwarsa"
+              : chargeOutcome === "cancelled"
+                ? "Tagihan Dibatalkan"
+                : "Selesaikan Pembayaran"
         }
         description={
           chargeOutcome === "paid"
-            ? "Langganan Anda sudah aktif."
+            ? chargePeriod
+              ? `Langganan Anda aktif sampai ${formatDate(chargePeriod.end)}.`
+              : "Langganan Anda sudah aktif."
             : chargeOutcome === "expired"
-              ? "Tagihan ini sudah kedaluwarsa — silakan buat tagihan baru."
-              : "Scan kode QRIS di bawah menggunakan aplikasi e-wallet atau m-banking Anda."
+              ? "Kode ini sudah melewati batas waktunya. Tutup jendela ini; jika tagihan masih tertunda di Riwayat Transaksi, batalkan lalu buat tagihan baru untuk mendapatkan kode QRIS baru."
+              : chargeOutcome === "cancelled"
+                ? "Tagihan ini dibatalkan dan tidak bisa dibayar lagi. Anda bisa memilih paket dan membuat tagihan baru kapan saja."
+                : "Pindai kode QRIS di bawah dengan aplikasi e-wallet atau m-banking Anda."
         }
         size="sm"
         footer={<Button onClick={closeChargeModal}>{chargeOutcome ? "Selesai" : "Tutup"}</Button>}
@@ -462,6 +537,8 @@ export default function SubscriptionPage() {
               <CheckCircle2 className="h-16 w-16 text-success" />
             ) : chargeOutcome === "expired" ? (
               <Clock className="h-16 w-16 text-danger" />
+            ) : chargeOutcome === "cancelled" ? (
+              <XCircle className="h-16 w-16 text-text-secondary" />
             ) : (
               <>
                 {activeCharge.qrImageUrl ? (
@@ -484,8 +561,14 @@ export default function SubscriptionPage() {
                     Buka Halaman Pembayaran <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 )}
+                <ChargeCountdown expiresAt={activeCharge.expiresAt} onElapsed={() => setChargeOutcome((o) => o ?? "expired")} />
+                {chargePeriod && (
+                  <p className="text-[12.5px] text-text-secondary">
+                    Setelah dibayar, langganan berlaku {formatDate(chargePeriod.start)} sampai {formatDate(chargePeriod.end)}.
+                  </p>
+                )}
                 <p className="text-[12.5px] text-text-secondary">
-                  Menunggu konfirmasi pembayaran otomatis — halaman ini akan memperbarui status sendiri.
+                  Menunggu pembayaran. Halaman ini memperbarui statusnya sendiri, tidak perlu dimuat ulang.
                 </p>
               </>
             )}

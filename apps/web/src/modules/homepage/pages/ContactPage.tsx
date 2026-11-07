@@ -1,8 +1,10 @@
 import { Mail, Phone, MessageCircle, MapPin, Clock, ArrowRight, Sparkles } from "lucide-react";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { Reveal } from "@/modules/homepage/components/Reveal";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 export default function ContactPage() {
+  usePageMeta({ title: "Hubungi kami", description: "Hubungi tim ElProof untuk pertanyaan, bantuan, atau permintaan terkait data Anda." });
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-7xl px-6 py-20 md:py-32">

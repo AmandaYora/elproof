@@ -46,6 +46,7 @@ export const ROUTE_PATHS = {
   venues: "/venues",
   users: "/pengguna",
   subscription: "/langganan",
+  subscriptionReceipt: (id: string) => `/langganan/kuitansi/${id}`,
   // Pengaturan → Peran & Akses (Fase 3a).
   roles: "/peran-akses",
   businessProfile: "/profil-usaha",
@@ -53,11 +54,17 @@ export const ROUTE_PATHS = {
   portal: (tab: ClientPortalTab = "beranda") => `/portal/${tab}`,
   platformDashboard: "/platform/dashboard",
   platformTenants: "/platform/tenant",
+  platformTenantDetail: (id: string, tab = "profil") => `/platform/tenant/${id}/${tab}`,
   platformPlans: "/platform/paket",
   platformTransactions: "/platform/transaksi",
   platformUsers: "/platform/pengguna",
   platformGatewayConfig: "/platform/pembayaran",
   platformApps: "/platform/aplikasi",
+  platformAnnouncements: "/platform/pengumuman",
+  platformDataRequests: "/platform/data-privasi",
+  platformAudit: "/platform/audit-log",
+  platformPolicy: "/platform/kebijakan",
+  platformLoginSlides: "/platform/tampilan-login",
   // Two-factor enrolment — outside PlatformLayout, reachable before MFA.
   platformSecurity: "/platform/keamanan",
 } as const;

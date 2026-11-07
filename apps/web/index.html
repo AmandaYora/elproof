@@ -15,8 +15,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Portal Klien" />
     <title>ElProof — Client Transparency Portal</title>
-    <!-- Platform defaults -- swapped server-side per tenant custom domain,
-         see cmd/server/main.go's injectTenantSiteMeta (exact-string match). -->
+    <!-- Defaults for crawlers that do not run JavaScript; each page refines
+         them at runtime with usePageMeta. -->
+    <meta name="description" content="ElProof membantu wedding organizer mengelola project, vendor, dan pembayaran, sambil memberi klien portal untuk memantau persiapan pernikahan mereka." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ElProof" />
     <meta property="og:title" content="ElProof — Client Transparency Portal" />

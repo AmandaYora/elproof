@@ -3,12 +3,15 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/shared/layouts/Sidebar";
 import { Topbar } from "@/shared/layouts/Topbar";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePermissionStore, hasPermission } from "@/shared/stores/usePermissionStore";
 import { SubscriptionBanner, SubscriptionLockedScreen } from "@/shared/layouts/SubscriptionBanner";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Toaster } from "@/shared/components/ui/Toaster";
+import { SupportSessionBanner } from "@/shared/layouts/SupportSessionBanner";
+import { AnnouncementBanner } from "@/shared/layouts/AnnouncementBanner";
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -18,7 +21,9 @@ export function AppLayout() {
   const fetchLifecycle = useSubscriptionStatusStore((s) => s.fetch);
   const fetchGrants = usePermissionStore((s) => s.fetch);
   const grantsLoaded = usePermissionStore((s) => s.loaded);
-  const canManageSubscription = usePermissionStore((s) => hasPermission(s.grants, "subscription.manage"));
+  const supportSession = useAuthStore((s) => s.session?.impersonation !== undefined);
+  // A support session only looks, so it offers no way to pay.
+  const canManageSubscription = usePermissionStore((s) => hasPermission(s.grants, "subscription.manage")) && !supportSession;
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -65,10 +70,12 @@ export function AppLayout() {
   return (
     <div className="min-h-screen bg-background" data-density="compact">
       <Toaster />
+      <SupportSessionBanner />
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="lg:pl-64">
+      <div className="lg:pl-64 print:pl-0">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
         <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
+          <AnnouncementBanner />
           {lifecycle && !locked && <SubscriptionBanner lifecycle={lifecycle} canManage={canManageSubscription} />}
           {locked ? (
             <SubscriptionLockedScreen canManage={canManageSubscription} />

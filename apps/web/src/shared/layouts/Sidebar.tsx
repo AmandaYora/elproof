@@ -112,7 +112,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       <aside
         inert={!open && !isDesktop}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
+          "print:hidden fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >

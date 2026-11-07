@@ -4,6 +4,7 @@ import axios from "axios";
 import { Check, Copy, ShieldCheck } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Field, Input } from "@/shared/components/ui/Input";
+import { QrCode } from "@/shared/components/ui/QrCode";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
@@ -126,9 +127,10 @@ export default function MfaSetupPage() {
             <li className="flex flex-col gap-3">
               <span className="text-[13.5px] font-semibold text-text-primary">1. Tambahkan ElProof ke aplikasi authenticator</span>
               <span className="text-[13px] leading-relaxed text-text-secondary">
-                Di aplikasi, pilih tambah akun lalu masukkan kunci ini secara manual (jenis: berbasis waktu). Di HP, Anda
-                juga bisa membuka tautan di bawah.
+                Di aplikasi authenticator, pilih tambah akun lalu pindai kode QR ini. Jika tidak bisa memindai, masukkan
+                kunci di bawahnya secara manual (jenis: berbasis waktu).
               </span>
+              <QrCode value={setup.otpauthUrl} label="Kode QR untuk menambahkan ElProof ke aplikasi authenticator" className="mx-auto" />
               <code className="select-all rounded-md bg-surface-muted px-3 py-2.5 text-center font-mono text-[14px] font-semibold leading-relaxed tracking-wide text-text-primary [word-spacing:0.35em]">
                 {groupKey(setup.secret)}
               </code>
@@ -145,7 +147,7 @@ export default function MfaSetupPage() {
                   href={setup.otpauthUrl}
                   className="inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-[13px] font-semibold text-text-primary hover:bg-surface-muted"
                 >
-                  Buka di aplikasi authenticator
+                  Buka di aplikasi authenticator (HP)
                 </a>
               </div>
             </li>

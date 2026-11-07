@@ -52,6 +52,31 @@ export const API = {
     appResetSecret: (appId: string) => `/api/v1/payment/apps/${appId}/reset-secret`,
     appToggleActive: (appId: string) => `/api/v1/payment/apps/${appId}/toggle-active`,
   },
+  // Platform Console back office (Fase 6): metrics, tenant 360, notes,
+  // data requests, announcements, subscription policy, support sessions.
+  console: {
+    metrics: "/api/v1/platform/metrics",
+    tenantOverview: (id: string) => `/api/v1/console/tenants/${id}/overview`,
+    tenantNotes: (id: string) => `/api/v1/console/tenants/${id}/notes`,
+    tenantDataRequests: (id: string) => `/api/v1/console/tenants/${id}/data-requests`,
+    tenantSupport: (id: string) => `/api/v1/console/tenants/${id}/support`,
+    tenantImpersonate: (id: string) => `/api/v1/console/tenants/${id}/impersonate`,
+    supportSessionEnd: (id: number | string) => `/api/v1/console/support-sessions/${id}/end`,
+    dataRequests: "/api/v1/console/data-requests",
+    dataRequestComplete: (id: number | string) => `/api/v1/console/data-requests/${id}/complete`,
+    announcements: "/api/v1/console/announcements",
+    announcement: (id: number | string) => `/api/v1/console/announcements/${id}`,
+    subscriptionPolicy: "/api/v1/console/subscription-policy",
+    tenantsExport: "/api/v1/tenants/export",
+    loginSlide: (index: number) => `/api/v1/console/login-slides/${index}`,
+    auditLog: "/api/v1/audit-log",
+    auditLogExport: "/api/v1/audit-log/export",
+  },
+  // Owner side of the same features.
+  workspace: {
+    supportAccess: "/api/v1/tenants/me/support-access",
+    activeAnnouncements: "/api/v1/announcements/active",
+  },
   platform: {
     tenants: "/api/v1/tenants",
     tenant: (id: string) => `/api/v1/tenants/${id}`,
@@ -84,15 +109,10 @@ export const API = {
     platformAdminResetPassword: (id: string) => `/api/v1/platform-admins/${id}/reset-password`,
     platformAdminResetMfa: (id: string) => `/api/v1/platform-admins/${id}/reset-mfa`,
   },
-  // Pre-auth, Host-header-resolved tenant branding (ADR-0015) — powers
-  // LoginPage for a tenant's own custom domain. Unlike every other group
-  // above, these carry no auth and resolve the tenant from the request's
-  // Host header server-side, not from a JWT or an :id param.
+  // Pre-auth endpoints: no session exists yet.
   public: {
-    branding: "/api/v1/public/branding",
-    logo: "/api/v1/public/logo",
     // LoginPage's left-panel photo slider — a fixed, global set of marketing
-    // photos (not tenant-scoped), unlike branding/logo above.
+    // photos (not tenant-scoped).
     loginSlides: "/api/v1/public/login-slides",
     loginSlide: (index: number) => `/api/v1/public/login-slides/${index}`,
     // Non-secret settings needed before sign-in (Google client ID).

@@ -4,6 +4,7 @@ import { Receipt } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Reveal } from "@/modules/homepage/components/Reveal";
 import { cn } from "@/shared/lib/cn";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const SECTIONS = [
   {
@@ -58,6 +59,7 @@ const SECTIONS = [
 ];
 
 export default function RefundPolicyPage() {
+  usePageMeta({ title: "Kebijakan refund", description: "Ketentuan pengembalian dana untuk langganan ElProof." });
   const [activeId, setActiveId] = useState("");
 
   useEffect(() => {

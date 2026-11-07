@@ -1,6 +1,7 @@
 import { FileLock2 } from "lucide-react";
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
+import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const SECTIONS: LegalSection[] = [
   {
@@ -57,6 +58,7 @@ const SECTIONS: LegalSection[] = [
 ];
 
 export default function DataProcessingPage() {
+  usePageMeta({ title: "Perjanjian pemrosesan data", description: "Perjanjian pemrosesan data antara wedding organizer sebagai pengendali data dan ElProof sebagai prosesor." });
   return (
     <LegalDocument
       icon={FileLock2}
