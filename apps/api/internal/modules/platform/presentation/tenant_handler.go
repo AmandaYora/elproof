@@ -21,6 +21,8 @@ import (
 
 type TenantHandler struct {
 	tenants *application.TenantService
+	// auditor records actions that are not state-changing requests (the CSV export).
+	auditor middleware.AuditRecorder
 }
 
 func NewTenantHandler(tenants *application.TenantService) *TenantHandler {
@@ -43,7 +45,6 @@ type tenantResponse struct {
 	LastCredentialResetAt *string `json:"lastCredentialResetAt"`
 	BrandColorPreset      string  `json:"brandColorPreset"`
 	HasLogo               bool    `json:"hasLogo"`
-	CustomDomain          *string `json:"customDomain"`
 	TrialEndsAt           *string `json:"trialEndsAt"`
 	// SignupSource: "self_service" (Fase 2 signup) or "platform".
 	SignupSource string `json:"signupSource"`
@@ -93,7 +94,7 @@ func dateOrNil(t *time.Time) *string {
 }
 
 func toTenantResponse(t domain.Tenant) tenantResponse {
-	lc := domain.ComputeLifecycle(t, time.Now(), domain.DefaultSubscriptionPolicy)
+	lc := domain.ComputeLifecycle(t, time.Now(), domain.CurrentSubscriptionPolicy())
 	return tenantResponse{
 		ID: t.ID, BusinessName: t.BusinessName, OwnerName: t.OwnerName, Username: t.Username,
 		Email: t.Email, Phone: t.Phone, City: t.City, JoinedAt: t.JoinedAt.Format("2006-01-02"),
@@ -102,7 +103,7 @@ func toTenantResponse(t domain.Tenant) tenantResponse {
 		SubscriptionExpiresAt: dateOrNil(t.SubscriptionExpiresAt), IsSuspended: t.IsSuspended,
 		LastCredentialResetAt: dateOrNil(t.LastCredentialResetAt),
 		BrandColorPreset:      t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
-		CustomDomain: t.CustomDomain, SignupSource: string(t.SignupSource),
+		SignupSource: string(t.SignupSource),
 	}
 }
 
@@ -162,9 +163,7 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := pagination.FromRequest(r)
-	search := r.URL.Query().Get("search")
-	status := r.URL.Query().Get("status")
-	tenants, total, err := h.tenants.ListPaginated(r.Context(), params, search, status)
+	tenants, total, err := h.tenants.ListPaginated(r.Context(), params, tenantFilterFrom(r))
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -338,46 +337,6 @@ func (h *TenantHandler) myLogo(w http.ResponseWriter, r *http.Request) {
 	streamLogo(w, r, h.tenants, tenantID)
 }
 
-// hostWithoutPort strips an optional ":port" suffix from r.Host — a custom
-// domain is stored/compared as a bare hostname, but a dev/local request's
-// Host header often includes a port (e.g. "localhost:8080"). Lowercased to
-// match how TenantService.Update normalizes custom_domain before saving it —
-// defense-in-depth alongside whatever collation the tenants table happens to
-// use, not a substitute for it.
-func hostWithoutPort(host string) string {
-	if i := strings.IndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
-	return strings.ToLower(host)
-}
-
-// PublicBranding is the pre-auth counterpart to myBranding (ADR-0015) — it
-// resolves the tenant from the request's Host header instead of a JWT claim,
-// so LoginPage can render a tenant's own branding before anyone logs in. A
-// Host that matches no tenant's custom_domain (e.g. the platform's own
-// elproof.elcodelabs.com) 404s via writeAppError — the frontend treats that
-// as "no custom branding, use the default look".
-func (h *TenantHandler) PublicBranding(w http.ResponseWriter, r *http.Request) {
-	tenant, err := h.tenants.GetBrandingByDomain(r.Context(), hostWithoutPort(r.Host))
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	response.OK(w, "ok", toBrandingResponse(*tenant))
-}
-
-// PublicLogo streams the logo for the tenant matching the request's Host
-// header — same Host-based resolution and same "unknown domain" 404 as
-// PublicBranding above, unauthenticated like it.
-func (h *TenantHandler) PublicLogo(w http.ResponseWriter, r *http.Request) {
-	tenant, err := h.tenants.GetBrandingByDomain(r.Context(), hostWithoutPort(r.Host))
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	streamLogo(w, r, h.tenants, tenant.ID)
-}
-
 // selfTenantID resolves the calling principal's own tenant from the JWT
 // claim — never a request parameter. Any tenant-bound principal (staff of
 // any role, or client) qualifies; platform_admin principals have none.
@@ -428,9 +387,6 @@ type updateTenantBody struct {
 	Phone            string `json:"phone"`
 	City             string `json:"city"`
 	BrandColorPreset string `json:"brandColorPreset"`
-	// A *string (unlike every sibling field here) so the service can tell a
-	// missing key apart from an explicit "" — see UpdateTenantInput.CustomDomain.
-	CustomDomain *string `json:"customDomain"`
 }
 
 func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64) {
@@ -439,9 +395,23 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64)
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	// The Owner's email is the Google account that logs in as Owner after an
+	// invitation, so changing it is handing over the workspace: only Super
+	// Admin may, not the Support role that otherwise edits tenants.
+	if claims, ok := middleware.FromContext(r.Context()); ok && claims.Role != string(domain.RoleSuperAdmin) {
+		current, err := h.tenants.Get(r.Context(), id)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		if !strings.EqualFold(strings.TrimSpace(body.Email), current.Email) {
+			response.Error(w, http.StatusForbidden, "Hanya Super Admin yang dapat mengganti email Owner. Email itu menentukan akun Google yang menjadi Owner.", map[string]string{"code": "forbidden_role"})
+			return
+		}
+	}
 	tenant, err := h.tenants.Update(r.Context(), id, application.UpdateTenantInput{
 		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Email: body.Email, Phone: body.Phone, City: body.City,
-		BrandColorPreset: body.BrandColorPreset, CustomDomain: body.CustomDomain,
+		BrandColorPreset: body.BrandColorPreset,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -640,4 +610,15 @@ func writeAppError(w http.ResponseWriter, err error) {
 	}
 	logger.Error("unhandled error: %v", err)
 	response.Error(w, status, "Terjadi kesalahan pada server", nil)
+}
+
+// tenantFilterFrom reads ?search=, ?status=, ?planId= and ?source= (the same
+// filters the list page and the CSV export share).
+func tenantFilterFrom(r *http.Request) domain.TenantFilter {
+	q := r.URL.Query()
+	f := domain.TenantFilter{Search: strings.TrimSpace(q.Get("search")), Status: q.Get("status"), Source: q.Get("source")}
+	if id, err := strconv.ParseInt(q.Get("planId"), 10, 64); err == nil && id > 0 {
+		f.PlanID = &id
+	}
+	return f
 }

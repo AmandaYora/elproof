@@ -72,7 +72,7 @@ func (c *accessCache) invalidate(id int64) {
 
 // Lifecycle returns a tenant's subscription state right now.
 func (s *TenantService) Lifecycle(t domain.Tenant) domain.Lifecycle {
-	return domain.ComputeLifecycle(t, time.Now(), domain.DefaultSubscriptionPolicy)
+	return domain.ComputeLifecycle(t, time.Now(), domain.CurrentSubscriptionPolicy())
 }
 
 func (s *TenantService) cachedLifecycle(ctx context.Context, tenantID int64) (domain.Lifecycle, bool, error) {
@@ -87,7 +87,7 @@ func (s *TenantService) cachedLifecycle(ctx context.Context, tenantID int64) (do
 	}
 	e := accessEntry{found: tenant != nil, at: now}
 	if tenant != nil {
-		e.lifecycle = domain.ComputeLifecycle(*tenant, now, domain.DefaultSubscriptionPolicy)
+		e.lifecycle = domain.ComputeLifecycle(*tenant, now, domain.CurrentSubscriptionPolicy())
 	}
 	s.access.put(tenantID, e, g)
 	return e.lifecycle, e.found, nil
@@ -136,7 +136,7 @@ func (s *TenantService) SweepSubscriptionStatuses(ctx context.Context) (changed 
 	}
 	now := time.Now()
 	for _, t := range tenants {
-		lc := domain.ComputeLifecycle(t, now, domain.DefaultSubscriptionPolicy)
+		lc := domain.ComputeLifecycle(t, now, domain.CurrentSubscriptionPolicy())
 		if lc.Status == t.SubscriptionStatus {
 			continue
 		}

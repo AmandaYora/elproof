@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"io"
 	"regexp"
 	"strconv"
@@ -26,14 +25,14 @@ import (
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/utils"
-	"elproof/internal/shared/validator"
 )
 
 type TenantRepository interface {
 	List(ctx context.Context) ([]domain.Tenant, error)
-	ListPaginated(ctx context.Context, params pagination.Params, search, status string) ([]domain.Tenant, int64, error)
+	ListPaginated(ctx context.Context, params pagination.Params, filter domain.TenantFilter) ([]domain.Tenant, int64, error)
+	// ListFiltered returns every match, newest first (CSV export).
+	ListFiltered(ctx context.Context, filter domain.TenantFilter) ([]domain.Tenant, error)
 	FindByID(ctx context.Context, id int64) (*domain.Tenant, error)
-	FindByDomain(ctx context.Context, host string) (*domain.Tenant, error)
 	Create(ctx context.Context, tenant *domain.Tenant) error
 	Update(ctx context.Context, tenant *domain.Tenant) error
 	UpdateLogo(ctx context.Context, id int64, logoStoragePath *string) error
@@ -48,6 +47,9 @@ type TenantRepository interface {
 	SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error
 	CreateForSignup(ctx context.Context, tenant *domain.Tenant, signupID int64) (bool, error)
 	UpdateUsername(ctx context.Context, id int64, username string) error
+	// FreeGrantTenantIDs: tenants whose current paid period was granted for
+	// free (compensation, trial extension, internal): active but not revenue.
+	FreeGrantTenantIDs(ctx context.Context) (map[int64]bool, error)
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -158,8 +160,13 @@ func (s *TenantService) List(ctx context.Context) ([]domain.Tenant, error) {
 	return s.repo.List(ctx)
 }
 
-func (s *TenantService) ListPaginated(ctx context.Context, params pagination.Params, search, status string) ([]domain.Tenant, int64, error) {
-	return s.repo.ListPaginated(ctx, params, search, status)
+func (s *TenantService) ListPaginated(ctx context.Context, params pagination.Params, filter domain.TenantFilter) ([]domain.Tenant, int64, error) {
+	return s.repo.ListPaginated(ctx, params, filter)
+}
+
+// ListFiltered returns every workspace matching the filter, for export.
+func (s *TenantService) ListFiltered(ctx context.Context, filter domain.TenantFilter) ([]domain.Tenant, error) {
+	return s.repo.ListFiltered(ctx, filter)
 }
 
 func (s *TenantService) Get(ctx context.Context, id int64) (*domain.Tenant, error) {
@@ -169,20 +176,6 @@ func (s *TenantService) Get(ctx context.Context, id int64) (*domain.Tenant, erro
 	}
 	if tenant == nil {
 		return nil, apperror.NotFound("Tenant tidak ditemukan")
-	}
-	return tenant, nil
-}
-
-// GetBrandingByDomain resolves a tenant from an incoming request's Host
-// header (ADR-0015) — the pre-auth counterpart to Get, used only by the
-// public branding/logo endpoints, never by anything JWT-scoped.
-func (s *TenantService) GetBrandingByDomain(ctx context.Context, host string) (*domain.Tenant, error) {
-	tenant, err := s.repo.FindByDomain(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-	if tenant == nil {
-		return nil, apperror.NotFound("Domain tidak terdaftar")
 	}
 	return tenant, nil
 }
@@ -239,7 +232,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 	if err != nil {
 		return nil, err
 	}
-	trialEndsAt := time.Now().Truncate(time.Second).AddDate(0, 0, domain.DefaultSubscriptionPolicy.TrialDays)
+	trialEndsAt := time.Now().Truncate(time.Second).AddDate(0, 0, domain.CurrentSubscriptionPolicy().TrialDays)
 	tenant := &domain.Tenant{
 		BusinessName:       name,
 		OwnerName:          normalizeName(input.OwnerName),
@@ -343,14 +336,6 @@ type UpdateTenantInput struct {
 	Phone            string
 	City             string
 	BrandColorPreset string
-	// CustomDomain is a pointer, unlike every other field on this input: nil
-	// means the caller's JSON body omitted the key entirely (e.g. a stale
-	// cached frontend bundle that predates this field, same "don't touch it"
-	// concern BrandColorPreset's own comment below addresses) and the
-	// tenant's existing domain is left untouched. A non-nil pointer means the
-	// key was present — "" explicitly clears it to NULL, anything else is
-	// normalized/validated and set.
-	CustomDomain *string
 }
 
 func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenantInput) (*domain.Tenant, error) {
@@ -371,32 +356,12 @@ func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenant
 		}
 		tenant.BrandColorPreset = input.BrandColorPreset
 	}
-	// CustomDomain (ADR-0015): nil means the key was absent from the request
-	// — leave tenant.CustomDomain exactly as Get() returned it. Only a
-	// present key can change it: "" clears to NULL, anything else is
-	// normalized + validated then set.
-	if input.CustomDomain != nil {
-		if *input.CustomDomain != "" {
-			normalized := strings.ToLower(strings.TrimSpace(*input.CustomDomain))
-			if err := validator.CustomDomain(normalized); err != nil {
-				return nil, err
-			}
-			tenant.CustomDomain = &normalized
-		} else {
-			tenant.CustomDomain = nil
-		}
-	}
 	tenant.BusinessName = input.BusinessName
 	tenant.OwnerName = input.OwnerName
 	tenant.Email = input.Email
 	tenant.Phone = input.Phone
 	tenant.City = input.City
 	if err := s.repo.Update(ctx, tenant); err != nil {
-		if errors.Is(err, domain.ErrDuplicateCustomDomain) {
-			return nil, apperror.Validation("Domain kustom sudah digunakan tenant lain", map[string][]string{
-				"customDomain": {"Domain ini sudah dipakai tenant lain"},
-			})
-		}
 		return nil, err
 	}
 	return tenant, nil

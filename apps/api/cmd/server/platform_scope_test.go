@@ -22,12 +22,26 @@ func TestPlatformAdminAllowed(t *testing.T) {
 		gateway    = req{http.MethodPut, "/api/v1/payment/gateway-config"}
 		appSecret  = req{http.MethodPost, "/api/v1/payment/apps/app_1/reset-secret"}
 		readAny    = req{http.MethodGet, "/api/v1/payment/gateway-config"}
+
+		overview    = req{http.MethodGet, "/api/v1/console/tenants/4/overview"}
+		notesRead   = req{http.MethodGet, "/api/v1/console/tenants/4/notes"}
+		openReqs    = req{http.MethodGet, "/api/v1/console/data-requests"}
+		policyRead  = req{http.MethodGet, "/api/v1/console/subscription-policy"}
+		export      = req{http.MethodGet, "/api/v1/tenants/export"}
+		noteWrite   = req{http.MethodPost, "/api/v1/console/tenants/4/notes"}
+		reqWrite    = req{http.MethodPost, "/api/v1/console/tenants/4/data-requests"}
+		reqComplete = req{http.MethodPost, "/api/v1/console/data-requests/9/complete"}
+		impersonate = req{http.MethodPost, "/api/v1/console/tenants/4/impersonate"}
+		endSession  = req{http.MethodPost, "/api/v1/console/support-sessions/3/end"}
+		announce    = req{http.MethodPost, "/api/v1/console/announcements"}
+		policyWrite = req{http.MethodPut, "/api/v1/console/subscription-policy"}
+		slide       = req{http.MethodPut, "/api/v1/console/login-slides/1"}
 	)
 	matrix := map[string]map[req]bool{
-		roleSuperAdmin: {register: true, editTenant: true, resetOwner: true, freeze: true, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: true, gateway: true, appSecret: true, readAny: true},
-		roleBilling:    {register: false, editTenant: false, resetOwner: false, freeze: false, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: false, gateway: false, appSecret: false, readAny: true},
-		roleSupport:    {register: true, editTenant: true, resetOwner: true, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
-		roleReadOnly:   {register: false, editTenant: false, resetOwner: false, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleSuperAdmin: {slide: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: true, reqWrite: true, reqComplete: true, impersonate: true, endSession: true, announce: true, policyWrite: true, register: true, editTenant: true, resetOwner: true, freeze: true, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: true, gateway: true, appSecret: true, readAny: true},
+		roleBilling:    {slide: false, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: false, reqWrite: false, reqComplete: false, impersonate: false, endSession: false, announce: false, policyWrite: false, register: false, editTenant: false, resetOwner: false, freeze: false, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleSupport:    {slide: false, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: true, reqWrite: true, reqComplete: true, impersonate: true, endSession: true, announce: false, policyWrite: false, register: true, editTenant: true, resetOwner: true, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleReadOnly:   {slide: false, export: false, overview: false, notesRead: false, openReqs: false, policyRead: true, noteWrite: false, reqWrite: false, reqComplete: false, impersonate: false, endSession: false, announce: false, policyWrite: false, register: false, editTenant: false, resetOwner: false, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
 		"":             {register: false, freeze: false, readAny: true},
 	}
 	for role, cases := range matrix {

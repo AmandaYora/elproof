@@ -25,6 +25,26 @@ func NewJWTIssuer(secret string) *JWTIssuer {
 // IssueAccessToken signs a JWT carrying the claims shape shared/middleware
 // verifies on every subsequent request (principal_type, principal_id, tenant_id,
 // role) — see ADR-0005.
+// IssueImpersonationToken signs the access token of a support session: the
+// credential's own claims plus who is looking (imp) and which session (sid).
+func (i *JWTIssuer) IssueImpersonationToken(cred *domain.Credential, adminID string, sessionID int64, ttl time.Duration) (string, error) {
+	var tenantID string
+	if cred.TenantID != nil {
+		tenantID = strconv.FormatInt(*cred.TenantID, 10)
+	}
+	claims := middleware.Claims{
+		PrincipalType: string(cred.PrincipalType), PrincipalID: cred.PrincipalID, TenantID: tenantID,
+		Role: cred.Role, RoleID: cred.RoleID,
+		Impersonator: adminID, ImpersonationID: sessionID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   cred.Username,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(i.secret)
+}
+
 func (i *JWTIssuer) IssueAccessToken(cred *domain.Credential, mfa bool, ttl time.Duration) (string, error) {
 	var tenantID string
 	if cred.TenantID != nil {

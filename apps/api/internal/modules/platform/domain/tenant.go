@@ -1,9 +1,6 @@
 package domain
 
-import (
-	"errors"
-	"time"
-)
+import "time"
 
 type SubscriptionStatus string
 
@@ -53,7 +50,6 @@ type Tenant struct {
 	LastCredentialResetAt *time.Time
 	BrandColorPreset      string
 	LogoStoragePath       *string
-	CustomDomain          *string
 	// SignupSource: self-service signup (Fase 2) or created by ElProof's team.
 	SignupSource SignupSource
 	// OnboardingDismissedAt: the Owner closed the "Mulai di sini" checklist.
@@ -76,15 +72,19 @@ func (d BusinessDetails) HasBank() bool {
 	return d.BankName != "" && d.BankAccountNumber != "" && d.BankAccountHolder != ""
 }
 
+// TenantFilter narrows the Platform Console's tenant list.
+type TenantFilter struct {
+	Search string
+	// Status is the stored subscription status (refreshed hourly by the sweeper).
+	Status string
+	PlanID *int64
+	// Source is "self_service" or "platform" (how the workspace came to exist).
+	Source string
+}
+
 type SignupSource string
 
 const (
 	SignupSourcePlatform    SignupSource = "platform"
 	SignupSourceSelfService SignupSource = "self_service"
 )
-
-// ErrDuplicateCustomDomain signals a unique-key collision on custom_domain —
-// the repository returns this instead of a raw driver error so the
-// application layer can translate it into a field-level validation error
-// (see ADR-0015) without knowing MySQL error codes itself.
-var ErrDuplicateCustomDomain = errors.New("domain kustom sudah digunakan tenant lain")

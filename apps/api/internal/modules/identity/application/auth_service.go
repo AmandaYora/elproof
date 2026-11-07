@@ -76,6 +76,9 @@ type TokenIssuer interface {
 	// isn't backed by a Credential row (e.g. payment's external Apps, see
 	// knowledge/MODULE_PAYMENT.md §7.1) — no refresh token, no tenant/role.
 	IssueServiceToken(principalType, principalID string, ttl time.Duration) (string, error)
+	// IssueImpersonationToken signs a short, read-only support-session token
+	// for a staff credential on behalf of a platform admin.
+	IssueImpersonationToken(cred *domain.Credential, adminID string, sessionID int64, ttl time.Duration) (string, error)
 	NewRefreshTokenValue() (plain string, hash string, err error)
 	HashToken(plain string) string
 }
@@ -303,6 +306,30 @@ func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*S
 // is issued; the caller re-authenticates from scratch once this expires.
 func (s *AuthService) IssueServiceToken(ctx context.Context, principalType, principalID string, ttl time.Duration) (string, error) {
 	token, err := s.issuer.IssueServiceToken(principalType, principalID, ttl)
+	if err != nil {
+		return "", apperror.Internal("Gagal menerbitkan token")
+	}
+	return token, nil
+}
+
+// IssueSupportToken mints the token of a support session: the workspace
+// Owner's own staff login seen read-only by a platform admin (FLOW-IDEAL
+// 1.5). No refresh token; it simply expires. A frozen workspace or a
+// deactivated Owner cannot be entered.
+func (s *AuthService) IssueSupportToken(ctx context.Context, staffPrincipalID, adminID string, sessionID int64, ttl time.Duration) (string, error) {
+	cred, err := s.credentials.FindByPrincipal(ctx, domain.PrincipalStaff, staffPrincipalID)
+	if err != nil {
+		return "", err
+	}
+	if cred == nil || !cred.IsActive || cred.TenantID == nil {
+		return "", apperror.NotFound("Akun Owner workspace ini tidak dapat dipakai untuk sesi dukungan")
+	}
+	if s.tenantGuard != nil {
+		if err := s.tenantGuard.CheckTenantLogin(ctx, *cred.TenantID); err != nil {
+			return "", err
+		}
+	}
+	token, err := s.issuer.IssueImpersonationToken(cred, adminID, sessionID, ttl)
 	if err != nil {
 		return "", apperror.Internal("Gagal menerbitkan token")
 	}

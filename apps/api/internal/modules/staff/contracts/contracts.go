@@ -36,7 +36,19 @@ type Summary struct {
 	Phone string
 }
 
+// MemberSummary is what ElProof's support team sees of a workspace's staff:
+// who they are and what they may do, never a credential.
+type MemberSummary struct {
+	ID       int64
+	Name     string
+	Email    string
+	Role     string
+	IsActive bool
+}
+
 type Contracts interface {
+	// ListMembers lists a workspace's staff (Platform Console "Pengguna" tab).
+	ListMembers(ctx context.Context, tenantID int64) ([]MemberSummary, error)
 	CreateOwner(ctx context.Context, input CreateOwnerInput) (CreateOwnerResult, error)
 	// GetSummary resolves one staff member by ID. Returns (nil, nil) — not an
 	// error — when the ID doesn't resolve (e.g. the staff row was
@@ -88,4 +100,16 @@ func (c *impl) FindOwner(ctx context.Context, tenantID int64) (string, error) {
 
 func (c *impl) CountActiveStaff(ctx context.Context, tenantID int64) (int, error) {
 	return c.service.CountActiveNonOwner(ctx, tenantID)
+}
+
+func (c *impl) ListMembers(ctx context.Context, tenantID int64) ([]MemberSummary, error) {
+	members, err := c.service.List(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MemberSummary, 0, len(members))
+	for _, m := range members {
+		out = append(out, MemberSummary{ID: m.ID, Name: m.Name, Email: m.Email, Role: string(m.Role), IsActive: m.IsActive})
+	}
+	return out, nil
 }

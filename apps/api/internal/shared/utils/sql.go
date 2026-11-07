@@ -21,3 +21,9 @@ func Int64Args(ids []int64) []interface{} {
 	}
 	return args
 }
+
+// EscapeLike makes user text match literally inside a LIKE pattern, so a
+// search for "50%" or "a_b" does not act as a wildcard.
+func EscapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"html"
 	"log"
 	"net/http"
 	"net/url"
@@ -257,6 +256,9 @@ func serve(cfg config.Config) {
 	// or loses two-factor, not only when they expire.
 	liveSession := &middleware.RequireLiveSession{}
 	liveSession.SetValidator(identityModule.SessionValidator())
+	// A support token also needs its session, the Owner's consent and the
+	// admin to still be valid (bound once the platform module exists).
+	liveSupport := &middleware.RequireLiveSupportSession{}
 	// Staff and client permissions come from their workspace role (ADR-0026);
 	// resolved once per request, the resolver is the access module below.
 	loadGrants := &middleware.LoadGrants{}
@@ -268,7 +270,7 @@ func serve(cfg config.Config) {
 	// including refused attempts (audit sits before the role check).
 	auditAdmins := middleware.AuditTrail(auditModule.Recorder(), "platform_admin")
 	authed := func(next http.Handler) http.Handler {
-		return requireAuth(liveSession.Middleware(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(loadGrants.Middleware(next)))))))
+		return requireAuth(liveSession.Middleware(liveSupport.Middleware(middleware.RestrictImpersonation(auditAdmins(restrictAdmins(restrictClients(tenantGate.Middleware(loadGrants.Middleware(next)))))))))
 	}
 
 	mux.Handle("/api/v1/auth/me", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +309,7 @@ func serve(cfg config.Config) {
 	// (A6) — payment is still built before billing.
 	billingModule := billing.NewModule(db, paymentModule.AppRegistry(), paymentModule.Client())
 	platformModule := platform.NewModule(db, staffModule.Contracts(), identityModule.Contracts(), billingModule.Contracts(), paymentModule.Client(), storageClient)
+	liveSupport.SetValidator(platformModule.SupportSessionValidator())
 	// Two-phase wiring (identity is built first): a tenant frozen by the
 	// platform team can neither log in nor refresh, and every request is
 	// checked against the tenant's subscription lifecycle.
@@ -315,7 +318,11 @@ func serve(cfg config.Config) {
 	tenantGate.SetResolver(platformModule)
 	// Pre-auth, Host-header-resolved tenant branding (ADR-0015) — registered
 	// unwrapped, same style as identityModule.RegisterRoutes(mux) above.
+	platformModule.SetAuditRecorder(auditModule.Recorder())
 	platformModule.RegisterPublicRoutes(mux)
+	if err := platformModule.LoadSubscriptionPolicy(context.Background()); err != nil {
+		log.Printf("subscription policy: using defaults (%v)", err)
+	}
 	// projects is built before vendors — vendors' "Lihat Project" resolves a
 	// vendor's cross-project engagement history through projects.Contracts()
 	// (project_vendors is owned by projects, not vendors).
@@ -395,7 +402,7 @@ func serve(cfg config.Config) {
 	// Serves the built frontend (see infra/docker/Dockerfile, which copies
 	// apps/web's build output here) — a no-op locally, where the frontend
 	// runs on its own Vite dev server (`npm run dev:web`) instead.
-	mux.Handle("/", spaFileServer("./public", platformModule.SiteMetaForHost))
+	mux.Handle("/", spaFileServer("./public"))
 
 	handler := middleware.CORS(cfg.AppEnv == "development")(mux)
 
@@ -417,17 +424,9 @@ func serve(cfg config.Config) {
 // root/index.html for any path that doesn't match a real file — required so
 // React Router's client-side routes resolve on a hard refresh/direct link.
 // Registered on "/", it would otherwise also swallow any unmatched
-// /api/v1/... request (e.g. demo-login when disabled) into a fake 200 HTML
-// response instead of a real 404, so those are rejected before falling back.
-//
-// siteMeta resolves the incoming request's Host to a tenant's own branding
-// (platform.Module.SiteMetaForHost, ADR-0015's Host lookup) — every
-// index.html fallback response runs through it so a shared link's preview
-// card (WhatsApp/Telegram/etc.) shows the tenant's own name, not "ElProof".
-// Those crawlers never execute the SPA's JS, so tabIdentity.ts's client-side
-// title swap never reaches them; this is the server-side equivalent for the
-// one document a crawler actually reads.
-func spaFileServer(root string, siteMeta func(ctx context.Context, host string) (platform.SiteMeta, bool)) http.Handler {
+// /api/v1/... request into a fake 200 HTML response instead of a real 404,
+// so those are rejected before falling back.
+func spaFileServer(root string) http.Handler {
 	fileServer := http.FileServer(http.Dir(root))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -436,67 +435,11 @@ func spaFileServer(root string, siteMeta func(ctx context.Context, host string) 
 		}
 		fullPath := filepath.Join(root, filepath.Clean(r.URL.Path))
 		if info, err := os.Stat(fullPath); err != nil || info.IsDir() {
-			serveIndexWithSiteMeta(w, r, root, siteMeta)
+			http.ServeFile(w, r, filepath.Join(root, "index.html"))
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	})
-}
-
-// Exact default <title>/Open Graph tag strings in apps/web/index.html —
-// injectTenantSiteMeta replaces these verbatim, so the two must stay in
-// sync; each carries a matching comment in index.html itself.
-const (
-	defaultTitleTag      = `<title>ElProof — Client Transparency Portal</title>`
-	defaultOGSiteNameTag = `<meta property="og:site_name" content="ElProof" />`
-	defaultOGTitleTag    = `<meta property="og:title" content="ElProof — Client Transparency Portal" />`
-	defaultOGDescription = `<meta property="og:description" content="Transparansi persiapan pernikahan Anda, dari WO hingga hari H." />`
-	headCloseTag         = `</head>`
-)
-
-// serveIndexWithSiteMeta serves index.html, rewritten for the request's Host
-// when it resolves to a tenant's own custom domain; unmatched (the
-// platform's own domain, localhost, any unconfigured domain) falls straight
-// back to the static file, byte-for-byte what http.ServeFile always served.
-func serveIndexWithSiteMeta(w http.ResponseWriter, r *http.Request, root string, siteMeta func(ctx context.Context, host string) (platform.SiteMeta, bool)) {
-	indexPath := filepath.Join(root, "index.html")
-	meta, ok := siteMeta(r.Context(), r.Host)
-	if !ok {
-		http.ServeFile(w, r, indexPath)
-		return
-	}
-	raw, err := os.ReadFile(indexPath)
-	if err != nil {
-		http.ServeFile(w, r, indexPath)
-		return
-	}
-	body := injectTenantSiteMeta(raw, meta, r.Host)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(body)
-}
-
-// injectTenantSiteMeta swaps index.html's platform-default <title>/Open
-// Graph tags for a matched tenant's own name — html.EscapeString guards
-// against a business name containing HTML-significant characters, since
-// this is spliced into a raw document served to unauthenticated crawlers,
-// not passed through React's own escaping.
-func injectTenantSiteMeta(raw []byte, meta platform.SiteMeta, host string) []byte {
-	name := html.EscapeString(meta.BusinessName)
-	page := string(raw)
-	page = strings.Replace(page, defaultTitleTag, fmt.Sprintf(`<title>%s</title>`, name), 1)
-	page = strings.Replace(page, defaultOGSiteNameTag, fmt.Sprintf(`<meta property="og:site_name" content="%s" />`, name), 1)
-	page = strings.Replace(page, defaultOGTitleTag, fmt.Sprintf(`<meta property="og:title" content="%s" />`, name), 1)
-	page = strings.Replace(page, defaultOGDescription,
-		fmt.Sprintf(`<meta property="og:description" content="Pantau progress pernikahan Anda secara real-time bersama %s." />`, name), 1)
-	if meta.HasLogo {
-		bareHost := host
-		if i := strings.IndexByte(bareHost, ':'); i >= 0 {
-			bareHost = bareHost[:i]
-		}
-		imageTag := fmt.Sprintf(`<meta property="og:image" content="https://%s/api/v1/public/logo" />`, html.EscapeString(strings.ToLower(bareHost)))
-		page = strings.Replace(page, headCloseTag, imageTag+"\n  "+headCloseTag, 1)
-	}
-	return []byte(page)
 }
 
 // isLocalURL reports whether raw points at this machine (loopback only).

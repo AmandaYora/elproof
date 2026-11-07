@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
-	"strings"
 	"time"
 
 	accesscontracts "elproof/internal/modules/access/contracts"
@@ -22,6 +21,8 @@ import (
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/logger"
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/storage"
 )
 
@@ -30,6 +31,8 @@ type Module struct {
 	adminHandler       *presentation.PlatformAdminHandler
 	loginSlidesHandler *presentation.LoginSlidesHandler
 	signupHandler      *presentation.SignupHandler
+	consoleHandler     *presentation.ConsoleHandler
+	consoleService     *application.ConsoleService
 	tenantService      *application.TenantService
 }
 
@@ -52,14 +55,40 @@ func NewModule(
 	tenantService.SetSignups(infrastructure.NewMySQLSignupRepository(db))
 	tenantService.SetTrialLimits(infrastructure.NewMySQLTrialLimitsRepository(db))
 	adminService := application.NewPlatformAdminService(adminRepo, identity)
+	consoleService := application.NewConsoleService(infrastructure.NewMySQLConsoleRepository(db), tenantService, identity)
+	consoleService.SetAdmins(adminRepo)
+	consoleService.OnPolicyChanged(func(ctx context.Context) {
+		if _, err := tenantService.SweepSubscriptionStatuses(ctx); err != nil {
+			logger.Error("platform: refreshing subscription statuses after a policy change: %v", err)
+		}
+	})
 
 	return &Module{
 		tenantHandler:      presentation.NewTenantHandler(tenantService),
 		adminHandler:       presentation.NewPlatformAdminHandler(adminService),
 		loginSlidesHandler: presentation.NewLoginSlidesHandler(storageClient),
 		signupHandler:      presentation.NewSignupHandler(tenantService),
+		consoleHandler:     presentation.NewConsoleHandler(consoleService, tenantService),
+		consoleService:     consoleService,
 		tenantService:      tenantService,
 	}
+}
+
+// SetAuditRecorder lets the tenant CSV export write its own audit record.
+func (m *Module) SetAuditRecorder(rec middleware.AuditRecorder) {
+	m.tenantHandler.SetAuditRecorder(rec)
+}
+
+// SupportSessionValidator is asked on every request made with a support
+// token (wired into the authed chain in cmd/server).
+func (m *Module) SupportSessionValidator() middleware.SupportSessionValidator {
+	return m.consoleService
+}
+
+// LoadSubscriptionPolicy applies the lifecycle policy stored by the platform
+// team (main.go calls this at startup; until then the defaults are in force).
+func (m *Module) LoadSubscriptionPolicy(ctx context.Context) error {
+	return m.consoleService.LoadPolicy(ctx)
 }
 
 // SetVendors completes two-phase wiring with the vendors module — see
@@ -114,39 +143,6 @@ func (m *Module) ApplyWebhookEvent(ctx context.Context, orderRef string, event p
 	return m.tenantService.ApplyWebhookEvent(ctx, orderRef, event)
 }
 
-// SiteMeta is the minimal, primitive-typed slice of a tenant's branding
-// needed to render a request's <title>/Open Graph tags at HTML-serve time —
-// deliberately not domain.Tenant itself, same primitive-typed-bridge
-// reasoning as StaffNameResolver (projects/application): main.go's
-// spaFileServer is composition-root code, not another module, but there's
-// still no reason for it to see this module's domain internals for a need
-// this narrow.
-type SiteMeta struct {
-	BusinessName string
-	HasLogo      bool
-}
-
-// SiteMetaForHost resolves a tenant's own display name for injecting into
-// index.html's <title>/Open Graph tags at serve time (spaFileServer in
-// main.go) — same Host-based lookup as PublicBranding (ADR-0015), reused
-// here so a shared link's preview card (WhatsApp/Telegram/etc., which never
-// execute the SPA's JS) shows the tenant's real name instead of the
-// platform's own. ok=false for the platform's own domain or any unmatched
-// Host, exactly like PublicBranding's 404.
-func (m *Module) SiteMetaForHost(ctx context.Context, host string) (meta SiteMeta, ok bool) {
-	if i := strings.IndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
-	tenant, err := m.tenantService.GetBrandingByDomain(ctx, strings.ToLower(host))
-	if err != nil {
-		return SiteMeta{}, false
-	}
-	return SiteMeta{BusinessName: tenant.BusinessName, HasLogo: tenant.LogoStoragePath != nil}, true
-}
-
-// RegisterPublicRoutes registers this module's pre-auth endpoints (ADR-0015)
-// — Host-header-resolved tenant branding for a custom domain's login page,
-// never wrapped in the `authed` middleware since no session exists yet.
 // TenantAccessLevel implements middleware.TenantAccessResolver for the
 // per-request subscription gate (wired in cmd/server).
 func (m *Module) TenantAccessLevel(ctx context.Context, tenantID int64) (string, error) {
@@ -165,9 +161,10 @@ func (m *Module) StartSubscriptionStatusSweeper(ctx context.Context, interval ti
 	m.tenantService.StartSubscriptionStatusSweeper(ctx, interval)
 }
 
+// RegisterPublicRoutes registers this module's pre-auth endpoints (login
+// slides, self-service signup), never wrapped in `authed` since no session
+// exists yet.
 func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
-	mux.Handle("/api/v1/public/branding", httpx.Method(http.MethodGet, m.tenantHandler.PublicBranding))
-	mux.Handle("/api/v1/public/logo", httpx.Method(http.MethodGet, m.tenantHandler.PublicLogo))
 	mux.Handle("/api/v1/public/login-slides", httpx.Method(http.MethodGet, m.loginSlidesHandler.List))
 	mux.Handle("/api/v1/public/login-slides/", httpx.Method(http.MethodGet, m.loginSlidesHandler.Slide))
 	// Self-service WO registration (PLAN.md §3): Google credential + the
@@ -178,10 +175,20 @@ func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/tenants", authed(http.HandlerFunc(m.tenantHandler.Collection)))
 	mux.Handle("/api/v1/tenants/", authed(http.HandlerFunc(m.tenantHandler.Item)))
+	mux.Handle("/api/v1/tenants/export", authed(httpx.Method(http.MethodGet, m.tenantHandler.Export)))
 	mux.Handle("/api/v1/subscriptions/pay", authed(httpx.Method(http.MethodPost, m.tenantHandler.Pay)))
 	mux.Handle("/api/v1/subscriptions/pending-charge", authed(httpx.Method(http.MethodGet, m.tenantHandler.PendingCharge)))
 	mux.Handle("/api/v1/subscriptions/pending-charge/cancel", authed(httpx.Method(http.MethodPost, m.tenantHandler.CancelPendingCharge)))
 	mux.Handle("/api/v1/trial-limits", authed(http.HandlerFunc(m.tenantHandler.TrialLimits)))
+	mux.Handle("/api/v1/platform/metrics", authed(httpx.Method(http.MethodGet, m.tenantHandler.Metrics)))
+	// Platform Console back office (notes, data requests, announcements,
+	// policy, support sessions) and the Owner-side counterparts. The exact
+	// "/tenants/me/support-access" pattern outranks the "/tenants/" prefix.
+	mux.Handle("/api/v1/console/", authed(http.HandlerFunc(m.consoleHandler.Console)))
+	// Super Admin replaces one of the login page's photos.
+	mux.Handle("/api/v1/console/login-slides/", authed(httpx.Method(http.MethodPut, m.loginSlidesHandler.Replace)))
+	mux.Handle("/api/v1/tenants/me/support-access", authed(http.HandlerFunc(m.consoleHandler.MySupportAccess)))
+	mux.Handle("/api/v1/announcements/active", authed(httpx.Method(http.MethodGet, m.consoleHandler.ActiveAnnouncements)))
 	mux.Handle("/api/v1/platform-admins", authed(http.HandlerFunc(m.adminHandler.Collection)))
 	mux.Handle("/api/v1/platform-admins/", authed(http.HandlerFunc(m.adminHandler.Item)))
 }

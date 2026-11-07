@@ -31,4 +31,5 @@ func (m *Module) Recorder() middleware.AuditRecorder {
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/audit-log", authed(httpx.Method(http.MethodGet, m.handler.List)))
+	mux.Handle("/api/v1/audit-log/export", authed(httpx.Method(http.MethodGet, m.handler.Export)))
 }

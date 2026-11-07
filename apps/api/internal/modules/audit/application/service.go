@@ -15,7 +15,9 @@ import (
 
 type Repository interface {
 	Insert(ctx context.Context, e *domain.Entry) error
-	ListPaginated(ctx context.Context, params pagination.Params, actorID string) ([]domain.Entry, int64, error)
+	ListPaginated(ctx context.Context, params pagination.Params, f domain.Filter) ([]domain.Entry, int64, error)
+	// ListAll returns up to `limit` matches, newest first (CSV export).
+	ListAll(ctx context.Context, f domain.Filter, limit int) ([]domain.Entry, error)
 }
 
 type Service struct {
@@ -34,7 +36,7 @@ func (s *Service) Record(ctx context.Context, rec middleware.AuditRecord) error 
 		ActorType:  rec.ActorType,
 		ActorID:    rec.ActorID,
 		ActorRole:  rec.ActorRole,
-		TenantID:   parseTenant(rec.TenantID),
+		TenantID:   tenantOf(rec),
 		Action:     ActionLabel(rec.Method, rec.Path),
 		Method:     rec.Method,
 		Path:       truncate(rec.Path, 255),
@@ -45,8 +47,39 @@ func (s *Service) Record(ctx context.Context, rec middleware.AuditRecord) error 
 	return s.repo.Insert(ctx, e)
 }
 
-func (s *Service) List(ctx context.Context, params pagination.Params, actorID string) ([]domain.Entry, int64, error) {
-	return s.repo.ListPaginated(ctx, params, actorID)
+// tenantOf is the workspace an entry belongs to: the actor's own for WO staff
+// and clients, and for a platform admin the tenant named in the path
+// (/tenants/{id}/... or /console/tenants/{id}/...), so "everything done to
+// this tenant" includes what ElProof's team did to it.
+func tenantOf(rec middleware.AuditRecord) *int64 {
+	if id := parseTenant(rec.TenantID); id != nil {
+		return id
+	}
+	if rec.ActorType != "platform_admin" {
+		return nil
+	}
+	segs := strings.Split(strings.Trim(strings.TrimPrefix(rec.Path, "/api/v1"), "/"), "/")
+	if len(segs) >= 3 && segs[0] == "console" {
+		segs = segs[1:]
+	}
+	if len(segs) >= 2 && segs[0] == "tenants" {
+		if id, err := strconv.ParseInt(segs[1], 10, 64); err == nil && id > 0 {
+			return &id
+		}
+	}
+	return nil
+}
+
+func (s *Service) List(ctx context.Context, params pagination.Params, f domain.Filter) ([]domain.Entry, int64, error) {
+	return s.repo.ListPaginated(ctx, params, f)
+}
+
+// ExportLimit caps one CSV export; narrow the filter (dates) for more.
+const ExportLimit = 10000
+
+// Export returns the matching entries for a CSV download.
+func (s *Service) Export(ctx context.Context, f domain.Filter) ([]domain.Entry, error) {
+	return s.repo.ListAll(ctx, f, ExportLimit)
 }
 
 var idSegment = regexp.MustCompile(`^(\d+|app_[0-9a-f]+)$`)

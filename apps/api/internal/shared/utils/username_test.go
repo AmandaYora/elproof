@@ -42,3 +42,9 @@ func TestValidEmail(t *testing.T) {
 		}
 	}
 }
+
+func TestEscapeLike(t *testing.T) {
+	if got := EscapeLike(`50%_a\b`); got != `50\%\_a\\b` {
+		t.Fatalf("got %q", got)
+	}
+}

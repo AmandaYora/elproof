@@ -174,7 +174,7 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 			return err
 		}
 		now := time.Now()
-		trialEndsAt := now.Truncate(time.Second).AddDate(0, 0, domain.DefaultSubscriptionPolicy.TrialDays)
+		trialEndsAt := now.Truncate(time.Second).AddDate(0, 0, domain.CurrentSubscriptionPolicy().TrialDays)
 		tenant := &domain.Tenant{
 			BusinessName:       req.BusinessName,
 			OwnerName:          req.OwnerName,

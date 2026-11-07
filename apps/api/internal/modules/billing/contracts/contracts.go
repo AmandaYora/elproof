@@ -3,6 +3,7 @@ package contracts
 
 import (
 	"context"
+	"time"
 
 	"elproof/internal/modules/billing/application"
 	"elproof/internal/modules/billing/domain"
@@ -47,6 +48,17 @@ type Contracts interface {
 	GetPlan(ctx context.Context, id int64) (*Plan, error)
 	RecordTransaction(ctx context.Context, input RecordTransactionInput) error
 	UpdateTransactionStatus(ctx context.Context, paymentReference string, status TransactionStatus) error
+	// PaidSince lists paid (never granted) subscription transactions since a
+	// moment, for the platform revenue metrics.
+	PaidSince(ctx context.Context, since time.Time) ([]PaidTransaction, error)
+}
+
+// PaidTransaction is one paid subscription transaction.
+type PaidTransaction struct {
+	TenantID int64
+	Type     TransactionType
+	Amount   int64
+	PaidAt   time.Time
 }
 
 type impl struct {
@@ -80,4 +92,19 @@ func (c *impl) RecordTransaction(ctx context.Context, input RecordTransactionInp
 
 func (c *impl) UpdateTransactionStatus(ctx context.Context, paymentReference string, status TransactionStatus) error {
 	return c.transactions.UpdateStatus(ctx, paymentReference, domain.TransactionStatus(status))
+}
+
+func (c *impl) PaidSince(ctx context.Context, since time.Time) ([]PaidTransaction, error) {
+	list, err := c.transactions.PaidSince(ctx, since)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PaidTransaction, 0, len(list))
+	for _, t := range list {
+		if t.PaidAt == nil {
+			continue
+		}
+		out = append(out, PaidTransaction{TenantID: t.TenantID, Type: TransactionType(t.Type), Amount: t.Amount, PaidAt: *t.PaidAt})
+	}
+	return out, nil
 }

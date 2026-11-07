@@ -28,6 +28,11 @@ type Claims struct {
 	// RoleID is the workspace role (tenant_roles.id) of a staff member or
 	// client; their permissions are resolved from it per request (ADR-0026).
 	RoleID int64 `json:"rid,omitempty"`
+	// Impersonator is the Platform Console admin looking at a workspace as its
+	// Owner ("Lihat sebagai tenant", FLOW-IDEAL 1.5); ImpersonationID is that
+	// support session's id. Such a session is read-only: see RestrictImpersonation.
+	Impersonator    string `json:"imp,omitempty"`
+	ImpersonationID int64  `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 

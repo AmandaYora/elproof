@@ -11,6 +11,8 @@ import (
 type TransactionRepository interface {
 	List(ctx context.Context, tenantID *int64) ([]domain.Transaction, error)
 	ListPaginated(ctx context.Context, tenantID *int64, params pagination.Params, status string) ([]domain.Transaction, int64, error)
+	// ListPaidSince returns transactions with status "paid" paid at or after `since` (granted ones are not revenue).
+	ListPaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error)
 	Create(ctx context.Context, tx *domain.Transaction) error
 	UpdateStatusByReference(ctx context.Context, paymentReference string, status domain.TransactionStatus, paidAt *time.Time) error
 }
@@ -29,6 +31,11 @@ func (s *TransactionService) List(ctx context.Context, tenantID *int64) ([]domai
 
 func (s *TransactionService) ListPaginated(ctx context.Context, tenantID *int64, params pagination.Params, status string) ([]domain.Transaction, int64, error) {
 	return s.repo.ListPaginated(ctx, tenantID, params, status)
+}
+
+// PaidSince backs the platform revenue metrics.
+func (s *TransactionService) PaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error) {
+	return s.repo.ListPaidSince(ctx, since)
 }
 
 type RecordTransactionInput struct {

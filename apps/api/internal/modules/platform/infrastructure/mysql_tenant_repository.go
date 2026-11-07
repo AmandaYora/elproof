@@ -3,11 +3,9 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"elproof/internal/shared/utils"
 	"strings"
 	"time"
-
-	"github.com/go-sql-driver/mysql"
 
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/pagination"
@@ -23,19 +21,19 @@ func NewMySQLTenantRepository(db *sql.DB) *MySQLTenantRepository {
 
 const tenantColumns = `id, business_name, owner_name, username, email, phone, city, joined_at, plan_id,
 	subscription_status, subscription_expires_at, trial_ends_at, is_suspended, last_credential_reset_at,
-	brand_color_preset, logo_storage_path, custom_domain, signup_source, onboarding_dismissed_at, created_at, updated_at`
+	brand_color_preset, logo_storage_path, signup_source, onboarding_dismissed_at, created_at, updated_at`
 
 func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	var t domain.Tenant
 	var planID sql.NullInt64
 	var status string
 	var expiresAt, trialEndsAt, lastReset, onboardingDismissed sql.NullTime
-	var logoStoragePath, customDomain sql.NullString
+	var logoStoragePath sql.NullString
 	var signupSource string
 
 	err := scan(
 		&t.ID, &t.BusinessName, &t.OwnerName, &t.Username, &t.Email, &t.Phone, &t.City, &t.JoinedAt, &planID,
-		&status, &expiresAt, &trialEndsAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath, &customDomain,
+		&status, &expiresAt, &trialEndsAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath,
 		&signupSource, &onboardingDismissed, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -60,9 +58,6 @@ func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	}
 	if logoStoragePath.Valid {
 		t.LogoStoragePath = &logoStoragePath.String
-	}
-	if customDomain.Valid {
-		t.CustomDomain = &customDomain.String
 	}
 	t.SignupSource = domain.SignupSource(signupSource)
 	if onboardingDismissed.Valid {
@@ -89,40 +84,48 @@ func (r *MySQLTenantRepository) List(ctx context.Context) ([]domain.Tenant, erro
 	return tenants, rows.Err()
 }
 
-// ListPaginated backs the real `GET /tenants` list page — List above stays
-// as-is for any full-roster consumer.
-func (r *MySQLTenantRepository) ListPaginated(ctx context.Context, params pagination.Params, search, status string) ([]domain.Tenant, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM tenants`
-	listQuery := `SELECT ` + tenantColumns + ` FROM tenants`
-	var args []interface{}
+// tenantWhere turns a filter into a WHERE clause and its arguments.
+func tenantWhere(f domain.TenantFilter) (string, []interface{}) {
 	var conditions []string
-	if search != "" {
+	var args []interface{}
+	if f.Search != "" {
 		conditions = append(conditions, `(business_name LIKE ? OR owner_name LIKE ? OR email LIKE ?)`)
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like)
 	}
-	if status != "" {
+	if f.Status != "" {
 		conditions = append(conditions, `subscription_status = ?`)
-		args = append(args, status)
+		args = append(args, f.Status)
 	}
-	if len(conditions) > 0 {
-		where := ` WHERE ` + strings.Join(conditions, " AND ")
-		countQuery += where
-		listQuery += where
+	if f.PlanID != nil {
+		conditions = append(conditions, `plan_id = ?`)
+		args = append(args, *f.PlanID)
 	}
+	if f.Source == string(domain.SignupSourceSelfService) || f.Source == string(domain.SignupSourcePlatform) {
+		conditions = append(conditions, `signup_source = ?`)
+		args = append(args, f.Source)
+	}
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return ` WHERE ` + strings.Join(conditions, " AND "), args
+}
 
+// ListPaginated backs the real `GET /tenants` list page — List above stays
+// for the few callers that need every tenant.
+func (r *MySQLTenantRepository) ListPaginated(ctx context.Context, params pagination.Params, f domain.TenantFilter) ([]domain.Tenant, int64, error) {
+	where, args := tenantWhere(f)
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tenants`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-
-	listQuery += ` ORDER BY joined_at DESC, id DESC LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+tenantColumns+` FROM tenants`+where+` ORDER BY joined_at DESC, id DESC LIMIT ? OFFSET ?`,
+		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-
 	var tenants []domain.Tenant
 	for rows.Next() {
 		t, err := scanTenant(rows.Scan)
@@ -134,16 +137,26 @@ func (r *MySQLTenantRepository) ListPaginated(ctx context.Context, params pagina
 	return tenants, total, rows.Err()
 }
 
-func (r *MySQLTenantRepository) FindByID(ctx context.Context, id int64) (*domain.Tenant, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+tenantColumns+` FROM tenants WHERE id = ? LIMIT 1`, id)
-	return scanTenant(row.Scan)
+func (r *MySQLTenantRepository) ListFiltered(ctx context.Context, f domain.TenantFilter) ([]domain.Tenant, error) {
+	where, args := tenantWhere(f)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+tenantColumns+` FROM tenants`+where+` ORDER BY joined_at DESC, id DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tenants []domain.Tenant
+	for rows.Next() {
+		t, err := scanTenant(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		tenants = append(tenants, *t)
+	}
+	return tenants, rows.Err()
 }
 
-// FindByDomain resolves a tenant from an incoming request's Host header — the
-// pre-auth lookup ADR-0015's public branding/logo endpoints use, distinct
-// from every other lookup in this repo (all JWT/ID-scoped).
-func (r *MySQLTenantRepository) FindByDomain(ctx context.Context, host string) (*domain.Tenant, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+tenantColumns+` FROM tenants WHERE custom_domain = ? LIMIT 1`, host)
+func (r *MySQLTenantRepository) FindByID(ctx context.Context, id int64) (*domain.Tenant, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT `+tenantColumns+` FROM tenants WHERE id = ? LIMIT 1`, id)
 	return scanTenant(row.Scan)
 }
 
@@ -168,14 +181,9 @@ func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenan
 
 func (r *MySQLTenantRepository) Update(ctx context.Context, tenant *domain.Tenant) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ?, brand_color_preset = ?, custom_domain = ? WHERE id = ?`,
-		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.BrandColorPreset,
-		tenant.CustomDomain, tenant.ID,
+		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ?, brand_color_preset = ? WHERE id = ?`,
+		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.BrandColorPreset, tenant.ID,
 	)
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
-		return domain.ErrDuplicateCustomDomain
-	}
 	return err
 }
 
@@ -303,6 +311,29 @@ func (r *MySQLTenantRepository) SaveBusinessDetails(ctx context.Context, tenantI
 		   bank_account_number = VALUES(bank_account_number), bank_account_holder = VALUES(bank_account_holder)`,
 		tenantID, d.Address, d.BankName, d.BankAccountNumber, d.BankAccountHolder)
 	return err
+}
+
+// FreeGrantTenantIDs returns tenants whose current paid period (the date their
+// subscription ends) was set by a manual activation with a non-revenue reason.
+// A later paid renewal moves the end date, so the tenant counts again.
+func (r *MySQLTenantRepository) FreeGrantTenantIDs(ctx context.Context) (map[int64]bool, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT t.id FROM tenants t
+		JOIN manual_activations m ON m.tenant_id = t.id AND DATE(m.expires_at) = DATE(t.subscription_expires_at)
+		WHERE m.reason IN ('compensation', 'trial_extension', 'internal')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 // SetOnboardingDismissed records that the Owner closed the checklist.

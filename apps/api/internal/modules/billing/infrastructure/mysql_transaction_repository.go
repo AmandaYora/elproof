@@ -52,6 +52,33 @@ func (r *MySQLTransactionRepository) List(ctx context.Context, tenantID *int64) 
 	return transactions, rows.Err()
 }
 
+// ListPaidSince returns the paid (not granted) transactions since a moment.
+func (r *MySQLTransactionRepository) ListPaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, tenant_id, type, amount, payment_method, payment_reference, status, created_at, paid_at
+		 FROM subscription_transactions WHERE status = 'paid' AND paid_at >= ? ORDER BY paid_at`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Transaction
+	for rows.Next() {
+		var t domain.Transaction
+		var txType, status string
+		var paidAt sql.NullTime
+		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
+			return nil, err
+		}
+		t.Type = domain.TransactionType(txType)
+		t.Status = domain.TransactionStatus(status)
+		if paidAt.Valid {
+			t.PaidAt = &paidAt.Time
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // ListPaginated backs the real `GET /subscription-transactions` list pages
 // (Platform Console's transaction table and the WO Console's own history
 // table) — List above stays as-is for dashboard revenue aggregation, which

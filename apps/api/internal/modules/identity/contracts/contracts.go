@@ -68,6 +68,9 @@ type Contracts interface {
 	// own store (e.g. `payment`'s external Apps, see
 	// knowledge/MODULE_PAYMENT.md §7.1). No refresh token is issued.
 	IssueServiceToken(ctx context.Context, principalType string, principalID string, ttl time.Duration) (string, error)
+	// IssueSupportToken mints a read-only support-session token for a
+	// workspace Owner's staff login on behalf of a platform admin.
+	IssueSupportToken(ctx context.Context, staffPrincipalID, adminID string, sessionID int64, ttl time.Duration) (string, error)
 	// ResetMFA removes a principal's two-factor setup (lost device) and ends
 	// their sessions; they must enrol again at next login.
 	ResetMFA(ctx context.Context, principalType PrincipalType, principalID string) error
@@ -233,4 +236,11 @@ func (c *impl) DeleteCredential(ctx context.Context, principalType PrincipalType
 
 func (c *impl) LoginEmail(ctx context.Context, principalType PrincipalType, principalID string) (string, error) {
 	return c.management.LoginEmail(ctx, domain.PrincipalType(principalType), principalID)
+}
+
+func (c *impl) IssueSupportToken(ctx context.Context, staffPrincipalID, adminID string, sessionID int64, ttl time.Duration) (string, error) {
+	if c.auth == nil {
+		return "", errors.New("identity: instance Contracts ini dibuat tanpa AuthService, tidak bisa menerbitkan token")
+	}
+	return c.auth.IssueSupportToken(ctx, staffPrincipalID, adminID, sessionID, ttl)
 }

@@ -1,0 +1,1 @@
+ALTER TABLE tenants ADD COLUMN custom_domain VARCHAR(255) NULL UNIQUE;
