@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { Download, X, FileWarning } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
 import { httpClient } from "@/shared/services/http-client";
@@ -21,38 +22,72 @@ interface EvidenceViewerModalProps {
   contextLabel?: string;
 }
 
-// Streams the real evidence file from the object-storage-backed download
-// endpoint. That endpoint requires the staff Bearer token (ADR-0004), so a
-// bare <img>/<iframe> src can't hit it directly — the file is fetched as a
-// blob through the authenticated httpClient instead, then shown via a
-// short-lived object URL.
+// Shows the real evidence file. The API hands out a direct, two-minute link to
+// object storage, so the bytes never pass through this server and the browser
+// loads the image or PDF itself. Where a deployment has no direct links (501),
+// or the link cannot be had, the file is streamed through the authenticated
+// download endpoint instead: that one needs the staff Bearer token (ADR-0004),
+// so a bare <img>/<iframe> cannot call it and it is fetched as a blob.
 export function EvidenceViewerModal({ open, onClose, projectId, evidence, contextLabel }: EvidenceViewerModalProps) {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [direct, setDirect] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let objectUrl: string | null = null;
     let cancelled = false;
     setFileUrl(null);
+    setDirect(false);
     setError(null);
 
-    httpClient
-      .get(API.projects.evidenceFile(projectId, evidence.id), { responseType: "blob" })
-      .then((res) => {
+    async function load() {
+      try {
+        const res = await httpClient.get(API.projects.evidenceLink(projectId, evidence.id));
+        if (cancelled) return;
+        setDirect(true);
+        setFileUrl((res.data.data as { url: string }).url);
+        return;
+      } catch (err) {
+        // A client who may not see the file gets the same 404 from the stream
+        // endpoint, so falling back is harmless; anything else is worth a retry there.
+        if (cancelled) return;
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+          setError("Gagal memuat berkas evidence.");
+          return;
+        }
+      }
+      try {
+        const res = await httpClient.get(API.projects.evidenceFile(projectId, evidence.id), { responseType: "blob" });
         if (cancelled) return;
         objectUrl = URL.createObjectURL(res.data as Blob);
         setFileUrl(objectUrl);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setError("Gagal memuat berkas evidence.");
-      });
+      }
+    }
+    void load();
 
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [open, projectId, evidence.id]);
+
+  // A direct link is only good for two minutes, so the download link is made
+  // when the button is pressed, not when the viewer opens.
+  async function downloadDirect() {
+    setDownloading(true);
+    try {
+      const res = await httpClient.get(API.projects.evidenceLink(projectId, evidence.id), { params: { disposition: "attachment" } });
+      window.location.assign((res.data.data as { url: string }).url);
+    } catch {
+      setError("Berkas belum bisa diunduh. Coba lagi.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +120,19 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {fileUrl && (
+            {fileUrl && direct && (
+              <button
+                type="button"
+                onClick={() => void downloadDirect()}
+                disabled={downloading}
+                className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12.5px] font-semibold text-navy-900 transition-colors hover:bg-surface-muted disabled:opacity-60"
+                aria-label="Unduh dokumen"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Unduh</span>
+              </button>
+            )}
+            {fileUrl && !direct && (
               <a
                 href={fileUrl}
                 download={evidence.fileName}
@@ -115,12 +162,13 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
           ) : !fileUrl ? (
             <div className="flex h-full items-center justify-center text-[13px] text-text-secondary">Memuat berkas...</div>
           ) : kind === "pdf" ? (
-            <iframe src={fileUrl} title={evidence.name} className="h-full w-full border-0" />
+            <iframe src={fileUrl} title={evidence.name} referrerPolicy="no-referrer" className="h-full w-full border-0" />
           ) : kind === "image" ? (
             <div className="flex h-full items-center justify-center p-4 sm:p-8">
               <img
                 src={fileUrl}
                 alt={evidence.name}
+                referrerPolicy="no-referrer"
                 className="max-h-full max-w-full rounded-md border border-border-light bg-white p-2 object-contain shadow-sm"
               />
             </div>

@@ -34,6 +34,7 @@ export const API = {
     plan: (id: string) => `/api/v1/plans/${id}`,
     planToggleActive: (id: string) => `/api/v1/plans/${id}/toggle-active`,
     transactions: "/api/v1/subscription-transactions",
+    transaction: (id: string) => `/api/v1/subscription-transactions/${id}`,
     // App-plan mapping + subscription ledger (D1) — owned by `billing`
     // even though they're consumed from Manajemen Aplikasi (payment's
     // domain), because "paket mana boleh dilihat App mana" is a catalog
@@ -56,6 +57,8 @@ export const API = {
   // data requests, announcements, subscription policy, support sessions.
   console: {
     metrics: "/api/v1/platform/metrics",
+    trends: "/api/v1/platform/trends",
+    tenantNames: "/api/v1/tenants/names",
     tenantOverview: (id: string) => `/api/v1/console/tenants/${id}/overview`,
     tenantNotes: (id: string) => `/api/v1/console/tenants/${id}/notes`,
     tenantDataRequests: (id: string) => `/api/v1/console/tenants/${id}/data-requests`,
@@ -199,6 +202,8 @@ export const API = {
     issue: (id: string, issueId: string) => `/api/v1/projects/${id}/issues/${issueId}`,
     evidence: (id: string) => `/api/v1/projects/${id}/evidence`,
     evidenceFile: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}/file`,
+    // Direct, two-minute link to the stored file (501 when the deployment has none).
+    evidenceLink: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}/link`,
     evidenceToggleClientVisible: (id: string, evidenceId: string) =>
       `/api/v1/projects/${id}/evidence/${evidenceId}/toggle-client-visible`,
     // Client Portal's own "Dokumen" tab — always only general-kind,

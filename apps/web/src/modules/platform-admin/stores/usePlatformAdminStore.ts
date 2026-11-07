@@ -130,8 +130,7 @@ function toPlatformAdmin(raw: RawPlatformAdmin): PlatformAdmin {
 }
 
 interface PlatformAdminState {
-  tenants: Tenant[];
-  subscriptionTransactions: SubscriptionTransaction[];
+  /** The signed-in admin only: the console reads its own profile, not the whole team. */
   platformAdmins: PlatformAdmin[];
   myTenant: Tenant | null;
 
@@ -142,9 +141,7 @@ interface PlatformAdminState {
   transactionPage: SubscriptionTransaction[];
   transactionPageMeta: PaginationMeta;
 
-  fetchTenants: () => Promise<void>;
-  fetchPlatformAdmins: () => Promise<void>;
-  fetchTransactions: () => Promise<void>;
+  fetchPlatformAdmin: (id: string) => Promise<void>;
   fetchMyTenant: () => Promise<void>;
 
   // Backs the respective Platform Console list-page tables — real
@@ -180,8 +177,6 @@ interface PlatformAdminState {
 // no client cache (ADR-0009). Passwords are never stored client-side; they
 // only ever flow back once, directly in a mutation's response.
 export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
-  tenants: [],
-  subscriptionTransactions: [],
   platformAdmins: [],
   myTenant: null,
 
@@ -192,24 +187,14 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
   transactionPage: [],
   transactionPageMeta: EMPTY_PAGINATION_META,
 
-  fetchTenants: async () => {
-    const res = await httpClient.get(API.platform.tenants, { params: { all: true } });
-    set({ tenants: (res.data.data as RawTenant[]).map(toTenant) });
-  },
-
   fetchMyTenant: async () => {
     const res = await httpClient.get(API.platform.tenantMe);
     set({ myTenant: toTenant(res.data.data as RawTenant) });
   },
 
-  fetchPlatformAdmins: async () => {
-    const res = await httpClient.get(API.platform.platformAdmins, { params: { all: true } });
-    set({ platformAdmins: (res.data.data as RawPlatformAdmin[]).map(toPlatformAdmin) });
-  },
-
-  fetchTransactions: async () => {
-    const res = await httpClient.get(API.billing.transactions, { params: { all: true } });
-    set({ subscriptionTransactions: (res.data.data as RawTransaction[]).map(toTransaction) });
+  fetchPlatformAdmin: async (id) => {
+    const res = await httpClient.get(API.platform.platformAdmin(id));
+    set({ platformAdmins: [toPlatformAdmin(res.data.data as RawPlatformAdmin)] });
   },
 
   fetchTenantPage: async (page, search, status, extra) => {
@@ -249,29 +234,23 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
   registerTenant: async (values) => {
     const res = await httpClient.post(API.platform.tenants, values);
     const { tenant, invitation } = res.data.data as { tenant: RawTenant; invitation: OwnerInvitationRaw };
-    // The one-time link must reach the screen even if the list refresh fails.
-    await Promise.all([get().fetchTenants(), get().fetchTransactions()]).catch(() => undefined);
     return { tenant: toTenant(tenant), invitation: { token: invitation.token, expiresAt: invitation.expiresAt, purpose: "staff_invite" }, email: invitation.email };
   },
 
   updateTenant: async (id, values) => {
     await httpClient.patch(API.platform.tenant(id), values);
-    await get().fetchTenants();
   },
 
   uploadTenantLogo: async (id, file) => {
     await httpClient.put(API.platform.tenantLogo(id), file);
-    await get().fetchTenants();
   },
 
   toggleTenantSuspension: async (id) => {
     await httpClient.post(API.platform.tenantToggleSuspension(id));
-    await get().fetchTenants();
   },
 
   reinviteTenantOwner: async (id) => {
     const res = await httpClient.post(API.platform.tenantOwnerInvite(id));
-    await get().fetchTenants().catch(() => undefined);
     const inv = res.data.data as OwnerInvitationRaw;
     return { link: { token: inv.token, expiresAt: inv.expiresAt, purpose: "staff_invite" }, email: inv.email };
   },
@@ -283,7 +262,6 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
       proofReference: input.proofReference,
       note: input.note,
     });
-    await Promise.all([get().fetchTenants(), get().fetchTransactions()]);
   },
 
   paySubscription: async (planId) => {
@@ -307,18 +285,15 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
   registerPlatformAdmin: async (values) => {
     const res = await httpClient.post(API.platform.platformAdmins, values);
     const { admin, username } = res.data.data as { admin: RawPlatformAdmin; username: string };
-    await get().fetchPlatformAdmins();
     return { admin: toPlatformAdmin(admin), username, password: values.password };
   },
 
   updatePlatformAdmin: async (id, values) => {
     await httpClient.patch(API.platform.platformAdmin(id), values);
-    await get().fetchPlatformAdmins();
   },
 
   togglePlatformAdminActive: async (id) => {
     await httpClient.post(API.platform.platformAdminToggleActive(id));
-    await get().fetchPlatformAdmins();
   },
 
   resetPlatformAdminPassword: async (id, password) => {
@@ -329,6 +304,5 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
 
   resetPlatformAdminMfa: async (id) => {
     await httpClient.post(API.platform.platformAdminResetMfa(id));
-    await get().fetchPlatformAdmins();
   },
 }));

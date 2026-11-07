@@ -4,6 +4,7 @@ import { API } from "@/shared/services/api-endpoints";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 import { toTransaction, type RawTransaction } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import type { SubscriptionTransaction } from "@/modules/platform-admin/data/types";
+import type { DashboardPeriod, TrendPoint } from "@/modules/platform-admin/lib/trend";
 import type {
   Announcement,
   AuditEntry,
@@ -28,8 +29,15 @@ export interface AnnouncementInput {
   endsAt: string | null;
 }
 
+export interface PlatformTrends {
+  period: DashboardPeriod;
+  revenue: TrendPoint[];
+  newTenants: TrendPoint[];
+}
+
 interface ConsoleState {
   metrics: PlatformMetrics | null;
+  trends: PlatformTrends | null;
   announcements: Announcement[];
   policy: SubscriptionPolicy | null;
   dataRequests: DataRequest[];
@@ -37,6 +45,9 @@ interface ConsoleState {
   auditMeta: PaginationMeta;
 
   fetchMetrics: () => Promise<void>;
+  fetchTrends: (period: DashboardPeriod) => Promise<void>;
+  /** Business names for the tenants on one page of a list, by id. */
+  fetchTenantNames: (ids: string[]) => Promise<Record<string, string>>;
   fetchAnnouncements: () => Promise<void>;
   saveAnnouncement: (id: number | null, input: AnnouncementInput) => Promise<void>;
   deleteAnnouncement: (id: number) => Promise<void>;
@@ -73,6 +84,7 @@ function auditParams(filter: AuditFilter): Record<string, string | undefined> {
 
 export const useConsoleStore = create<ConsoleState>((set, get) => ({
   metrics: null,
+  trends: null,
   announcements: [],
   policy: null,
   dataRequests: [],
@@ -82,6 +94,18 @@ export const useConsoleStore = create<ConsoleState>((set, get) => ({
   fetchMetrics: async () => {
     const res = await httpClient.get(API.console.metrics);
     set({ metrics: res.data.data as PlatformMetrics });
+  },
+
+  fetchTrends: async (period) => {
+    const res = await httpClient.get(API.console.trends, { params: { period } });
+    set({ trends: res.data.data as PlatformTrends });
+  },
+
+  fetchTenantNames: async (ids) => {
+    const unique = [...new Set(ids)].slice(0, 100);
+    if (unique.length === 0) return {};
+    const res = await httpClient.get(API.console.tenantNames, { params: { ids: unique.join(",") } });
+    return res.data.data as Record<string, string>;
   },
 
   fetchAnnouncements: async () => {
@@ -161,7 +185,7 @@ export const useConsoleStore = create<ConsoleState>((set, get) => ({
   },
 
   fetchTenantTransactions: async (tenantId) => {
-    const res = await httpClient.get(API.billing.transactions, { params: { tenantId, all: true } });
+    const res = await httpClient.get(API.billing.transactions, { params: { tenantId, limit: 100 } });
     return (res.data.data as RawTransaction[]).map(toTransaction);
   },
 

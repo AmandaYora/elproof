@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FolderKanban, Store, Users } from "lucide-react";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
-import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import { useClientStore } from "@/modules/clients/stores/useClientStore";
+import { httpClient } from "@/shared/services/http-client";
+import { API } from "@/shared/services/api-endpoints";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 interface ResultItem {
@@ -15,50 +15,58 @@ interface ResultItem {
   path: string;
 }
 
+const PER_KIND = 4;
+const MIN_CHARS = 2;
+
+interface Named {
+  id: number | string;
+  name: string;
+  status?: string;
+}
+
+/** One kind of result: a small, server-searched page, never the whole list. */
+async function searchKind(url: string, q: string, signal: AbortSignal): Promise<Named[]> {
+  const res = await httpClient.get(url, { params: { search: q, limit: PER_KIND }, signal });
+  return res.data.data as Named[];
+}
+
 export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+  const [results, setResults] = useState<ResultItem[]>([]);
+  const [searching, setSearching] = useState(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const projects = useProjectStore((s) => s.projects);
-  const fetchProjects = useProjectStore((s) => s.fetchProjects);
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  const allClients = useClientStore((s) => s.allClients);
-  const fetchAllClients = useClientStore((s) => s.fetchAllClients);
+  const debounced = useDebouncedValue(query.trim(), 250);
 
   useEffect(() => {
-    void fetchProjects();
-    void fetchVendors();
-    // A Wedding Planner ("Staff" role) gets 403 here — tenant-wide client
-    // search is Owner/Admin only (see PLAN.md's RBAC section) — swallow it
-    // so global search still works for projects/vendors, just without
-    // client results for that role, instead of an unhandled rejection.
-    fetchAllClients().catch(() => {});
-  }, [fetchProjects, fetchVendors, fetchAllClients]);
-
-  const results = useMemo<ResultItem[]>(() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
-
-    const projectResults: ResultItem[] = projects
-      .filter((p) => p.name.toLowerCase().includes(q) || p.brideName.toLowerCase().includes(q) || p.groomName.toLowerCase().includes(q))
-      .slice(0, 4)
-      .map((p) => ({ key: `p-${p.id}`, label: p.name, sublabel: `Project · ${p.status}`, icon: FolderKanban, path: ROUTE_PATHS.projectDetail(p.id) }));
-
-    const vendorResults: ResultItem[] = vendors
-      .filter((v) => v.name.toLowerCase().includes(q))
-      .slice(0, 4)
-      .map((v) => ({ key: `v-${v.id}`, label: v.name, sublabel: "Vendor", icon: Store, path: ROUTE_PATHS.vendors }));
-
-    const clientResults: ResultItem[] = allClients
-      .filter((c) => c.name.toLowerCase().includes(q))
-      .slice(0, 4)
-      .map((c) => ({ key: `c-${c.id}`, label: c.name, sublabel: "Client", icon: Users, path: ROUTE_PATHS.clients }));
-
-    return [...projectResults, ...vendorResults, ...clientResults].slice(0, 8);
-  }, [query, projects, vendors, allClients]);
+    if (debounced.length < MIN_CHARS) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSearching(true);
+    // Each kind fails on its own: a Wedding Planner gets 403 for tenant-wide
+    // clients (Owner/Admin only, PLAN.md RBAC), and search must still show
+    // projects and vendors rather than nothing.
+    const settle = <T,>(p: Promise<T>) => p.then((value) => ({ ok: true as const, value }), () => ({ ok: false as const }));
+    Promise.all([
+      settle(searchKind(API.projects.base, debounced, controller.signal)),
+      settle(searchKind(API.vendors.base, debounced, controller.signal)),
+      settle(searchKind(API.clients.base, debounced, controller.signal)),
+    ]).then(([projects, vendors, clients]) => {
+      if (controller.signal.aborted) return;
+      const items: ResultItem[] = [
+        ...(projects.ok ? projects.value : []).map((p) => ({ key: `p-${p.id}`, label: p.name, sublabel: `Project${p.status ? ` · ${p.status}` : ""}`, icon: FolderKanban, path: ROUTE_PATHS.projectDetail(String(p.id)) })),
+        ...(vendors.ok ? vendors.value : []).map((v) => ({ key: `v-${v.id}`, label: v.name, sublabel: "Vendor", icon: Store, path: ROUTE_PATHS.vendors })),
+        ...(clients.ok ? clients.value : []).map((c) => ({ key: `c-${c.id}`, label: c.name, sublabel: "Client", icon: Users, path: ROUTE_PATHS.clients })),
+      ];
+      setResults(items.slice(0, 8));
+      setSearching(false);
+    });
+    return () => controller.abort();
+  }, [debounced]);
 
   return (
     <div className="relative w-full max-w-sm" ref={containerRef}>
@@ -71,7 +79,9 @@ export function GlobalSearch() {
       />
       {focused && query.trim().length >= 2 && (
         <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-md border border-border bg-white shadow-lg">
-          {results.length === 0 ? (
+          {searching || query.trim() !== debounced ? (
+            <p className="px-4 py-3 text-[13px] text-text-secondary">Mencari...</p>
+          ) : results.length === 0 ? (
             <p className="px-4 py-3 text-[13px] text-text-secondary">Tidak ada hasil untuk &ldquo;{query}&rdquo;.</p>
           ) : (
             <ul>

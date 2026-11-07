@@ -11,8 +11,7 @@ import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import type { AttentionTenant } from "@/modules/platform-admin/data/console.types";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
-import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
-import { buildRevenueTrend, buildTenantGrowthTrend, type DashboardPeriod } from "@/modules/platform-admin/lib/trend";
+import type { DashboardPeriod } from "@/modules/platform-admin/lib/trend";
 import { formatCurrency, formatCurrencyCompact } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
@@ -63,10 +62,8 @@ function AttentionList({ items, empty, tone, describe, canOpen }: { items: Atten
 export default function PlatformDashboardPage() {
   const metrics = useConsoleStore((s) => s.metrics);
   const fetchMetrics = useConsoleStore((s) => s.fetchMetrics);
-  const tenants = usePlatformAdminStore((s) => s.tenants);
-  const transactions = usePlatformAdminStore((s) => s.subscriptionTransactions);
-  const fetchTenants = usePlatformAdminStore((s) => s.fetchTenants);
-  const fetchTransactions = usePlatformAdminStore((s) => s.fetchTransactions);
+  const trends = useConsoleStore((s) => s.trends);
+  const fetchTrends = useConsoleStore((s) => s.fetchTrends);
   const canOpen = usePlatformCan("internal-read");
   const [failed, setFailed] = useState(false);
   const [period, setPeriod] = useState<DashboardPeriod>("month");
@@ -74,19 +71,22 @@ export default function PlatformDashboardPage() {
   const load = useCallback(() => {
     setFailed(false);
     fetchMetrics().catch(() => setFailed(true));
-    // The trend charts below still read the full lists.
-    void fetchTenants().catch(() => undefined);
-    void fetchTransactions().catch(() => undefined);
-  }, [fetchMetrics, fetchTenants, fetchTransactions]);
+  }, [fetchMetrics]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  // The charts are bucketed by the API, one small request per period.
+  useEffect(() => {
+    void fetchTrends(period).catch(() => undefined);
+  }, [fetchTrends, period]);
+
   const periodNoun = period === "month" ? "hari" : "bulan";
   const periodLabel = period === "month" ? "Bulan Ini" : "Tahun Ini";
-  const revenuePoints = buildRevenueTrend(transactions, period);
-  const tenantGrowthPoints = buildTenantGrowthTrend(tenants, period);
+  // Keep showing the previous period's bars until the new ones arrive.
+  const revenuePoints = trends?.revenue ?? [];
+  const tenantGrowthPoints = trends?.newTenants ?? [];
 
   if (failed && !metrics) return <LoadError onRetry={load} />;
   if (!metrics) return <div className="py-20 text-center text-sm text-text-secondary">Memuat ringkasan...</div>;

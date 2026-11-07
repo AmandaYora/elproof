@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
@@ -30,14 +31,16 @@ export default function SubscriptionReceiptPage() {
   useEffect(() => {
     let cancelled = false;
     setState({ kind: "loading" });
-    Promise.all([httpClient.get(API.billing.transactions, { params: { all: true } }), fetchMyTenant()])
+    Promise.all([httpClient.get(API.billing.transaction(id)), fetchMyTenant()])
       .then(([res]) => {
         if (cancelled) return;
-        const tx = (res.data.data as RawTransaction[]).map(toTransaction).find((t) => t.id === id);
-        setState(tx && tx.status === "paid" ? { kind: "ready", tx } : { kind: "missing" });
+        const tx = toTransaction(res.data.data as RawTransaction);
+        setState(tx.status === "paid" ? { kind: "ready", tx } : { kind: "missing" });
       })
-      .catch(() => {
-        if (!cancelled) setState({ kind: "failed" });
+      .catch((err) => {
+        if (cancelled) return;
+        // Someone else's receipt and a made-up id both answer 404.
+        setState(axios.isAxiosError(err) && err.response?.status === 404 ? { kind: "missing" } : { kind: "failed" });
       });
     return () => {
       cancelled = true;

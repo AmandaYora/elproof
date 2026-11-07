@@ -67,13 +67,15 @@ function PlatformShell() {
   const navigate = useNavigate();
   const currentPlatformAdminId = useAuthStore((s) => s.currentPlatformAdminId);
   const platformAdmins = usePlatformAdminStore((s) => s.platformAdmins);
-  const fetchPlatformAdmins = usePlatformAdminStore((s) => s.fetchPlatformAdmins);
+  const fetchPlatformAdmin = usePlatformAdminStore((s) => s.fetchPlatformAdmin);
   const [isLoading, setIsLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    fetchPlatformAdmins().finally(() => setIsLoading(false));
-  }, [fetchPlatformAdmins]);
+    fetchPlatformAdmin(currentPlatformAdminId)
+      .catch(() => undefined)
+      .finally(() => setIsLoading(false));
+  }, [fetchPlatformAdmin, currentPlatformAdminId]);
 
   const admin = getPlatformAdmin(platformAdmins, currentPlatformAdminId);
 

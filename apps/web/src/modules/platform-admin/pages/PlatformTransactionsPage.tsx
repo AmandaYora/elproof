@@ -11,24 +11,21 @@ import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatfo
 import type { SubscriptionTransactionStatus } from "@/modules/platform-admin/data";
 import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LABEL } from "@/modules/platform-admin/lib/status";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 const STATUS_FILTERS: SubscriptionTransactionStatus[] = ["unpaid", "pending", "paid", "expired", "granted", "cancelled"];
 
 export default function PlatformTransactionsPage() {
-  const tenants = usePlatformAdminStore((s) => s.tenants);
+  const fetchTenantNames = useConsoleStore((s) => s.fetchTenantNames);
+  const [tenantNames, setTenantNames] = useState<Record<string, string>>({});
   const transactions = usePlatformAdminStore((s) => s.transactionPage);
   const meta = usePlatformAdminStore((s) => s.transactionPageMeta);
-  const fetchTenants = usePlatformAdminStore((s) => s.fetchTenants);
   const fetchTransactionPage = usePlatformAdminStore((s) => s.fetchTransactionPage);
   const canOpen = usePlatformCan("internal-read");
   const [statusFilter, setStatusFilter] = useState<string>("Semua");
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    void fetchTenants();
-  }, [fetchTenants]);
 
   useEffect(() => {
     setPage(1);
@@ -38,8 +35,15 @@ export default function PlatformTransactionsPage() {
     void fetchTransactionPage(page, statusFilter === "Semua" ? "" : statusFilter);
   }, [fetchTransactionPage, page, statusFilter]);
 
+  // Only this page's tenants are looked up (names, not the whole roster).
+  useEffect(() => {
+    fetchTenantNames(transactions.map((t) => t.tenantId))
+      .then(setTenantNames)
+      .catch(() => undefined);
+  }, [fetchTenantNames, transactions]);
+
   function tenantLink(tenantId: string) {
-    const name = tenants.find((t) => t.id === tenantId)?.businessName ?? `Tenant ${tenantId}`;
+    const name = tenantNames[tenantId] ?? `Tenant ${tenantId}`;
     if (!canOpen) return name;
     return (
       <Link to={ROUTE_PATHS.platformTenantDetail(tenantId, "tagihan")} className="hover:underline">
