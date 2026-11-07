@@ -417,6 +417,35 @@ ADR-0019. Deleting a row cascades to its own `evidence` rows (deleted first, the
 deliberately reversed order, see ADR-0019) and their S3 objects, best-effort; no schema change was
 needed for this.
 
+### `tenant_business_details`
+| Column | Type | Notes |
+|---|---|---|
+| tenant_id | BIGINT UNSIGNED PK `FK` → tenants.id | one row per tenant; no row = nothing set |
+| address | VARCHAR(255) | '' when unset |
+| bank_name | VARCHAR(60) | '' when unset |
+| bank_account_number | VARCHAR(40) | '' when unset |
+| bank_account_holder | VARCHAR(100) | '' when unset |
+| updated_at | TIMESTAMP | |
+
+What the Owner shares with clients beyond name and WhatsApp (migration 000061, ADR-0029). A separate
+table keeps the hot `tenants` row narrow. The bank account is all-or-nothing, enforced in the service.
+
+### `client_payment_terms`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | same module, so the foreign key is allowed |
+| label | VARCHAR(100) | "DP", "Termin 1", "Pelunasan"... |
+| amount | BIGINT UNSIGNED | |
+| due_date | DATE | |
+| created_at | TIMESTAMP | |
+
+The client's agreed payment schedule (migration 000060, ADR-0028). Whether an installment is paid,
+partial, due soon or overdue is **never stored**: the API spreads what the client really paid
+(`client_payments`, DP + Termin + Pelunasan − Refund) over the installments, earliest due date
+first, so the status can never disagree with the payments. The whole schedule is replaced in one
+transaction (`PUT`), and deleted with the project.
+
 ### `client_payments`
 | Column | Type | Notes |
 |---|---|---|

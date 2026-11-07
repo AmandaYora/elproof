@@ -128,3 +128,41 @@ on the role's name. A `403 forbidden_permission` from the API makes `http-client
 density tokens (`--density-*` in `theme.css`; layouts set `data-density="compact"` for the consoles and
 `"comfortable"` for the client portal). Status labels live in `shared/lib/labels.ts` with a staff and a
 client wording per status (FLOW-IDEAL §4); `StatusBadges` take `audience="client"` in the portal.
+
+**Forms in dialogs (Fase 4a):** `Modal` and `Drawer` share `useDialogBehavior` (focus moves in, Tab is
+trapped, Escape closes only the top-most dialog, scroll lock, focus returns to the opener). A form
+inside a dialog follows one pattern: its state lives in an inner component that exists only while the
+dialog is open (so every opening starts from current data), `onSubmit` returns a Promise, the dialog
+shows `busy` (close disabled, button "Menyimpan...") and `error` (message inside the dialog, input
+kept), and only a successful save closes it and shows a `toast.success`. Field errors use
+`<Field error=...>` with `aria-invalid` on the input (red border, first invalid field is focused).
+`Select`/`Combobox` handle Escape themselves so the dialog behind stays open. `ActionMenu` is the
+"⋯" list for secondary actions.
+
+**Project page and dashboard (Fase 4b/4c):** `ProjectDetailLayout` is header + full-width tabs +
+(content | `ProjectSidePanel`). The dashboard is action-first (`OverdueHero`, `DueList`). Creating a
+project is the two-step page `ProjectCreatePage` (`/projects/baru`); the installment list is the
+shared `PaymentTermsEditor` (also used by the schedule drawer on the Keuangan tab). Pages that load
+data separate three states: skeleton while loading, `LoadError` with "Coba lagi" when the request
+failed (a network failure never looks like "empty" and never redirects away), and an `EmptyState`
+that says what to do. Touch devices (`pointer-coarse`) get 44px targets on buttons, inputs and icon
+actions; the closed mobile sidebar is `inert`. `IconActionButton` disappears in a read-only workspace
+unless it is marked `readOnly` (viewing actions).
+
+**Client Portal (Fase 5):** a phone-first app. `ClientPortalLayout` loads project, grants, branding and
+the WO contact (`useContactStore`, `GET /tenants/me/contact`), then fetches what the role may see; a
+bottom tab bar on phones (Beranda, Jadwal, Pembayaran, Vendor, Lainnya) becomes a top bar from `md` up.
+Beranda (`HomeTabPage`) is hero (countdown in the display serif), "Yang perlu Anda lakukan" (the only
+red in the portal, shown only for a payment past due), next payment with the account to pay into and a
+WhatsApp confirmation button, four-step progress, latest news, contact. Client-audience badges turn
+`danger` into amber (`toneFor`). Errors never log the client out: not signed in is the HTTP client's job,
+"no project" and "failed to load" are their own screens with a retry. Roles drive everything
+(Keluarga has no Pembayaran tab, no amounts, no bank details; the API refuses them too). It is a
+PWA (`manifest.webmanifest`, `sw.js` keeps only an offline page, never API data; install help on Lainnya).
+Staff roles limited to their own projects land on `MyProjectsPage` ("Proyek saya") at Beranda.
+
+**Read-only workspace (Fase 4a):** while the subscription gives only read access (`access !== "full"`),
+`useCan(permission)` answers false for every permission that changes data (anything not ending in
+`.view`, except `subscription.manage`), so write buttons disappear on every page. Routes and the
+sidebar use `hasPermission` directly and stay reachable. `useWriteLocked()` is for write controls that
+have no permission of their own. The API still refuses writes with `subscription_read_only`.

@@ -188,7 +188,18 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - Token design system dua kepadatan (console padat, portal lega), komponen Drawer, Toast, Skeleton, ConfirmDialog (ketik nama), label status terpusat (FLOW-IDEAL §4). Memakai skill `frontend-design` sesuai `.claude/rules/frontend-react.md`.
 - Hasil: `Drawer`, `Toaster`/`toast`, `Skeleton`, token `--density-*` (console `compact`, portal `comfortable`), `shared/lib/labels.ts` (label staf vs klien), `StatusBadges audience="client"` di portal. `ConfirmDialog` ketik-nama sudah ada sejak Fase 1. Penerapan pola baru ke seluruh halaman lama dilanjutkan di Fase 4.
 
-**Fase 4 — WO Console UX (G7, G9)**
+**Fase 4 — WO Console UX (G7, G9)** — ✅ **SELESAI 7 Nov 2026** (branch `revamp/flow-ideal`; ADR-0027 dan ADR-0028; diverifikasi unit test backend, build web, uji di browser pada MySQL sementara, dan review independen; temuan review yang terbukti (celah Refund pada batas lebih bayar, status ditulis ulang oleh Update, nominal negatif/raksasa, state project lama terbawa, dialog penutupan muncul lagi) sudah diperbaiki)
+- **4a:** pola modal standar (`Modal`/`Drawer` + `useDialogBehavior`: tunggu hasil simpan, galat di dalam modal, toast, focus trap, Escape hanya menutup dialog teratas); bug form "Ubah Project"; Escape di Combobox; galat form merah + `aria-invalid`; siklus proyek eksplisit (`/transition`, tombol "Mulai persiapan / Tandai siap / Selesaikan project / Buka kembali", menu "⋯") + checklist penutupan; validasi lebih bayar di backend dan form (klien, vendor, venue) + badge "Lebih bayar"; mode baca-saja menyembunyikan tombol tulis (`useCan`, `useWriteLocked`, `IconActionButton`).
+- **4b:** Detail Proyek dua kolom (panel samping) dengan tab Ringkasan pertama, tab Kendala, tab Keuangan dengan **jadwal termin** (tabel `client_payment_terms`, status diturunkan dari pembayaran asli, editor drawer), header diperbaiki.
+- **4c:** Beranda berbasis tindakan (angka tagihan terlambat, antrean tindakan, acara 14 hari, tugas minggu ini, pembayaran 30 hari, project per tahap), buat project 2 langkah di `/projects/baru` (venue dari direktori + jadwal termin), venue tunggal (nama venue disinkronkan server), halaman **Profil Usaha** (data usaha, logo, pilihan warna merek oleh Owner), state loading/error/empty dibedakan, target sentuh 44px di perangkat sentuh, sidebar mobile `inert`, istilah "Bukti" seragam.
+- **Belum, dipindah ke fase lain:**
+  - Beranda "Proyek saya" untuk peran dengan cakupan *proyek saya* (Wedding Planner/Sales): beranda masih khusus peran yang menjangkau semua project (ADR-0026). Masuk Fase 5.
+  - Arus kas 8 minggu (butuh jadwal pembayaran vendor/venue, belum ada).
+  - Alamat usaha dan rekening tujuan pembayaran klien: baru berguna saat portal klien menampilkannya, jadi dikerjakan di Fase 5.
+  - Sakelar "Terlihat klien" per kendala: belum ada kolom di backend.
+  - `paidAmount` vendor di daftar vendor masih menghitung semua jenis pembayaran (Tambahan ikut).
+  - Nilai `engagementStatus` yang salah di API masih berujung error 500 (bukan 422); temuan lama di luar lingkup.
+- Rencana awal fase ini:
 - Beranda berbasis tindakan, Detail Proyek dua kolom dengan tab Ringkasan pertama, tab Kendala & Keuangan (jadwal termin), siklus proyek eksplisit + checklist penutupan, buat proyek 2 langkah, Profil Usaha self-service.
 - Pola modal standar (await submit, error di dalam modal, tombol nonaktif saat menyimpan) + sistem toast.
 - Saat langganan baca-saja: sembunyikan/nonaktifkan tombol tulis di semua halaman (Fase 1 baru menampilkan banner; API sudah menolak dengan pesan jelas).
@@ -197,9 +208,14 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - State loading/error/empty yang dibedakan; label status berbahasa Indonesia; istilah seragam ("Dokumen").
 - Aksesibilitas: focus trap Modal, error merah + `aria-invalid`, target sentuh 44px, sidebar mobile `inert`.
 
-**Fase 5 — Portal Klien (G8)**
-- Beranda mobile-first + bottom tab bar, tagihan berikutnya + rekening, kontak WA PIC, PWA, peran Pengantin vs Keluarga.
-- Label status ramah klien (tanpa "Negotiation"/"Critical" mentah), tombol WhatsApp ke PIC, kartu "Yang perlu Anda lakukan", termin berikutnya, halaman error (bukan lempar ke login), countdown setelah hari H.
+**Fase 5 — Portal Klien (G8)** — ✅ **SELESAI 7 Nov 2026** (branch `revamp/flow-ideal`; ADR-0029; diverifikasi unit test, build web, uji di browser (HP dan desktop, peran Pengantin dan Keluarga, server mati) dan review independen)
+- Beranda mobile-first dengan tab bawah (Beranda, Jadwal, Pembayaran, Vendor, Lainnya; navigasi atas di layar lebar), hitung mundur termasuk setelah hari H, kartu "Yang perlu Anda lakukan" (merah hanya di sini), tagihan berikutnya + rekening + tombol konfirmasi WhatsApp, progres empat tahap, kabar terbaru, kontak PIC (WhatsApp/telepon).
+- Profil Usaha: alamat dan rekening pembayaran (tabel `tenant_business_details`, bank all-or-nothing); `GET /tenants/me/contact` memberi rekening hanya ke staf atau klien ber-`portal.finance.view`.
+- Klien membaca jadwal termin (`payment-terms`, label ramah klien); tab Pembayaran memakai sisa tagihan yang benar (Tambahan tidak ikut). Kendala selalu menjawab: apa yang terjadi, apa yang kami lakukan, kapan kabar berikutnya; lencana status klien tidak pernah merah.
+- Halaman galat "Gagal memuat / Coba lagi / Hubungi WO" dan "Akun belum terhubung" menggantikan lemparan ke login; PWA (manifest, ikon, service worker hanya untuk halaman offline, panduan pasang termasuk iOS).
+- Peran Pengantin vs Keluarga ditegakkan di UI dan API (Keluarga: tanpa tab Pembayaran, tanpa nominal, tanpa rekening).
+- "Proyek saya": `GET /dashboard/mine` dan halaman Beranda untuk peran berlingkup proyek (Wedding Planner, Sales).
+- **Belum:** ganti kata sandi oleh klien sendiri; "Bagikan ke keluarga"; sakelar "Terlihat klien" per kendala; manifest PWA per WO (nama/ikon masih generik); foto PIC.
 
 **Fase 6 — Platform Owner, Langganan, Marketing (G5, G6, G10)**
 - Tambahkan kode QR di halaman penyiapan 2FA (Fase 1 menampilkan kunci + tautan `otpauth://`; butuh library QR).
