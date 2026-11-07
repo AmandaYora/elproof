@@ -35,7 +35,7 @@ export function EvidenceListModal({ open, onClose, projectId, title, items }: Ev
           <EmptyState
             icon={<FileText className="h-8 w-8" />}
             title="Belum ada bukti"
-            description="Belum ada berkas evidence yang terlampir pada pembayaran ini."
+            description="Belum ada berkas bukti yang terlampir pada pembayaran ini."
           />
         ) : (
           <div className="flex flex-col gap-2">
@@ -52,7 +52,7 @@ export function EvidenceListModal({ open, onClose, projectId, title, items }: Ev
                     <span>{formatDate(item.documentDate)}</span>
                   </div>
                 </div>
-                <IconActionButton icon={Eye} label="Lihat" tone="info" onClick={() => setViewingEvidence(item)} />
+                <IconActionButton icon={Eye} readOnly label="Lihat" tone="info" onClick={() => setViewingEvidence(item)} />
               </div>
             ))}
           </div>

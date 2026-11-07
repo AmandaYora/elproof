@@ -7,7 +7,10 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 const DashboardPage = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
 const ProjectListPage = lazy(() => import("@/modules/projects/pages/ProjectListPage"));
+const ProjectCreatePage = lazy(() => import("@/modules/projects/pages/ProjectCreatePage"));
 const ProjectDetailLayout = lazy(() => import("@/modules/projects/pages/ProjectDetailLayout"));
+const ProjectSummaryTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectSummaryTabPage"));
+const ProjectIssuesTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectIssuesTabPage"));
 const ProjectVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectVendorTabPage"));
 const ProjectMilestoneTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectMilestoneTabPage"));
 const ProjectClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectClientTabPage"));
@@ -25,6 +28,7 @@ const VendorListPage = lazy(() => import("@/modules/vendors/pages/VendorListPage
 const VenueListPage = lazy(() => import("@/modules/venues/pages/VenueListPage"));
 const UserListPage = lazy(() => import("@/modules/users/pages/UserListPage"));
 const SubscriptionPage = lazy(() => import("@/modules/subscription/pages/SubscriptionPage"));
+const BusinessProfilePage = lazy(() => import("@/modules/business-profile/pages/BusinessProfilePage"));
 const RolesPage = lazy(() => import("@/modules/access/pages/RolesPage"));
 
 export const protectedRoutes: RouteObject = {
@@ -37,11 +41,18 @@ export const protectedRoutes: RouteObject = {
         // (scoped server-side to their own PIC'd projects — see PLAN.md's
         // RBAC section) — no RequireRole wrapper needed here.
         { path: ROUTE_PATHS.projects, element: <ProjectListPage /> },
+        // A static path wins over "/projects/:projectId" below.
+        {
+          element: <RequirePermission all={["project.create"]} />,
+          children: [{ path: ROUTE_PATHS.projectNew, element: <ProjectCreatePage /> }],
+        },
         {
           path: "/projects/:projectId",
           element: <ProjectDetailLayout />,
           children: [
-            { index: true, element: <Navigate to="vendor" replace /> },
+            { index: true, element: <Navigate to="ringkasan" replace /> },
+            { path: "ringkasan", element: <ProjectSummaryTabPage /> },
+            { path: "kendala", element: <ProjectIssuesTabPage /> },
             { path: "vendor", element: <ProjectVendorTabPage /> },
             { path: "milestone", element: <ProjectMilestoneTabPage /> },
             { path: "client", element: <ProjectClientTabPage /> },
@@ -61,10 +72,9 @@ export const protectedRoutes: RouteObject = {
           ],
         },
         // Each page follows the workspace role's permissions (ADR-0026).
-        {
-          element: <RequirePermission all={["dashboard.view"]} allProjects />,
-          children: [{ path: ROUTE_PATHS.dashboard, element: <DashboardPage /> }],
-        },
+        // Open to every staff role: the page itself shows the tenant-wide
+        // dashboard to roles that reach every project, "Proyek saya" to the rest.
+        { path: ROUTE_PATHS.dashboard, element: <DashboardPage /> },
         {
           element: <RequirePermission all={["client.manage"]} allProjects />,
           children: [{ path: ROUTE_PATHS.clients, element: <ClientListPage /> }],
@@ -79,6 +89,7 @@ export const protectedRoutes: RouteObject = {
         { element: <RequirePermission all={["vendor.category.manage"]} />, children: [{ path: ROUTE_PATHS.vendorCategories, element: <VendorCategoryListPage /> }] },
         { element: <RequirePermission all={["template.manage"]} />, children: [{ path: ROUTE_PATHS.milestoneTemplates, element: <MilestoneTemplateListPage /> }] },
         { element: <RequirePermission all={["team.manage"]} />, children: [{ path: ROUTE_PATHS.users, element: <UserListPage /> }] },
+        { element: <RequirePermission all={["business_profile.manage"]} />, children: [{ path: ROUTE_PATHS.businessProfile, element: <BusinessProfilePage /> }] },
         { element: <RequirePermission all={["role.manage"]} />, children: [{ path: ROUTE_PATHS.roles, element: <RolesPage /> }] },
         { element: <RequirePermission all={["subscription.manage"]} />, children: [{ path: ROUTE_PATHS.subscription, element: <SubscriptionPage /> }] },
       ],

@@ -1,19 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useCan, useAllProjects } from "@/shared/stores/usePermissionStore";
-import { PROJECT_STATUS_LABELS } from "@/shared/lib/labels";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
-import { projectSchema, PROJECT_STATUS_OPTIONS, type ProjectFormValues } from "@/modules/projects/schemas/project.schema";
+import { projectSchema, type ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { Project } from "@/modules/projects/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { getApiErrorMessage } from "@/shared/lib/api-error";
 
 interface ProjectFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: ProjectFormValues) => void;
+  /**
+   * Saves the form. Throw to keep the modal open: the message is shown inside
+   * it and what the user typed stays. The caller closes the modal on success.
+   */
+  onSubmit: (values: ProjectFormValues) => Promise<void>;
   initialProject?: Project;
   // "duplicate" pre-fills every field from initialProject (like edit) but is
   // meant to create a brand-new project — see ADR-0014. Name gets a "(Salinan)"
@@ -55,7 +59,20 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
   };
 }
 
-export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode }: ProjectFormModalProps) {
+// The form's state lives in an inner component that only exists while the
+// modal is open. Each opening therefore starts from the project as it is now
+// (not as it was when the page first rendered) and never carries over what a
+// previous opening left behind.
+export function ProjectFormModal(props: ProjectFormModalProps) {
+  if (!props.open) return null;
+  return <ProjectFormModalBody {...props} />;
+}
+
+function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }: ProjectFormModalProps) {
+  const formId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const staffList = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const canAssignPIC = useCan("project.assign_pic");
@@ -77,6 +94,9 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
   // A role limited to its own projects becomes PIC Sales of what it creates
   // (the API enforces it), so the field is shown locked to self.
   const picSalesLocked = assignedOnly && !initialProject;
+  // One place for the venue: while one is attached from the directory its name
+  // is the location, so this text is not edited here (a duplicate starts free).
+  const venueFromDirectory = Boolean(initialProject?.venueId) && mode !== "duplicate";
 
   useEffect(() => {
     void fetchStaff();
@@ -98,20 +118,30 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (submitting) return;
+    setSubmitError(null);
     const result = projectSchema.safeParse(values);
     if (!result.success) {
       const fieldErrors: Partial<Record<keyof ProjectFormValues, string>> = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0] as keyof ProjectFormValues;
-        fieldErrors[key] = issue.message;
+        fieldErrors[key] ??= issue.message;
       }
       setErrors(fieldErrors);
+      // Take the user to the first field that needs attention.
+      requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    onSubmit(result.data);
-    setValues(toFormValues(undefined, assignedOnly ? "" : staffList[0]?.id ?? ""));
     setErrors({});
+    setSubmitting(true);
+    try {
+      await onSubmit(result.data);
+    } catch (err) {
+      setSubmitError(getApiErrorMessage(err, "Project belum tersimpan. Periksa koneksi lalu coba lagi."));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -125,48 +155,69 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
           : "Informasi dasar project pernikahan yang dikelola WO."
       }
       size="lg"
+      busy={submitting}
+      error={submitError}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>
-            {mode === "duplicate" ? "Buat Duplikat" : initialProject ? "Simpan Perubahan" : "Simpan Project"}
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Batal</Button>
+          <Button type="submit" form={formId} disabled={submitting}>
+            {submitting
+              ? "Menyimpan..."
+              : mode === "duplicate"
+                ? "Buat Duplikat"
+                : initialProject
+                  ? "Simpan Perubahan"
+                  : "Simpan Project"}
           </Button>
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Project" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Aurelia & Bagas Wedding" />
+      <form
+        id={formId}
+        ref={formRef}
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSubmit();
+        }}
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+        <Field label="Nama Project" required error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Aurelia & Bagas Wedding" aria-invalid={errors.name ? true : undefined} />
         </Field>
-        <Field label="Status Project" required>
-          <Select value={values.status} onChange={(e) => set("status", e.target.value as ProjectFormValues["status"])}>
-            {PROJECT_STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{PROJECT_STATUS_LABELS.staff[s]}</option>
-            ))}
-          </Select>
+        </div>
+        <Field label="Nama Mempelai Wanita" required error={errors.brideName}>
+          <Input value={values.brideName} onChange={(e) => set("brideName", e.target.value)} aria-invalid={errors.brideName ? true : undefined} />
         </Field>
-        <Field label="Nama Mempelai Wanita" required hint={errors.brideName}>
-          <Input value={values.brideName} onChange={(e) => set("brideName", e.target.value)} />
+        <Field label="Nama Mempelai Pria" required error={errors.groomName}>
+          <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} aria-invalid={errors.groomName ? true : undefined} />
         </Field>
-        <Field label="Nama Mempelai Pria" required hint={errors.groomName}>
-          <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} />
+        <Field label="Tanggal Acara" required error={errors.eventDate}>
+          <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} aria-invalid={errors.eventDate ? true : undefined} />
         </Field>
-        <Field label="Tanggal Acara" required hint={errors.eventDate}>
-          <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} />
+        <Field label="Tanggal Booking" required error={errors.prepStartDate}>
+          <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} aria-invalid={errors.prepStartDate ? true : undefined} />
         </Field>
-        <Field label="Tanggal Booking" required hint={errors.prepStartDate}>
-          <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} />
+        <Field
+          label="Lokasi / Venue"
+          required
+          error={errors.venue}
+          hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Venue project ini." : undefined}
+        >
+          <Input
+            value={values.venue}
+            onChange={(e) => set("venue", e.target.value)}
+            aria-invalid={errors.venue ? true : undefined}
+            disabled={venueFromDirectory}
+          />
         </Field>
-        <Field label="Lokasi / Venue" required hint={errors.venue}>
-          <Input value={values.venue} onChange={(e) => set("venue", e.target.value)} />
+        <Field label="Paket / Layanan" required error={errors.packageName}>
+          <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} aria-invalid={errors.packageName ? true : undefined} />
         </Field>
-        <Field label="Paket / Layanan" required hint={errors.packageName}>
-          <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} />
+        <Field label="Nilai Kontrak (Rp)" required error={errors.contractValue}>
+          <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} aria-invalid={errors.contractValue ? true : undefined} />
         </Field>
-        <Field label="Nilai Kontrak (Rp)" required hint={errors.contractValue}>
-          <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} />
-        </Field>
-        <Field label="Penanggung Jawab WO (PIC Wedding Planner)" hint={errors.picStaffId}>
+        <Field label="Penanggung Jawab WO (PIC Wedding Planner)" error={errors.picStaffId}>
           {picLocked ? (
             <Input value={staffList.find((s) => s.id === values.picStaffId)?.name ?? "..."} disabled />
           ) : (
@@ -178,7 +229,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
             </Select>
           )}
         </Field>
-        <Field label="PIC Sales" hint={errors.picSalesStaffId}>
+        <Field label="PIC Sales" error={errors.picSalesStaffId}>
           {picSalesLocked ? (
             <Input value={staffList.find((s) => s.id === values.picSalesStaffId)?.name ?? "..."} disabled />
           ) : (
@@ -195,7 +246,7 @@ export function ProjectFormModal({ open, onClose, onSubmit, initialProject, mode
             <Textarea rows={3} value={values.description} onChange={(e) => set("description", e.target.value)} />
           </Field>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }

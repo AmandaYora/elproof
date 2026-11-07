@@ -25,6 +25,7 @@ import { PAYMENT_METHOD_OPTIONS } from "@/modules/projects/schemas/payment.schem
 import type { VenuePayment } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { remainingToPay, overpaymentMessage } from "@/modules/projects/lib/payments";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
 // Sibling of ProjectPaymentsSection (Pembayaran ke Vendor) minus the vendor
@@ -65,7 +66,8 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
     (sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount),
     0
   );
-  const totalRemaining = venueValue - totalPaid;
+  // Tambahan is outside the venue cost, so it does not reduce what is still owed.
+  const totalRemaining = remainingToPay(venueValue, venuePayments);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(venuePayments);
 
   async function handleAddPayment(values: VenuePaymentFormValues) {
@@ -146,10 +148,10 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
           {actionError && (
             <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <SummaryStat label="Nilai Sewa Venue" value={formatCurrency(venueValue)} />
             <SummaryStat label="Total Sudah Dibayar" value={formatCurrency(totalPaid)} />
-            <SummaryStat label="Sisa Pembayaran" value={formatCurrency(totalRemaining)} />
+            <SummaryStat label="Sisa Pembayaran" value={totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : formatCurrency(totalRemaining)} />
           </div>
 
           {venuePayments.length === 0 ? (
@@ -175,7 +177,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                     <CardListField label="No. Referensi" value={payment.referenceNumber} />
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                    <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                     {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                     {canDelete && (
                       <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -193,7 +195,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                   <TH>Tanggal</TH>
                   <TH>Metode</TH>
                   <TH>No. Referensi</TH>
-                  <TH>Kelengkapan Evidence</TH>
+                  <TH>Kelengkapan Bukti</TH>
                   <TH>Aksi</TH>
                 </TR>
               </THead>
@@ -208,7 +210,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                     <TD>{payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}</TD>
                     <TD>
                       <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                         {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                         {canDelete && (
                           <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -239,6 +241,8 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
           onClose={() => { setModalOpen(false); setActionError(null); }}
           onSubmit={handleAddPayment}
           error={actionError}
+          venueValue={venueValue}
+          existing={venuePayments}
         />
       )}
 
@@ -248,6 +252,8 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSubmit={handleEditPayment}
+          venueValue={venueValue}
+          existing={venuePayments.filter((p) => p.id !== editingPayment.id)}
         />
       )}
 
@@ -278,7 +284,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                 {(() => {
                   const count = evidence.filter((e) => e.relatedKind === "venuePayment" && e.relatedId === deletingPayment.id).length;
                   return count > 0
-                    ? ` ${count} berkas evidence yang terlampir pada pembayaran ini akan ikut terhapus.`
+                    ? ` ${count} berkas bukti yang terlampir pada pembayaran ini akan ikut terhapus.`
                     : "";
                 })()}
               </span>
@@ -327,11 +333,15 @@ function AddVenuePaymentModal({
   onClose,
   onSubmit,
   error,
+  venueValue,
+  existing,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (values: VenuePaymentFormValues) => Promise<void>;
   error: string | null;
+  venueValue: number;
+  existing: VenuePayment[];
 }) {
   const [values, setValues] = useState<VenuePaymentFormValues>(emptyValues);
   const [errors, setErrors] = useState<Partial<Record<keyof VenuePaymentFormValues, string>>>({});
@@ -343,11 +353,16 @@ function AddVenuePaymentModal({
 
   async function handleSubmit() {
     const result = venuePaymentSchema.safeParse(values);
+    const fieldErrors: Partial<Record<keyof VenuePaymentFormValues, string>> = {};
     if (!result.success) {
-      const fieldErrors: Partial<Record<keyof VenuePaymentFormValues, string>> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof VenuePaymentFormValues] = issue.message;
+        fieldErrors[issue.path[0] as keyof VenuePaymentFormValues] ??= issue.message;
       }
+    } else {
+      const over = overpaymentMessage(venueValue, existing, result.data, formatCurrency, "sisa biaya venue");
+      if (over) fieldErrors.amount = over;
+    }
+    if (!result.success || fieldErrors.amount) {
       setErrors(fieldErrors);
       return;
     }
@@ -392,7 +407,7 @@ function AddVenuePaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="Nominal (Rp)" required hint={errors.amount}>
+        <Field label="Nominal (Rp)" required error={errors.amount}>
           <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
         </Field>
         <Field label="Tanggal" required hint={errors.paymentDate}>
@@ -441,11 +456,16 @@ function EditVenuePaymentModal({
   payment,
   onClose,
   onSubmit,
+  venueValue,
+  existing,
 }: {
   open: boolean;
   payment: VenuePayment;
   onClose: () => void;
   onSubmit: (values: VenuePaymentUpdateFormValues) => Promise<void>;
+  venueValue: number;
+  /** The other venue payments of the project (this one left out). */
+  existing: VenuePayment[];
 }) {
   const [values, setValues] = useState<VenuePaymentUpdateFormValues>({
     type: payment.type,
@@ -465,11 +485,16 @@ function EditVenuePaymentModal({
 
   async function handleSubmit() {
     const result = venuePaymentUpdateSchema.safeParse(values);
+    const fieldErrors: Partial<Record<keyof VenuePaymentUpdateFormValues, string>> = {};
     if (!result.success) {
-      const fieldErrors: Partial<Record<keyof VenuePaymentUpdateFormValues, string>> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof VenuePaymentUpdateFormValues] = issue.message;
+        fieldErrors[issue.path[0] as keyof VenuePaymentUpdateFormValues] ??= issue.message;
       }
+    } else {
+      const over = overpaymentMessage(venueValue, existing, result.data, formatCurrency, "sisa biaya venue", payment);
+      if (over) fieldErrors.amount = over;
+    }
+    if (!result.success || fieldErrors.amount) {
       setErrors(fieldErrors);
       return;
     }
@@ -510,7 +535,7 @@ function EditVenuePaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="Nominal (Rp)" required hint={errors.amount}>
+        <Field label="Nominal (Rp)" required error={errors.amount}>
           <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
         </Field>
         <Field label="Tanggal" required hint={errors.paymentDate}>

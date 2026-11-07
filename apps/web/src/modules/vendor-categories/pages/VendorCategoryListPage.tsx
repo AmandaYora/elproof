@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCan } from "@/shared/stores/usePermissionStore";
+import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -20,6 +20,8 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 export default function VendorCategoryListPage() {
+  // Read-only workspace (subscription): no new records until it is renewed.
+  const writeLocked = useWriteLocked();
   const categories = useVendorCategoryStore((s) => s.categoryPage);
   const meta = useVendorCategoryStore((s) => s.categoryPageMeta);
   const fetchCategoryPage = useVendorCategoryStore((s) => s.fetchCategoryPage);
@@ -121,9 +123,11 @@ export default function VendorCategoryListPage() {
             Kelola kategori untuk mengelompokkan vendor berdasarkan jenis layanan.
           </p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-          Tambah Kategori
-        </Button>
+        {!writeLocked && (
+          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+            Tambah Kategori
+          </Button>
+        )}
       </div>
 
       {actionError && (

@@ -6,6 +6,7 @@ import type {
   IssueImpact,
   IssueStatus,
   ProjectCondition,
+  PaymentTermStatus,
 } from "@/modules/projects/types";
 
 export const PROJECT_STATUS_TONE: Record<ProjectStatus, BadgeTone> = {
@@ -61,4 +62,12 @@ export const CONDITION_LABEL: Record<ProjectCondition, string> = {
   "On Track": "Sesuai Rencana",
   Attention: "Perlu Perhatian",
   "At Risk": "Berisiko",
+};
+
+export const TERM_STATUS_TONE: Record<PaymentTermStatus, BadgeTone> = {
+  paid: "success",
+  overdue: "danger",
+  partial: "warning",
+  due_soon: "warning",
+  upcoming: "neutral",
 };

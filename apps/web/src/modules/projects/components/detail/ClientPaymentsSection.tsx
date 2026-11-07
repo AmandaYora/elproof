@@ -25,6 +25,8 @@ import { PAYMENT_METHOD_OPTIONS } from "@/modules/projects/schemas/payment.schem
 import type { ClientPayment } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { remainingToPay, overpaymentMessage, countsAgainstContract } from "@/modules/projects/lib/payments";
+import { toast } from "@/shared/stores/useToastStore";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
 // Simpler sibling of ProjectPaymentsSection (PLAN.md "Uang Masuk dari
@@ -65,7 +67,9 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     (sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount),
     0
   );
-  const totalRemaining = contractValue - totalReceived;
+  // Sisa tagihan counts only DP/Termin/Pelunasan (minus refunds): Tambahan is
+  // outside the contract, so it must not shrink what the client still owes.
+  const totalRemaining = remainingToPay(contractValue, clientPayments);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(clientPayments);
 
   async function handleAddPayment(values: ClientPaymentFormValues) {
@@ -73,6 +77,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     try {
       await createClientPayment(projectId, values);
       setModalOpen(false);
+      toast.success("Pembayaran dicatat");
     } catch (err) {
       if (err instanceof ClientPaymentEvidenceError) {
         // The payment itself was saved — close the modal so the user isn't
@@ -91,6 +96,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     if (!editingPayment) return;
     await updateClientPayment(projectId, editingPayment.id, values);
     setEditingPayment(null);
+    toast.success("Pembayaran diperbarui");
   }
 
   async function handleDeletePayment() {
@@ -100,6 +106,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     try {
       await deleteClientPayment(projectId, deletingPayment.id);
       setDeletingPayment(null);
+      toast.success("Pembayaran dihapus");
     } catch (err) {
       setDeleteError(getApiErrorMessage(err, "Gagal menghapus pembayaran client"));
     } finally {
@@ -123,10 +130,14 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           {actionError && (
             <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <SummaryStat label="Nilai Kontrak" value={formatCurrency(contractValue)} />
             <SummaryStat label="Total Diterima" value={formatCurrency(totalReceived)} />
-            <SummaryStat label="Sisa Tagihan" value={formatCurrency(totalRemaining)} />
+            <SummaryStat
+              label="Sisa Tagihan"
+              value={formatCurrency(Math.max(totalRemaining, 0))}
+              badge={totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : undefined}
+            />
           </div>
 
           {clientPayments.length === 0 ? (
@@ -152,7 +163,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <CardListField label="No. Referensi" value={payment.referenceNumber} />
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                    <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                     {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                     {canDelete && (
                       <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -185,7 +196,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <TD>{payment.evidenceComplete ? <Badge tone="success">Ada</Badge> : <Badge tone="warning">Belum Ada</Badge>}</TD>
                     <TD>
                       <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                         {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                         {canDelete && (
                           <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -216,6 +227,8 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           onClose={() => { setModalOpen(false); setActionError(null); }}
           onSubmit={handleAddPayment}
           error={actionError}
+          contractValue={contractValue}
+          existing={clientPayments}
         />
       )}
 
@@ -225,6 +238,8 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSubmit={handleEditPayment}
+          contractValue={contractValue}
+          existing={clientPayments.filter((p) => p.id !== editingPayment.id)}
         />
       )}
 
@@ -255,7 +270,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                 {(() => {
                   const count = evidence.filter((e) => e.relatedKind === "clientPayment" && e.relatedId === deletingPayment.id).length;
                   return count > 0
-                    ? ` ${count} berkas evidence yang terlampir pada pembayaran ini akan ikut terhapus.`
+                    ? ` ${count} berkas bukti yang terlampir pada pembayaran ini akan ikut terhapus.`
                     : "";
                 })()}
               </span>
@@ -277,11 +292,14 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+function SummaryStat({ label, value, badge }: { label: string; value: string; badge?: string }) {
   return (
     <div className="rounded-md border border-border bg-surface-muted/40 px-4 py-3">
       <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
-      <p className="mt-1 text-[15px] font-bold tabular-nums text-navy-900">{value}</p>
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-[15px] font-bold tabular-nums text-navy-900">
+        {value}
+        {badge && <Badge tone="warning">{badge}</Badge>}
+      </p>
     </div>
   );
 }
@@ -303,12 +321,17 @@ function AddClientPaymentModal({
   onClose,
   onSubmit,
   error,
+  contractValue,
+  existing,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (values: ClientPaymentFormValues) => Promise<void>;
   error: string | null;
+  contractValue: number;
+  existing: ClientPayment[];
 }) {
+  const remaining = remainingToPay(contractValue, existing);
   const [values, setValues] = useState<ClientPaymentFormValues>(emptyValues);
   const [errors, setErrors] = useState<Partial<Record<keyof ClientPaymentFormValues, string>>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -317,23 +340,33 @@ function AddClientPaymentModal({
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
+  // Choosing Pelunasan fills in what is still owed, so the usual case is one tap.
+  function handleTypeChange(type: ClientPaymentFormValues["type"]) {
+    setValues((prev) => ({
+      ...prev,
+      type,
+      amount: type === "Pelunasan" && prev.amount === 0 && remaining > 0 ? remaining : prev.amount,
+    }));
+  }
+
   async function handleSubmit() {
     const result = clientPaymentSchema.safeParse(values);
+    const fieldErrors: Partial<Record<keyof ClientPaymentFormValues, string>> = {};
     if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ClientPaymentFormValues, string>> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof ClientPaymentFormValues] = issue.message;
+        fieldErrors[issue.path[0] as keyof ClientPaymentFormValues] ??= issue.message;
       }
+    } else {
+      const over = overpaymentMessage(contractValue, existing, result.data, formatCurrency);
+      if (over) fieldErrors.amount = over;
+    }
+    if (!result.success || fieldErrors.amount) {
       setErrors(fieldErrors);
       return;
     }
     setSubmitting(true);
     try {
       await onSubmit(result.data);
-      // Only reset on a resolved submit — on failure the modal stays open
-      // (parent doesn't close it), so the form must keep the user's input
-      // rather than silently wiping it out from under them.
-      setValues(emptyValues());
       setErrors({});
     } catch {
       // The `error` prop (parent's actionError, passed back down) surfaces
@@ -351,9 +384,11 @@ function AddClientPaymentModal({
       onClose={onClose}
       title="Tambah Pembayaran Client"
       description="Catat pembayaran baru dari client untuk project ini, beserta bukti transfernya jika ada."
+      busy={submitting}
+      error={error}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Batal</Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? "Menyimpan..." : "Simpan Pembayaran"}
           </Button>
@@ -361,23 +396,25 @@ function AddClientPaymentModal({
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
-        )}
         <Field label="Jenis Pembayaran" required>
-          <Select value={values.type} onChange={(e) => set("type", e.target.value as ClientPaymentFormValues["type"])}>
+          <Select value={values.type} onChange={(e) => handleTypeChange(e.target.value as ClientPaymentFormValues["type"])}>
             {CLIENT_PAYMENT_TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Nominal (Rp)" required hint={errors.amount}>
-          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
+        <Field
+          label="Nominal (Rp)"
+          required
+          error={errors.amount}
+          hint={countsAgainstContract(values.type) && contractValue > 0 ? `Sisa tagihan ${formatCurrency(Math.max(remaining, 0))}` : undefined}
+        >
+          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} aria-invalid={errors.amount ? true : undefined} />
         </Field>
-        <Field label="Tanggal" required hint={errors.paymentDate}>
-          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
+        <Field label="Tanggal" required error={errors.paymentDate}>
+          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} aria-invalid={errors.paymentDate ? true : undefined} />
         </Field>
-        <Field label="Metode" required hint={errors.method}>
+        <Field label="Metode" required error={errors.method}>
           <Select value={values.method} onChange={(e) => set("method", e.target.value as ClientPaymentFormValues["method"])}>
             {PAYMENT_METHOD_OPTIONS.map((m) => (
               <option key={m} value={m}>{m}</option>
@@ -412,12 +449,18 @@ function EditClientPaymentModal({
   payment,
   onClose,
   onSubmit,
+  contractValue,
+  existing,
 }: {
   open: boolean;
   payment: ClientPayment;
   onClose: () => void;
   onSubmit: (values: ClientPaymentUpdateFormValues) => Promise<void>;
+  contractValue: number;
+  /** Every other payment of the project (this one excluded). */
+  existing: ClientPayment[];
 }) {
+  const remaining = remainingToPay(contractValue, existing);
   const [values, setValues] = useState<ClientPaymentUpdateFormValues>({
     type: payment.type,
     amount: payment.amount,
@@ -436,11 +479,16 @@ function EditClientPaymentModal({
 
   async function handleSubmit() {
     const result = clientPaymentUpdateSchema.safeParse(values);
+    const fieldErrors: Partial<Record<keyof ClientPaymentUpdateFormValues, string>> = {};
     if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ClientPaymentUpdateFormValues, string>> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof ClientPaymentUpdateFormValues] = issue.message;
+        fieldErrors[issue.path[0] as keyof ClientPaymentUpdateFormValues] ??= issue.message;
       }
+    } else {
+      const over = overpaymentMessage(contractValue, existing, result.data, formatCurrency, undefined, payment);
+      if (over) fieldErrors.amount = over;
+    }
+    if (!result.success || fieldErrors.amount) {
       setErrors(fieldErrors);
       return;
     }
@@ -461,9 +509,11 @@ function EditClientPaymentModal({
       onClose={onClose}
       title="Ubah Pembayaran Client"
       description="Perbarui detail pembayaran ini. Berkas evidence yang sudah terlampir tidak berubah."
+      busy={submitting}
+      error={error}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Batal</Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? "Menyimpan..." : "Simpan Perubahan"}
           </Button>
@@ -471,9 +521,6 @@ function EditClientPaymentModal({
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
-        )}
         <Field label="Jenis Pembayaran" required>
           <Select value={values.type} onChange={(e) => set("type", e.target.value as ClientPaymentUpdateFormValues["type"])}>
             {CLIENT_PAYMENT_TYPE_OPTIONS.map((t) => (
@@ -481,13 +528,18 @@ function EditClientPaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="Nominal (Rp)" required hint={errors.amount}>
-          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
+        <Field
+          label="Nominal (Rp)"
+          required
+          error={errors.amount}
+          hint={countsAgainstContract(values.type) && contractValue > 0 ? `Sisa tagihan ${formatCurrency(Math.max(remaining, 0))}` : undefined}
+        >
+          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} aria-invalid={errors.amount ? true : undefined} />
         </Field>
-        <Field label="Tanggal" required hint={errors.paymentDate}>
-          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
+        <Field label="Tanggal" required error={errors.paymentDate}>
+          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} aria-invalid={errors.paymentDate ? true : undefined} />
         </Field>
-        <Field label="Metode" required hint={errors.method}>
+        <Field label="Metode" required error={errors.method}>
           <Select value={values.method} onChange={(e) => set("method", e.target.value as ClientPaymentUpdateFormValues["method"])}>
             {PAYMENT_METHOD_OPTIONS.map((m) => (
               <option key={m} value={m}>{m}</option>

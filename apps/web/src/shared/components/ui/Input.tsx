@@ -11,9 +11,10 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        "h-9 w-full rounded-md border border-border bg-white px-3 text-sm text-text-primary placeholder:text-text-secondary/70",
+        "h-9 pointer-coarse:h-11 w-full rounded-md border border-border bg-white px-3 text-sm text-text-primary placeholder:text-text-secondary/70",
         "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
         "disabled:bg-surface-muted disabled:text-text-secondary",
+        "aria-invalid:border-danger aria-invalid:focus:ring-danger/20",
         className
       )}
       {...props}
@@ -29,6 +30,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttrib
         className={cn(
           "w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/70",
           "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
+          "aria-invalid:border-danger aria-invalid:focus:ring-danger/20",
           className
         )}
         {...props}

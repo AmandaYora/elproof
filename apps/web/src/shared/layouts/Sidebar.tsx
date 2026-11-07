@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, FolderKanban, Users, Tags, Store, Building2, UserCog, Sparkles, Settings, CalendarClock, ChevronDown, LogOut, X, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Tags, Store, Building2, UserCog, Sparkles, Settings, CalendarClock, ChevronDown, LogOut, X, ShieldCheck, Briefcase } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -9,6 +9,7 @@ import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
+import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { usePermissionStore, type Grants } from "@/shared/stores/usePermissionStore";
 
 interface NavLinkItem {
@@ -34,7 +35,7 @@ type NavEntry = NavLinkItem | NavGroupItem;
 // Items follow the workspace role's permissions (ADR-0026) — the same
 // permissions the pages and their API calls require.
 const NAV_ITEMS: NavEntry[] = [
-  { kind: "link", to: ROUTE_PATHS.dashboard, label: "Dashboard", icon: LayoutDashboard, requires: ["dashboard.view"], allProjects: true },
+  { kind: "link", to: ROUTE_PATHS.dashboard, label: "Beranda", icon: LayoutDashboard },
   { kind: "link", to: ROUTE_PATHS.projects, label: "Project", icon: FolderKanban },
   { kind: "link", to: ROUTE_PATHS.clients, label: "Client", icon: Users, requires: ["client.manage"], allProjects: true },
   { kind: "link", to: ROUTE_PATHS.vendors, label: "Vendor", icon: Store, requires: ["vendor.view"] },
@@ -44,6 +45,7 @@ const NAV_ITEMS: NavEntry[] = [
     label: "Pengaturan",
     icon: Settings,
     children: [
+      { kind: "link", to: ROUTE_PATHS.businessProfile, label: "Profil Usaha", icon: Briefcase, requires: ["business_profile.manage"] },
       { kind: "link", to: ROUTE_PATHS.users, label: "Pengguna", icon: UserCog, requires: ["team.manage"] },
       { kind: "link", to: ROUTE_PATHS.roles, label: "Peran & Akses", icon: ShieldCheck, requires: ["role.manage"] },
       { kind: "link", to: ROUTE_PATHS.subscription, label: "Langganan", icon: Sparkles, requires: ["subscription.manage"] },
@@ -70,6 +72,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
   const grants = usePermissionStore((s) => s.grants);
+  // Off-screen on a phone, the menu must not be reachable by Tab either.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   // Flat items filtered by their own allowedRoles; a group is filtered by
   // its children's allowedRoles and dropped entirely if nothing remains
@@ -106,6 +110,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         />
       )}
       <aside
+        inert={!open && !isDesktop}
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"

@@ -8,6 +8,9 @@ import type {
   DashboardStats,
   DashboardVenuePaymentRow,
   LaggingProjectRow,
+  DashboardTermRow,
+  DashboardTaskRow,
+  StageCounts,
   ProjectTrendPoint,
   RevenueTrendPoint,
 } from "@/modules/dashboard/types";
@@ -67,6 +70,11 @@ interface RawDashboard {
   nearDDayProjects: RawProject[];
   laggingProjects: RawLaggingProject[];
   upcomingProjects: RawProject[];
+  overdueTerms: Array<Omit<DashboardTermRow, "projectId"> & { projectId: number }>;
+  overdueTermsTotal: number;
+  dueSoonTerms: Array<Omit<DashboardTermRow, "projectId"> & { projectId: number }>;
+  tasksDueThisWeek: Array<Omit<DashboardTaskRow, "projectId"> & { projectId: number }>;
+  stageCounts: StageCounts;
   recentActivity: RawActivity[];
   revenue: { total: number; previousTotal: number; deltaPercent: number | null };
   projectTrend: ProjectTrendPoint[];
@@ -97,6 +105,11 @@ function toDashboardStats(raw: RawDashboard): DashboardStats {
     nearDDayProjects: raw.nearDDayProjects.map(toProject),
     laggingProjects: raw.laggingProjects.map((row): LaggingProjectRow => ({ project: toProject(row.project), overallPercent: row.overallPercent })),
     upcomingProjects: raw.upcomingProjects.map(toProject),
+    overdueTerms: raw.overdueTerms.map((t) => ({ ...t, projectId: String(t.projectId) })),
+    overdueTermsTotal: raw.overdueTermsTotal,
+    dueSoonTerms: raw.dueSoonTerms.map((t) => ({ ...t, projectId: String(t.projectId) })),
+    tasksDueThisWeek: raw.tasksDueThisWeek.map((t) => ({ ...t, projectId: String(t.projectId) })),
+    stageCounts: raw.stageCounts,
     recentActivity: raw.recentActivity.map(toActivity),
     revenue: raw.revenue,
     projectTrend: raw.projectTrend,

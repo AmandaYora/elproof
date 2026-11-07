@@ -11,6 +11,7 @@ import type { MilestoneTemplateSubmitValues } from "@/modules/milestone-template
 import { useMilestoneTemplateStore } from "@/modules/milestone-templates/stores/useMilestoneTemplateStore";
 import type { MilestoneTemplate } from "@/modules/milestone-templates/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 function formatDaysLabel(daysBeforeEvent: number): string {
   if (daysBeforeEvent === 0) return "Hari-H";
@@ -18,6 +19,8 @@ function formatDaysLabel(daysBeforeEvent: number): string {
 }
 
 export default function MilestoneTemplateListPage() {
+  // Read-only workspace (subscription): no new records until it is renewed.
+  const writeLocked = useWriteLocked();
   const templates = useMilestoneTemplateStore((s) => s.templates);
   const fetchTemplates = useMilestoneTemplateStore((s) => s.fetchTemplates);
   const createTemplate = useMilestoneTemplateStore((s) => s.createTemplate);
@@ -98,9 +101,11 @@ export default function MilestoneTemplateListPage() {
             Checklist ini otomatis ditambahkan ke tab Timeline setiap kali project baru dibuat.
           </p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-          Tambah Timeline
-        </Button>
+        {!writeLocked && (
+          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+            Tambah Timeline
+          </Button>
+        )}
       </div>
 
       <Card>

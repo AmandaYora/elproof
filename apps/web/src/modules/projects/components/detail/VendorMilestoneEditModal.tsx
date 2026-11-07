@@ -165,9 +165,9 @@ export function VendorMilestoneEditModal({
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Evidence</p>
+            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Bukti</p>
             <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setShowEvidenceForm((v) => !v)}>
-              Tambah Evidence
+              Tambah Bukti
             </Button>
           </div>
 
@@ -183,7 +183,7 @@ export function VendorMilestoneEditModal({
                     className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
                   />
                 </Field>
-                <Field label="Nama Evidence" required>
+                <Field label="Nama Bukti" required>
                   <Input value={evidenceForm.name} onChange={(e) => setEvidenceForm((p) => ({ ...p, name: e.target.value }))} placeholder="cth. Invoice DP" />
                 </Field>
                 <Field label="Jenis">
@@ -203,7 +203,7 @@ export function VendorMilestoneEditModal({
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="secondary" onClick={() => setShowEvidenceForm(false)}>Batal</Button>
                 <Button size="sm" onClick={() => void handleAddEvidence()} disabled={uploading || !file}>
-                  {uploading ? "Mengunggah..." : "Simpan Evidence"}
+                  {uploading ? "Mengunggah..." : "Simpan Bukti"}
                 </Button>
               </div>
             </div>

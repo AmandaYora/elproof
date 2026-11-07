@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 export type IconActionTone = "neutral" | "info" | "success" | "danger" | "navy";
 
@@ -17,9 +18,13 @@ interface IconActionButtonProps {
   tone?: IconActionTone;
   onClick?: () => void;
   disabled?: boolean;
+  /** Only looks at data. Every other action disappears while the workspace is read-only. */
+  readOnly?: boolean;
 }
 
-export function IconActionButton({ icon: Icon, label, tone = "neutral", onClick, disabled = false }: IconActionButtonProps) {
+export function IconActionButton({ icon: Icon, label, tone = "neutral", onClick, disabled = false, readOnly = false }: IconActionButtonProps) {
+  const writeLocked = useWriteLocked();
+  if (writeLocked && !readOnly) return null;
   return (
     <button
       type="button"
@@ -28,7 +33,7 @@ export function IconActionButton({ icon: Icon, label, tone = "neutral", onClick,
       title={label}
       aria-label={label}
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-40",
+        "flex h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-40",
         TONE_CLASSES[tone]
       )}
     >

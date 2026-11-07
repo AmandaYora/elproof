@@ -7,12 +7,13 @@ import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal";
+import { LoadError } from "@/shared/components/feedback/LoadError";
+import { SkeletonRows } from "@/shared/components/ui/Skeleton";
 import { ProjectCard } from "@/modules/projects/components/ProjectCard";
 import { PROJECT_STATUS_OPTIONS } from "@/modules/projects/schemas/project.schema";
-import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useNavigate } from "react-router-dom";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 
 export default function ProjectListPage() {
@@ -24,34 +25,33 @@ export default function ProjectListPage() {
   const projects = useProjectStore((s) => s.projectPage);
   const meta = useProjectStore((s) => s.projectPageMeta);
   const fetchProjectPage = useProjectStore((s) => s.fetchProjectPage);
-  const createProject = useProjectStore((s) => s.createProject);
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query);
   const [statusFilter, setStatusFilter] = useState<string>("Semua");
   const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setPage(1);
   }, [debouncedQuery, statusFilter, showArchived]);
 
-  useEffect(() => {
-    void fetchProjectPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter, showArchived);
-  }, [fetchProjectPage, page, debouncedQuery, statusFilter, showArchived]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
-  async function handleCreate(values: ProjectFormValues) {
-    setActionError(null);
-    try {
-      await createProject(values);
-      setModalOpen(false);
-      await fetchProjectPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter, showArchived);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal membuat project"));
-    }
-  }
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
+    fetchProjectPage(page, debouncedQuery, statusFilter === "Semua" ? "" : statusFilter, showArchived)
+      .catch(() => !cancelled && setLoadFailed(true))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchProjectPage, page, debouncedQuery, statusFilter, showArchived, attempt]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -61,15 +61,11 @@ export default function ProjectListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh project pernikahan yang sedang dan pernah ditangani.</p>
         </div>
         {canCreate && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setModalOpen(true)}>
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => navigate(ROUTE_PATHS.projectNew)}>
             Tambah Project
           </Button>
         )}
       </div>
-
-      {actionError && (
-        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
-      )}
 
       <div className="flex flex-wrap gap-3">
         <SearchInput
@@ -90,7 +86,11 @@ export default function ProjectListPage() {
         </label>
       </div>
 
-      {projects.length === 0 ? (
+      {loadFailed ? (
+        <LoadError message="Daftar project belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />
+      ) : loading && projects.length === 0 ? (
+        <div className="rounded-lg border border-border bg-surface p-5"><SkeletonRows rows={4} label="Memuat daftar project" /></div>
+      ) : projects.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface">
           <EmptyState
             title={showArchived ? "Tidak ada project yang diarsipkan" : "Tidak ada project ditemukan"}
@@ -110,7 +110,6 @@ export default function ProjectListPage() {
         </>
       )}
 
-      <ProjectFormModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={(values) => void handleCreate(values)} />
     </div>
   );
 }

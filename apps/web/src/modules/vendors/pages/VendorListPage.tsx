@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCan } from "@/shared/stores/usePermissionStore";
+import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Link } from "react-router-dom";
 import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
@@ -29,6 +29,8 @@ import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VendorListPage() {
+  // Read-only workspace (subscription): no new records until it is renewed.
+  const writeLocked = useWriteLocked();
   const vendors = useVendorStore((s) => s.vendorPage);
   const meta = useVendorStore((s) => s.vendorPageMeta);
   const fetchVendorPage = useVendorStore((s) => s.fetchVendorPage);
@@ -200,15 +202,19 @@ export default function VendorListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh vendor yang bekerja sama dengan WO.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
-            Import Bulk
-          </Button>
+          {!writeLocked && (
+            <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
+              Import Bulk
+            </Button>
+          )}
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVendors()} disabled={isExporting}>
             {isExporting ? "Mengekspor..." : "Export Excel"}
           </Button>
-          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Tambah Vendor
-          </Button>
+          {!writeLocked && (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+              Tambah Vendor
+            </Button>
+          )}
         </div>
       </div>
 
@@ -271,7 +277,7 @@ export default function VendorListPage() {
                     ) : (
                       <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
                     )}
-                    <IconActionButton icon={Eye} label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
+                    <IconActionButton icon={Eye} readOnly label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
                     {isOwner && (
                       <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />
                     )}
@@ -317,7 +323,7 @@ export default function VendorListPage() {
                         ) : (
                           <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
                         )}
-                        <IconActionButton icon={Eye} label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
+                        <IconActionButton icon={Eye} readOnly label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
                         {isOwner && (
                           <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />
                         )}

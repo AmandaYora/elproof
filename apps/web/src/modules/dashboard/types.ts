@@ -65,6 +65,29 @@ export interface RevenueSummary {
   deltaPercent: number | null;
 }
 
+/** An unpaid client installment that is overdue or due within 30 days. */
+export interface DashboardTermRow {
+  projectId: string;
+  projectName: string;
+  label: string;
+  dueDate: string;
+  remaining: number;
+}
+
+/** A project Timeline item due this week. */
+export interface DashboardTaskRow {
+  projectId: string;
+  projectName: string;
+  name: string;
+  targetDate: string;
+}
+
+export interface StageCounts {
+  draft: number;
+  preparation: number;
+  ready: number;
+}
+
 export interface DashboardStats {
   totalProjects: number;
   activeProjects: number;
@@ -76,6 +99,11 @@ export interface DashboardStats {
   nearDDayProjects: Project[];
   laggingProjects: LaggingProjectRow[];
   upcomingProjects: Project[];
+  overdueTerms: DashboardTermRow[];
+  overdueTermsTotal: number;
+  dueSoonTerms: DashboardTermRow[];
+  tasksDueThisWeek: DashboardTaskRow[];
+  stageCounts: StageCounts;
   recentActivity: ActivityLogEntry[];
   revenue: RevenueSummary;
   projectTrend: ProjectTrendPoint[];

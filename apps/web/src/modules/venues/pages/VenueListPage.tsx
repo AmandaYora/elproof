@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCan } from "@/shared/stores/usePermissionStore";
+import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -24,6 +24,8 @@ import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
+  // Read-only workspace (subscription): no new records until it is renewed.
+  const writeLocked = useWriteLocked();
   const venues = useVenueStore((s) => s.venuePage);
   const meta = useVenueStore((s) => s.venuePageMeta);
   const fetchVenuePage = useVenueStore((s) => s.fetchVenuePage);
@@ -166,15 +168,19 @@ export default function VenueListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola direktori gedung/lokasi acara yang bekerja sama dengan WO.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
-            Import Bulk
-          </Button>
+          {!writeLocked && (
+            <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
+              Import Bulk
+            </Button>
+          )}
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVenues()} disabled={isExporting}>
             {isExporting ? "Mengekspor..." : "Export Excel"}
           </Button>
-          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Tambah Venue
-          </Button>
+          {!writeLocked && (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+              Tambah Venue
+            </Button>
+          )}
         </div>
       </div>
 

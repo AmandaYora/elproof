@@ -5,6 +5,10 @@ import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal"
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import type { Evidence } from "@/modules/projects/types";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { Badge, type BadgeTone } from "@/shared/components/ui/Badge";
+import { TERM_STATUS_LABELS } from "@/shared/lib/labels";
+import { remainingToPay } from "@/modules/projects/lib/payments";
+import type { PaymentTermStatus } from "@/modules/projects/types";
 import type { ClientPortalContext } from "@/modules/client-portal/layouts/ClientPortalLayout";
 
 // Repurposed (PLAN.md "Uang Masuk dari Client", §3.8) — shows the client's
@@ -22,6 +26,9 @@ export default function PembayaranTabPage() {
   const evidence = useProjectStore((s) => s.evidence);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
+  // Red is kept for the one "you need to act" card on Beranda; here a late
+  // installment is amber.
+  const TERM_TONE: Record<PaymentTermStatus, BadgeTone> = { paid: "success", overdue: "warning", partial: "warning", due_soon: "warning", upcoming: "neutral" };
   const [viewingEvidence, setViewingEvidence] = useState<Evidence | null>(null);
 
   useEffect(() => {
@@ -35,7 +42,9 @@ export default function PembayaranTabPage() {
     (sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount),
     0
   );
-  const totalRemaining = contractValue - totalReceived;
+  // Only DP/Termin/Pelunasan count against the contract; Tambahan is separate.
+  const totalRemaining = remainingToPay(contractValue, clientPayments);
+  const terms = useProjectStore((s) => s.paymentTerms);
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
@@ -51,21 +60,40 @@ export default function PembayaranTabPage() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
           <div className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
-            <p className="text-[12.5px] font-bold text-text-secondary uppercase tracking-wider">Nilai Kontrak</p>
+            <p className="text-[12.5px] font-bold text-text-secondary tracking-wide">Nilai kontrak</p>
             <p className="mt-3 text-2xl font-bold tabular-nums text-navy-950">{formatCurrency(contractValue)}</p>
           </div>
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/30 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
-            <p className="text-[12.5px] font-bold text-emerald-700 uppercase tracking-wider">Total Diterima</p>
+            <p className="text-[12.5px] font-bold text-emerald-700 tracking-wide">Total diterima</p>
             <p className="mt-3 text-2xl font-bold tabular-nums text-emerald-600">{formatCurrency(totalReceived)}</p>
           </div>
           <div className="rounded-2xl border border-amber-100 bg-amber-50/30 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
-            <p className="text-[12.5px] font-bold text-amber-700 uppercase tracking-wider">Sisa Tagihan</p>
+            <p className="text-[12.5px] font-bold text-amber-700 tracking-wide">Sisa tagihan</p>
             <p className="mt-3 text-2xl font-bold tabular-nums text-amber-600">{formatCurrency(totalRemaining)}</p>
           </div>
         </div>
       </section>
 
       <section>
+        {terms.length > 0 && (
+          <div className="mb-8">
+            <h3 className="mb-3 text-[14px] font-bold text-text-primary sm:mb-4 sm:text-[15px]">Jadwal pembayaran</h3>
+            <ul className="overflow-hidden rounded-2xl border border-border bg-white">
+              {terms.map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-light px-4 py-3.5 last:border-b-0">
+                  <span className="min-w-0">
+                    <span className="block text-[14px] font-semibold text-text-primary">{t.label}</span>
+                    <span className="block text-[12.5px] text-text-secondary">Jatuh tempo {formatDate(t.dueDate)}</span>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className="text-[14px] font-semibold tabular-nums text-text-primary">{formatCurrency(t.amount)}</span>
+                    <Badge tone={TERM_TONE[t.status]}>{TERM_STATUS_LABELS.client[t.status]}</Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <h3 className="mb-3 text-[14px] font-bold text-text-primary sm:mb-4 sm:text-[15px]">Riwayat Pembayaran</h3>
         {sortedPayments.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border bg-surface p-4 text-center text-[13px] text-text-secondary sm:p-6 sm:text-[13.5px]">

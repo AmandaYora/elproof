@@ -16,7 +16,7 @@ export default function ProjectPaymentsTabPage() {
   const { projectId } = useOutletContext<ProjectDetailContext>();
   return (
     <div className="flex flex-col gap-5">
-      <TabNav items={PEMBAYARAN_TABS} />
+      <TabNav items={PEMBAYARAN_TABS} sticky={false} />
       <Outlet context={{ projectId } satisfies ProjectDetailContext} />
     </div>
   );

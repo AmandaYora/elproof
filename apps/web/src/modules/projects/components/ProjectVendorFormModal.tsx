@@ -335,7 +335,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
                     {bookingProofs.map((e) => (
                       <li key={e.id} className="flex items-center justify-between gap-2 text-[13px]">
                         <span className="min-w-0 truncate">{e.name} · {formatDate(e.documentDate)}</span>
-                        <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidence(e)} />
+                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidence(e)} />
                       </li>
                     ))}
                   </ul>

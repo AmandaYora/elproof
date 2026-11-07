@@ -60,6 +60,9 @@ export const API = {
     tenantMeSubscription: "/api/v1/tenants/me/subscription",
     tenantMeBranding: "/api/v1/tenants/me/branding",
     tenantMeLogo: "/api/v1/tenants/me/logo",
+    tenantMeBrandColor: "/api/v1/tenants/me/brand-color",
+    tenantMeBusinessDetails: "/api/v1/tenants/me/business-details",
+    tenantMeContact: "/api/v1/tenants/me/contact",
     // Owner-only self-service (Fase 2): "Lengkapi Profil" and the
     // "Mulai di sini" checklist with trial usage.
     tenantMeProfile: "/api/v1/tenants/me/profile",
@@ -153,6 +156,9 @@ export const API = {
     me: "/api/v1/projects/me",
     item: (id: string) => `/api/v1/projects/${id}`,
     cancel: (id: string) => `/api/v1/projects/${id}/cancel`,
+    transition: (id: string) => `/api/v1/projects/${id}/transition`,
+    closingChecklist: (id: string) => `/api/v1/projects/${id}/closing-checklist`,
+    paymentTerms: (id: string) => `/api/v1/projects/${id}/payment-terms`,
     toggleArchive: (id: string) => `/api/v1/projects/${id}/toggle-archive`,
     duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
@@ -189,6 +195,7 @@ export const API = {
     item: (id: string) => `/api/v1/milestone-templates/${id}`,
   },
   dashboard: "/api/v1/dashboard",
+  dashboardMine: "/api/v1/dashboard/mine",
   clients: {
     base: "/api/v1/clients",
     byProject: (projectId: string) => `/api/v1/clients?projectId=${projectId}`,

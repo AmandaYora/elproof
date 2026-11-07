@@ -7,6 +7,7 @@ import { cn } from "@/shared/lib/cn";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useRolesStore, type Role, type RoleKind } from "@/modules/access/stores/useRolesStore";
 import { RoleEditorDrawer } from "@/modules/access/components/RoleEditorDrawer";
+import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 const TABS: { kind: RoleKind; label: string; hint: string }[] = [
   { kind: "staff", label: "Tim WO", hint: "Apa yang boleh dilakukan setiap anggota tim di WO Console." },
@@ -20,6 +21,8 @@ interface EditorState {
 
 /** Pengaturan → Peran & Akses (PLAN.md Fase 3a, ADR-0026). */
 export default function RolesPage() {
+  // Read-only workspace (subscription): no new records until it is renewed.
+  const writeLocked = useWriteLocked();
   const catalog = useRolesStore((s) => s.catalog);
   const roles = useRolesStore((s) => s.roles);
   const loaded = useRolesStore((s) => s.loaded);
@@ -48,9 +51,11 @@ export default function RolesPage() {
             Atur siapa boleh melakukan apa di workspace Anda. Perubahan langsung berlaku untuk semua orang yang memakai peran itu.
           </p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={() => setEditor({})}>
-          Buat peran
-        </Button>
+        {!writeLocked && (
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setEditor({})}>
+            Buat peran
+          </Button>
+        )}
       </div>
 
       <div role="tablist" aria-label="Jenis peran" className="flex gap-1 border-b border-border">

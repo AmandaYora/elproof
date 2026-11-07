@@ -114,7 +114,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
       });
       setEvidenceMilestone(null);
     } catch (err) {
-      setEvidenceError(getApiErrorMessage(err, "Gagal mengunggah evidence"));
+      setEvidenceError(getApiErrorMessage(err, "Gagal mengunggah bukti"));
     }
   }
 

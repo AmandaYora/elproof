@@ -25,6 +25,17 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
   const items: AttentionItem[] = [];
   const vendorName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "";
 
+  for (const t of stats.overdueTerms) {
+    items.push({
+      id: `term-${t.projectId}-${t.label}-${t.dueDate}`,
+      tone: "danger",
+      category: "Tagihan Terlambat",
+      title: `Termin ${t.label} terlambat ${Math.abs(daysUntil(t.dueDate))} hari`,
+      description: `${t.projectName} · sisa ${formatCurrency(t.remaining)}, jatuh tempo ${formatDate(t.dueDate)}`,
+      to: ROUTE_PATHS.projectDetail(t.projectId, "pembayaran/client"),
+    });
+  }
+
   for (const issue of stats.openIssues) {
     items.push({
       id: `issue-${issue.id}`,

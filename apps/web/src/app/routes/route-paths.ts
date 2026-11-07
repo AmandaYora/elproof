@@ -1,4 +1,6 @@
 export type ProjectDetailTab =
+  | "ringkasan"
+  | "kendala"
   | "vendor"
   | "milestone"
   | "client"
@@ -8,13 +10,13 @@ export type ProjectDetailTab =
   | "dokumen"
   | "aktivitas"
   | "venue";
-// "ringkasan" removed (PLAN.md's Client Portal restructure) — that content
-// is now the persistent header, not a tab; "timeline" added, completing
+// The Client Portal's own tab set (ClientPortalTab below) has no "ringkasan":
+// that content is its persistent header. "timeline" added, completing
 // parity with WO Console's own tab set. "venue" removed separately (Vendor/
 // Venue merge, client-facing only) — Venue is now a pinned card inside the
 // "vendor" tab itself, not its own route; ProjectDetailTab above is WO
 // Console's own (unaffected) tab set and keeps its separate "venue" entry.
-export type ClientPortalTab = "vendor" | "pembayaran" | "kendala" | "timeline" | "dokumen";
+export type ClientPortalTab = "beranda" | "lainnya" | "vendor" | "pembayaran" | "kendala" | "timeline" | "dokumen";
 
 export const ROUTE_PATHS = {
   home: "/",
@@ -36,7 +38,8 @@ export const ROUTE_PATHS = {
   homepageContact: "/kontak",
   dashboard: "/dashboard",
   projects: "/projects",
-  projectDetail: (id: string, tab: ProjectDetailTab = "vendor") => `/projects/${id}/${tab}`,
+  projectNew: "/projects/baru",
+  projectDetail: (id: string, tab: ProjectDetailTab = "ringkasan") => `/projects/${id}/${tab}`,
   clients: "/clients",
   vendorCategories: "/vendor-categories",
   vendors: "/vendors",
@@ -45,8 +48,9 @@ export const ROUTE_PATHS = {
   subscription: "/langganan",
   // Pengaturan → Peran & Akses (Fase 3a).
   roles: "/peran-akses",
+  businessProfile: "/profil-usaha",
   milestoneTemplates: "/timeline-default",
-  portal: (tab: ClientPortalTab = "vendor") => `/portal/${tab}`,
+  portal: (tab: ClientPortalTab = "beranda") => `/portal/${tab}`,
   platformDashboard: "/platform/dashboard",
   platformTenants: "/platform/tenant",
   platformPlans: "/platform/paket",

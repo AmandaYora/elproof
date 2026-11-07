@@ -1,179 +1,270 @@
+import { Suspense, useCallback, useEffect, useState } from "react";
+import axios from "axios";
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { CalendarDays, Ellipsis, Heart, House, Loader2, LogOut, Store, Wallet, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/shared/components/ui/Toaster";
-import { Suspense, useEffect, useState } from "react";
-import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Heart, Loader2, LogOut } from "lucide-react";
-import { TabNav } from "@/shared/components/ui/TabNav";
-import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { daysUntil } from "@/modules/projects/lib/dates";
+import { Button } from "@/shared/components/ui/Button";
+import { cn } from "@/shared/lib/cn";
 import { APP_NAME } from "@/shared/constants/brand";
-import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { ROUTE_PATHS, type ClientPortalTab } from "@/app/routes/route-paths";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
+import { registerPortalServiceWorker } from "@/shared/lib/pwa";
+import { whatsappUrl } from "@/shared/lib/access-link";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
-import { ClientProjectHeaderCard } from "@/modules/client-portal/components/ClientProjectHeaderCard";
 import { hasPermission, usePermissionStore } from "@/shared/stores/usePermissionStore";
+import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
+import { useContactStore } from "@/shared/stores/useContactStore";
+
+/** Whether the money data (payments + schedule) is in: "off" when the role has no finance access. */
+export type FinanceState = "off" | "loading" | "ready" | "error";
 
 export interface ClientPortalContext {
   projectId: string;
+  finance: FinanceState;
+  retryFinance: () => void;
 }
 
-// "Ringkasan" no longer exists as its own tab (PLAN.md's Client Portal
-// restructure) — its compact summary now lives in the persistent
-// ClientProjectHeaderCard below, always visible above these tabs; its
-// detailed milestone stepper lives in the new "Timeline" tab. "Venue" no
-// longer has its own tab either (client-facing-only Vendor/Venue merge) —
-// Venue is now a pinned card inside "Vendor" itself (VendorTabPage), so this
-// list no longer mirrors WO Console's own separate Vendor/Venue tab split.
-// "Dokumen" is appended at the end deliberately, not interleaved with the
-// existing tabs (PLAN.md) — it's a new, separate capability (general project
-// documents the staff explicitly opted to share), not a replacement or
-// reordering of anything already here.
-//
-// Each tab shows only when the client's portal role allows it (ADR-0026):
-// e.g. Keluarga has no "Pembayaran".
-const TABS = [
-  { to: ROUTE_PATHS.portal("vendor"), label: "Vendor", requires: "portal.vendor.view" },
-  { to: ROUTE_PATHS.portal("timeline"), label: "Timeline", requires: "portal.timeline.view" },
-  { to: ROUTE_PATHS.portal("pembayaran"), label: "Pembayaran", requires: "portal.finance.view" },
-  { to: ROUTE_PATHS.portal("kendala"), label: "Kendala", requires: "portal.issues.view" },
-  { to: ROUTE_PATHS.portal("dokumen"), label: "Dokumen", requires: "portal.documents.view" },
+interface NavItem {
+  tab: ClientPortalTab;
+  label: string;
+  icon: LucideIcon;
+  /** Portal permission needed to see it; none = always. */
+  requires?: string;
+  /** Other pages that belong under this item (Lainnya holds Dokumen and Kendala). */
+  alsoActiveOn?: ClientPortalTab[];
+}
+
+// Bottom bar on a phone, top bar on a larger screen (FLOW-IDEAL 3.2). Each item
+// shows only when the client's portal role allows it (ADR-0026), e.g. Keluarga
+// has no "Pembayaran".
+const NAV: NavItem[] = [
+  { tab: "beranda", label: "Beranda", icon: House },
+  { tab: "timeline", label: "Jadwal", icon: CalendarDays, requires: "portal.timeline.view" },
+  { tab: "pembayaran", label: "Pembayaran", icon: Wallet, requires: "portal.finance.view" },
+  { tab: "vendor", label: "Vendor", icon: Store, requires: "portal.vendor.view" },
+  { tab: "lainnya", label: "Lainnya", icon: Ellipsis, alsoActiveOn: ["dokumen", "kendala"] },
 ];
+
+// Pages a role may not open (an old bookmark) land on Beranda.
+const GUARDED: Partial<Record<ClientPortalTab, string>> = {
+  timeline: "portal.timeline.view",
+  pembayaran: "portal.finance.view",
+  vendor: "portal.vendor.view",
+  kendala: "portal.issues.view",
+  dokumen: "portal.documents.view",
+};
+
+type LoadState = "loading" | "ready" | "no-project" | "error";
+
+function FullScreenMessage({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white px-6 text-center">
+      <h1 className="text-lg font-bold text-text-primary">{title}</h1>
+      <div className="flex max-w-sm flex-col items-center gap-4 text-[14px] text-text-secondary">{children}</div>
+    </div>
+  );
+}
 
 export default function ClientPortalLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const project = useProjectStore((s) => s.currentProject);
   const fetchMyProject = useProjectStore((s) => s.fetchMyProject);
+  const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
+  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
+  const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
+  const fetchPaymentTerms = useProjectStore((s) => s.fetchPaymentTerms);
+  const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
   const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
-  const [status, setStatus] = useState<"loading" | "ready" | "denied">("loading");
-  const location = useLocation();
   const grants = usePermissionStore((s) => s.grants);
   const grantsLoaded = usePermissionStore((s) => s.loaded);
   const fetchGrants = usePermissionStore((s) => s.fetch);
+  const contact = useContactStore((s) => s.contact);
+  const fetchContact = useContactStore((s) => s.fetch);
+  const [state, setState] = useState<LoadState>("loading");
+  const [attempt, setAttempt] = useState(0);
+  const [finance, setFinance] = useState<FinanceState>("loading");
+  const [financeAttempt, setFinanceAttempt] = useState(0);
 
   useEffect(() => {
     void fetchGrants();
-  }, [fetchGrants]);
+    void hydrateBranding("Portal Klien");
+    void fetchContact();
+    registerPortalServiceWorker();
+  }, [fetchGrants, hydrateBranding, fetchContact]);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchMyProject()
-      .then(() => {
-        if (!cancelled) setStatus("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("denied");
-      });
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    setState("loading");
+    try {
+      await fetchMyProject();
+      setState("ready");
+    } catch (err) {
+      // Not signed in is handled by the HTTP client (it sends the person to
+      // login). Everything else is NOT a reason to log anyone out: no project
+      // yet is a message, trouble reaching the server is a retry.
+      const code = axios.isAxiosError(err) ? err.response?.status : undefined;
+      setState(code === 403 || code === 404 ? "no-project" : "error");
+    }
   }, [fetchMyProject]);
 
   useEffect(() => {
-    void hydrateBranding("Portal Klien");
-  }, [hydrateBranding]);
+    void load();
+  }, [load, attempt]);
 
-  if (status === "denied") {
-    return <Navigate to={ROUTE_PATHS.login} replace />;
-  }
+  // What every page needs, loaded once the project is known and the role's
+  // permissions are in (a Keluarga account never asks for finance).
+  // Only once THIS load succeeded: until then the store may still hold a
+  // previous person's project.
+  const projectId = state === "ready" ? project?.id : undefined;
+  useEffect(() => {
+    if (!projectId || !grantsLoaded) return;
+    const quiet = (p: Promise<unknown>) => void p.catch(() => undefined);
+    if (hasPermission(grants, "portal.timeline.view")) quiet(fetchMilestones(projectId));
+    if (hasPermission(grants, "portal.vendor.view")) quiet(fetchVendorSection(projectId));
+    if (hasPermission(grants, "portal.issues.view")) quiet(fetchIssues(projectId));
+  }, [projectId, grantsLoaded, grants, fetchMilestones, fetchVendorSection, fetchIssues]);
 
-  if (status === "loading" || !project || !brandingHydrated || !grantsLoaded) {
-    // Also waits on brandingHydrated, not just fetchMyProject -- the header
-    // below reads logoUrl/brandName and `text-navy-950` (a live
-    // --brand-navy-* CSS var) straight off useTenantBrandingStore; painting
-    // it before hydrate() resolves would show ElProof's own generic
-    // Heart-icon/navy look first, then swap to the tenant's real one.
+  // Money is different: showing "Sisa tagihan" before the payments arrive would
+  // show the whole contract as owed, so Beranda waits for this (and can retry).
+  useEffect(() => {
+    if (!projectId || !grantsLoaded) return;
+    if (!hasPermission(grants, "portal.finance.view")) {
+      setFinance("off");
+      return;
+    }
+    let cancelled = false;
+    setFinance("loading");
+    Promise.all([fetchClientPayments(projectId), fetchPaymentTerms(projectId)])
+      .then(() => !cancelled && setFinance("ready"))
+      .catch(() => !cancelled && setFinance("error"));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, grantsLoaded, grants, fetchClientPayments, fetchPaymentTerms, financeAttempt]);
+
+  if (state === "no-project") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <FullScreenMessage title="Akun Anda belum terhubung ke persiapan pernikahan">
+        <p>Hubungi wedding organizer Anda agar akun ini dihubungkan ke project Anda.</p>
+        {contact?.whatsapp && (
+          <a href={whatsappUrl(contact.whatsapp, "Halo, akun portal saya belum terhubung ke project. Mohon dibantu.")} target="_blank" rel="noopener noreferrer" className="font-semibold text-navy-900 underline underline-offset-2">
+            Hubungi lewat WhatsApp
+          </a>
+        )}
+        <Button variant="secondary" onClick={() => void logoutAndRedirect(navigate)}>Keluar</Button>
+      </FullScreenMessage>
+    );
+  }
+  if (state === "error") {
+    return (
+      <FullScreenMessage title="Gagal memuat">
+        <p>Portal belum bisa dimuat. Periksa koneksi internet Anda, lalu coba lagi.</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button onClick={() => setAttempt((n) => n + 1)}>Coba lagi</Button>
+          {contact?.whatsapp && (
+            <a href={whatsappUrl(contact.whatsapp, "Halo, portal saya tidak bisa dibuka. Mohon dibantu.")} target="_blank" rel="noopener noreferrer" className="text-[14px] font-semibold text-navy-900 underline underline-offset-2">
+              Hubungi WO
+            </a>
+          )}
+        </div>
+      </FullScreenMessage>
+    );
+  }
+  if (state === "loading" || !project || !brandingHydrated || !grantsLoaded) {
+    // Waits on branding too: the hero and header read brand color live, and
+    // painting before it lands would flash ElProof's own navy first.
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white" role="status" aria-label="Memuat portal">
         <Loader2 className="h-6 w-6 animate-spin text-text-secondary" />
       </div>
     );
   }
 
-  const tabs = TABS.filter((t) => hasPermission(grants, t.requires));
-  // A tab the role cannot open (old bookmark, the default "vendor") goes to
-  // the first one it can.
-  const onAllowedTab = tabs.some((t) => location.pathname.startsWith(t.to));
-  if (!onAllowedTab && tabs.length > 0 && TABS.some((t) => location.pathname.startsWith(t.to))) {
-    return <Navigate to={tabs[0].to} replace />;
-  }
+  const items = NAV.filter((n) => !n.requires || hasPermission(grants, n.requires));
+  const here = location.pathname.split("/")[2] as ClientPortalTab | undefined;
+  const guard = here ? GUARDED[here] : undefined;
+  if (guard && !hasPermission(grants, guard)) return <Navigate to={ROUTE_PATHS.portal("beranda")} replace />;
 
-  const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
-  const d = daysUntil(project.eventDate);
+  const isActive = (item: NavItem) => here === item.tab || (here !== undefined && item.alsoActiveOn?.includes(here) === true);
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden" data-density="comfortable">
+    <div className="min-h-screen bg-background" data-density="comfortable">
       <Toaster />
-      {/* Decorative grid background for depth */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
-      </div>
 
-      <div className="sticky top-0 z-30 shadow-sm border-b border-border bg-white/80 backdrop-blur-xl">
-        <div className="border-b border-border/50 bg-white/50">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <span className="flex shrink-0 items-center gap-2 text-[14px] font-bold text-navy-950">
-              {logoUrl ? (
-                <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-7 w-auto max-w-[140px] object-contain" />
-              ) : (
-                <>
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-navy-900 to-navy-800 text-white shadow-sm">
-                    <Heart className="h-4 w-4" fill="currentColor" />
-                  </div>
-                  {brandName ?? APP_NAME}
-                </>
-              )}
-            </span>
-
-            <div className="flex min-w-0 flex-1 items-center justify-end gap-2.5 sm:justify-center sm:gap-4">
-              <span className="hidden min-w-0 truncate text-[14px] font-semibold text-navy-950 sm:block">
-                {project.brideName} &amp; {project.groomName}
-              </span>
-              {isOpenProject ? (
-                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 border border-blue-100 px-3 py-1 whitespace-nowrap shadow-sm">
-                  <span className="text-[13px] font-bold tabular-nums text-blue-700">{d >= 0 ? d : 0}</span>
-                  <span className="text-[11px] font-medium text-blue-600/80">hari lagi</span>
+      <header className="sticky top-0 z-30 border-b border-border bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
+          <NavLink to={ROUTE_PATHS.portal("beranda")} className="flex shrink-0 items-center gap-2 text-[14px] font-bold text-navy-950">
+            {logoUrl ? (
+              <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-8 w-auto max-w-[140px] object-contain" />
+            ) : (
+              <>
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-900 text-white">
+                  <Heart className="h-4 w-4" fill="currentColor" aria-hidden />
                 </span>
-              ) : (
-                <span className="shrink-0 whitespace-nowrap rounded-full bg-surface-muted border border-border px-3 py-1 text-[11.5px] font-semibold text-text-secondary">
-                  {project.status === "Completed" ? "Acara selesai" : "Dibatalkan"}
-                </span>
-              )}
-            </div>
+                {brandName ?? APP_NAME}
+              </>
+            )}
+          </NavLink>
 
-            <button
-              onClick={() => void logoutAndRedirect(navigate)}
-              aria-label="Keluar"
-              className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-danger-soft hover:text-danger"
-            >
-              <LogOut className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Keluar</span>
-            </button>
-          </div>
-          <div className="mx-auto max-w-5xl px-4 pb-3 sm:hidden">
-            <span className="block truncate text-[13.5px] font-semibold text-navy-950">
-              {project.brideName} &amp; {project.groomName}
-            </span>
-          </div>
+          <nav aria-label="Menu portal" className="hidden items-center gap-1 md:flex">
+            {items.map((item) => (
+              <NavLink
+                key={item.tab}
+                to={ROUTE_PATHS.portal(item.tab)}
+                className={cn(
+                  "rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+                  isActive(item) ? "bg-navy-900 text-white" : "text-text-secondary hover:bg-surface-muted hover:text-text-primary",
+                )}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <button
+            type="button"
+            onClick={() => void logoutAndRedirect(navigate)}
+            className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 md:flex"
+          >
+            <LogOut className="h-3.5 w-3.5" aria-hidden /> Keluar
+          </button>
         </div>
+      </header>
 
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <TabNav items={tabs} sticky={false} />
-        </div>
-      </div>
-
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10 sm:gap-8 relative z-10">
-        <ClientProjectHeaderCard projectId={project.id} />
-        <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary animate-pulse">Memuat...</div>}>
-          {tabs.length === 0 ? (
-            <p className="py-16 text-center text-sm text-text-secondary">
-              Akses portal Anda belum diatur. Hubungi wedding organizer Anda.
-            </p>
-          ) : (
-            <Outlet context={{ projectId: project.id } satisfies ClientPortalContext} />
-          )}
+      <main className="mx-auto max-w-5xl px-4 py-5 pb-28 sm:px-6 sm:py-8 md:pb-10">
+        <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>}>
+          <Outlet context={{ projectId: project.id, finance, retryFinance: () => setFinanceAttempt((n) => n + 1) } satisfies ClientPortalContext} />
         </Suspense>
       </main>
+
+      <nav
+        aria-label="Menu portal"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
+        <ul className="mx-auto grid max-w-md" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+          {items.map((item) => {
+            const active = isActive(item);
+            return (
+              <li key={item.tab}>
+                <NavLink
+                  to={ROUTE_PATHS.portal(item.tab)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11.5px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-navy-900",
+                    active ? "text-navy-900" : "text-text-secondary",
+                  )}
+                >
+                  <item.icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+                  {item.label}
+                </NavLink>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
     </div>
   );
 }

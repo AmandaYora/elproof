@@ -8,6 +8,7 @@ interface CurrencyInputProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  "aria-invalid"?: boolean;
 }
 
 function countDigits(s: string): number {

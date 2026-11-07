@@ -130,7 +130,7 @@ export function EvidenceUploadModal({
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting || (!locked && values.relatedKind !== "general" && options.length === 0)}>
-            {submitting ? "Mengunggah..." : "Simpan Evidence"}
+            {submitting ? "Mengunggah..." : "Simpan Bukti"}
           </Button>
         </>
       }
@@ -148,7 +148,7 @@ export function EvidenceUploadModal({
             className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
           />
         </Field>
-        <Field label="Nama Evidence" required hint={errors.name}>
+        <Field label="Nama Bukti" required hint={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Invoice DP Venue" />
         </Field>
         <Field label="Jenis Evidence" required>

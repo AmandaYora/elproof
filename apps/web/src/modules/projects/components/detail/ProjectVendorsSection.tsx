@@ -589,7 +589,7 @@ function VendorAccordionRow({
                     <th className="px-3 py-2 font-semibold text-text-secondary">Status</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Target</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Selesai</th>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Evidence</th>
+                    <th className="px-3 py-2 font-semibold text-text-secondary">Bukti</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Aksi</th>
                   </tr>
                 </thead>
@@ -624,7 +624,7 @@ function VendorAccordionRow({
                         <td className="px-3 py-2 text-text-secondary">{formatDate(m.completedDate)}</td>
                         <td className="px-3 py-2">
                           {hasEvidence(m) ? (
-                            <Badge tone="success">Evidence tersedia</Badge>
+                            <Badge tone="success">Bukti tersedia</Badge>
                           ) : evidenceCheck.requiresEvidence ? (
                             <Badge tone="warning">Belum lengkap</Badge>
                           ) : (

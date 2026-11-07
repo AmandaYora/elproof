@@ -13,6 +13,10 @@ import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import type {
+  PaymentTerm,
+  PaymentTermInput,
+  ClosingChecklist,
+  ProjectStatusAction,
   ActivityLogEntry,
   ClientPayment,
   Evidence,
@@ -86,6 +90,7 @@ export interface RawProject {
   picStaffId: number;
   picSalesStaffId: number;
   picName: string;
+  picPhone?: string;
   description: string;
   isArchived: boolean;
   progress?: RawProgress;
@@ -122,6 +127,7 @@ export function toProject(raw: RawProject): Project {
     picStaffId: raw.picStaffId ? String(raw.picStaffId) : "",
     picSalesStaffId: raw.picSalesStaffId ? String(raw.picSalesStaffId) : "",
     picName: raw.picName,
+    picPhone: raw.picPhone,
     description: raw.description,
     isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,
@@ -374,6 +380,10 @@ interface RawIssue {
   resolutionNotes: string;
 }
 
+function toPaymentTerms(raw: Array<Omit<PaymentTerm, "id"> & { id: number }>): PaymentTerm[] {
+  return raw.map((t) => ({ ...t, id: String(t.id) }));
+}
+
 function toIssue(raw: RawIssue): VendorIssue {
   return {
     id: String(raw.id),
@@ -526,6 +536,18 @@ interface ProjectState {
   // since it's only ever needed by whichever single tab is currently open.
   fetchProjectVenueSummary: (id: string) => Promise<ProjectVenueSummary | null>;
   cancelProject: (id: string) => Promise<void>;
+  // One explicit step of the project's life (Draf → Persiapan → Siap →
+  // Selesai, or reopen). The API refuses a step that does not fit the
+  // current status, so a stale page cannot skip one.
+  transitionProject: (id: string, action: ProjectStatusAction) => Promise<void>;
+  fetchClosingChecklist: (id: string) => Promise<ClosingChecklist>;
+
+  // The client's payment schedule (installments); status comes from the API.
+  paymentTerms: PaymentTerm[];
+  /** The project the loaded schedule belongs to (null until it has loaded). */
+  paymentTermsFor: string | null;
+  fetchPaymentTerms: (projectId: string) => Promise<void>;
+  savePaymentTerms: (projectId: string, terms: PaymentTermInput[]) => Promise<void>;
   toggleArchiveProject: (id: string) => Promise<void>;
   // Hard delete (ADR-0013) — Owner-only and requires the project already be
   // archived or cancelled, both enforced server-side, not just by the UI
@@ -612,6 +634,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   clientPayments: [],
   venuePayments: [],
   issues: [],
+  paymentTerms: [],
+  paymentTermsFor: null,
   evidence: [],
   documents: [],
   activity: [],
@@ -636,7 +660,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   createProject: async (values) => {
     const res = await httpClient.post(API.projects.base, projectInputBody(values));
     const project = toProject(res.data.data as RawProject);
-    await get().fetchProjects();
+    // The project exists now. Refreshing the list is a courtesy: if it fails,
+    // the caller must still see success, or the user retries and gets a duplicate.
+    await get().fetchProjects().catch(() => undefined);
     return project;
   },
 
@@ -690,6 +716,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return toProjectVenueSummary(res.data.data as RawProjectVenueSummary);
   },
 
+  transitionProject: async (id, action) => {
+    const res = await httpClient.post(API.projects.transition(id), { action });
+    const project = toProject(res.data.data as RawProject);
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? project : p)),
+      currentProject: state.currentProject?.id === id ? { ...project, progress: state.currentProject.progress } : state.currentProject,
+    }));
+  },
+
+  fetchPaymentTerms: async (projectId) => {
+    const res = await httpClient.get(API.projects.paymentTerms(projectId));
+    set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
+  },
+
+  savePaymentTerms: async (projectId, terms) => {
+    const res = await httpClient.put(API.projects.paymentTerms(projectId), { terms });
+    set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
+  },
+
+  fetchClosingChecklist: async (id) => {
+    const res = await httpClient.get(API.projects.closingChecklist(id));
+    return res.data.data as ClosingChecklist;
+  },
+
   cancelProject: async (id) => {
     const res = await httpClient.post(API.projects.cancel(id));
     const project = toProject(res.data.data as RawProject);
@@ -730,7 +780,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // still-loading ProjectHeaderCard can never compute its Margin/Keuntungan
     // (or anything else) against the PREVIOUS project's vendor costs while
     // this project's own fetchVendorSection call is still in flight.
-    set({ vendorEngagements: [], vendorMilestones: [] });
+    // Everything scoped to a project is cleared with it: the side panel, the
+    // Ringkasan and the schedule must never show (or, worse, edit) the previous
+    // project's milestones, payments, issues or installments.
+    set({
+      vendorEngagements: [], vendorMilestones: [], milestones: [], payments: [], clientPayments: [], venuePayments: [],
+      evidence: [], issues: [], paymentTerms: [], paymentTermsFor: null,
+    });
     const res = await httpClient.get(API.projects.item(projectId));
     set({ currentProject: toProject(res.data.data as RawProject) });
   },

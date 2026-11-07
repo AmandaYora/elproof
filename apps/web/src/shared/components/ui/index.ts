@@ -18,3 +18,4 @@ export * from "./ConfirmDialog";
 export * from "./Drawer";
 export * from "./Toaster";
 export * from "./Skeleton";
+export * from "./ActionMenu";

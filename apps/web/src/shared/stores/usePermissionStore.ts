@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
+import { useSubscriptionStatusStore, type SubscriptionLifecycle } from "@/shared/stores/useSubscriptionStatusStore";
 
 /** GET /access/me — what the signed-in staff member or client may do (ADR-0026). */
 export interface Grants {
@@ -41,9 +42,35 @@ export function hasPermission(grants: Grants | null, permission: string): boolea
   return Boolean(grants?.permissions.includes(permission));
 }
 
-/** Whether the signed-in person's role grants a permission. */
+/** True while the workspace may only be read (grace period over, unpaid or frozen). */
+export function isWriteLocked(lifecycle: SubscriptionLifecycle | null): boolean {
+  return lifecycle !== null && lifecycle.access !== "full";
+}
+
+/** What stays usable in read-only mode besides every ".view" permission: paying. */
+const ALWAYS_ALLOWED = new Set(["subscription.manage"]);
+
+/** Permissions that only read data; they survive read-only mode. */
+function isReadPermission(permission: string): boolean {
+  return permission.endsWith(".view") || ALWAYS_ALLOWED.has(permission);
+}
+
+/** True while the workspace may only be read; use for write buttons with no permission of their own. */
+export function useWriteLocked(): boolean {
+  return useSubscriptionStatusStore((s) => isWriteLocked(s.lifecycle));
+}
+
+/**
+ * Whether the signed-in person's role grants a permission, for buttons and
+ * other in-page controls. In read-only mode every permission that changes
+ * data reads as "no", so write buttons disappear (the API refuses them
+ * anyway with `subscription_read_only`). Routes and the sidebar use
+ * `hasPermission` directly, so pages stay reachable and readable.
+ */
 export function useCan(permission: string): boolean {
-  return usePermissionStore((s) => hasPermission(s.grants, permission));
+  const granted = usePermissionStore((s) => hasPermission(s.grants, permission));
+  const locked = useWriteLocked();
+  return granted && !(locked && !isReadPermission(permission));
 }
 
 /** Whether their project permissions reach every project. */

@@ -149,7 +149,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       });
       setModalOpen(false);
     } catch (err) {
-      setModalError(getApiErrorMessage(err, "Gagal mengunggah evidence"));
+      setModalError(getApiErrorMessage(err, "Gagal mengunggah bukti"));
     }
   }
 
@@ -214,7 +214,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     )}
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
+                    <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidence(item)} />
                     {canEdit && item.relatedKind === "general" && (
                       <IconActionButton
                         icon={item.isClientVisible ? EyeOff : Eye}
@@ -231,7 +231,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
             <Table>
               <THead>
                 <TR>
-                  <TH>Nama Evidence</TH>
+                  <TH>Nama Bukti</TH>
                   <TH>Jenis</TH>
                   <TH>Tanggal Dokumen</TH>
                   <TH>Diunggah Oleh</TH>
@@ -258,7 +258,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     </TD>
                     <TD>
                       <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} label="Lihat Evidence" tone="info" onClick={() => setViewingEvidence(item)} />
+                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidence(item)} />
                         {canEdit && item.relatedKind === "general" && (
                           <IconActionButton
                             icon={item.isClientVisible ? EyeOff : Eye}

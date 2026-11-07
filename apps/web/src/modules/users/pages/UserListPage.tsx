@@ -26,6 +26,7 @@ import type { StaffMember } from "@/modules/users/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { AffectedProject } from "@/shared/types/delete-impact";
+import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 interface LinkShare {
   link: AccessLink;
@@ -45,6 +46,8 @@ function StaffStatusBadge({ user }: { user: StaffMember }) {
 }
 
 export default function UserListPage() {
+  // Read-only workspace (subscription): no new records until it is renewed.
+  const writeLocked = useWriteLocked();
   const currentStaffId = useAuthStore((s) => s.currentStaffId);
   const businessName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
   const users = useStaffStore((s) => s.staffPage);
@@ -200,9 +203,11 @@ export default function UserListPage() {
           <h1 className="text-xl font-bold text-text-primary">Pengguna</h1>
           <p className="mt-1 text-[13px] text-text-secondary">Kelola akun staff internal yang dapat mengakses {businessName}.</p>
         </div>
-        <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-          Undang Pengguna
-        </Button>
+        {!writeLocked && (
+          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+            Undang Pengguna
+          </Button>
+        )}
       </div>
 
       {actionError && !modalOpen && (

@@ -4,6 +4,23 @@
 
 export type ProjectStatus = "Draft" | "Preparation" | "Ready" | "Completed" | "Cancelled";
 
+/** One explicit step in a project's life; the API refuses any that does not fit the current status. */
+export type ProjectStatusAction = "start_preparation" | "mark_ready" | "complete" | "reopen";
+
+/** GET /projects/{id}/closing-checklist — informs the person completing a project. */
+export interface ClosingChecklistItem {
+  key: string;
+  label: string;
+  done: boolean;
+  detail: string;
+}
+
+export interface ClosingChecklist {
+  /** True when every item is done. */
+  ready: boolean;
+  items: ClosingChecklistItem[];
+}
+
 export type MilestoneStatus = "Not Started" | "In Progress" | "Completed" | "Blocked" | "Cancelled";
 
 export type EngagementStatus =
@@ -122,6 +139,8 @@ export interface Project {
   // show "Penanggung Jawab" without depending on the staff-only
   // /staff/summary endpoint.
   picName: string;
+  // The PIC's number, present only in the Client Portal (WhatsApp button).
+  picPhone?: string;
   description: string;
   isArchived: boolean;
   progress?: ProjectProgress;
@@ -273,4 +292,24 @@ export interface ActivityLogEntry {
   entityLabel: string;
   description: string;
   timestamp: string;
+}
+
+/** Where one installment of the client's payment schedule stands (derived by the API from real payments). */
+export type PaymentTermStatus = "paid" | "overdue" | "partial" | "due_soon" | "upcoming";
+
+export interface PaymentTerm {
+  id: string;
+  label: string;
+  amount: number;
+  dueDate: string;
+  paid: number;
+  remaining: number;
+  status: PaymentTermStatus;
+}
+
+/** What the schedule editor sends: the whole schedule replaces the old one. */
+export interface PaymentTermInput {
+  label: string;
+  amount: number;
+  dueDate: string;
 }

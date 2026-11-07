@@ -23,8 +23,8 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-[13px] gap-1.5",
-  md: "h-9 px-4 text-sm gap-2",
+  sm: "h-8 px-3 text-[13px] gap-1.5 pointer-coarse:h-11",
+  md: "h-9 px-4 text-sm gap-2 pointer-coarse:h-11",
 };
 
 export function Button({ variant = "primary", size = "md", icon, className, children, ...props }: ButtonProps) {

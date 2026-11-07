@@ -1,20 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { useNavigate } from "react-router-dom";
-import { Pencil, AlertTriangle, Archive, ArchiveRestore, Copy } from "lucide-react";
+import { Pencil, AlertTriangle, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban } from "lucide-react";
 import { Card, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
+import { ActionMenu } from "@/shared/components/ui/ActionMenu";
+import { Modal } from "@/shared/components/ui/Modal";
 import { ProgressMeter } from "@/shared/components/ui/ProgressMeter";
 import { ProjectStatusBadge, ConditionBadge } from "@/modules/projects/components/StatusBadges";
 import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
+import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { toast } from "@/shared/stores/useToastStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+
+// The one step each status offers next (FLOW-IDEAL 2.4). Moving through the
+// project's life uses these buttons, not a free choice of status.
+const LIFECYCLE_ACTION: Record<ProjectStatus, { action: ProjectStatusAction; label: string; done: string; primary: boolean }> = {
+  Draft: { action: "start_preparation", label: "Mulai persiapan", done: "Project masuk tahap persiapan", primary: true },
+  Preparation: { action: "mark_ready", label: "Tandai siap", done: "Project ditandai siap", primary: true },
+  Ready: { action: "complete", label: "Selesaikan project", done: "Project diselesaikan", primary: true },
+  Completed: { action: "reopen", label: "Buka kembali", done: "Project dibuka kembali", primary: false },
+  Cancelled: { action: "reopen", label: "Buka kembali", done: "Project dibuka kembali", primary: false },
+};
 
 export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
@@ -22,16 +36,16 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const milestones = useProjectStore((s) => s.milestones);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
-  const clientPayments = useProjectStore((s) => s.clientPayments);
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
   const updateProject = useProjectStore((s) => s.updateProject);
   const cancelProject = useProjectStore((s) => s.cancelProject);
+  const transitionProject = useProjectStore((s) => s.transitionProject);
+  const fetchClosingChecklist = useProjectStore((s) => s.fetchClosingChecklist);
   const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
-  const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   // Actions follow the workspace role's permissions (ADR-0026).
   const canDelete = useCan("project.delete");
@@ -56,6 +70,11 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  // Closing dialog: null = closed; the checklist loads when it opens.
+  const [closing, setClosing] = useState<{ checklist: ClosingChecklist | null; error: string | null } | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const closingToken = useRef(0);
 
   useEffect(() => {
     void fetchMilestones(projectId);
@@ -81,31 +100,66 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const venueCost = (project.venueRentalPrice ?? 0) + (project.venueCharge ?? 0);
   const margin = project.contractValue - vendorCost - venueCost;
 
-  // Sisa Tagihan Client (PLAN.md §1.7/§3.9) — day-to-day operational status
-  // ("has the client paid this installment"), visible to every role that
-  // already sees Nilai Kontrak, unlike Margin/Keuntungan above.
-  const totalReceived = clientPayments.reduce(
-    (sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount),
-    0
-  );
-  const outstanding = project.contractValue - totalReceived;
-
   const progress = project.progress;
   const segments = [...milestones, ...vendorMilestones];
   const totalMilestones = (progress?.projectMilestoneStats.total ?? 0) + (progress?.vendorMilestoneStats.total ?? 0);
   const completedMilestones = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
-  const pic = staff.find((s) => s.id === project.picStaffId);
-  const picSales = staff.find((s) => s.id === project.picSalesStaffId);
   const d = daysUntil(project.eventDate);
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
+  const lifecycle = LIFECYCLE_ACTION[project.status];
 
+  // The two form handlers throw on failure so the modal can show the
+  // message next to the form, with what the user typed still in place.
   async function handleEdit(values: ProjectFormValues) {
+    await updateProject(projectId, values);
+    setEditOpen(false);
+    toast.success("Perubahan project disimpan");
+  }
+
+  async function handleTransition(action: ProjectStatusAction, successMessage: string) {
     setActionError(null);
+    setTransitioning(true);
     try {
-      await updateProject(projectId, values);
-      setEditOpen(false);
+      await transitionProject(projectId, action);
+      toast.success(successMessage);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan perubahan project"));
+      setActionError(getApiErrorMessage(err, "Status project belum berubah. Coba lagi."));
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
+  // "Selesaikan project" first shows what is still open, so closing is a
+  // decision made with the facts in front of the user.
+  async function openClosing() {
+    const token = ++closingToken.current;
+    setClosing({ checklist: null, error: null });
+    try {
+      const checklist = await fetchClosingChecklist(projectId);
+      // The user may have closed the dialog while this was loading.
+      if (token === closingToken.current) setClosing({ checklist, error: null });
+    } catch (err) {
+      if (token === closingToken.current) {
+        setClosing({ checklist: null, error: getApiErrorMessage(err, "Daftar periksa belum bisa dimuat. Coba lagi.") });
+      }
+    }
+  }
+
+  function closeClosing() {
+    closingToken.current++;
+    setClosing(null);
+  }
+
+  async function handleComplete() {
+    setCompleting(true);
+    try {
+      await transitionProject(projectId, "complete");
+      setClosing(null);
+      toast.success("Project diselesaikan");
+    } catch (err) {
+      setClosing((c) => (c ? { ...c, error: getApiErrorMessage(err, "Project belum bisa diselesaikan. Coba lagi.") } : c));
+    } finally {
+      setCompleting(false);
     }
   }
 
@@ -129,14 +183,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   }
 
   async function handleDuplicate(values: ProjectFormValues) {
-    setActionError(null);
-    try {
-      const duplicated = await duplicateProject(projectId, values);
-      setDuplicateOpen(false);
-      navigate(ROUTE_PATHS.projectDetail(duplicated.id));
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menduplikasi project"));
-    }
+    const duplicated = await duplicateProject(projectId, values);
+    setDuplicateOpen(false);
+    toast.success("Project diduplikat");
+    navigate(ROUTE_PATHS.projectDetail(duplicated.id));
   }
 
   async function handleDeleteProject() {
@@ -166,36 +216,40 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {canEdit && lifecycle && (
+              <Button
+                variant={lifecycle.primary ? "primary" : "secondary"}
+                size="sm"
+                disabled={transitioning}
+                onClick={() => (lifecycle.action === "complete" ? void openClosing() : void handleTransition(lifecycle.action, lifecycle.done))}
+              >
+                {transitioning ? "Memproses..." : lifecycle.label}
+              </Button>
+            )}
             {canEdit && (
               <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
                 Ubah Project
               </Button>
             )}
-            {canDuplicate && (
-              <Button variant="secondary" size="sm" icon={<Copy className="h-3.5 w-3.5" />} onClick={() => setDuplicateOpen(true)}>
-                Duplikat Project
-              </Button>
-            )}
-            {canArchive && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={project.isArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                onClick={() => void handleToggleArchive()}
-              >
-                {project.isArchived ? "Pulihkan dari Arsip" : "Arsipkan"}
-              </Button>
-            )}
-            {canEdit && isOpenProject && (
-              <Button variant="danger" size="sm" onClick={() => setConfirmingCancel(true)}>
-                Batalkan Project
-              </Button>
-            )}
-            {canDelete && (project.isArchived || project.status === "Cancelled") && (
-              <Button variant="danger" size="sm" onClick={() => setConfirmingDelete(true)}>
-                Hapus Permanen
-              </Button>
-            )}
+            <ActionMenu
+              items={[
+                { label: "Duplikat project", icon: <Copy className="h-4 w-4" />, onSelect: () => setDuplicateOpen(true), hidden: !canDuplicate },
+                {
+                  label: project.isArchived ? "Pulihkan dari arsip" : "Arsipkan",
+                  icon: project.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />,
+                  onSelect: () => void handleToggleArchive(),
+                  hidden: !canArchive,
+                },
+                { label: "Batalkan project", icon: <Ban className="h-4 w-4" />, tone: "danger", onSelect: () => setConfirmingCancel(true), hidden: !(canEdit && isOpenProject) },
+                {
+                  label: "Hapus permanen",
+                  icon: <Trash2 className="h-4 w-4" />,
+                  tone: "danger",
+                  onSelect: () => setConfirmingDelete(true),
+                  hidden: !(canDelete && (project.isArchived || project.status === "Cancelled")),
+                },
+              ]}
+            />
           </div>
         </div>
 
@@ -230,7 +284,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-5">
           <InfoField label="Tanggal Acara" value={formatDate(project.eventDate)} />
           <InfoField
             label="Countdown"
@@ -240,10 +294,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <InfoField label="Tanggal Booking" value={formatDate(project.prepStartDate)} />
           <InfoField label="Paket / Layanan" value={project.packageName} />
           <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
-          <InfoField label="Sisa Tagihan Client" value={formatCurrency(outstanding)} />
-          {canSeeMargin && <InfoField label="Margin/Keuntungan" value={formatCurrency(margin)} />}
-          <InfoField label="PIC Wedding Planner" value={pic?.name ?? "Belum ditugaskan"} />
-          <InfoField label="PIC Sales" value={picSales?.name ?? "Belum ditugaskan"} />
+          {canSeeMargin && <InfoField label="Margin" value={formatCurrency(margin)} />}
         </div>
 
         {project.description && (
@@ -274,11 +325,56 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
         )}
       </CardContent>
 
-      <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={(values) => void handleEdit(values)} initialProject={project} />
+      {closing && (
+        <Modal
+          open
+          onClose={closeClosing}
+          title="Selesaikan project"
+          description="Periksa dulu apakah semuanya sudah beres. Anda tetap bisa menyelesaikan project meski ada yang belum tuntas."
+          busy={completing}
+          error={closing.error}
+          footer={
+            <>
+              <Button variant="secondary" onClick={closeClosing} disabled={completing}>Kembali</Button>
+              <Button onClick={() => void handleComplete()} disabled={completing || closing.checklist === null}>
+                {completing ? "Menyelesaikan..." : closing.checklist && !closing.checklist.ready ? "Tetap selesaikan" : "Selesaikan project"}
+              </Button>
+            </>
+          }
+        >
+          {closing.checklist === null && !closing.error && <p className="text-[13px] text-text-secondary">Memeriksa...</p>}
+          {closing.checklist && (
+            <ul className="flex flex-col gap-3">
+              {closing.checklist.items.map((item) => (
+                <li key={item.key} className="flex items-start gap-3">
+                  <span
+                    aria-hidden
+                    className={
+                      item.done
+                        ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success-soft text-success"
+                        : "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning"
+                    }
+                  >
+                    {item.done ? <Check className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
+                  </span>
+                  <div>
+                    <p className="text-[13.5px] font-medium text-text-primary">
+                      {item.label}
+                      <span className="sr-only">{item.done ? " — sudah" : " — belum"}</span>
+                    </p>
+                    {!item.done && item.detail && <p className="text-[12.5px] text-text-secondary">{item.detail}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Modal>
+      )}
+      <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
       <ProjectFormModal
         open={duplicateOpen}
         onClose={() => setDuplicateOpen(false)}
-        onSubmit={(values) => void handleDuplicate(values)}
+        onSubmit={handleDuplicate}
         initialProject={project}
         mode="duplicate"
       />
@@ -288,8 +384,8 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
 
 function InfoField({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
   return (
-    <div>
-      <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
+    <div className="min-w-0">
+      <p className="text-[12px] font-medium text-text-secondary">{label}</p>
       <p className={emphasize ? "mt-0.5 text-[15px] font-bold tabular-nums text-navy-900" : "mt-0.5 text-[13.5px] font-medium text-text-primary"}>
         {value}
       </p>

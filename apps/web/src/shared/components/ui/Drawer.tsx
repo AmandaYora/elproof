@@ -1,6 +1,7 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import { useDialogBehavior } from "@/shared/hooks/useDialogBehavior";
 
 interface DrawerProps {
   open: boolean;
@@ -10,6 +11,8 @@ interface DrawerProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: "md" | "lg";
+  /** A save is running: Escape does nothing. */
+  busy?: boolean;
 }
 
 const SIZE: Record<NonNullable<DrawerProps["size"]>, string> = {
@@ -17,56 +20,20 @@ const SIZE: Record<NonNullable<DrawerProps["size"]>, string> = {
   lg: "sm:max-w-2xl",
 };
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 /**
  * A panel sliding in from the right for editing something without leaving
  * the page (PLAN.md Fase 3b). Full width on phones. Focus moves into the
  * panel, Tab stays inside it, Escape closes it, and focus returns to the
- * element that opened it.
+ * element that opened it (shared with Modal via useDialogBehavior).
  */
-export function Drawer({ open, onClose, title, description, children, footer, size = "md" }: DrawerProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const opener = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    panel?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !panel) return;
-      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      opener?.focus?.();
-    };
-  }, [open, onClose]);
+export function Drawer({ open, onClose, title, description, children, footer, size = "md", busy = false }: DrawerProps) {
+  const panelRef = useDialogBehavior<HTMLDivElement>({ open, onClose, busy });
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-navy-950/40 motion-safe:animate-[fade-in_150ms_ease-out]" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-navy-950/40 motion-safe:animate-[fade-in_150ms_ease-out]" onClick={busy ? undefined : onClose} aria-hidden />
       <div
         ref={panelRef}
         role="dialog"
@@ -85,8 +52,9 @@ export function Drawer({ open, onClose, title, description, children, footer, si
           <button
             type="button"
             onClick={onClose}
+            disabled={busy}
             aria-label="Tutup"
-            className="rounded-md p-1.5 text-text-secondary hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 disabled:opacity-40 sm:h-8 sm:w-8"
           >
             <X className="h-4 w-4" />
           </button>

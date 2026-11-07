@@ -39,20 +39,35 @@ export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = tr
         </div>
       </div>
 
-      <div className="mt-4">
-        <p className="text-[13.5px] leading-relaxed text-text-secondary sm:text-[14px]">{issue.description}</p>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4 relative overflow-hidden">
-        <div className="absolute top-0 left-0 bottom-0 w-1 bg-blue-400 opacity-50"></div>
-        <p className="text-[12.5px] font-bold text-navy-900 uppercase tracking-wider">Rencana penanganan</p>
-        <p className="mt-1.5 text-[13.5px] leading-relaxed text-navy-900/80">{issue.resolutionPlan}</p>
-      </div>
+      {/* Always the same three answers (FLOW-IDEAL 3.2): what happened, what we
+          are doing, when to expect news. Calm colors, never red. */}
+      <dl className="mt-4 flex flex-col gap-4">
+        <div>
+          <dt className="text-[13px] font-semibold text-text-primary">Apa yang terjadi</dt>
+          <dd className="mt-1 text-[13.5px] leading-relaxed text-text-secondary sm:text-[14px]">{issue.description || "Kami sedang memeriksa hal ini."}</dd>
+        </div>
+        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+          <dt className="text-[13px] font-semibold text-navy-900">Yang sedang kami lakukan</dt>
+          <dd className="mt-1 text-[13.5px] leading-relaxed text-navy-900/80">
+            {issue.resolutionPlan || "Tim kami sedang menyusun langkah penanganan dan akan memberi tahu Anda."}
+          </dd>
+        </div>
+        {!isResolved && (
+          <div>
+            <dt className="text-[13px] font-semibold text-text-primary">Kabar berikutnya</dt>
+            <dd className="mt-1 text-[13.5px] text-text-secondary sm:text-[14px]">
+              {issue.targetResolutionDate
+                ? `Kami targetkan selesai sekitar ${formatDate(issue.targetResolutionDate)}.`
+                : "Kami akan mengabari Anda begitu ada perkembangan."}
+            </dd>
+          </div>
+        )}
+      </dl>
 
       {isResolved && (
         <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 bottom-0 w-1 bg-emerald-400 opacity-50"></div>
-          <p className="text-[12.5px] font-bold text-emerald-800 uppercase tracking-wider">
+          <p className="text-[13px] font-semibold text-emerald-800">
             Diselesaikan {formatDate(issue.resolvedDate)}
           </p>
           {issue.resolutionNotes && (

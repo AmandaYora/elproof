@@ -26,6 +26,7 @@ import {
 import type { ProjectVendor, VendorPayment } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { overpaymentMessage } from "@/modules/projects/lib/payments";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
 export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
@@ -127,7 +128,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           {actionError && (
             <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <SummaryStat label="Total Nilai Kerja Sama" value={formatCurrency(totalContractValue)} />
             <SummaryStat label="Total Sudah Dibayar" value={formatCurrency(totalPaid)} />
             <SummaryStat label="Sisa Pembayaran" value={formatCurrency(totalRemaining)} />
@@ -160,7 +161,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       <CardListField label="No. Referensi" value={payment.referenceNumber} />
                     </div>
                     <div className="flex items-center gap-2 pt-1">
-                      <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                      <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                       {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                       {canDelete && (
                         <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -180,7 +181,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                   <TH>Tanggal</TH>
                   <TH>Metode</TH>
                   <TH>No. Referensi</TH>
-                  <TH>Kelengkapan Evidence</TH>
+                  <TH>Kelengkapan Bukti</TH>
                   <TH>Aksi</TH>
                 </TR>
               </THead>
@@ -201,7 +202,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       </TD>
                       <TD>
                         <div className="flex items-center gap-2">
-                          <IconActionButton icon={Eye} label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                          <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                           {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                           {canDelete && (
                             <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
@@ -235,6 +236,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           error={actionError}
           vendorEngagements={vendorEngagements}
           vendors={vendors}
+          payments={payments}
         />
       )}
 
@@ -244,6 +246,8 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSubmit={handleEditPayment}
+          contractValue={vendorEngagements.find((e) => e.id === editingPayment.projectVendorId)?.contractValue ?? 0}
+          others={payments.filter((p) => p.projectVendorId === editingPayment.projectVendorId && p.id !== editingPayment.id)}
         />
       )}
 
@@ -274,7 +278,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                 {(() => {
                   const count = evidence.filter((e) => e.relatedKind === "payment" && e.relatedId === deletingPayment.id).length;
                   return count > 0
-                    ? ` ${count} berkas evidence yang terlampir pada pembayaran ini akan ikut terhapus.`
+                    ? ` ${count} berkas bukti yang terlampir pada pembayaran ini akan ikut terhapus.`
                     : "";
                 })()}
               </span>
@@ -326,6 +330,7 @@ function AddPaymentModal({
   error,
   vendorEngagements,
   vendors,
+  payments,
 }: {
   open: boolean;
   onClose: () => void;
@@ -333,6 +338,7 @@ function AddPaymentModal({
   error: string | null;
   vendorEngagements: ProjectVendor[];
   vendors: { id: string; name: string; city: string | null }[];
+  payments: VendorPayment[];
 }) {
   const defaultVendorId = vendorEngagements[0]?.id ?? "";
   const [values, setValues] = useState<PaymentFormValues>(() => toFormValues(defaultVendorId));
@@ -345,11 +351,23 @@ function AddPaymentModal({
 
   async function handleSubmit() {
     const result = paymentSchema.safeParse(values);
+    const fieldErrors: Partial<Record<keyof PaymentFormValues, string>> = {};
     if (!result.success) {
-      const fieldErrors: Partial<Record<keyof PaymentFormValues, string>> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof PaymentFormValues] = issue.message;
+        fieldErrors[issue.path[0] as keyof PaymentFormValues] ??= issue.message;
       }
+    } else {
+      const engagement = vendorEngagements.find((e) => e.id === result.data.projectVendorId);
+      const over = overpaymentMessage(
+        engagement?.contractValue ?? 0,
+        payments.filter((p) => p.projectVendorId === result.data.projectVendorId),
+        result.data,
+        formatCurrency,
+        "sisa pembayaran vendor",
+      );
+      if (over) fieldErrors.amount = over;
+    }
+    if (!result.success || fieldErrors.amount) {
       setErrors(fieldErrors);
       return;
     }
@@ -408,7 +426,7 @@ function AddPaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="Nominal (Rp)" required hint={errors.amount}>
+        <Field label="Nominal (Rp)" required error={errors.amount}>
           <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
         </Field>
         <Field label="Tanggal" required hint={errors.paymentDate}>
@@ -458,11 +476,16 @@ function EditPaymentModal({
   payment,
   onClose,
   onSubmit,
+  contractValue,
+  others,
 }: {
   open: boolean;
   payment: VendorPayment;
   onClose: () => void;
   onSubmit: (values: PaymentUpdateFormValues) => Promise<void>;
+  contractValue: number;
+  /** This engagement's other payments (the one being edited left out). */
+  others: VendorPayment[];
 }) {
   const [values, setValues] = useState<PaymentUpdateFormValues>({
     type: payment.type,
@@ -482,11 +505,16 @@ function EditPaymentModal({
 
   async function handleSubmit() {
     const result = paymentUpdateSchema.safeParse(values);
+    const fieldErrors: Partial<Record<keyof PaymentUpdateFormValues, string>> = {};
     if (!result.success) {
-      const fieldErrors: Partial<Record<keyof PaymentUpdateFormValues, string>> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof PaymentUpdateFormValues] = issue.message;
+        fieldErrors[issue.path[0] as keyof PaymentUpdateFormValues] ??= issue.message;
       }
+    } else {
+      const over = overpaymentMessage(contractValue, others, result.data, formatCurrency, "sisa pembayaran vendor", payment);
+      if (over) fieldErrors.amount = over;
+    }
+    if (!result.success || fieldErrors.amount) {
       setErrors(fieldErrors);
       return;
     }
@@ -527,7 +555,7 @@ function EditPaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="Nominal (Rp)" required hint={errors.amount}>
+        <Field label="Nominal (Rp)" required error={errors.amount}>
           <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
         </Field>
         <Field label="Tanggal" required hint={errors.paymentDate}>

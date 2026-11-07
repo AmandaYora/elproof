@@ -1,88 +1,169 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { usePermissionStore } from "@/shared/stores/usePermissionStore";
-import { StatCard } from "@/shared/components/ui/StatCard";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { AttentionQueue } from "@/modules/dashboard/components/AttentionQueue";
-import { UpcomingEvents } from "@/modules/dashboard/components/UpcomingEvents";
+import { OverdueHero } from "@/modules/dashboard/components/OverdueHero";
+import { DueList, type DueListRow } from "@/modules/dashboard/components/DueList";
 import { RecentActivity } from "@/modules/dashboard/components/RecentActivity";
 import { ProjectTrendChart } from "@/modules/dashboard/components/ProjectTrendChart";
 import { RevenueTrendChart } from "@/modules/dashboard/components/RevenueTrendChart";
 import { buildAttentionItems, type AttentionItem } from "@/modules/dashboard/lib/attention";
 import { useDashboardStore } from "@/modules/dashboard/stores/useDashboardStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import { formatCurrencyCompact } from "@/shared/lib/formatters";
+import { daysUntil } from "@/modules/projects/lib/dates";
+import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
-import { useLocation } from "react-router-dom";
+import { LoadError } from "@/shared/components/feedback/LoadError";
+import { SkeletonRows } from "@/shared/components/ui/Skeleton";
+import MyProjectsPage from "@/modules/dashboard/pages/MyProjectsPage";
 import { OnboardingChecklist } from "@/modules/onboarding/components/OnboardingChecklist";
 
-export default function DashboardPage() {
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 11) return "Selamat pagi";
+  if (h < 15) return "Selamat siang";
+  if (h < 18) return "Selamat sore";
+  return "Selamat malam";
+}
+
+const TODAY_LABEL = () =>
+  new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+function FullDashboard() {
   const stats = useDashboardStore((s) => s.stats);
   const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
+  const displayName = useAuthStore((s) => s.session?.displayName ?? "");
   // The "Mulai di sini" checklist belongs to whoever runs the workspace.
   const isOwner = usePermissionStore((s) => Boolean(s.grants?.isOwner));
   const welcome = Boolean((useLocation().state as { welcome?: boolean } | null)?.welcome);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
-    void fetchDashboard();
+    setLoadFailed(false);
+    fetchDashboard().catch(() => setLoadFailed(true));
     void fetchVendors();
-  }, [fetchDashboard, fetchVendors]);
+  }, [fetchDashboard, fetchVendors, attempt]);
 
   const { items, counts } = useMemo(
     () => (stats ? buildAttentionItems(stats, vendors) : { items: [] as AttentionItem[], counts: {} as Record<string, number> }),
-    [stats, vendors]
+    [stats, vendors],
+  );
+
+  const events = useMemo<DueListRow[]>(
+    () =>
+      (stats?.upcomingProjects ?? [])
+        .filter((p) => daysUntil(p.eventDate) <= 14)
+        .map((p) => ({
+          id: p.id,
+          to: ROUTE_PATHS.projectDetail(p.id),
+          title: p.name,
+          subtitle: `${formatDate(p.eventDate)} · ${p.venue}`,
+          trailing: `H-${daysUntil(p.eventDate)}`,
+        })),
+    [stats],
+  );
+  const tasks = useMemo<DueListRow[]>(
+    () =>
+      (stats?.tasksDueThisWeek ?? []).slice(0, 6).map((t, i) => ({
+        id: `${t.projectId}-${i}`,
+        to: ROUTE_PATHS.projectDetail(t.projectId, "milestone"),
+        title: t.name,
+        subtitle: t.projectName,
+        trailing: daysUntil(t.targetDate) === 0 ? "Hari ini" : formatDate(t.targetDate),
+      })),
+    [stats],
+  );
+  const payments = useMemo<DueListRow[]>(
+    () =>
+      (stats?.dueSoonTerms ?? []).slice(0, 6).map((t, i) => ({
+        id: `${t.projectId}-${i}`,
+        to: ROUTE_PATHS.projectDetail(t.projectId, "pembayaran/client"),
+        title: `${t.projectName} · ${t.label}`,
+        subtitle: `Jatuh tempo ${formatDate(t.dueDate)}`,
+        trailing: formatCurrency(t.remaining),
+      })),
+    [stats],
   );
 
   if (!stats) {
-    return <div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>;
+    return loadFailed ? (
+      <LoadError message="Beranda belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />
+    ) : (
+      <div className="rounded-lg border border-border bg-surface p-5"><SkeletonRows rows={5} label="Memuat beranda" /></div>
+    );
   }
 
-  const revenue = stats.revenue;
-  const revenueSublabel =
-    revenue.deltaPercent === null
-      ? "Nilai kontrak event yang berlangsung bulan ini"
-      : `${revenue.deltaPercent >= 0 ? "+" : ""}${Math.round(revenue.deltaPercent)}% dari bulan lalu`;
+  const first = displayName.split(" ")[0];
+  const stage = stats.stageCounts;
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-bold text-text-primary">Dashboard</h1>
-        <p className="mt-1 text-[13px] text-text-secondary">Ringkasan kondisi operasional seluruh project pernikahan.</p>
+        <h1 className="text-xl font-bold text-text-primary">
+          {greeting()}
+          {first ? `, ${first}` : ""}
+        </h1>
+        <p className="mt-1 text-[13px] text-text-secondary">{TODAY_LABEL()}</p>
       </div>
 
+      {/* Money that is late comes first; with none, the setup guide leads. */}
+      {stats.overdueTermsTotal > 0 && <OverdueHero total={stats.overdueTermsTotal} terms={stats.overdueTerms} />}
       {isOwner && <OnboardingChecklist welcome={welcome} />}
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          label="Omzet Bulan Ini"
-          value={formatCurrencyCompact(revenue.total)}
-          tone={revenue.deltaPercent === null ? "info" : revenue.deltaPercent >= 0 ? "success" : "warning"}
-          sublabel={revenueSublabel}
-        />
-        <StatCard label="Seluruh Project" value={stats.totalProjects} sublabel="Lihat semua project" to={ROUTE_PATHS.projects} />
-        <StatCard label="Project Aktif" value={stats.activeProjects} sublabel="Preparation & Ready" tone="info" to={ROUTE_PATHS.projects} />
-        <StatCard label="Vendor Aktif" value={stats.activeVendorCount} sublabel="Terlibat di project berjalan" to={ROUTE_PATHS.vendors} />
-        <StatCard
-          label="Kendala Terbuka"
-          value={stats.openIssues.length}
-          tone={stats.openIssues.length > 0 ? "danger" : "success"}
-          sublabel="Belum diselesaikan"
-        />
-      </div>
-
-      <RevenueTrendChart points={stats.revenueTrend} />
-
-      <ProjectTrendChart points={stats.projectTrend} />
+      {stats.overdueTermsTotal === 0 && <OverdueHero total={0} terms={[]} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <AttentionQueue items={items} counts={counts} />
         </div>
         <div className="flex flex-col gap-6">
-          <UpcomingEvents projects={stats.upcomingProjects} />
-          <RecentActivity activity={stats.recentActivity} />
+          <DueList title="Acara 14 hari ke depan" subtitle="Hitung mundur per project." rows={events} empty="Tidak ada acara dalam 14 hari ke depan." />
+          <DueList title="Tugas minggu ini" subtitle="Timeline project yang jatuh tempo 7 hari ke depan." rows={tasks} empty="Tidak ada timeline yang jatuh tempo minggu ini." />
         </div>
       </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <DueList title="Pembayaran masuk 30 hari ke depan" subtitle="Termin klien yang belum lunas." rows={payments} empty="Belum ada termin jatuh tempo dalam 30 hari. Atur jadwal termin di tab Keuangan project." />
+        </div>
+        <section aria-labelledby="stage-heading" className="rounded-lg border border-border bg-surface px-5 py-4">
+          <h2 id="stage-heading" className="text-[15px] font-semibold text-text-primary">Project per tahap</h2>
+          <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+            {[
+              ["Draf", stage.draft],
+              ["Persiapan", stage.preparation],
+              ["Siap", stage.ready],
+            ].map(([label, n]) => (
+              <div key={label as string} className="rounded-md bg-surface-muted px-2 py-3">
+                <dd className="text-xl font-bold tabular-nums text-navy-900">{n}</dd>
+                <dt className="text-[12px] text-text-secondary">{label}</dt>
+              </div>
+            ))}
+          </dl>
+          <Link to={ROUTE_PATHS.projects} className="mt-3 inline-block text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline">
+            Lihat semua project
+          </Link>
+        </section>
+      </div>
+
+      <RevenueTrendChart points={stats.revenueTrend} />
+      <ProjectTrendChart points={stats.projectTrend} />
+
+      <RecentActivity activity={stats.recentActivity} />
     </div>
   );
+}
+
+/**
+ * Beranda: the tenant-wide dashboard for roles that may see every project's
+ * numbers; everyone else lands on "Proyek saya".
+ */
+export default function DashboardPage() {
+  const grants = usePermissionStore((s) => s.grants);
+  const seesEverything = grants?.permissions.includes("dashboard.view") === true && grants.projectScope === "all";
+  return seesEverything ? <FullDashboard /> : <MyProjectsPage />;
 }

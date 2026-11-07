@@ -136,7 +136,10 @@ export function Combobox({ value, onChange, children, className, disabled, place
       const opt = filtered[highlighted];
       if (opt) selectOption(opt);
     } else if (e.key === "Escape") {
+      // Closes the list only: without stopPropagation the same keypress also
+      // reaches the dialog the select sits in and closes it, losing the form.
       e.preventDefault();
+      e.stopPropagation();
       closeDropdown();
       triggerRef.current?.focus();
     }
@@ -151,7 +154,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
         onClick={() => (open ? closeDropdown() : openDropdown())}
         onKeyDown={handleTriggerKeyDown}
         className={cn(
-          "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-3 text-left text-sm text-text-primary transition-colors",
+          "flex h-9 pointer-coarse:h-11 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-3 text-left text-sm text-text-primary transition-colors",
           "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
           "disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-secondary",
           open && "border-navy-900 ring-2 ring-navy-900/20"
