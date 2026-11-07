@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"elproof/internal/shared/utils"
 	"time"
 
 	"elproof/internal/modules/clients/domain"
@@ -84,7 +85,7 @@ func (r *MySQLClientRepository) ListByTenantPaginated(ctx context.Context, tenan
 	if search != "" {
 		countQuery += ` AND (name LIKE ? OR email LIKE ?)`
 		listQuery += ` AND (name LIKE ? OR email LIKE ?)`
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like)
 	}
 

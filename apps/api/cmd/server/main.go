@@ -281,6 +281,7 @@ func serve(cfg config.Config) {
 	storageClient, err := storage.New(storage.Config{
 		Endpoint: cfg.S3Endpoint, Bucket: cfg.S3Bucket,
 		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL,
+		Region: cfg.S3Region, Presign: cfg.S3Presign,
 	})
 	if err != nil {
 		log.Fatalf("failed to create object storage client: %v", err)
@@ -347,6 +348,7 @@ func serve(cfg config.Config) {
 	// Project Detail tab and Client Portal's Venue tab, but projectsModule is
 	// built above, before vendorsModule exists.
 	projectsModule.SetVenueResolver(vendorsModule.Contracts())
+	projectsModule.SetVendorDirectory(vendorsModule.Contracts())
 	clientsModule := clients.NewModule(db, projectsModule.Contracts(), identityModule.Contracts())
 	// Two-phase wiring: projects needs clients' contract (Fase 6 client-portal
 	// scoping) but clients.NewModule already needs projects.Contracts() to

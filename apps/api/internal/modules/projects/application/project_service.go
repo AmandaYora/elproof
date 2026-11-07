@@ -325,6 +325,9 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor Proje
 	// A new project always starts as Draft: later steps are explicit
 	// transitions, so creating cannot skip them (ADR-0027).
 	input.Status = domain.StatusDraft
+	if err := s.checkPICs(ctx, tenantID, input.PICStaffID, picSalesStaffID); err != nil {
+		return nil, err
+	}
 	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
 		return nil, err
 	}
@@ -345,6 +348,25 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor Proje
 	return p, nil
 }
 
+// checkPICs confirms every named PIC is a staff member of this workspace (0 =
+// none). Without it a body could attach another workspace's staff id to a
+// project and read that person's name back through the project's responses.
+func (s *ProjectService) checkPICs(ctx context.Context, tenantID int64, ids ...int64) error {
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		_, ok, err := s.staff.GetName(ctx, tenantID, id)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return apperror.Validation("Staf tidak ditemukan", map[string][]string{"picStaffId": {"Staf tidak ditemukan"}})
+		}
+	}
+	return nil
+}
+
 // Update rejects a Wedding Planner ("Staff" role) reassigning PICStaffID —
 // confirmed role rule: only Owner/Admin assign or reassign who a project's
 // PIC is, even on a project the Wedding Planner already manages day to day.
@@ -363,6 +385,20 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 	}
 	if !actor.CanAssignPIC && (input.PICStaffID != p.PICStaffID || input.PICSalesStaffID != p.PICSalesStaffID) {
 		return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC project").WithCode("forbidden_permission")
+	}
+	// Only a PIC that changes is looked up: a PIC whose staff row was deleted
+	// since must not make every later edit of the project fail.
+	if input.PICStaffID != p.PICStaffID || input.PICSalesStaffID != p.PICSalesStaffID {
+		var changed []int64
+		if input.PICStaffID != p.PICStaffID {
+			changed = append(changed, input.PICStaffID)
+		}
+		if input.PICSalesStaffID != p.PICSalesStaffID {
+			changed = append(changed, input.PICSalesStaffID)
+		}
+		if err := s.checkPICs(ctx, tenantID, changed...); err != nil {
+			return nil, err
+		}
 	}
 	// Status is deliberately not taken from the input: it changes only through
 	// Transition / Cancel, so editing a project's details can never skip a
@@ -387,6 +423,10 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 			p.VenueRentalPrice = nil
 			p.VenueCharge = nil
 		} else {
+			// Same venue as before: keep the lenient behaviour below (a venue
+			// deleted since must not make every later edit fail). A different
+			// one is being attached now and must be this workspace's own.
+			sameVenue := p.VenueID != nil && *p.VenueID == *input.VenueID
 			p.VenueID = input.VenueID
 			p.VenueRentalPrice = input.VenueRentalPrice
 			p.VenueCharge = input.VenueCharge
@@ -395,8 +435,17 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 			// never disagree (PLAN.md Fase 4c "venue tunggal"). If the venue
 			// cannot be resolved, the old text stays.
 			if s.venues != nil {
-				if summary, err := s.venues.GetVenueSummary(ctx, tenantID, *input.VenueID); err == nil && summary.Name != "" {
-					p.Venue = summary.Name
+				summary, err := s.venues.GetVenueSummary(ctx, tenantID, *input.VenueID)
+				switch {
+				case err == nil:
+					if summary.Name != "" {
+						p.Venue = summary.Name
+					}
+				case !sameVenue:
+					if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
+						return nil, apperror.Validation("Venue tidak ditemukan", map[string][]string{"venueId": {"Venue tidak ditemukan"}})
+					}
+					return nil, err
 				}
 			}
 		}

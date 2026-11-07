@@ -202,7 +202,7 @@ func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int
 	var conditions []string
 	if search != "" {
 		conditions = append(conditions, `(name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ? OR venue LIKE ?)`)
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like, like, like)
 	}
 	if status != "" {

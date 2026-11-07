@@ -15,6 +15,7 @@ import (
 )
 
 type Module struct {
+	references               *application.References
 	handler                  *presentation.Handler
 	milestoneTemplateHandler *presentation.MilestoneTemplateHandler
 	contracts                contracts.Contracts
@@ -45,15 +46,19 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService, contractReader)
 	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService, contractReader)
 	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, evidenceService, activityService, contractReader)
-	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, activityService)
+	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, vendorEngagementRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo, evidenceService)
 	paymentTermService := application.NewPaymentTermService(paymentTermRepo, clientPaymentRepo, projectService, activityService)
 	myProjectsService := application.NewMyProjectsService(projectService, paymentTermService)
 	closingService := application.NewClosingChecklistService(projectService, clientPaymentRepo, paymentRepo, venuePaymentRepo, vendorEngagementRepo, issueRepo)
 
+	references := application.NewReferences(staff)
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
 
+	handler.SetReferences(references)
+
 	return &Module{
+		references:               references,
 		handler:                  handler,
 		milestoneTemplateHandler: presentation.NewMilestoneTemplateHandler(milestoneTemplateService),
 		contracts:                contracts.New(projectService, vendorEngagementService, milestoneTemplateService),
@@ -88,6 +93,12 @@ func (m *Module) SetClientCleaner(cleaner application.ClientCleaner) {
 // SetTrialQuota plugs in the platform module's trial caps (main.go).
 func (m *Module) SetTrialQuota(q application.TrialQuota) {
 	m.projectService.SetTrialQuota(q)
+}
+
+// SetVendorDirectory completes the same two-phase wiring, so a vendor or a
+// category named in a request body can be confirmed to be this workspace's.
+func (m *Module) SetVendorDirectory(d application.VendorDirectory) {
+	m.references.SetVendors(d)
 }
 
 func (m *Module) SetVenueResolver(resolver application.VenueResolver) {

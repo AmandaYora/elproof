@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"elproof/internal/shared/utils"
 	"errors"
 
 	"elproof/internal/modules/staff/domain"
@@ -62,7 +63,7 @@ func (r *MySQLStaffRepository) ListPaginated(ctx context.Context, tenantID int64
 	if search != "" {
 		countQuery += ` AND (name LIKE ? OR email LIKE ?)`
 		listQuery += ` AND (name LIKE ? OR email LIKE ?)`
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like)
 	}
 	if role != "" {

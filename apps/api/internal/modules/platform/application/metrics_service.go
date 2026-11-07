@@ -85,3 +85,37 @@ func (s *TenantService) PlatformMetrics(ctx context.Context, now time.Time) (dom
 		PlanMonthly: monthly, PlanPrice: price, FreeTenants: free, Paid: paid,
 	}), nil
 }
+
+// PlatformTrends is the data behind the dashboard's two charts, bucketed on
+// the server so the console never needs every tenant and every transaction.
+func (s *TenantService) PlatformTrends(ctx context.Context, period domain.TrendPeriod, now time.Time) (domain.Trends, error) {
+	wib := time.FixedZone("WIB", 7*60*60)
+	local := now.In(wib)
+	yearStart := time.Date(local.Year(), 1, 1, 0, 0, 0, 0, wib)
+
+	paidTx, err := s.billing.PaidSince(ctx, yearStart)
+	if err != nil {
+		return domain.Trends{}, err
+	}
+	paid := make([]domain.PaidPayment, 0, len(paidTx))
+	for _, p := range paidTx {
+		paid = append(paid, domain.PaidPayment{TenantID: p.TenantID, Amount: p.Amount, PaidAt: p.PaidAt})
+	}
+	joined, err := s.repo.JoinedSince(ctx, yearStart)
+	if err != nil {
+		return domain.Trends{}, err
+	}
+	return domain.ComputeTrends(period, now, paid, joined), nil
+}
+
+// maxTenantNames bounds one lookup; a table page never needs more.
+const maxTenantNames = 100
+
+// TenantNames resolves business names for the tenants shown on one page of a
+// list (invoices, requests). Unknown ids are simply absent.
+func (s *TenantService) TenantNames(ctx context.Context, ids []int64) (map[int64]string, error) {
+	if len(ids) > maxTenantNames {
+		ids = ids[:maxTenantNames]
+	}
+	return s.repo.NamesByIDs(ctx, ids)
+}

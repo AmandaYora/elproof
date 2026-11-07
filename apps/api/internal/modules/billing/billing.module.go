@@ -82,6 +82,7 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/plans", authed(http.HandlerFunc(m.planHandler.Collection)))
 	mux.Handle("/api/v1/plans/", authed(http.HandlerFunc(m.planHandler.Item)))
 	mux.Handle("/api/v1/subscription-transactions", authed(httpx.Method(http.MethodGet, m.transactionHandler.List)))
+	mux.Handle("/api/v1/subscription-transactions/", authed(httpx.Method(http.MethodGet, m.transactionHandler.Item)))
 
 	// EXTERNAL: not wrapped in httpx.Method — each handler checks its own
 	// method so a 405 still carries {code:"bad_request"}, matching the

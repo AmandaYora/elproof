@@ -21,6 +21,23 @@ const (
 	EvidenceBookingProof EvidenceType = "Booking Proof"
 )
 
+// ValidEvidenceTypes lists every accepted document type (the column is an enum).
+var ValidEvidenceTypes = []EvidenceType{
+	EvidenceQuotation, EvidenceInvoice, EvidenceContract, EvidenceTransferProof, EvidenceReceipt,
+	EvidencePurchaseOrder, EvidencePhoto, EvidenceDocument, EvidenceScreenshot, EvidenceMinutesOfMeeting,
+	EvidenceOther, EvidenceBookingProof,
+}
+
+// IsValidEvidenceType reports whether t is a known document type.
+func IsValidEvidenceType(t EvidenceType) bool {
+	for _, v := range ValidEvidenceTypes {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
 type EvidenceRelatedKind string
 
 const (

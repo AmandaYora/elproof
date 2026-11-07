@@ -40,6 +40,8 @@ type EvidenceRepository interface {
 	// DeleteByRelated hard-deletes every evidence row for one related_kind+
 	// related_id pair — backs DeleteForRelated below.
 	DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error
+	// RelatedBelongsToProject: the item a document attaches to must be a row of the same project.
+	RelatedBelongsToProject(ctx context.Context, projectID int64, kind domain.EvidenceRelatedKind, relatedID int64) (bool, error)
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -50,6 +52,17 @@ type ObjectStorage interface {
 	Open(ctx context.Context, key string) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
 }
+
+// Presigner is what object storage offers when it can hand out direct,
+// time-limited download links. Optional: storage that cannot is simply not
+// asked, and callers fall back to streaming through the API.
+type Presigner interface {
+	CanPresign() bool
+	PresignGet(ctx context.Context, key, fileName string, attachment bool, ttl time.Duration) (string, error)
+}
+
+// EvidenceLinkTTL is how long a direct link works. The browser uses it at once.
+const EvidenceLinkTTL = 2 * time.Minute
 
 type EvidenceService struct {
 	repo     EvidenceRepository
@@ -158,6 +171,20 @@ type UploadEvidenceInput struct {
 }
 
 func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64, actorStaffID int64, input UploadEvidenceInput) (*domain.Evidence, error) {
+	// Checked before anything is stored: an unknown type used to reach the
+	// database as a truncated enum (500) after the file was already uploaded.
+	if !domain.IsValidEvidenceType(input.Type) {
+		return nil, apperror.Validation("Jenis dokumen tidak valid", map[string][]string{"type": {"Pilih jenis dokumen yang tersedia"}})
+	}
+	// What the document attaches to must be inside this project: the project
+	// in the path is the caller's own, the related id in the body is not.
+	ok, err := s.repo.RelatedBelongsToProject(ctx, projectID, input.RelatedKind, input.RelatedID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, apperror.Validation("Data terkait tidak ditemukan", map[string][]string{"relatedId": {"Data terkait tidak ditemukan di project ini"}})
+	}
 	decoded, err := base64.StdEncoding.DecodeString(input.Base64Data)
 	if err != nil {
 		return nil, apperror.Validation("Data file tidak valid", map[string][]string{"base64Data": {"Gagal membaca data file"}})
@@ -222,6 +249,32 @@ func (s *EvidenceService) Download(ctx context.Context, projectID, id int64) (*d
 		return nil, nil, apperror.Internal("Gagal mengambil file dari object storage")
 	}
 	return e, reader, nil
+}
+
+// ErrLinkUnavailable means direct links are switched off; stream instead.
+var ErrLinkUnavailable = apperror.Unsupported("Tautan langsung tidak tersedia").WithCode("presign_unavailable")
+
+// Link returns a direct, short-lived URL to the stored file. It looks the
+// evidence up inside its project first, so a link is only ever made for a
+// document of the caller's own project; the handler then applies the
+// client-visibility rule before handing the URL out.
+func (s *EvidenceService) Link(ctx context.Context, projectID, id int64, attachment bool) (*domain.Evidence, string, time.Time, error) {
+	e, err := s.repo.FindByID(ctx, projectID, id)
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+	if e == nil {
+		return nil, "", time.Time{}, apperror.NotFound("Evidence tidak ditemukan")
+	}
+	p, ok := s.storage.(Presigner)
+	if !ok || !p.CanPresign() {
+		return e, "", time.Time{}, ErrLinkUnavailable
+	}
+	url, err := p.PresignGet(ctx, e.StoragePath, e.FileName, attachment, EvidenceLinkTTL)
+	if err != nil {
+		return nil, "", time.Time{}, apperror.Internal("Gagal membuat tautan file")
+	}
+	return e, url, time.Now().Add(EvidenceLinkTTL), nil
 }
 
 var unsafeFileNameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)

@@ -176,11 +176,13 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/tenants", authed(http.HandlerFunc(m.tenantHandler.Collection)))
 	mux.Handle("/api/v1/tenants/", authed(http.HandlerFunc(m.tenantHandler.Item)))
 	mux.Handle("/api/v1/tenants/export", authed(httpx.Method(http.MethodGet, m.tenantHandler.Export)))
+	mux.Handle("/api/v1/tenants/names", authed(httpx.Method(http.MethodGet, m.tenantHandler.Names)))
 	mux.Handle("/api/v1/subscriptions/pay", authed(httpx.Method(http.MethodPost, m.tenantHandler.Pay)))
 	mux.Handle("/api/v1/subscriptions/pending-charge", authed(httpx.Method(http.MethodGet, m.tenantHandler.PendingCharge)))
 	mux.Handle("/api/v1/subscriptions/pending-charge/cancel", authed(httpx.Method(http.MethodPost, m.tenantHandler.CancelPendingCharge)))
 	mux.Handle("/api/v1/trial-limits", authed(http.HandlerFunc(m.tenantHandler.TrialLimits)))
 	mux.Handle("/api/v1/platform/metrics", authed(httpx.Method(http.MethodGet, m.tenantHandler.Metrics)))
+	mux.Handle("/api/v1/platform/trends", authed(httpx.Method(http.MethodGet, m.tenantHandler.Trends)))
 	// Platform Console back office (notes, data requests, announcements,
 	// policy, support sessions) and the Owner-side counterparts. The exact
 	// "/tenants/me/support-access" pattern outranks the "/tenants/" prefix.

@@ -59,7 +59,7 @@ func clientProjectSubpathAllowed(rest []string) bool {
 		}
 		return false
 	case 3:
-		return rest[0] == "evidence" && isID(rest[1]) && rest[2] == "file"
+		return rest[0] == "evidence" && isID(rest[1]) && (rest[2] == "file" || rest[2] == "link")
 	default:
 		return false
 	}

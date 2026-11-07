@@ -48,6 +48,10 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request, claims sta
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"foundDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
+	if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", body.PICStaffID); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	issue, err := h.issues.Create(r.Context(), projectID, claims.staffID, application.IssueInput{
 		ProjectVendorID: body.ProjectVendorID, VendorMilestoneID: body.VendorMilestoneID, Title: body.Title, Description: body.Description,
 		Impact: domain.IssueImpact(body.Impact), FoundDate: foundDate, ResolutionPlan: body.ResolutionPlan,
@@ -91,6 +95,10 @@ func (h *Handler) updateIssue(w http.ResponseWriter, r *http.Request, claims sta
 	foundDate, err := parseDate(body.FoundDate)
 	if err != nil {
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"foundDate": {"Gunakan format YYYY-MM-DD"}})
+		return
+	}
+	if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", body.PICStaffID); err != nil {
+		writeAppError(w, err)
 		return
 	}
 	issue, err := h.issues.Update(r.Context(), projectID, issueID, claims.staffID, application.IssueUpdateInput{

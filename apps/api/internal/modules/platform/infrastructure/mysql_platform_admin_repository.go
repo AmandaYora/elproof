@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"elproof/internal/shared/utils"
 	"strings"
 
 	"elproof/internal/modules/platform/domain"
@@ -60,7 +61,7 @@ func (r *MySQLPlatformAdminRepository) ListPaginated(ctx context.Context, params
 	var conditions []string
 	if search != "" {
 		conditions = append(conditions, `(name LIKE ? OR email LIKE ?)`)
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like)
 	}
 	if role != "" {

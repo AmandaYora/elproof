@@ -2,6 +2,8 @@ package presentation
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"elproof/internal/modules/platform/domain"
@@ -74,4 +76,74 @@ func (h *TenantHandler) Metrics(w http.ResponseWriter, r *http.Request) {
 		Revenue30d: m.Revenue30d, RevenuePrev30d: m.RevenuePrev30d, OverdueValue: m.OverdueValue,
 		TrialsEndingSoon: toAttention(m.TrialsEndingSoon), OverdueTenants: toAttention(m.OverdueTenants),
 	})
+}
+
+type trendPointResponse struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Value int64  `json:"value"`
+}
+
+func toTrendPoints(points []domain.TrendPoint) []trendPointResponse {
+	out := make([]trendPointResponse, 0, len(points))
+	for _, p := range points {
+		out = append(out, trendPointResponse{Key: p.Key, Label: p.Label, Value: p.Value})
+	}
+	return out
+}
+
+// Trends is GET /platform/trends?period=month|year: the revenue and
+// new-tenant bars of the dashboard. Any platform admin role may read it.
+func (h *TenantHandler) Trends(w http.ResponseWriter, r *http.Request) {
+	if !requirePlatformAdmin(w, r) {
+		return
+	}
+	period := domain.TrendMonth
+	switch r.URL.Query().Get("period") {
+	case "", "month":
+	case "year":
+		period = domain.TrendYear
+	default:
+		response.Error(w, http.StatusBadRequest, "period harus month atau year", nil)
+		return
+	}
+	t, err := h.tenants.PlatformTrends(r.Context(), period, time.Now())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", map[string]interface{}{
+		"period": string(t.Period), "revenue": toTrendPoints(t.Revenue), "newTenants": toTrendPoints(t.NewTenants),
+	})
+}
+
+// Names is GET /tenants/names?ids=1,2,3: {id: businessName} for the rows of
+// one page. Names only, so every platform role may read it.
+func (h *TenantHandler) Names(w http.ResponseWriter, r *http.Request) {
+	if !requirePlatformAdmin(w, r) {
+		return
+	}
+	var ids []int64
+	for _, raw := range strings.Split(r.URL.Query().Get("ids"), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(w, http.StatusBadRequest, "ids tidak valid", nil)
+			return
+		}
+		ids = append(ids, id)
+	}
+	names, err := h.tenants.TenantNames(r.Context(), ids)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make(map[string]string, len(names))
+	for id, name := range names {
+		out[strconv.FormatInt(id, 10)] = name
+	}
+	response.OK(w, "ok", out)
 }

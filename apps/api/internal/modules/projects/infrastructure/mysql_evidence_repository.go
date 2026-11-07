@@ -162,3 +162,34 @@ func (r *MySQLEvidenceRepository) DeleteByRelated(ctx context.Context, kind doma
 	_, err := r.db.ExecContext(ctx, `DELETE FROM evidence WHERE related_kind = ? AND related_id = ?`, string(kind), relatedID)
 	return err
 }
+
+// relatedOwnershipQueries: per kind, one query that is true only when the
+// thing the document attaches to is a row of this very project.
+var relatedOwnershipQueries = map[domain.EvidenceRelatedKind]string{
+	domain.RelatedVendorMilestone:  `SELECT 1 FROM vendor_milestones vm JOIN project_vendors pv ON pv.id = vm.project_vendor_id WHERE vm.id = ? AND pv.project_id = ?`,
+	domain.RelatedPayment:          `SELECT 1 FROM vendor_payments WHERE id = ? AND project_id = ?`,
+	domain.RelatedProjectVendor:    `SELECT 1 FROM project_vendors WHERE id = ? AND project_id = ?`,
+	domain.RelatedIssue:            `SELECT 1 FROM vendor_issues WHERE id = ? AND project_id = ?`,
+	domain.RelatedClientPayment:    `SELECT 1 FROM client_payments WHERE id = ? AND project_id = ?`,
+	domain.RelatedVenuePayment:     `SELECT 1 FROM venue_payments WHERE id = ? AND project_id = ?`,
+	domain.RelatedProjectMilestone: `SELECT 1 FROM project_milestones WHERE id = ? AND project_id = ?`,
+}
+
+// RelatedBelongsToProject reports whether a document may attach to
+// (kind, relatedID) inside projectID. A general document attaches to nothing
+// in particular and is always fine; an unknown kind never is.
+func (r *MySQLEvidenceRepository) RelatedBelongsToProject(ctx context.Context, projectID int64, kind domain.EvidenceRelatedKind, relatedID int64) (bool, error) {
+	if kind == domain.RelatedGeneral {
+		return true, nil
+	}
+	query, known := relatedOwnershipQueries[kind]
+	if !known {
+		return false, nil
+	}
+	var one int
+	err := r.db.QueryRowContext(ctx, query, relatedID, projectID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}

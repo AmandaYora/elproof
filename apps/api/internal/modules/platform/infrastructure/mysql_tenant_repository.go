@@ -336,6 +336,44 @@ func (r *MySQLTenantRepository) FreeGrantTenantIDs(ctx context.Context) (map[int
 	return out, rows.Err()
 }
 
+func (r *MySQLTenantRepository) JoinedSince(ctx context.Context, since time.Time) ([]time.Time, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT joined_at FROM tenants WHERE joined_at >= ? ORDER BY joined_at`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []time.Time
+	for rows.Next() {
+		var t time.Time
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (r *MySQLTenantRepository) NamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, business_name FROM tenants WHERE id IN (`+utils.Placeholders(len(ids))+`)`, utils.Int64Args(ids)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}
+
 // SetOnboardingDismissed records that the Owner closed the checklist.
 func (r *MySQLTenantRepository) SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET onboarding_dismissed_at = ? WHERE id = ?`, when, id)

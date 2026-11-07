@@ -13,6 +13,7 @@ import (
 
 	"elproof/internal/shared/compress"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 	"elproof/internal/shared/storage"
 )
@@ -93,6 +94,12 @@ type slideUploadBody struct {
 // cmd/server denies every unlisted write to anyone else). The photo is
 // flattened to JPEG and compressed like every other upload.
 func (h *LoginSlidesHandler) Replace(w http.ResponseWriter, r *http.Request) {
+	// The role policy in cmd/server only judges platform admins; a workspace's
+	// own staff token reaches this handler too, so it is refused here.
+	if claims, ok := middleware.FromContext(r.Context()); !ok || claims.PrincipalType != "platform_admin" {
+		response.Error(w, http.StatusForbidden, "Hanya admin platform yang dapat mengganti foto login", nil)
+		return
+	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/console/login-slides/")
 	if len(segments) != 1 {
 		response.Error(w, http.StatusNotFound, "Slide tidak ditemukan", nil)

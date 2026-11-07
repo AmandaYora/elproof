@@ -30,6 +30,10 @@ type Config struct {
 	S3AccessKey string
 	S3SecretKey string
 	S3UseSSL    bool
+	S3Region    string
+	// S3Presign: hand browsers direct, short-lived file links (the storage
+	// endpoint must be reachable from them).
+	S3Presign bool
 
 	// PaymentEncryptionKey derives the AES-256-GCM key `payment` uses to
 	// encrypt gateway credentials at rest — see MODULE_PAYMENT.md §8.
@@ -89,6 +93,8 @@ func Load() Config {
 		S3AccessKey: getEnv("S3_ACCESS_KEY", ""),
 		S3SecretKey: getEnv("S3_SECRET_KEY", ""),
 		S3UseSSL:    getEnv("S3_USE_SSL", "true") == "true",
+		S3Region:    getEnv("S3_REGION", ""),
+		S3Presign:   getEnv("S3_PRESIGN", "true") == "true",
 
 		PaymentEncryptionKey:     getEnv("PAYMENT_ENCRYPTION_KEY", ""),
 		PaymentReconcileInterval: getDuration("PAYMENT_RECONCILE_INTERVAL", 3*time.Minute),

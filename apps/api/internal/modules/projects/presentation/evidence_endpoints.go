@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -122,4 +123,31 @@ func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, proje
 	w.Header().Set("Content-Disposition", `inline; filename="`+e.FileName+`"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
+}
+
+// linkEvidence is GET /projects/{id}/evidence/{evidenceId}/link[?disposition=attachment]:
+// a direct, two-minute link to the stored file, so the bytes go from object
+// storage to the browser instead of through this server. It applies exactly
+// the rules of downloadEvidence (project scope, client visibility); when the
+// deployment has no direct links the answer is 501 presign_unavailable and the
+// web falls back to /file.
+func (h *Handler) linkEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string, isClient bool) {
+	evidenceID, err := parseInt64(evidenceIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	attachment := r.URL.Query().Get("disposition") == "attachment"
+	e, url, expiresAt, err := h.evidence.Link(r.Context(), projectID, evidenceID, attachment)
+	// A client may not learn that an internal document exists, even by the
+	// shape of an error, so visibility is judged before anything else is said.
+	if e != nil && isClient && !clientCanSeeEvidence(*e, middleware.GrantsFrom(r.Context()).Can) {
+		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
+		return
+	}
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", map[string]string{"url": url, "expiresAt": expiresAt.In(wib).Format(time.RFC3339)})
 }

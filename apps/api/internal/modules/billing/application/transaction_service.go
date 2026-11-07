@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/apperror"
 	"time"
 
 	"elproof/internal/modules/billing/domain"
@@ -11,6 +12,8 @@ import (
 type TransactionRepository interface {
 	List(ctx context.Context, tenantID *int64) ([]domain.Transaction, error)
 	ListPaginated(ctx context.Context, tenantID *int64, params pagination.Params, status string) ([]domain.Transaction, int64, error)
+	// FindByID returns one transaction or nil; a non-nil tenantID confines it to that tenant.
+	FindByID(ctx context.Context, tenantID *int64, id int64) (*domain.Transaction, error)
 	// ListPaidSince returns transactions with status "paid" paid at or after `since` (granted ones are not revenue).
 	ListPaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error)
 	Create(ctx context.Context, tx *domain.Transaction) error
@@ -34,6 +37,19 @@ func (s *TransactionService) ListPaginated(ctx context.Context, tenantID *int64,
 }
 
 // PaidSince backs the platform revenue metrics.
+// Get returns one transaction, or a not-found error when it does not exist or
+// belongs to another tenant than the (non-nil) tenantID: both look the same.
+func (s *TransactionService) Get(ctx context.Context, tenantID *int64, id int64) (*domain.Transaction, error) {
+	t, err := s.repo.FindByID(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if t == nil {
+		return nil, apperror.NotFound("Transaksi tidak ditemukan")
+	}
+	return t, nil
+}
+
 func (s *TransactionService) PaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error) {
 	return s.repo.ListPaidSince(ctx, since)
 }

@@ -128,6 +128,10 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
+	if err := h.checkEngagementReferences(r.Context(), claims.tenantID, body); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	pv, err := h.vendors.Create(r.Context(), projectID, claims.staffID, input)
 	if err != nil {
 		writeAppError(w, err)
@@ -136,6 +140,18 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 	// A freshly created engagement has no vendor_payments rows yet — 0 paid,
 	// no ledger lookup needed.
 	response.Created(w, "Vendor berhasil ditambahkan ke project", toProjectVendorResponse(*pv, 0))
+}
+
+// checkEngagementReferences: the vendor, its category and the PIC named in the
+// body must all be this workspace's own.
+func (h *Handler) checkEngagementReferences(ctx context.Context, tenantID int64, body vendorEngagementInputBody) error {
+	if err := h.refs.Vendor(ctx, tenantID, "vendorId", body.VendorID); err != nil {
+		return err
+	}
+	if err := h.refs.Category(ctx, tenantID, "categoryId", body.CategoryID); err != nil {
+		return err
+	}
+	return h.refs.Staff(ctx, tenantID, "picStaffId", body.PICStaffID)
 }
 
 func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
@@ -152,6 +168,10 @@ func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request,
 	input, err := toVendorEngagementInput(body)
 	if err != nil {
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
+		return
+	}
+	if err := h.checkEngagementReferences(r.Context(), claims.tenantID, body); err != nil {
+		writeAppError(w, err)
 		return
 	}
 	pv, err := h.vendors.Update(r.Context(), projectID, pvID, claims.staffID, input)
@@ -229,6 +249,10 @@ func (h *Handler) createVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"targetDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
+	if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", body.PICStaffID); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	m, err := h.vendors.CreateMilestone(r.Context(), projectID, pvID, claims.staffID, application.VendorMilestoneInput{
 		Name: body.Name, Description: body.Description, TargetDate: targetDate, PICStaffID: body.PICStaffID,
 	})
@@ -267,6 +291,10 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 	targetDate, err := parseDate(body.TargetDate)
 	if err != nil {
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"targetDate": {"Gunakan format YYYY-MM-DD"}})
+		return
+	}
+	if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", body.PICStaffID); err != nil {
+		writeAppError(w, err)
 		return
 	}
 	m, err := h.vendors.UpdateMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, application.VendorMilestoneUpdateInput{

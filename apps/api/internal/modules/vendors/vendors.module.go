@@ -39,7 +39,7 @@ func NewModule(db *sql.DB, projects projectscontracts.Contracts, storageClient *
 		categoryHandler: presentation.NewVendorCategoryHandler(categoryService),
 		vendorHandler:   presentation.NewVendorHandler(vendorService, categoryService, projects),
 		venueHandler:    presentation.NewVenueHandler(venueService, projects),
-		contracts:       vendorscontracts.New(categoryService, venueService),
+		contracts:       vendorscontracts.New(categoryService, venueService, vendorService),
 	}
 }
 

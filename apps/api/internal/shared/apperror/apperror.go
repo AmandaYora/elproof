@@ -17,6 +17,8 @@ const (
 	KindConflict     Kind = "conflict"
 	KindRateLimited  Kind = "rate_limited"
 	KindInternal     Kind = "internal"
+	// KindUnsupported: the feature exists but is switched off in this deployment.
+	KindUnsupported Kind = "unsupported"
 )
 
 // AppError is a domain-level error carrying enough information for the
@@ -75,6 +77,11 @@ func Validation(message string, fields map[string][]string) *AppError {
 	return &AppError{Kind: KindValidation, Message: message, Fields: fields}
 }
 
+// Unsupported marks something this deployment does not offer (501).
+func Unsupported(message string) *AppError {
+	return &AppError{Kind: KindUnsupported, Message: message}
+}
+
 func Internal(message string) *AppError {
 	return &AppError{Kind: KindInternal, Message: message}
 }
@@ -99,6 +106,8 @@ func HTTPStatus(err error) int {
 		return http.StatusConflict
 	case KindRateLimited:
 		return http.StatusTooManyRequests
+	case KindUnsupported:
+		return http.StatusNotImplemented
 	default:
 		return http.StatusInternalServerError
 	}

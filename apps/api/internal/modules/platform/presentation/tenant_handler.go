@@ -149,19 +149,6 @@ func (h *TenantHandler) Collection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("all") == "true" {
-		tenants, err := h.tenants.List(r.Context())
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		result := make([]tenantResponse, 0, len(tenants))
-		for _, t := range tenants {
-			result = append(result, toTenantResponse(t))
-		}
-		response.OK(w, "ok", result)
-		return
-	}
 	params := pagination.FromRequest(r)
 	tenants, total, err := h.tenants.ListPaginated(r.Context(), params, tenantFilterFrom(r))
 	if err != nil {

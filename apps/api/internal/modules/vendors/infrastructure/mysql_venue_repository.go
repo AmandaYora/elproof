@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"elproof/internal/shared/utils"
 	"strings"
 
 	"elproof/internal/modules/vendors/domain"
@@ -108,7 +109,7 @@ func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64
 	if search != "" {
 		countQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
 		listQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like, like)
 	}
 	if city != "" {
@@ -147,7 +148,7 @@ func (r *MySQLVenueRepository) ListFiltered(ctx context.Context, tenantID int64,
 	args := []interface{}{tenantID}
 	if search != "" {
 		query += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like, like)
 	}
 	if city != "" {

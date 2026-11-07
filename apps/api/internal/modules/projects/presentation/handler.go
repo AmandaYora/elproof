@@ -42,6 +42,7 @@ type Handler struct {
 	terms          *application.PaymentTermService
 	myProjects     *application.MyProjectsService
 	clientAccess   ClientAccessResolver
+	refs           *application.References
 }
 
 func NewHandler(
@@ -63,6 +64,10 @@ func NewHandler(
 		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard, closing: closing, terms: terms, myProjects: myProjects,
 	}
 }
+
+// SetReferences gives the handler the checks that ids named inside a request
+// body (PICs, vendors, categories) belong to the caller's own workspace.
+func (h *Handler) SetReferences(refs *application.References) { h.refs = refs }
 
 // SetClientAccessResolver completes the two-phase wiring needed to break the
 // projects<->clients construction cycle (clients.NewModule needs
@@ -196,6 +201,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.uploadEvidence(w, r, claims, projectID)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "file" && r.Method == http.MethodGet:
 		h.downloadEvidence(w, r, projectID, rest[1], claims.isClient)
+	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "link" && r.Method == http.MethodGet:
+		h.linkEvidence(w, r, projectID, rest[1], claims.isClient)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "toggle-client-visible" && r.Method == http.MethodPost:
 		h.toggleEvidenceClientVisible(w, r, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "documents" && r.Method == http.MethodGet:

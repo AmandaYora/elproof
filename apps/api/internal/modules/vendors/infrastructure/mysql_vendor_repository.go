@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"elproof/internal/shared/utils"
 	"strings"
 
 	"elproof/internal/modules/vendors/domain"
@@ -93,7 +94,7 @@ func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int6
 	if search != "" {
 		countQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
 		listQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like, like)
 	}
 	if city != "" {
@@ -137,7 +138,7 @@ func (r *MySQLVendorRepository) ListFiltered(ctx context.Context, tenantID int64
 	}
 	if search != "" {
 		query += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + search + "%"
+		like := "%" + utils.EscapeLike(search) + "%"
 		args = append(args, like, like, like)
 	}
 	if city != "" {

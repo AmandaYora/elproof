@@ -21,11 +21,26 @@ type IssueRepository interface {
 type IssueService struct {
 	repo             IssueRepository
 	vendorMilestones VendorMilestoneRepository
+	engagements      VendorEngagementRepository
 	activity         *ActivityService
 }
 
-func NewIssueService(repo IssueRepository, vendorMilestones VendorMilestoneRepository, activity *ActivityService) *IssueService {
-	return &IssueService{repo: repo, vendorMilestones: vendorMilestones, activity: activity}
+func NewIssueService(repo IssueRepository, vendorMilestones VendorMilestoneRepository, engagements VendorEngagementRepository, activity *ActivityService) *IssueService {
+	return &IssueService{repo: repo, vendorMilestones: vendorMilestones, engagements: engagements, activity: activity}
+}
+
+// validateEngagement rejects a vendor engagement that is not this project's:
+// the project in the path is already the caller's own, but the engagement id in
+// the body is not, and an issue must never hang off another workspace's vendor.
+func (s *IssueService) validateEngagement(ctx context.Context, projectID, projectVendorID int64) error {
+	pv, err := s.engagements.FindByID(ctx, projectID, projectVendorID)
+	if err != nil {
+		return err
+	}
+	if pv == nil {
+		return apperror.Validation("Vendor tidak valid", map[string][]string{"projectVendorId": {"Vendor tidak ditemukan di project ini"}})
+	}
+	return nil
 }
 
 func (s *IssueService) List(ctx context.Context, projectID int64) ([]domain.VendorIssue, error) {
@@ -77,6 +92,9 @@ type IssueInput struct {
 }
 
 func (s *IssueService) Create(ctx context.Context, projectID int64, actorStaffID int64, input IssueInput) (*domain.VendorIssue, error) {
+	if err := s.validateEngagement(ctx, projectID, input.ProjectVendorID); err != nil {
+		return nil, err
+	}
 	if err := s.validateVendorMilestone(ctx, input.ProjectVendorID, input.VendorMilestoneID); err != nil {
 		return nil, err
 	}
@@ -121,6 +139,9 @@ type IssueUpdateInput struct {
 func (s *IssueService) Update(ctx context.Context, projectID, id int64, actorStaffID int64, input IssueUpdateInput, asOf time.Time) (*domain.VendorIssue, error) {
 	issue, err := s.Get(ctx, projectID, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateEngagement(ctx, projectID, input.ProjectVendorID); err != nil {
 		return nil, err
 	}
 	if err := s.validateVendorMilestone(ctx, input.ProjectVendorID, input.VendorMilestoneID); err != nil {

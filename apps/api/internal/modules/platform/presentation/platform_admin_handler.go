@@ -56,21 +56,6 @@ func (h *PlatformAdminHandler) Collection(w http.ResponseWriter, r *http.Request
 }
 
 func (h *PlatformAdminHandler) list(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("all") == "true" {
-		admins, err := h.admins.List(r.Context())
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		result := make([]platformAdminResponse, 0, len(admins))
-		for _, a := range admins {
-			item := toPlatformAdminResponse(a)
-			item.MFAEnabled = h.admins.MFAEnabled(r.Context(), a.ID)
-			result = append(result, item)
-		}
-		response.OK(w, "ok", result)
-		return
-	}
 	params := pagination.FromRequest(r)
 	search := r.URL.Query().Get("search")
 	role := r.URL.Query().Get("role")
@@ -134,6 +119,8 @@ func (h *PlatformAdminHandler) Item(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case len(segments) == 1 && r.Method == http.MethodGet:
+		h.get(w, r, id)
 	case len(segments) == 1 && r.Method == http.MethodPatch:
 		h.update(w, r, id)
 	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
@@ -219,4 +206,17 @@ func (h *PlatformAdminHandler) resetMFA(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	response.OK(w, "Verifikasi dua langkah admin direset; admin harus menyiapkannya lagi saat masuk", toPlatformAdminResponse(*admin))
+}
+
+// get is GET /platform-admins/{id}: one admin (the console reads its own
+// profile this way instead of listing everyone).
+func (h *PlatformAdminHandler) get(w http.ResponseWriter, r *http.Request, id int64) {
+	admin, err := h.admins.Get(r.Context(), id)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	item := toPlatformAdminResponse(*admin)
+	item.MFAEnabled = h.admins.MFAEnabled(r.Context(), admin.ID)
+	response.OK(w, "ok", item)
 }

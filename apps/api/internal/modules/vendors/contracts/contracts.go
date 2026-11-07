@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"elproof/internal/modules/vendors/application"
+	"elproof/internal/shared/apperror"
 )
 
 // VenueSummary is the public-safe subset of a venue's data (ADR-0016) --
@@ -32,15 +33,41 @@ type VenueSummary struct {
 type Contracts interface {
 	SeedDefaultCategories(ctx context.Context, tenantID int64) error
 	GetVenueSummary(ctx context.Context, tenantID, venueID int64) (VenueSummary, error)
+	// VendorExists and CategoryExists answer whether the id is a vendor or a
+	// vendor category of this workspace (another workspace's id is "no").
+	VendorExists(ctx context.Context, tenantID, vendorID int64) (bool, error)
+	CategoryExists(ctx context.Context, tenantID, categoryID int64) (bool, error)
 }
 
 type impl struct {
 	categories *application.VendorCategoryService
 	venues     *application.VenueService
+	vendors    *application.VendorService
 }
 
-func New(categories *application.VendorCategoryService, venues *application.VenueService) Contracts {
-	return &impl{categories: categories, venues: venues}
+func New(categories *application.VendorCategoryService, venues *application.VenueService, vendors *application.VendorService) Contracts {
+	return &impl{categories: categories, venues: venues, vendors: vendors}
+}
+
+func (c *impl) VendorExists(ctx context.Context, tenantID, vendorID int64) (bool, error) {
+	_, err := c.vendors.Get(ctx, tenantID, vendorID)
+	return foundOrNot(err)
+}
+
+func (c *impl) CategoryExists(ctx context.Context, tenantID, categoryID int64) (bool, error) {
+	_, err := c.categories.Get(ctx, tenantID, categoryID)
+	return foundOrNot(err)
+}
+
+// foundOrNot turns a not-found error into a plain "no"; anything else is a real failure.
+func foundOrNot(err error) (bool, error) {
+	if err == nil {
+		return true, nil
+	}
+	if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
+		return false, nil
+	}
+	return false, err
 }
 
 func (c *impl) SeedDefaultCategories(ctx context.Context, tenantID int64) error {

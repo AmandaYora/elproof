@@ -50,6 +50,10 @@ type TenantRepository interface {
 	// FreeGrantTenantIDs: tenants whose current paid period was granted for
 	// free (compensation, trial extension, internal): active but not revenue.
 	FreeGrantTenantIDs(ctx context.Context) (map[int64]bool, error)
+	// JoinedSince returns the join time of every tenant that joined at or after since.
+	JoinedSince(ctx context.Context, since time.Time) ([]time.Time, error)
+	// NamesByIDs resolves business names for the given tenant ids.
+	NamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this

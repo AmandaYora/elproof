@@ -34,9 +34,10 @@ func clientCanRead(rest []string) bool {
 	case 1:
 		return clientReadableSubresources[rest[0]]
 	case 3:
-		// /projects/{id}/evidence/{evidenceId}/file — per-file visibility is
-		// checked again in downloadEvidence via clientCanSeeEvidence.
-		return rest[0] == "evidence" && rest[2] == "file"
+		// /projects/{id}/evidence/{evidenceId}/file (streamed) and /link (a
+		// direct two-minute link) — per-file visibility is checked again in
+		// downloadEvidence and linkEvidence via clientCanSeeEvidence.
+		return rest[0] == "evidence" && (rest[2] == "file" || rest[2] == "link")
 	default:
 		return false
 	}

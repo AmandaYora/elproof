@@ -52,6 +52,35 @@ func (r *MySQLTransactionRepository) List(ctx context.Context, tenantID *int64) 
 	return transactions, rows.Err()
 }
 
+// FindByID returns one transaction, or nil. tenantID, when set, confines the
+// lookup to that tenant (a staff member can only ever see their own).
+func (r *MySQLTransactionRepository) FindByID(ctx context.Context, tenantID *int64, id int64) (*domain.Transaction, error) {
+	query := `SELECT id, tenant_id, type, amount, payment_method, payment_reference, status, created_at, paid_at
+	          FROM subscription_transactions WHERE id = ?`
+	args := []interface{}{id}
+	if tenantID != nil {
+		query += ` AND tenant_id = ?`
+		args = append(args, *tenantID)
+	}
+	var t domain.Transaction
+	var txType, status string
+	var paidAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, query+` LIMIT 1`, args...).
+		Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	t.Type = domain.TransactionType(txType)
+	t.Status = domain.TransactionStatus(status)
+	if paidAt.Valid {
+		t.PaidAt = &paidAt.Time
+	}
+	return &t, nil
+}
+
 // ListPaidSince returns the paid (not granted) transactions since a moment.
 func (r *MySQLTransactionRepository) ListPaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error) {
 	rows, err := r.db.QueryContext(ctx,
