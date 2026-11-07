@@ -8,12 +8,8 @@ surface actually does, at the feature level, as already implemented in the front
 ## Login (`/login`) — shared entry point for every principal type
 
 A full-bleed, auto-advancing photo slider (global marketing images, not tenant-scoped — see
-`MODULE_PLATFORM.md` §9) behind the headline/subtext. Reached via a tenant's own custom domain
-(ADR-0015), the page additionally resolves and applies that tenant's real branding *before* login
-— logo, name, and brand color (including the text scrim's own gradient, ADR-0015's Revision) — and
-a shared link to that domain previews with the tenant's own name/logo too, not ElProof's, since
-link-preview crawlers never execute the page's JS (same Revision). The platform's own domain keeps
-the original neutral look untouched.
+`MODULE_PLATFORM.md` §9) behind the headline/subtext. The page is always neutral: no tenant is known
+before sign-in, and tenant custom domains no longer exist (ADR-0030).
 
 ## WO Console (`/dashboard`, `/projects`, `/clients`, `/vendors`, `/venues`, `/pengguna`, `/langganan`, `/vendor-categories`, `/timeline-default`)
 

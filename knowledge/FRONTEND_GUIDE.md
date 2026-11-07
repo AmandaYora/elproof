@@ -77,29 +77,19 @@ flight.
   exists specifically so `LoginPage` can render a primary-looking button without showing *anyone's*
   brand color, not even ElProof's own — every other `<Button>` call site still uses the default
   `primary` variant (brand-tied).
-- **`LoginPage` itself is pre-auth but not always unbranded** (ADR-0015): a local
-  `useDomainBranding()` hook (not `useTenantBrandingStore` — this is page-local, one-shot state, no
-  session to key off yet) fetches `GET /public/branding` (Host-header-resolved, not JWT) and calls
-  the *same* `applyBrandColorPreset`/`applyTabIdentity` functions above when the current domain
-  matches a tenant's `customDomain`. A 404 (any other domain, including the platform's own) is
-  swallowed and the page keeps its original neutral look — the `"neutral"` `Button` variant above
-  is untouched either way, since it was never wired to `--brand-navy-*` in the first place.
+- **`LoginPage` is always neutral** (no tenant is knowable before auth; per-tenant custom domains were removed, ADR-0030).
 
-### Anti-flash render gating (ADR-0012's Revision, ADR-0015's Revision)
+### Anti-flash render gating (ADR-0012's Revision)
 
 Every consumer of the CSS-variable-override mechanism above shares the same race: a `bg-navy-*`-
 classed element renders on mount with whatever the CSS variable currently holds, which is the
 `theme.css` default until an async branding lookup resolves and overrides it — painting the wrong
-identity first, then visibly swapping. Both places this app renders brand-tied chrome hold off
+identity first, then visibly swapping. The places this app renders brand-tied chrome hold off
 painting it until the real answer is known, rather than accepting the flash:
 
 - `useTenantBrandingStore` exposes `hydrated: boolean` (false until `hydrate()` settles, reset to
   false on `reset()`); `AppLayout`/`ClientPortalLayout` render a plain white loading screen while
   it's false, the real Sidebar/header/chrome only once it's true.
-- `LoginPage`'s own `useDomainBranding()` exposes an equivalent `loading` flag, but only actually
-  waits for hostnames that could plausibly resolve to a tenant (a small `PLATFORM_HOSTNAMES` list
-  is checked synchronously first) — the platform's own domain paints instantly, since a request
-  there can never match a tenant and there's nothing worth waiting on.
 
 Reach for this same pattern (a boolean gate on the *first* real value, not just an initial `null`)
 any time a component renders something whose "empty"/default appearance is visually distinct
@@ -166,3 +156,29 @@ Staff roles limited to their own projects land on `MyProjectsPage` ("Proyek saya
 `.view`, except `subscription.manage`), so write buttons disappear on every page. Routes and the
 sidebar use `hasPermission` directly and stay reachable. `useWriteLocked()` is for write controls that
 have no permission of their own. The API still refuses writes with `subscription_read_only`.
+
+## Platform Console (Fase 6, ADR-0030)
+
+- **Navigation** is grouped (Pelanggan, Produk, Sistem) in `PlatformLayout`; entries a role cannot use
+  are hidden through `lib/capabilities.ts` (`usePlatformCan`), which mirrors the API's role policy in
+  `cmd/server/platform_scope.go`. The API stays the real gate.
+- **Ringkasan** reads `GET /platform/metrics` (`useConsoleStore.fetchMetrics`); only the two trend charts
+  still compute from the full tenant/transaction lists.
+- **Tenant 360°** is `/platform/tenant/:id/:tab?` (`TenantDetailPage` + `components/tenant-detail/*`).
+  The edit/activate/freeze/re-invite actions and their dialogs are the shared `useTenantActions` hook, used by
+  the list and the detail page alike. Per-tenant data is returned by `useConsoleStore` calls, not cached.
+- **Forms** keep the module pattern: Zod schemas in `schemas/console.schema.ts`, field errors from
+  `safeParse`, server messages through `getApiErrorMessage`.
+- **Support session** (`shared/lib/impersonation.ts`): `enterSupportSession` stores the admin's own session in
+  `session.impersonation.returnTo`, signs the browser in as the Owner (no refresh token) and reloads;
+  `endSupportSession` restores it (without its refresh token, so a script in the tenant's page cannot read one) and tells the API; the banner also ends the session when the hour is up. `useCan`/`useWriteLocked` treat a support session as
+  read-only, the http client turns `impersonation_read_only` into a toast and, when the token lapses, returns
+  the admin to their own session instead of refreshing. `SupportSessionBanner` is always visible in the WO
+  Console during a session.
+- **WO side**: `AnnouncementBanner` (dismissible, remembered per browser) and `SupportAccessCard` in
+  Profil Usaha (grant/revoke consent, session history).
+- **Per-page meta**: `usePageMeta({title, description, noindex})` sets the tab title and search/share tags and
+  restores them on unmount; marketing and auth pages use it.
+- **QR code**: `shared/components/ui/QrCode` draws in the browser with the `qrcode` package; the text never
+  leaves the page. **Receipt**: `/langganan/kuitansi/:id` is a plain page; `print:` utilities hide the console
+  chrome and `window.print()` is the "Simpan sebagai PDF".

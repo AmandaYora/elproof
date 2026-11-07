@@ -1,8 +1,8 @@
 # ADR-0015: Tenant custom domain (pre-login branding on a second hostname)
 
 ## Status
-Accepted — **Deprecated 2026-11-06** (see "Deprecation" at the end). Tenant custom domains are
-no longer offered; the code paths described here are scheduled for removal.
+Accepted — **Deprecated 2026-11-06, removed 2026-11-07** (see "Deprecation" at the end and ADR-0030).
+Tenant custom domains are no longer offered and the code described here no longer exists.
 
 ## Context
 ADR-0012 shipped per-tenant branding (logo + one of 20 color presets) applied at runtime once a
@@ -161,9 +161,9 @@ the certificate; certificate reissued for `elproof.elcodelabs.com` only (valid t
 nginx reload deploy hook added; `certbot renew --dry-run` passes for every certificate on the VPS.
 See `/opt/elcodelabs/SERVER_PLAYBOOK.md` "Incident — elproof TLS expired".
 
-**Still to do (code, later phase):** remove `tenants.custom_domain` from the tenant edit form and
-API, `GET /public/branding` Host resolution, `useDomainBranding()` in `LoginPage`, and the
-`PLATFORM_HOSTNAMES` gate; a migration drops the column. Until then the field must not be used.
+**Done (Fase 6, 2026-11-07):** `tenants.custom_domain` is dropped (migration 62), together with the field in
+the tenant form and API, `GET /public/branding` and `/public/logo`, the Host-based site-meta injection and
+`useDomainBranding()` in `LoginPage`. See ADR-0030.
 
 **Rule kept for any future extra hostname:** one certificate per domain (`--cert-name <domain>`),
 never `--expand` the platform certificate with a domain ElProof does not control.

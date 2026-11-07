@@ -217,11 +217,13 @@ Urutan dipilih supaya setiap fase bisa dirilis sendiri dan tidak membuka celah b
 - "Proyek saya": `GET /dashboard/mine` dan halaman Beranda untuk peran berlingkup proyek (Wedding Planner, Sales).
 - **Belum:** ganti kata sandi oleh klien sendiri; "Bagikan ke keluarga"; sakelar "Terlihat klien" per kendala; manifest PWA per WO (nama/ikon masih generik); foto PIC.
 
-**Fase 6 — Platform Owner, Langganan, Marketing (G5, G6, G10)**
-- Tambahkan kode QR di halaman penyiapan 2FA (Fase 1 menampilkan kunci + tautan `otpauth://`; butuh library QR).
-- Platform Console baru (FLOW-IDEAL §1.2–1.5): Ringkasan dengan metrik SaaS dari backend (MRR, churn, konversi trial), Detail Tenant 360°, versi harga & entitlement paket, Tagihan/antrean penagihan, Pengumuman, Audit Log UI, Kebijakan langganan, UI slide login, impersonasi baca-saja dengan izin tenant, permintaan data PDP.
-- Copy & alur QRIS (hitung mundur, masa aktif baru, pesan dibatalkan vs kedaluwarsa), kuitansi langganan PDF, metrik dashboard platform, SEO (`lang="id"`, meta per halaman), kredibilitas & halaman legal.
-- Hapus fitur custom domain tenant (K15): field di form tenant & API, `GET /public/branding` berbasis Host, `useDomainBranding()` di LoginPage, migrasi drop `tenants.custom_domain`.
+**Fase 6 — Platform Owner, Langganan, Marketing (G5, G6, G10)** — ✅ **SELESAI 7 Nov 2026** (branch `revamp/flow-ideal`; ADR-0030; diverifikasi unit test, build web, uji langsung di MySQL sementara dan browser (desktop dan HP) dan review independen; temuan review yang terbukti sudah diperbaiki)
+- Platform Console baru: Ringkasan dari `GET /platform/metrics` (MRR, ARPA, konversi trial, churn, pendapatan 30 hari), daftar tenant dengan filter paket/sumber dan ekspor CSV, Detail Tenant 360° (profil + persetujuan pendaftaran, langganan + aktivasi manual, tagihan, pemakaian, pengguna, aktivitas, catatan internal, permintaan data, dukungan), Tagihan, Pengumuman (banner di WO Console), Data & Privasi (permintaan PDP, batas 30 hari), Audit Log dengan filter dan ekspor, Kebijakan Langganan yang bisa diubah tanpa deploy, Tampilan Login (ganti 3 foto). Menu dan tombol mengikuti peran (Super Admin, Billing, Support, Read-only).
+- Sesi dukungan baca-saja ("Lihat sebagai tenant"): izin Owner 24 jam yang bisa dicabut, alasan wajib, token 60 menit tanpa refresh, semua non-GET ditolak, banner di WO Console, riwayat terlihat oleh Owner. Token dicek ke sesi, izin, dan admin di setiap permintaan, jadi mengakhiri sesi, mencabut izin, atau menonaktifkan admin menghentikannya seketika. Mengganti email Owner hanya Super Admin.
+- Langganan: kode QR di penyiapan 2FA; QRIS dengan hitung mundur, periode baru yang akan dibeli, pesan berbeda untuk kedaluwarsa dan dibatalkan; kuitansi langganan yang bisa dicetak/disimpan sebagai PDF lewat dialog cetak browser.
+- Marketing/SEO: judul dan deskripsi per halaman (`usePageMeta`), `robots.txt`, halaman legal dan kredibilitas yang sudah ada tetap dipakai.
+- Custom domain tenant dihapus (K15): kolom, API, form, `useDomainBranding()`, injeksi meta; migrasi 62. Migrasi 63 menambah enam tabel konsol.
+- **Belum / sengaja ditunda:** versi harga dan entitlement paket (belum ada pelanggan berbayar, K13); MRR ekspansi/kontraksi (belum ada riwayat ganti paket); sitemap (domain produksi belum tercatat); tab Aktivitas tenant hanya untuk Super Admin; pembacaan halaman 360° belum masuk audit; pembayaran di luar gateway masuk MRR tetapi tidak ke angka pendapatan 30 hari; hitung mundur QRIS dan unggah foto login belum diuji dengan gateway/penyimpanan sungguhan.
 - Kwitansi/invoice **klien** WO **tidak** termasuk di sini; sudah direncanakan di `docs/plan/invoice-kwitansi-client/`.
 
 **Fase 7 — Skala**

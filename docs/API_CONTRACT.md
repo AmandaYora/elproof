@@ -54,10 +54,10 @@ is unaffected, this is additive.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/tenants` | **paginated** (Fase 7); `?search=` matches business/owner name + email; `?status=` filters `subscriptionStatus` |
+| GET | `/tenants` | **paginated** (Fase 7); `?search=` matches business/owner name + email; `?status=` filters `subscriptionStatus`; `?planId=` and `?source=self_service|platform` (Fase 6) |
 | POST | `/tenants` | orchestrates `staff.CreateOwner` + `identity.CreateCredential` — see ADR-0008. No `planId` in the body and no transaction recorded: the tenant starts unbound to any plan (`planId: null`, `subscriptionStatus: pending_payment`); the first transaction row it ever gets comes from whichever real subscription event happens first — the Owner's own `/subscriptions/pay` or the Platform Console's `/activate-subscription` below — never a placeholder created here |
 | GET | `/tenants/{id}` | |
-| PATCH | `/tenants/{id}` | body now also accepts `brandColorPreset` (see `MODULE_PLATFORM.md` §6) — empty string leaves the tenant's current preset unchanged rather than rejecting the whole update; a non-empty value not in the fixed 20-key set is rejected (422). Also accepts `customDomain` (§8, ADR-0015), with a different rule: an *omitted* key leaves the tenant's current domain untouched, but a key present with `""` explicitly clears it to `NULL` — a non-empty value is validated as a bare hostname and rejected (422) if already used by another tenant |
+| PATCH | `/tenants/{id}` | body now also accepts `brandColorPreset` (see `MODULE_PLATFORM.md` §6) — empty string leaves the tenant's current preset unchanged rather than rejecting the whole update; a non-empty value not in the fixed 20-key set is rejected (422). |
 | PUT | `/tenants/{id}/logo` | body `{fileName, mimeType, base64Data}` — same base64-JSON shape as evidence upload (ADR-0010), not multipart. `mimeType` restricted to `image/png`/`image/jpeg`/`image/webp` (no SVG — script-injection risk not worth it for a logo); decoded size capped at 2 MB (evidence's cap is 15 MB — a logo is a small header image, not a document). First `PUT` in this API — `internal/shared/middleware/cors.go`'s dev-mode `Access-Control-Allow-Methods` already includes it |
 | GET | `/tenants/{id}/logo` | streams the stored logo bytes back (same byte-proxy-through-Go shape as evidence download) — `404` if the tenant has no logo configured |
 | POST | `/tenants/{id}/toggle-suspension` | single toggle (flips current state), not separate suspend/reactivate |
@@ -69,8 +69,6 @@ is unaffected, this is additive.
 | PATCH | `/tenants/me/brand-color` | **self-service, needs `business_profile.manage`** (Owner by default). Body `{preset}`, one of the 21 fixed presets (422 `errors.preset` otherwise). Recolors the WO Console and Client Portal for everyone in the workspace |
 | GET | `/tenants/me/branding` | **self-service, any tenant-scoped principal** (any staff role, or `client` — not Owner-only, unlike `/tenants/me` above, since branding must render for every staff role and every client) — `{businessName, brandColorPreset, hasLogo}`. Tenant resolved strictly from the JWT's `tenant_id` claim, never a request param |
 | GET | `/tenants/me/logo` | same self-service scoping as `/tenants/me/branding` — streams the caller's own tenant's logo |
-| GET | `/public/branding` | **unauthenticated** (§8, ADR-0015) — the pre-auth counterpart to `/tenants/me/branding`, tenant resolved from the request's `Host` header instead of a JWT claim. Same `{businessName, brandColorPreset, hasLogo}` shape; `404` if `Host` matches no tenant's `customDomain` |
-| GET | `/public/logo` | **unauthenticated**, same Host-based resolution as `/public/branding` — streams that tenant's logo |
 | GET | `/public/login-slides` | **unauthenticated**, global (not tenant-scoped) — `{count}`, the number of login-page marketing photos currently uploaded (see `MODULE_PLATFORM.md` §9) |
 | GET | `/public/login-slides/{index}` | **unauthenticated** — streams one slide's JPEG bytes by 0-based index, `Cache-Control: public, max-age=86400`; `404` if out of range |
 | POST | `/subscriptions/pay` | **staff Owner self-service** — body `{planId}`. **Changed Fase 9:** no longer activates synchronously — creates a real charge via `payment.Client.CreateCharge` (QRIS), records a `pending` transaction, and returns the charge (`{orderRef, providerRef, channel, qrImageUrl, payCode, checkoutUrl, amount, feeAmount, expiresAt, status}`). The subscription only activates once `/webhooks/payment` confirms it — see `payment` module below. Rejects (409) if this tenant already has a pending charge — see `GET`/`cancel` below for how the Owner resolves that instead of getting stuck |
@@ -82,10 +80,37 @@ is unaffected, this is additive.
 | POST | `/platform-admins/{id}/toggle-active` | single toggle; self-lockout (an admin deactivating their own account) rejected with 403 |
 | POST | `/platform-admins/{id}/reset-password` | |
 
-Platform dashboard has no dedicated endpoint yet — the frontend computes stats/trend client-side
-from `GET /tenants` + `GET /subscription-transactions` (`getPlatformStats`, `buildRevenueTrend`),
-same as before Fase 2. Moving that computation server-side (with a real clock instead of the
-frontend's local "today") is Fase 5 scope.
+### Platform Console back office (Fase 6, ADR-0030)
+
+All timestamps in these responses carry the WIB offset (+07:00). Changing a tenant's `email` through `PATCH /tenants/{id}` is Super Admin only (403 `forbidden_role` for Support). Role policy (`cmd/server/platform_scope.go`): every platform role may read except **Read-only**, which cannot read
+a workspace's internals (`/console/tenants/**`, `/console/data-requests`, `/console/support-sessions`,
+`/tenants/export`). Writes: notes and data requests need Support or Super Admin; starting/ending a support session
+needs Support or Super Admin; announcements, policy, audit log and login photos need Super Admin.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/platform/metrics` | any platform role. `{totalTenants, trialing, active, pastDue, readOnly, suspended, frozen, paidTenants, mrr, arpa, trialsEnded30d, trialsConverted30d, trialConversionPct, churned30d, churnedMrr, churnPct, newPaid30d, newMrr30d, revenue30d, revenuePrev30d, overdueValue, trialsEndingSoon[], overdueTenants[]}`. Percentages are `null` with no base; free grants never count as revenue |
+| GET | `/tenants/export` | CSV with the same `search/status/planId/source` filters; formula-injection safe; writes its own audit record |
+| GET | `/console/tenants/{id}/overview` | `{tenant, planName, consent, activations[], staff, activeProjects, clients, members[], openDataRequests, supportAccessUntil}`; `staff/activeProjects/clients` are `{used, max}` with `max: null` on a paid plan |
+| GET/POST | `/console/tenants/{id}/notes` | internal notes `{id, admin, body, createdAt}`; POST body `{body}` |
+| GET/POST | `/console/tenants/{id}/data-requests` | POST body `{kind: export|delete, requestedBy, note}`; `dueAt` is created + 30 days |
+| GET | `/console/data-requests` | `?open=true` for the queue; each item carries `tenantName`, `daysUntilDue` |
+| POST | `/console/data-requests/{id}/complete` | body `{status: done|rejected, note}`; the note (proof) is mandatory |
+| GET/POST | `/console/announcements` | `{title, body, kind: info|warning|maintenance, audience: all|plan|status, audienceValue, startsAt, endsAt?}` (RFC 3339) |
+| PATCH/DELETE | `/console/announcements/{id}` | |
+| GET | `/announcements/active` | any staff role: announcements that apply to the caller's workspace now |
+| GET/PUT | `/console/subscription-policy` | `{trialDays 1–90, expiringSoonDays 0–30, graceDays 0–60, readOnlyDays 0–180}`; PUT is Super Admin and takes effect for every tenant |
+| GET | `/console/tenants/{id}/support` | consent and session history `{grant, sessions[]}` |
+| POST | `/console/tenants/{id}/impersonate` | body `{reason}` (10–255 chars). Needs the Owner's active consent (403 `support_access_not_granted` otherwise). Returns `{sessionId, accessToken, expiresAt, tenantId, role}`: a 60-minute **read-only** token for the Owner's credential (claims `imp`, `sid`; no refresh token). Every non-GET with it → 403 `impersonation_read_only`; any request after the session ended, consent was withdrawn or the admin was deactivated → 401 `support_session_ended` |
+| POST | `/console/support-sessions/{id}/end` | only the admin who started it |
+| GET/PUT/DELETE | `/tenants/me/support-access` | **Owner side** (`business_profile.manage`): GET status + history, PUT grants 24 hours, DELETE withdraws consent |
+| PUT | `/console/login-slides/{index}` | Super Admin. Body `{mimeType: image/jpeg|image/png, base64Data}`, ≤ 6 MB decoded; replaces one of the three login photos |
+| GET | `/audit-log` | **Super Admin**, paginated; filters `actorType`, `actorId`, `tenantId`, `outcome=ok|failed`, `q`, `from`, `to` (WIB days) |
+| GET | `/audit-log/export` | **Super Admin**, same filters, CSV (max 10 000 rows); writes its own audit record |
+
+Platform dashboard charts (revenue and new-tenant trends) are still computed client-side from
+`GET /tenants?all=true` and `GET /subscription-transactions?all=true`; the headline numbers come from
+`/platform/metrics`.
 
 ## `billing` (read by both consoles; writes are `platform_admin`-only) — **implemented, Fase 2**; isolated per-App catalog + subscription ledger added `docs/plan/external-subscription-plans/PLAN.md`
 

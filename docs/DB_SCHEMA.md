@@ -59,7 +59,6 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 | last_credential_reset_at | DATE NULL | |
 | brand_color_preset | VARCHAR(20) NOT NULL DEFAULT 'navy' | one of 20 fixed keys (see `MODULE_PLATFORM.md` §6) — never free-form hex |
 | logo_storage_path | VARCHAR(500) NULL | object storage key (same `shared/storage` utility as `evidence.storage_path`, ADR-0006) — `NULL` means no logo configured yet |
-| custom_domain | VARCHAR(255) NULL UNIQUE | tenant's own hostname (see `MODULE_PLATFORM.md` §8, ADR-0015) — `NULL` means no custom domain configured; resolved from the request `Host` header by `GET /public/branding`/`/public/logo`, not by JWT |
 | created_at, updated_at | TIMESTAMP | |
 
 ### `platform_admins`
@@ -545,6 +544,70 @@ Not a ledger — a thin "which tenant+plan was this still-unconfirmed charge for
 (read then deleted) by `TenantService.ApplyWebhookEvent` once the `payment` module's webhook
 confirms or fails the charge. `payment` itself is never told about tenants or plans (see
 MODULE_PAYMENT.md's non-goals), so this mapping has to live here, not in `payment`.
+
+### Platform Console back office (Fase 6, migration 63, ADR-0030)
+
+These tables belong to `platform`, so they may reference `tenants` with real foreign keys; admin and staff
+ids are plain values. Migration 62 drops `tenants.custom_domain`.
+
+#### `tenant_notes`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED | `FK` → `tenants.id`; indexed with `created_at` |
+| admin_id, admin_name | VARCHAR(64), VARCHAR(100) | author (name kept so it survives renames) |
+| body | TEXT | internal, never shown to the tenant |
+| created_at | TIMESTAMP | |
+
+#### `data_requests`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED | `FK` → `tenants.id` |
+| kind | ENUM('export','delete') | UU PDP: copy of data / erasure |
+| status | ENUM('open','done','rejected') | default `open`; indexed with `due_at` |
+| requested_by | VARCHAR(200) | who asked, e.g. the Owner's email |
+| note | TEXT NULL | |
+| due_at | DATETIME | created + 30 days |
+| created_by_admin | VARCHAR(64) | who logged it |
+| completed_at, completed_by, completion_note | DATETIME NULL, VARCHAR(64) NULL, TEXT NULL | proof is mandatory when closing |
+| created_at | TIMESTAMP | |
+
+#### `announcements`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| title, body | VARCHAR(150), TEXT | |
+| kind | ENUM('info','warning','maintenance') | |
+| audience, audience_value | ENUM('all','plan','status'), VARCHAR(50) NULL | plan id or lifecycle status |
+| starts_at, ends_at | DATETIME, DATETIME NULL | `NULL` end = until deleted; indexed together |
+| created_by | VARCHAR(64) | |
+| created_at, updated_at | TIMESTAMP | |
+
+#### `subscription_policy`
+One row (`id = 1`): `trial_days` 14, `expiring_soon_days` 7, `grace_days` 7, `read_only_days` 23, `updated_by`,
+`updated_at`. Seeded by the migration; loaded at startup into `domain.CurrentSubscriptionPolicy()`.
+
+#### `support_access_grants`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED | `FK` → `tenants.id`; indexed with `expires_at` |
+| granted_by_staff_id | BIGINT UNSIGNED | the Owner who consented |
+| granted_at | TIMESTAMP | |
+| expires_at | DATETIME | granted + 24 hours |
+| revoked_at | DATETIME NULL | |
+
+#### `support_sessions`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | the `sid` claim of the support token |
+| tenant_id | BIGINT UNSIGNED | `FK` → `tenants.id`; indexed with `started_at` |
+| admin_id, admin_name | VARCHAR(64), VARCHAR(100) | the `imp` claim, and the name shown to the Owner |
+| reason | VARCHAR(255) | 10–255 characters, shown to the Owner |
+| started_at | TIMESTAMP | |
+| expires_at | DATETIME | started + 60 minutes |
+| ended_at | DATETIME NULL | |
 
 ---
 

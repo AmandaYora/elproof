@@ -116,7 +116,7 @@ vivid.
   never a public URL — same byte-proxy shape as evidence download.
 - **Where it never applies**: Platform Console (superadmin's own backoffice — not "inside" any one
   tenant). The login page was neutralized by ADR-0012 for the same reason (no tenant knowable
-  before auth) — **except** when reached via a tenant's own custom domain, see §8 below.
+  before auth).
 
 ## 7. Platform Console's own admin accounts (`platform_admins`)
 
@@ -124,34 +124,12 @@ A separate, simpler CRUD (`/platform-admins`) with no cross-module orchestration
 platform_admin's only side effect on creation is `identity.CreateCredential`. Self-lockout (an
 admin deactivating their own account via `toggle-active`) is rejected with 403.
 
-## 8. Custom domain (pre-login branding on a tenant's own hostname) — ADR-0015
+## 8. Custom domain — removed (ADR-0015, ADR-0030)
 
-Closes the gap ADR-0012 left open: a tenant's optional `custom_domain` column (nullable, unique)
-lets `LoginPage` render that tenant's own branding *before* login, resolved from the request's
-`Host` header rather than a JWT claim — the only Host-based lookup in this module.
-
-- **Two new unauthenticated endpoints**: `GET /api/v1/public/branding` / `GET /api/v1/public/logo`
-  — same response shape as §6's self-service pair, registered via
-  `platform.Module.RegisterPublicRoutes(mux)` (never wrapped in `authed(...)`), mirroring
-  `identity`'s existing public-route pattern. A Host matching no tenant 404s; the frontend treats
-  that as "no custom branding" and keeps the neutral login look.
-- **Configured by**: platform-admin only, same tenant edit form/permission model as §6 —
-  `PATCH /tenants/{id}` now also accepts `customDomain` — a `*string` on the wire: an omitted
-  key leaves it untouched (this app's own form always sends it, but any other/future caller
-  that doesn't know about this field yet can't accidentally wipe a configured domain), while a
-  key present with `""` explicitly clears it back to `NULL`.
-- **Uniqueness**: enforced by a `UNIQUE` index; a collision is caught (MySQL error 1062) and
-  surfaced as a field-level validation error, not a 500.
-- **Does not change CORS** (production is already same-origin regardless of Host) **or the Tripay
-  webhook** (HMAC-trusted, never domain-scoped) — see ADR-0015 for the full reasoning.
-- **Still a manual, per-domain ops step** on the VPS (DNS → nginx `server_name` → `certbot`) — not
-  scripted by this repo; see ADR-0015's "Consequences" for the exact steps.
-- **Also backs link-preview metadata** (ADR-0015's Revision): `Module.SiteMetaForHost(ctx, host)`
-  resolves the same way as `PublicBranding` above, but returns a minimal, primitive-typed
-  `SiteMeta{BusinessName, HasLogo}` rather than the full branding response — consumed by
-  `cmd/server/main.go`'s `spaFileServer`, not by any HTTP route of this module's own, to rewrite
-  `index.html`'s `<title>`/Open Graph tags per-Host before serving it. Not registered as a `mux`
-  route; this is a composition-root-only method.
+Tenants no longer have their own hostname. `tenants.custom_domain`, the Host-based
+`GET /public/branding` / `/public/logo`, `Module.SiteMetaForHost` and the `index.html` meta injection in
+`cmd/server` were deleted in Fase 6 (migration 62). Everyone uses the platform's own domain, so the login
+page is always neutral, and any extra hostname would need its own certificate (DEPLOYMENT.md).
 
 ## 9. Login page marketing photos (global, not tenant-scoped)
 
@@ -174,3 +152,31 @@ else in this document, these are **not** tenant data and have no `tenant_id`.
 - **Why `platform`, not `shared/`**: these are global marketing *content*, not a technical utility
   — `shared/` is documented as technical-utilities-only (errors, response, logger, validator,
   pagination). `platform` already owns every other pre-auth endpoint `LoginPage` depends on.
+
+## 10. Platform Console back office (Fase 6, ADR-0030)
+
+Files: `domain/console.go`, `domain/platform_metrics.go`, `application/console_service.go`,
+`application/metrics_service.go`, `infrastructure/mysql_console_repository.go`,
+`presentation/console_handler.go`, `metrics_handler.go`, `tenant_export.go`. Tables: `tenant_notes`,
+`data_requests`, `announcements`, `subscription_policy`, `support_access_grants`, `support_sessions`
+(migration 63). Like the rest of the module they hold tenant ids as plain numbers.
+
+- **Metrics**: `GET /platform/metrics` (any platform role). `ComputePlatformMetrics` is pure: MRR = paid
+  tenants' plan price / plan months, trial conversion = trials that ended in the last 30 days and became paid,
+  churn = paid tenants that entered read-only in the window / paid tenants at its start. Free grants are
+  excluded via `FreeGrantTenantIDs`. Revenue comes from `billing.PaidSince`.
+- **Tenant 360°**: `GET /console/tenants/{id}/overview`, `notes`, `data-requests`, `support`; the member list
+  comes from `staff.ListMembers`. Tenant list filters (`search`, `status`, `planId`, `source`) are applied in
+  SQL by `tenantWhere`; `GET /tenants/export` reuses them.
+- **Support sessions**: see ADR-0030. `ConsoleService.StartSupportSession` checks the active grant,
+  validates the reason, finds the Owner through `staff.FindOwner`, records the session, then asks
+  `identity.IssueSupportToken` for the token; if that fails the session row is deleted again. The Owner
+  manages consent at `/tenants/me/support-access` (GET/PUT/DELETE, `business_profile.manage`).
+- **Live check**: `ConsoleService.CheckSupportSession` backs `middleware.RequireLiveSupportSession` (session open, consent valid, admin active as Support/Super Admin) on every support-token request.
+- **Policy**: `subscription_policy` has one row; `LoadSubscriptionPolicy` reads it at startup and
+  `SavePolicy` writes, applies it to `domain.SetSubscriptionPolicy` and re-runs the status sweep so the cached `subscription_status` filter agrees. Callers read it only through
+  `domain.CurrentSubscriptionPolicy()`.
+- **Audit**: platform routes are wrapped in `AuditTrail`; exports write their own record through
+  `SetAuditRecorder`.
+- **Login photos**: `PUT /console/login-slides/{index}` (Super Admin) replaces one of the three fixed slots;
+  the image is decoded, flattened to JPEG and compressed.
