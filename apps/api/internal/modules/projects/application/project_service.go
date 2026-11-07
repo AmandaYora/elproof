@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"elproof/internal/modules/projects/domain"
@@ -28,7 +29,8 @@ type ProjectRepository interface {
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
 	Update(ctx context.Context, p *domain.Project) error
-	SetStatus(ctx context.Context, tenantID, id int64, status domain.ProjectStatus) error
+	// ChangeStatus is conditional on the current status (see the MySQL implementation).
+	ChangeStatus(ctx context.Context, tenantID, id int64, from, to domain.ProjectStatus) (bool, error)
 	SetArchived(ctx context.Context, tenantID, id int64, archived bool) error
 	// DeleteCascade permanently removes the project and every same-module row
 	// referencing it — see the infrastructure implementation's doc comment
@@ -82,6 +84,8 @@ type StaffNameResolver interface {
 	// hard delete) -- never an error, so a stale pic_staff_id degrades to
 	// "no name available" rather than breaking the whole project response.
 	GetName(ctx context.Context, tenantID, staffID int64) (name string, ok bool, err error)
+	// GetPhone resolves the same member's contact number ("" when none).
+	GetPhone(ctx context.Context, tenantID, staffID int64) (phone string, ok bool, err error)
 }
 
 type MilestoneRepository interface {
@@ -146,6 +150,19 @@ func (s *ProjectService) ResolvePICName(ctx context.Context, tenantID, staffID i
 		return ""
 	}
 	return name
+}
+
+// ResolvePICPhone is the PIC's contact number for the Client Portal's
+// WhatsApp button; "" on any failure, like ResolvePICName.
+func (s *ProjectService) ResolvePICPhone(ctx context.Context, tenantID, staffID int64) string {
+	if s.staff == nil {
+		return ""
+	}
+	phone, ok, err := s.staff.GetPhone(ctx, tenantID, staffID)
+	if err != nil || !ok {
+		return ""
+	}
+	return phone
 }
 
 // SetClientCleaner completes the two-phase wiring needed because `clients`
@@ -305,10 +322,11 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor Proje
 	if actor.AssignedOnly && input.PICStaffID != actorStaffID {
 		picSalesStaffID = actorStaffID
 	}
-	if isActiveProject(input.Status, false) {
-		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
-			return nil, err
-		}
+	// A new project always starts as Draft: later steps are explicit
+	// transitions, so creating cannot skip them (ADR-0027).
+	input.Status = domain.StatusDraft
+	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+		return nil, err
 	}
 	p := &domain.Project{
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
@@ -346,11 +364,9 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 	if !actor.CanAssignPIC && (input.PICStaffID != p.PICStaffID || input.PICSalesStaffID != p.PICSalesStaffID) {
 		return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC project").WithCode("forbidden_permission")
 	}
-	if !isActiveProject(p.Status, p.IsArchived) && isActiveProject(input.Status, p.IsArchived) {
-		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
-			return nil, err
-		}
-	}
+	// Status is deliberately not taken from the input: it changes only through
+	// Transition / Cancel, so editing a project's details can never skip a
+	// step of its life (FLOW-IDEAL 2.4).
 	p.Name = input.Name
 	p.BrideName = input.BrideName
 	p.GroomName = input.GroomName
@@ -359,7 +375,6 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 	p.PrepStartDate = input.PrepStartDate
 	p.PackageName = input.PackageName
 	p.ContractValue = input.ContractValue
-	p.Status = input.Status
 	p.PICStaffID = input.PICStaffID
 	p.PICSalesStaffID = input.PICSalesStaffID
 	p.Description = input.Description
@@ -375,6 +390,15 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 			p.VenueID = input.VenueID
 			p.VenueRentalPrice = input.VenueRentalPrice
 			p.VenueCharge = input.VenueCharge
+			// One place for the venue: while one is attached from the
+			// directory, the project's venue text IS its name, so the two can
+			// never disagree (PLAN.md Fase 4c "venue tunggal"). If the venue
+			// cannot be resolved, the old text stays.
+			if s.venues != nil {
+				if summary, err := s.venues.GetVenueSummary(ctx, tenantID, *input.VenueID); err == nil && summary.Name != "" {
+					p.Venue = summary.Name
+				}
+			}
 		}
 	}
 	if err := s.repo.Update(ctx, p); err != nil {
@@ -385,18 +409,91 @@ func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor P
 	return p, nil
 }
 
+// projectStatusLabel is the Indonesian name shown in the activity log.
+func projectStatusLabel(status domain.ProjectStatus) string {
+	switch status {
+	case domain.StatusDraft:
+		return "Draf"
+	case domain.StatusPreparation:
+		return "Persiapan"
+	case domain.StatusReady:
+		return "Siap"
+	case domain.StatusCompleted:
+		return "Selesai"
+	case domain.StatusCancelled:
+		return "Dibatalkan"
+	}
+	return string(status)
+}
+
+// Transition moves a project one explicit step through its life (Draft ->
+// Preparation -> Ready -> Completed, or Reopen). An action that does not
+// apply to the current status is refused with `invalid_status_transition`.
+// Reopening counts as one more active project, so the trial cap applies.
+func (s *ProjectService) Transition(ctx context.Context, tenantID, id, actorStaffID int64, action domain.StatusAction) (*domain.Project, error) {
+	p, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if !domain.IsStatusAction(action) {
+		return nil, apperror.Validation("Aksi status tidak dikenal", map[string][]string{
+			"action": {"Gunakan start_preparation, mark_ready, complete, atau reopen"},
+		})
+	}
+	next, ok := domain.NextStatus(p.Status, action)
+	if !ok {
+		return nil, apperror.Conflict(fmt.Sprintf(
+			"Aksi ini tidak bisa dilakukan pada project berstatus %s. Muat ulang halaman untuk melihat status terbaru.", projectStatusLabel(p.Status),
+		)).WithCode("invalid_status_transition")
+	}
+	if !isActiveProject(p.Status, p.IsArchived) && isActiveProject(next, p.IsArchived) {
+		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
+	}
+	from := p.Status
+	changed, err := s.repo.ChangeStatus(ctx, tenantID, id, from, next)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return nil, errStatusMoved()
+	}
+	p.Status = next
+	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
+		fmt.Sprintf("Status project diubah: %s → %s", projectStatusLabel(from), projectStatusLabel(next)))
+	return p, nil
+}
+
 func (s *ProjectService) Cancel(ctx context.Context, tenantID, id, actorStaffID int64) (*domain.Project, error) {
 	p, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.SetStatus(ctx, tenantID, id, domain.StatusCancelled); err != nil {
+	// Only an open project can be cancelled; a finished or already cancelled
+	// one would just log a second "dibatalkan" (reopen it first).
+	if p.Status == domain.StatusCompleted || p.Status == domain.StatusCancelled {
+		return nil, apperror.Conflict(fmt.Sprintf(
+			"Project berstatus %s tidak bisa dibatalkan. Muat ulang halaman untuk melihat status terbaru.", projectStatusLabel(p.Status),
+		)).WithCode("invalid_status_transition")
+	}
+	changed, err := s.repo.ChangeStatus(ctx, tenantID, id, p.Status, domain.StatusCancelled)
+	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return nil, errStatusMoved()
 	}
 	p.Status = domain.StatusCancelled
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
 		"Project dibatalkan")
 	return p, nil
+}
+
+// errStatusMoved: someone else changed the project's status between this
+// request reading it and writing it.
+func errStatusMoved() error {
+	return apperror.Conflict("Status project baru saja diubah orang lain. Muat ulang halaman untuk melihat status terbaru.").WithCode("invalid_status_transition")
 }
 
 // SetArchived toggles a project's archive flag — reversible, orthogonal to
@@ -486,10 +583,9 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 	if err != nil {
 		return nil, err
 	}
-	if isActiveProject(input.Status, false) {
-		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
-			return nil, err
-		}
+	input.Status = domain.StatusDraft // a copy always starts as Draft (ADR-0027)
+	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+		return nil, err
 	}
 
 	p := &domain.Project{

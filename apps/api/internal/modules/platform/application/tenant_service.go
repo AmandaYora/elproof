@@ -42,6 +42,9 @@ type TenantRepository interface {
 	UpdateSubscription(ctx context.Context, id int64, planID int64, status domain.SubscriptionStatus, expiresAt time.Time) error
 	SetSubscriptionStatus(ctx context.Context, id int64, status domain.SubscriptionStatus) error
 	UpdateProfile(ctx context.Context, id int64, businessName, phone, city string) error
+	UpdateBrandColor(ctx context.Context, id int64, preset string) error
+	GetBusinessDetails(ctx context.Context, tenantID int64) (domain.BusinessDetails, error)
+	SaveBusinessDetails(ctx context.Context, tenantID int64, d domain.BusinessDetails) error
 	SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error
 	CreateForSignup(ctx context.Context, tenant *domain.Tenant, signupID int64) (bool, error)
 	UpdateUsername(ctx context.Context, id int64, username string) error

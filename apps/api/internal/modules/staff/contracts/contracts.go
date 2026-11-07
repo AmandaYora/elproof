@@ -31,6 +31,9 @@ type CreateOwnerResult struct {
 type Summary struct {
 	ID   int64
 	Name string
+	// Phone is the WO contact number the Client Portal turns into a
+	// WhatsApp button. Only ever surfaced to the client of that project's PIC.
+	Phone string
 }
 
 type Contracts interface {
@@ -72,7 +75,7 @@ func (c *impl) GetSummary(ctx context.Context, tenantID, staffID int64) (*Summar
 		}
 		return nil, err
 	}
-	return &Summary{ID: member.ID, Name: member.Name}, nil
+	return &Summary{ID: member.ID, Name: member.Name, Phone: member.Phone}, nil
 }
 
 func (c *impl) FindOwner(ctx context.Context, tenantID int64) (string, error) {

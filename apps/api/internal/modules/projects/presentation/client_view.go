@@ -18,6 +18,7 @@ var clientReadableSubresources = map[string]bool{
 	"milestones":      true,
 	"vendors":         true,
 	"client-payments": true,
+	"payment-terms":   true,
 	"issues":          true,
 	"evidence":        true,
 	"documents":       true,

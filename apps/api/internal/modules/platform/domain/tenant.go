@@ -62,6 +62,20 @@ type Tenant struct {
 	UpdatedAt             time.Time
 }
 
+// BusinessDetails is what the Owner shares with clients: where the business is
+// and which bank account clients pay into. All optional.
+type BusinessDetails struct {
+	Address           string
+	BankName          string
+	BankAccountNumber string
+	BankAccountHolder string
+}
+
+// HasBank reports whether a complete account is set.
+func (d BusinessDetails) HasBank() bool {
+	return d.BankName != "" && d.BankAccountNumber != "" && d.BankAccountHolder != ""
+}
+
 type SignupSource string
 
 const (

@@ -19,6 +19,9 @@ type DashboardRepository interface {
 	ListPaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardPaymentRow, error)
 	ListVenuePaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardVenuePaymentRow, error)
 	ListRecentActivity(ctx context.Context, tenantID int64, limit int) ([]domain.ActivityLogEntry, error)
+	ListOpenProjectTerms(ctx context.Context, tenantID int64) ([]domain.TermWithProject, error)
+	ListAppliedToContract(ctx context.Context, tenantID int64) (map[int64]int64, error)
+	ListProjectMilestonesDue(ctx context.Context, tenantID int64, from, to time.Time) ([]domain.DashboardTaskRow, error)
 }
 
 type DashboardService struct {
@@ -67,6 +70,16 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 		}
 		if isOpenProject {
 			openProjectIDs = append(openProjectIDs, p.ID)
+			if !p.IsArchived {
+				switch p.Status {
+				case domain.StatusDraft:
+					stats.StageCounts.Draft++
+				case domain.StatusPreparation:
+					stats.StageCounts.Preparation++
+				case domain.StatusReady:
+					stats.StageCounts.Ready++
+				}
+			}
 		}
 	}
 	sort.Slice(upcoming, func(i, j int) bool { return upcoming[i].EventDate.Before(upcoming[j].EventDate) })
@@ -138,6 +151,22 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 			stats.IncompleteVenuePayments = append(stats.IncompleteVenuePayments, row)
 		}
 	}
+
+	terms, err := s.repo.ListOpenProjectTerms(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	applied, err := s.repo.ListAppliedToContract(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	stats.OverdueTerms, stats.OverdueTermsTotal, stats.DueSoonTerms = domain.BuildTermAlerts(terms, applied, asOf)
+
+	dueTasks, err := s.repo.ListProjectMilestonesDue(ctx, tenantID, asOf, asOf.AddDate(0, 0, 7))
+	if err != nil {
+		return nil, err
+	}
+	stats.TasksDueThisWeek = dueTasks
 
 	recentActivity, err := s.repo.ListRecentActivity(ctx, tenantID, 8)
 	if err != nil {

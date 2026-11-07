@@ -265,17 +265,25 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, venue_id = ?, venue_rental_price = ?,
-		 venue_charge = ?, prep_start_date = ?, package_name = ?, contract_value = ?, status = ?, pic_staff_id = ?, pic_sales_staff_id = ?, description = ?
+		 venue_charge = ?, prep_start_date = ?, package_name = ?, contract_value = ?, pic_staff_id = ?, pic_sales_staff_id = ?, description = ?
 		 WHERE tenant_id = ? AND id = ?`,
 		p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.VenueRentalPrice,
-		p.VenueCharge, p.PrepStartDate, p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.PICSalesStaffID, p.Description, p.TenantID, p.ID,
+		p.VenueCharge, p.PrepStartDate, p.PackageName, p.ContractValue, p.PICStaffID, p.PICSalesStaffID, p.Description, p.TenantID, p.ID,
 	)
 	return err
 }
 
-func (r *MySQLProjectRepository) SetStatus(ctx context.Context, tenantID, id int64, status domain.ProjectStatus) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE projects SET status = ? WHERE tenant_id = ? AND id = ?`, string(status), tenantID, id)
-	return err
+// ChangeStatus moves a project from one status to another only if it is still
+// in `from`, and says whether it did. Two people acting on a stale page can
+// therefore not skip or undo each other's step: the loser gets false.
+func (r *MySQLProjectRepository) ChangeStatus(ctx context.Context, tenantID, id int64, from, to domain.ProjectStatus) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE projects SET status = ? WHERE tenant_id = ? AND id = ? AND status = ?`, string(to), tenantID, id, string(from))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 func (r *MySQLProjectRepository) SetArchived(ctx context.Context, tenantID, id int64, archived bool) error {
@@ -310,6 +318,9 @@ func (r *MySQLProjectRepository) DeleteCascade(ctx context.Context, tenantID, id
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM client_payments WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM client_payment_terms WHERE project_id = ?`, id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_issues WHERE project_id = ?`, id); err != nil {

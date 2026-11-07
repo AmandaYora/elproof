@@ -275,6 +275,36 @@ func (r *MySQLTenantRepository) UpdateProfile(ctx context.Context, id int64, bus
 	return err
 }
 
+// UpdateBrandColor sets only the workspace's brand color preset (the Owner's
+// own choice on Profil Usaha).
+func (r *MySQLTenantRepository) UpdateBrandColor(ctx context.Context, id int64, preset string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET brand_color_preset = ? WHERE id = ?`, preset, id)
+	return err
+}
+
+// GetBusinessDetails returns the tenant's details; an unset tenant has none
+// (the zero value), not an error.
+func (r *MySQLTenantRepository) GetBusinessDetails(ctx context.Context, tenantID int64) (domain.BusinessDetails, error) {
+	var d domain.BusinessDetails
+	err := r.db.QueryRowContext(ctx,
+		`SELECT address, bank_name, bank_account_number, bank_account_holder FROM tenant_business_details WHERE tenant_id = ?`, tenantID,
+	).Scan(&d.Address, &d.BankName, &d.BankAccountNumber, &d.BankAccountHolder)
+	if err == sql.ErrNoRows {
+		return domain.BusinessDetails{}, nil
+	}
+	return d, err
+}
+
+func (r *MySQLTenantRepository) SaveBusinessDetails(ctx context.Context, tenantID int64, d domain.BusinessDetails) error {
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO tenant_business_details (tenant_id, address, bank_name, bank_account_number, bank_account_holder)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE address = VALUES(address), bank_name = VALUES(bank_name),
+		   bank_account_number = VALUES(bank_account_number), bank_account_holder = VALUES(bank_account_holder)`,
+		tenantID, d.Address, d.BankName, d.BankAccountNumber, d.BankAccountHolder)
+	return err
+}
+
 // SetOnboardingDismissed records that the Owner closed the checklist.
 func (r *MySQLTenantRepository) SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET onboarding_dismissed_at = ? WHERE id = ?`, when, id)

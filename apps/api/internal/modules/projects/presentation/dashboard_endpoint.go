@@ -2,7 +2,6 @@ package presentation
 
 import (
 	"net/http"
-	"time"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/response"
@@ -51,6 +50,27 @@ type dashboardVenuePaymentResponse struct {
 	PaymentDate string `json:"paymentDate"`
 }
 
+type dashboardTermResponse struct {
+	ProjectID   int64  `json:"projectId"`
+	ProjectName string `json:"projectName"`
+	Label       string `json:"label"`
+	DueDate     string `json:"dueDate"`
+	Remaining   int64  `json:"remaining"`
+}
+
+type dashboardTaskResponse struct {
+	ProjectID   int64  `json:"projectId"`
+	ProjectName string `json:"projectName"`
+	Name        string `json:"name"`
+	TargetDate  string `json:"targetDate"`
+}
+
+type stageCountsResponse struct {
+	Draft       int `json:"draft"`
+	Preparation int `json:"preparation"`
+	Ready       int `json:"ready"`
+}
+
 type laggingProjectResponse struct {
 	Project        projectResponse `json:"project"`
 	OverallPercent int             `json:"overallPercent"`
@@ -85,6 +105,11 @@ type dashboardResponse struct {
 	NearDDayProjects        []projectResponse               `json:"nearDDayProjects"`
 	LaggingProjects         []laggingProjectResponse        `json:"laggingProjects"`
 	UpcomingProjects        []projectResponse               `json:"upcomingProjects"`
+	OverdueTerms            []dashboardTermResponse         `json:"overdueTerms"`
+	OverdueTermsTotal       int64                           `json:"overdueTermsTotal"`
+	DueSoonTerms            []dashboardTermResponse         `json:"dueSoonTerms"`
+	TasksDueThisWeek        []dashboardTaskResponse         `json:"tasksDueThisWeek"`
+	StageCounts             stageCountsResponse             `json:"stageCounts"`
 	RecentActivity          []activityResponse              `json:"recentActivity"`
 	Revenue                 revenueSummaryResponse          `json:"revenue"`
 	ProjectTrend            []projectTrendPointResponse     `json:"projectTrend"`
@@ -107,6 +132,11 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 		NearDDayProjects:        make([]projectResponse, 0, len(s.NearDDayProjects)),
 		LaggingProjects:         make([]laggingProjectResponse, 0, len(s.LaggingProjects)),
 		UpcomingProjects:        make([]projectResponse, 0, len(s.UpcomingProjects)),
+		OverdueTerms:            make([]dashboardTermResponse, 0, len(s.OverdueTerms)),
+		OverdueTermsTotal:       s.OverdueTermsTotal,
+		DueSoonTerms:            make([]dashboardTermResponse, 0, len(s.DueSoonTerms)),
+		TasksDueThisWeek:        make([]dashboardTaskResponse, 0, len(s.TasksDueThisWeek)),
+		StageCounts:             stageCountsResponse{Draft: s.StageCounts.Draft, Preparation: s.StageCounts.Preparation, Ready: s.StageCounts.Ready},
 		RecentActivity:          make([]activityResponse, 0, len(s.RecentActivity)),
 		ProjectTrend:            make([]projectTrendPointResponse, 0, len(s.ProjectTrend)),
 		RevenueTrend:            make([]revenueTrendPointResponse, 0, len(s.RevenueTrend)),
@@ -134,6 +164,21 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 		resp.IncompleteVenuePayments = append(resp.IncompleteVenuePayments, dashboardVenuePaymentResponse{
 			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName,
 			Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
+		})
+	}
+	for _, row := range s.OverdueTerms {
+		resp.OverdueTerms = append(resp.OverdueTerms, dashboardTermResponse{
+			ProjectID: row.ProjectID, ProjectName: row.ProjectName, Label: row.Label, DueDate: row.DueDate.Format(dateLayout), Remaining: row.Remaining,
+		})
+	}
+	for _, row := range s.DueSoonTerms {
+		resp.DueSoonTerms = append(resp.DueSoonTerms, dashboardTermResponse{
+			ProjectID: row.ProjectID, ProjectName: row.ProjectName, Label: row.Label, DueDate: row.DueDate.Format(dateLayout), Remaining: row.Remaining,
+		})
+	}
+	for _, row := range s.TasksDueThisWeek {
+		resp.TasksDueThisWeek = append(resp.TasksDueThisWeek, dashboardTaskResponse{
+			ProjectID: row.ProjectID, ProjectName: row.ProjectName, Name: row.Name, TargetDate: row.TargetDate.Format(dateLayout),
 		})
 	}
 	for _, p := range s.NearDDayProjects {
@@ -178,7 +223,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 		return
 	}
-	stats, err := h.dashboard.Get(r.Context(), claims.tenantID, time.Now())
+	stats, err := h.dashboard.Get(r.Context(), claims.tenantID, nowWIB())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -189,4 +234,64 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		resp.RevenueTrend = []revenueTrendPointResponse{}
 	}
 	response.OK(w, "ok", resp)
+}
+
+type myProjectTaskResponse struct {
+	Name       string `json:"name"`
+	TargetDate string `json:"targetDate"`
+}
+
+type myProjectResponse struct {
+	ID                int64                   `json:"id"`
+	Name              string                  `json:"name"`
+	BrideName         string                  `json:"brideName"`
+	GroomName         string                  `json:"groomName"`
+	EventDate         string                  `json:"eventDate"`
+	Status            string                  `json:"status"`
+	ProgressPercent   int                     `json:"progressPercent"`
+	OpenIssues        int                     `json:"openIssues"`
+	OverdueTerms      int                     `json:"overdueTerms"`
+	OverdueTotal      int64                   `json:"overdueTotal"`
+	NextTermLabel     string                  `json:"nextTermLabel,omitempty"`
+	NextTermDueDate   string                  `json:"nextTermDueDate,omitempty"`
+	NextTermRemaining int64                   `json:"nextTermRemaining,omitempty"`
+	TasksDueThisWeek  []myProjectTaskResponse `json:"tasksDueThisWeek"`
+}
+
+// MyDashboard is GET /dashboard/mine: the projects the signed-in staff member
+// holds, with what needs attention. Open to every staff role (it is scoped to
+// their own projects), unlike the tenant-wide Dashboard.
+func (h *Handler) MyDashboard(w http.ResponseWriter, r *http.Request) {
+	claims, ok := requireStaff(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
+		return
+	}
+	list, err := h.myProjects.Get(r.Context(), claims.tenantID, claims.staffID, nowWIB())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := make([]myProjectResponse, 0, len(list))
+	for _, mp := range list {
+		item := myProjectResponse{
+			ID: mp.Project.ID, Name: mp.Project.Name, BrideName: mp.Project.BrideName, GroomName: mp.Project.GroomName,
+			EventDate: mp.Project.EventDate.Format(dateLayout), Status: string(mp.Project.Status),
+			ProgressPercent: mp.ProgressPercent, OpenIssues: mp.OpenIssues, OverdueTerms: mp.OverdueTerms, OverdueTotal: mp.OverdueTotal,
+			TasksDueThisWeek: make([]myProjectTaskResponse, 0, len(mp.TasksDueThisWeek)),
+		}
+		if mp.NextTerm != nil {
+			item.NextTermLabel = mp.NextTerm.Term.Label
+			item.NextTermDueDate = mp.NextTerm.Term.DueDate.Format(dateLayout)
+			item.NextTermRemaining = mp.NextTerm.Remaining
+		}
+		for _, m := range mp.TasksDueThisWeek {
+			item.TasksDueThisWeek = append(item.TasksDueThisWeek, myProjectTaskResponse{Name: m.Name, TargetDate: m.TargetDate.Format(dateLayout)})
+		}
+		out = append(out, item)
+	}
+	response.OK(w, "ok", out)
 }

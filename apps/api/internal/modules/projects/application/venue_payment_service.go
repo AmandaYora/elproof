@@ -20,13 +20,39 @@ type VenuePaymentRepository interface {
 }
 
 type VenuePaymentService struct {
-	repo     VenuePaymentRepository
-	evidence *EvidenceService
-	activity *ActivityService
+	repo      VenuePaymentRepository
+	evidence  *EvidenceService
+	activity  *ActivityService
+	contracts ContractReader
 }
 
-func NewVenuePaymentService(repo VenuePaymentRepository, evidence *EvidenceService, activity *ActivityService) *VenuePaymentService {
-	return &VenuePaymentService{repo: repo, evidence: evidence, activity: activity}
+func NewVenuePaymentService(repo VenuePaymentRepository, evidence *EvidenceService, activity *ActivityService, contracts ContractReader) *VenuePaymentService {
+	return &VenuePaymentService{repo: repo, evidence: evidence, activity: activity, contracts: contracts}
+}
+
+// checkChange refuses an add, edit or delete that would take the total paid
+// to the venue past its rental price plus charge on the project.
+func (s *VenuePaymentService) checkChange(ctx context.Context, tenantID, projectID, origID int64, next *domain.PaymentLine) error {
+	cost, err := s.contracts.VenueCost(ctx, tenantID, projectID)
+	if err != nil {
+		return err
+	}
+	all, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	var before, after []domain.PaymentLine
+	for _, p := range all {
+		line := domain.PaymentLine{Type: p.Type, Amount: p.Amount}
+		before = append(before, line)
+		if p.ID != origID {
+			after = append(after, line)
+		}
+	}
+	if next != nil {
+		after = append(after, *next)
+	}
+	return checkChange(before, after, cost, "biaya venue", next == nil)
 }
 
 func (s *VenuePaymentService) List(ctx context.Context, projectID int64) ([]domain.VenuePayment, error) {
@@ -45,7 +71,13 @@ type VenuePaymentInput struct {
 // Create records a venue payment and logs it under the same
 // ActivityPaymentRecorded type PaymentService/ClientPaymentService already
 // use — distinguished only by entityType/description.
-func (s *VenuePaymentService) Create(ctx context.Context, projectID int64, actorStaffID int64, input VenuePaymentInput) (*domain.VenuePayment, error) {
+func (s *VenuePaymentService) Create(ctx context.Context, tenantID, projectID int64, actorStaffID int64, input VenuePaymentInput) (*domain.VenuePayment, error) {
+	if err := checkAmount(input.Amount); err != nil {
+		return nil, err
+	}
+	if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+		return nil, err
+	}
 	p := &domain.VenuePayment{
 		ProjectID: projectID, Type: input.Type, Amount: input.Amount,
 		PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
@@ -59,13 +91,19 @@ func (s *VenuePaymentService) Create(ctx context.Context, projectID int64, actor
 }
 
 // Update is an unconditional full-field overwrite -- see PaymentService.Update.
-func (s *VenuePaymentService) Update(ctx context.Context, projectID, id int64, actorStaffID int64, input VenuePaymentInput) (*domain.VenuePayment, error) {
+func (s *VenuePaymentService) Update(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, input VenuePaymentInput) (*domain.VenuePayment, error) {
 	p, err := s.repo.FindByID(ctx, projectID, id)
 	if err != nil {
 		return nil, err
 	}
 	if p == nil {
 		return nil, apperror.NotFound("Pembayaran tidak ditemukan")
+	}
+	if err := checkAmount(input.Amount); err != nil {
+		return nil, err
+	}
+	if err := s.checkChange(ctx, tenantID, projectID, id, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+		return nil, err
 	}
 	p.Type, p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes =
 		input.Type, input.Amount, input.PaymentDate, input.Method, input.ReferenceNumber, input.Notes
@@ -79,13 +117,16 @@ func (s *VenuePaymentService) Update(ctx context.Context, projectID, id int64, a
 
 // Delete hard-deletes the payment and, first, its attached evidence -- see
 // PaymentService.Delete for the full reasoning.
-func (s *VenuePaymentService) Delete(ctx context.Context, projectID, id int64, actorStaffID int64) error {
+func (s *VenuePaymentService) Delete(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64) error {
 	p, err := s.repo.FindByID(ctx, projectID, id)
 	if err != nil {
 		return err
 	}
 	if p == nil {
 		return apperror.NotFound("Pembayaran tidak ditemukan")
+	}
+	if err := s.checkChange(ctx, tenantID, projectID, id, nil); err != nil {
+		return err
 	}
 	if err := s.evidence.DeleteForRelated(ctx, domain.RelatedVenuePayment, id); err != nil {
 		return err

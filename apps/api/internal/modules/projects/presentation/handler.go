@@ -38,6 +38,9 @@ type Handler struct {
 	evidence       *application.EvidenceService
 	activity       *application.ActivityService
 	dashboard      *application.DashboardService
+	closing        *application.ClosingChecklistService
+	terms          *application.PaymentTermService
+	myProjects     *application.MyProjectsService
 	clientAccess   ClientAccessResolver
 }
 
@@ -51,10 +54,13 @@ func NewHandler(
 	evidence *application.EvidenceService,
 	activity *application.ActivityService,
 	dashboard *application.DashboardService,
+	closing *application.ClosingChecklistService,
+	terms *application.PaymentTermService,
+	myProjects *application.MyProjectsService,
 ) *Handler {
 	return &Handler{
 		projects: projects, vendors: vendors, payments: payments, clientPayments: clientPayments, venuePayments: venuePayments,
-		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard,
+		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard, closing: closing, terms: terms, myProjects: myProjects,
 	}
 }
 
@@ -120,6 +126,14 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.deleteProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "cancel" && r.Method == http.MethodPost:
 		h.cancelProject(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "transition" && r.Method == http.MethodPost:
+		h.transitionProject(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "payment-terms" && r.Method == http.MethodGet:
+		h.listPaymentTerms(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "payment-terms" && r.Method == http.MethodPut:
+		h.replacePaymentTerms(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "closing-checklist" && r.Method == http.MethodGet:
+		h.closingChecklist(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "toggle-archive" && r.Method == http.MethodPost:
 		h.toggleArchiveProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "duplicate" && r.Method == http.MethodPost:
@@ -259,7 +273,7 @@ func staffWritePermission(method string, rest []string) (perm string, alt string
 		return "project.archive", ""
 	case "duplicate":
 		return "project.duplicate", ""
-	case "payments", "client-payments", "venue-payments":
+	case "payments", "client-payments", "venue-payments", "payment-terms":
 		if method == http.MethodDelete {
 			return "finance.payment.delete", ""
 		}
@@ -286,7 +300,7 @@ func clientReadPermission(rest []string) string {
 		return "portal.timeline.view"
 	case "vendors", "venue":
 		return "portal.vendor.view"
-	case "client-payments":
+	case "client-payments", "payment-terms":
 		return "portal.finance.view"
 	case "issues":
 		return "portal.issues.view"

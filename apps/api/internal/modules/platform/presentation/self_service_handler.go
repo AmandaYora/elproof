@@ -119,6 +119,122 @@ func (h *TenantHandler) updateMyProfile(w http.ResponseWriter, r *http.Request) 
 	response.OK(w, "Profil WO tersimpan", toTenantResponse(*tenant))
 }
 
+type brandColorBody struct {
+	Preset string `json:"preset"`
+}
+
+// updateMyBrandColor is PATCH /tenants/me/brand-color (business_profile.manage).
+func (h *TenantHandler) updateMyBrandColor(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := ownerTenantID(w, r)
+	if !ok {
+		return
+	}
+	var body brandColorBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	tenant, err := h.tenants.UpdateOwnBrandColor(r.Context(), tenantID, body.Preset)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Warna tersimpan", toTenantResponse(*tenant))
+}
+
+type businessDetailsBody struct {
+	Address           string `json:"address"`
+	BankName          string `json:"bankName"`
+	BankAccountNumber string `json:"bankAccountNumber"`
+	BankAccountHolder string `json:"bankAccountHolder"`
+}
+
+type businessDetailsResponse struct {
+	Address           string `json:"address"`
+	BankName          string `json:"bankName"`
+	BankAccountNumber string `json:"bankAccountNumber"`
+	BankAccountHolder string `json:"bankAccountHolder"`
+}
+
+func toBusinessDetailsResponse(d domain.BusinessDetails) businessDetailsResponse {
+	return businessDetailsResponse{Address: d.Address, BankName: d.BankName, BankAccountNumber: d.BankAccountNumber, BankAccountHolder: d.BankAccountHolder}
+}
+
+// myBusinessDetails is GET /tenants/me/business-details (business_profile.manage).
+func (h *TenantHandler) myBusinessDetails(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := ownerTenantID(w, r)
+	if !ok {
+		return
+	}
+	d, err := h.tenants.GetBusinessDetails(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", toBusinessDetailsResponse(d))
+}
+
+// updateMyBusinessDetails is PUT /tenants/me/business-details (business_profile.manage).
+func (h *TenantHandler) updateMyBusinessDetails(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := ownerTenantID(w, r)
+	if !ok {
+		return
+	}
+	var body businessDetailsBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	d, err := h.tenants.SaveBusinessDetails(r.Context(), tenantID, application.BusinessDetailsInput{
+		Address: body.Address, BankName: body.BankName, BankAccountNumber: body.BankAccountNumber, BankAccountHolder: body.BankAccountHolder,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Data usaha tersimpan", toBusinessDetailsResponse(d))
+}
+
+type contactResponse struct {
+	BusinessName string `json:"businessName"`
+	// WhatsApp is the business number, digits with the country code (62812…).
+	WhatsApp string `json:"whatsapp"`
+	City     string `json:"city"`
+	Address  string `json:"address"`
+	// Bank* are present only for people who may see what they owe: staff, or a
+	// client whose portal role has portal.finance.view.
+	BankName          string `json:"bankName,omitempty"`
+	BankAccountNumber string `json:"bankAccountNumber,omitempty"`
+	BankAccountHolder string `json:"bankAccountHolder,omitempty"`
+}
+
+// myContact is GET /tenants/me/contact: how to reach the business and, for
+// those who may pay, where to pay. Open to any tenant-scoped principal (the
+// Client Portal's contact and payment cards read it).
+func (h *TenantHandler) myContact(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.FromContext(r.Context())
+	tenantID, hasTenant := selfTenantID(r)
+	if !ok || !hasTenant || (claims.PrincipalType != "staff" && claims.PrincipalType != "client") {
+		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
+		return
+	}
+	tenant, err := h.tenants.Get(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	d, err := h.tenants.GetBusinessDetails(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	res := contactResponse{BusinessName: tenant.BusinessName, WhatsApp: tenant.Phone, City: tenant.City, Address: d.Address}
+	if claims.PrincipalType == "staff" || middleware.GrantsFrom(r.Context()).Can("portal.finance.view") {
+		res.BankName, res.BankAccountNumber, res.BankAccountHolder = d.BankName, d.BankAccountNumber, d.BankAccountHolder
+	}
+	response.OK(w, "ok", res)
+}
+
 // uploadMyLogo is PUT /tenants/me/logo (Owner).
 func (h *TenantHandler) uploadMyLogo(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := ownerTenantID(w, r)

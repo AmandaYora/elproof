@@ -60,6 +60,17 @@ func (r staffNameResolver) GetName(ctx context.Context, tenantID, staffID int64)
 	return summary.Name, true, nil
 }
 
+func (r staffNameResolver) GetPhone(ctx context.Context, tenantID, staffID int64) (string, bool, error) {
+	summary, err := r.contracts.GetSummary(ctx, tenantID, staffID)
+	if err != nil {
+		return "", false, err
+	}
+	if summary == nil {
+		return "", false, nil
+	}
+	return summary.Phone, true, nil
+}
+
 // staffRoles / clientRoles adapt the access module's contract to the narrow
 // role ports staff and clients declare (they never import access).
 type staffRoles struct{ access accesscontracts.Contracts }
@@ -367,13 +378,15 @@ func serve(cfg config.Config) {
 	platformModule.StartSubscriptionStatusSweeper(context.Background(), time.Hour)
 
 	identityModule.RegisterAuthedRoutes(mux, authed)
-	// A WO's changes to its own roles are audited like the platform team's.
+	// A WO's changes to its own roles, and to its own business profile (including
+	// the bank account clients are told to pay into), are audited like the
+	// platform team's: who, when, from where. Bodies are never logged.
 	auditStaff := middleware.AuditTrail(auditModule.Recorder(), "staff")
 	accessModule.RegisterRoutes(mux, func(h http.Handler) http.Handler { return authed(auditStaff(h)) })
 	auditModule.RegisterRoutes(mux, authed)
 	paymentModule.RegisterRoutes(mux, authed)
 	billingModule.RegisterRoutes(mux, authed)
-	platformModule.RegisterRoutes(mux, authed)
+	platformModule.RegisterRoutes(mux, func(h http.Handler) http.Handler { return authed(auditStaff(h)) })
 	staffModule.RegisterRoutes(mux, authed)
 	vendorsModule.RegisterRoutes(mux, authed)
 	projectsModule.RegisterRoutes(mux, authed)

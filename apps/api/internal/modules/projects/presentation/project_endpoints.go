@@ -218,6 +218,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	resp.PICName = h.projects.ResolvePICName(r.Context(), tenantID, p.PICStaffID)
 	if isClient {
 		redactProjectForClient(&resp)
+		resp.PICPhone = h.projects.ResolvePICPhone(r.Context(), tenantID, p.PICStaffID)
 		if !middleware.GrantsFrom(r.Context()).Can("portal.finance.view") {
 			resp.ContractValue = 0
 		}
@@ -436,4 +437,56 @@ func (h *Handler) reorderMilestones(w http.ResponseWriter, r *http.Request, clai
 		return
 	}
 	response.OK(w, "Urutan timeline berhasil diperbarui", nil)
+}
+
+type transitionBody struct {
+	Action string `json:"action"`
+}
+
+// transitionProject moves a project one explicit step (start_preparation,
+// mark_ready, complete, reopen). Needs project.edit like any status change.
+func (h *Handler) transitionProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	var body transitionBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	p, err := h.projects.Transition(r.Context(), claims.tenantID, projectID, claims.staffID, domain.StatusAction(body.Action))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	resp := toProjectResponse(*p)
+	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	response.OK(w, "Status project diperbarui", resp)
+}
+
+type checklistItemResponse struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Done   bool   `json:"done"`
+	Detail string `json:"detail"`
+}
+
+type closingChecklistResponse struct {
+	// Ready is true when every item is done.
+	Ready bool                    `json:"ready"`
+	Items []checklistItemResponse `json:"items"`
+}
+
+// closingChecklist is staff-only (not on the client allowlist).
+func (h *Handler) closingChecklist(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	items, err := h.closing.Get(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out := closingChecklistResponse{Ready: true, Items: make([]checklistItemResponse, 0, len(items))}
+	for _, it := range items {
+		if !it.Done {
+			out.Ready = false
+		}
+		out.Items = append(out.Items, checklistItemResponse{Key: it.Key, Label: it.Label, Done: it.Done, Detail: it.Detail})
+	}
+	response.OK(w, "ok", out)
 }

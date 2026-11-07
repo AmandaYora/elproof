@@ -181,3 +181,66 @@ func (s *TenantService) UpdateOwnProfile(ctx context.Context, tenantID int64, in
 	}
 	return s.Get(ctx, tenantID)
 }
+
+// UpdateOwnBrandColor lets the Owner choose the workspace's brand color from
+// the fixed presets (it recolors the WO Console and the Client Portal).
+func (s *TenantService) UpdateOwnBrandColor(ctx context.Context, tenantID int64, preset string) (*domain.Tenant, error) {
+	if !domain.IsValidBrandColorPreset(preset) {
+		return nil, apperror.Validation("Warna tidak dikenal", map[string][]string{"preset": {"Pilih salah satu warna yang tersedia"}})
+	}
+	if err := s.repo.UpdateBrandColor(ctx, tenantID, preset); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, tenantID)
+}
+
+var bankAccountNumber = regexp.MustCompile(`^[0-9][0-9 .-]{3,38}[0-9]$`)
+
+// BusinessDetailsInput is the Owner's form for address and bank account.
+type BusinessDetailsInput struct {
+	Address           string
+	BankName          string
+	BankAccountNumber string
+	BankAccountHolder string
+}
+
+// GetBusinessDetails returns what the Owner has shared with clients so far.
+func (s *TenantService) GetBusinessDetails(ctx context.Context, tenantID int64) (domain.BusinessDetails, error) {
+	return s.repo.GetBusinessDetails(ctx, tenantID)
+}
+
+// SaveBusinessDetails stores the address and the bank account clients pay
+// into. Everything is optional, but a bank account is all-or-nothing: a
+// number without its bank and holder would send clients to an account they
+// cannot recognize.
+func (s *TenantService) SaveBusinessDetails(ctx context.Context, tenantID int64, in BusinessDetailsInput) (domain.BusinessDetails, error) {
+	d := domain.BusinessDetails{
+		Address:           normalizeName(in.Address),
+		BankName:          normalizeName(in.BankName),
+		BankAccountNumber: strings.TrimSpace(in.BankAccountNumber),
+		BankAccountHolder: normalizeName(in.BankAccountHolder),
+	}
+	fields := map[string][]string{}
+	if utf8.RuneCountInString(d.Address) > 255 {
+		fields["address"] = []string{"Alamat maksimal 255 karakter"}
+	}
+	anyBank := d.BankName != "" || d.BankAccountNumber != "" || d.BankAccountHolder != ""
+	if anyBank {
+		if n := utf8.RuneCountInString(d.BankName); n < 2 || n > 60 {
+			fields["bankName"] = []string{"Isi nama bank (2–60 karakter)"}
+		}
+		if !bankAccountNumber.MatchString(d.BankAccountNumber) {
+			fields["bankAccountNumber"] = []string{"Isi nomor rekening (5–40 angka)"}
+		}
+		if n := utf8.RuneCountInString(d.BankAccountHolder); n < 2 || n > 100 {
+			fields["bankAccountHolder"] = []string{"Isi nama pemilik rekening (2–100 karakter)"}
+		}
+	}
+	if len(fields) > 0 {
+		return domain.BusinessDetails{}, apperror.Validation("Data usaha belum lengkap", fields)
+	}
+	if err := s.repo.SaveBusinessDetails(ctx, tenantID, d); err != nil {
+		return domain.BusinessDetails{}, err
+	}
+	return d, nil
+}

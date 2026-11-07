@@ -110,3 +110,65 @@ type VenuePayment struct {
 	ReferenceNumber string
 	Notes           string
 }
+
+// PaymentLine is the part of a payment the overpayment rule needs, shared by
+// client, vendor and venue payments (three distinct Go types, one rule).
+type PaymentLine struct {
+	Type   PaymentType
+	Amount int64
+}
+
+// countsAgainstContract: a Tambahan is money for work outside the agreed
+// contract, so it never uses up the contract value (and never trips the
+// limit). Refund is handled separately: it gives room back.
+func countsAgainstContract(t PaymentType) bool {
+	return t == PaymentDP || t == PaymentTermin || t == PaymentPelunasan
+}
+
+// AppliedToContract is how much of the contract value has been paid:
+// DP + Termin + Pelunasan, minus Refund. Tambahan is left out.
+func AppliedToContract(lines []PaymentLine) int64 {
+	var applied int64
+	for _, l := range lines {
+		switch {
+		case countsAgainstContract(l.Type):
+			applied += l.Amount
+		case l.Type == PaymentRefund:
+			applied -= l.Amount
+		}
+	}
+	return applied
+}
+
+// MaxMoney caps any single amount (Rp 1 quadrillion). Far above any real
+// wedding, far below int64's limit, so sums of many amounts can never wrap.
+const MaxMoney int64 = 1_000_000_000_000_000
+
+// ExcessAfterChange is how far a change to the payment list pushes the paid
+// total past what is owed: 0 when the change is fine. `before` and `after` are
+// the payments of one owed amount (a client, one vendor engagement, the venue)
+// before and after the change (add, edit or delete).
+//
+// A change is refused only when it BOTH makes the applied total exceed
+// contractValue AND raises it. So lowering or removing a limited payment is
+// always allowed, editing a reference number or date of a payment on an
+// already-overpaid project is allowed (the total does not move), and removing
+// a Refund (which raises the total) is checked like adding a payment.
+// A contractValue <= 0 means no amount is set yet: nothing is limited.
+func ExcessAfterChange(before, after []PaymentLine, contractValue int64) int64 {
+	if contractValue <= 0 {
+		return 0
+	}
+	was, now := AppliedToContract(before), AppliedToContract(after)
+	if now <= was || now <= contractValue {
+		return 0
+	}
+	return now - contractValue
+}
+
+// OverpaymentExcess is ExcessAfterChange for recording one new payment `next`
+// on top of `existing`.
+func OverpaymentExcess(existing []PaymentLine, next PaymentLine, contractValue int64) int64 {
+	after := append(append([]PaymentLine(nil), existing...), next)
+	return ExcessAfterChange(existing, after, contractValue)
+}

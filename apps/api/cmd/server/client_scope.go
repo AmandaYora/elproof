@@ -29,7 +29,7 @@ func clientPortalAllowed(method, path string) bool {
 	switch {
 	case match(s, "auth", "me"), match(s, "access", "me"):
 		return true
-	case match(s, "tenants", "me", "branding"), match(s, "tenants", "me", "logo"):
+	case match(s, "tenants", "me", "branding"), match(s, "tenants", "me", "logo"), match(s, "tenants", "me", "contact"):
 		return true
 	case match(s, "projects", "me"):
 		return true
@@ -54,7 +54,7 @@ func clientProjectSubpathAllowed(rest []string) bool {
 		return true
 	case 1:
 		switch rest[0] {
-		case "milestones", "vendors", "client-payments", "issues", "evidence", "documents", "venue":
+		case "milestones", "vendors", "client-payments", "payment-terms", "issues", "evidence", "documents", "venue":
 			return true
 		}
 		return false

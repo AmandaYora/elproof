@@ -42,6 +42,7 @@ func TestClientReadPermission(t *testing.T) {
 		"vendors":         "portal.vendor.view",
 		"venue":           "portal.vendor.view",
 		"client-payments": "portal.finance.view",
+		"payment-terms":   "portal.finance.view",
 		"issues":          "portal.issues.view",
 		"evidence":        "portal.documents.view",
 		"documents":       "portal.documents.view",

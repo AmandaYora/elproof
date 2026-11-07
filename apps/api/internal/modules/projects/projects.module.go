@@ -29,6 +29,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	vendorMilestoneRepo := infrastructure.NewMySQLVendorMilestoneRepository(db)
 	paymentRepo := infrastructure.NewMySQLPaymentRepository(db)
 	clientPaymentRepo := infrastructure.NewMySQLClientPaymentRepository(db)
+	paymentTermRepo := infrastructure.NewMySQLPaymentTermRepository(db)
 	venuePaymentRepo := infrastructure.NewMySQLVenuePaymentRepository(db)
 	issueRepo := infrastructure.NewMySQLIssueRepository(db)
 	evidenceRepo := infrastructure.NewMySQLEvidenceRepository(db)
@@ -40,13 +41,17 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, venuePaymentRepo, evidenceService, activityService, staff)
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
 	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
-	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService)
-	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService)
-	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, evidenceService, activityService)
+	contractReader := application.NewContractReader(projectService, vendorEngagementRepo)
+	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService, contractReader)
+	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService, contractReader)
+	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, evidenceService, activityService, contractReader)
 	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo, evidenceService)
+	paymentTermService := application.NewPaymentTermService(paymentTermRepo, clientPaymentRepo, projectService, activityService)
+	myProjectsService := application.NewMyProjectsService(projectService, paymentTermService)
+	closingService := application.NewClosingChecklistService(projectService, clientPaymentRepo, paymentRepo, venuePaymentRepo, vendorEngagementRepo, issueRepo)
 
-	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService)
+	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
 
 	return &Module{
 		handler:                  handler,
@@ -93,6 +98,7 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/projects", authed(http.HandlerFunc(m.handler.Collection)))
 	mux.Handle("/api/v1/projects/", authed(http.HandlerFunc(m.handler.Item)))
 	mux.Handle("/api/v1/dashboard", authed(http.HandlerFunc(m.handler.Dashboard)))
+	mux.Handle("/api/v1/dashboard/mine", authed(http.HandlerFunc(m.handler.MyDashboard)))
 	mux.Handle("/api/v1/milestone-templates", authed(http.HandlerFunc(m.milestoneTemplateHandler.Collection)))
 	mux.Handle("/api/v1/milestone-templates/", authed(http.HandlerFunc(m.milestoneTemplateHandler.Item)))
 }

@@ -238,6 +238,14 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 			h.mySubscription(w, r)
 		case len(segments) == 2 && segments[1] == "profile" && r.Method == http.MethodPatch:
 			h.updateMyProfile(w, r)
+		case len(segments) == 2 && segments[1] == "business-details" && r.Method == http.MethodGet:
+			h.myBusinessDetails(w, r)
+		case len(segments) == 2 && segments[1] == "business-details" && r.Method == http.MethodPut:
+			h.updateMyBusinessDetails(w, r)
+		case len(segments) == 2 && segments[1] == "contact" && r.Method == http.MethodGet:
+			h.myContact(w, r)
+		case len(segments) == 2 && segments[1] == "brand-color" && r.Method == http.MethodPatch:
+			h.updateMyBrandColor(w, r)
 		case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodPut:
 			h.uploadMyLogo(w, r)
 		case len(segments) == 2 && segments[1] == "onboarding" && r.Method == http.MethodGet:

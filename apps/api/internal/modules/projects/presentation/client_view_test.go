@@ -10,7 +10,7 @@ func TestClientCanRead(t *testing.T) {
 	ok := [][]string{
 		{},
 		{"milestones"}, {"vendors"}, {"client-payments"}, {"issues"},
-		{"evidence"}, {"documents"}, {"venue"},
+		{"evidence"}, {"documents"}, {"venue"}, {"payment-terms"},
 		{"evidence", "9", "file"},
 	}
 	for _, rest := range ok {
@@ -19,7 +19,8 @@ func TestClientCanRead(t *testing.T) {
 		}
 	}
 	denied := [][]string{
-		{"payments"}, {"venue-payments"}, {"activity"},
+		{"payments"}, {"venue-payments"}, {"activity"}, {"closing-checklist"}, {"transition"},
+		{"payment-terms", "1"},
 		{"vendors", "4", "milestones"}, {"evidence", "9"}, {"milestones", "3"},
 	}
 	for _, rest := range denied {

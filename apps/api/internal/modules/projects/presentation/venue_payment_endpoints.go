@@ -48,7 +48,7 @@ func (h *Handler) createVenuePayment(w http.ResponseWriter, r *http.Request, cla
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	p, err := h.venuePayments.Create(r.Context(), projectID, claims.staffID, application.VenuePaymentInput{
+	p, err := h.venuePayments.Create(r.Context(), claims.tenantID, projectID, claims.staffID, application.VenuePaymentInput{
 		Type: domain.PaymentType(body.Type), Amount: body.Amount,
 		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
 	})
@@ -80,7 +80,7 @@ func (h *Handler) updateVenuePayment(w http.ResponseWriter, r *http.Request, cla
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	p, err := h.venuePayments.Update(r.Context(), projectID, paymentID, claims.staffID, application.VenuePaymentInput{
+	p, err := h.venuePayments.Update(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, application.VenuePaymentInput{
 		Type: domain.PaymentType(body.Type), Amount: body.Amount,
 		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
 	})
@@ -109,7 +109,7 @@ func (h *Handler) deleteVenuePayment(w http.ResponseWriter, r *http.Request, cla
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	if err := h.venuePayments.Delete(r.Context(), projectID, paymentID, claims.staffID); err != nil {
+	if err := h.venuePayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID); err != nil {
 		writeAppError(w, err)
 		return
 	}

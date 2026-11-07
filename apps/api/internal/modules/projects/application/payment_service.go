@@ -20,13 +20,42 @@ type PaymentRepository interface {
 }
 
 type PaymentService struct {
-	repo     PaymentRepository
-	evidence *EvidenceService
-	activity *ActivityService
+	repo      PaymentRepository
+	evidence  *EvidenceService
+	activity  *ActivityService
+	contracts ContractReader
 }
 
-func NewPaymentService(repo PaymentRepository, evidence *EvidenceService, activity *ActivityService) *PaymentService {
-	return &PaymentService{repo: repo, evidence: evidence, activity: activity}
+func NewPaymentService(repo PaymentRepository, evidence *EvidenceService, activity *ActivityService, contracts ContractReader) *PaymentService {
+	return &PaymentService{repo: repo, evidence: evidence, activity: activity, contracts: contracts}
+}
+
+// checkChange refuses an add, edit or delete that would take the total paid
+// to one vendor engagement past that engagement's agreed price.
+func (s *PaymentService) checkChange(ctx context.Context, projectID, projectVendorID, origID int64, next *domain.PaymentLine) error {
+	contract, err := s.contracts.EngagementContractValue(ctx, projectID, projectVendorID)
+	if err != nil {
+		return err
+	}
+	all, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	var before, after []domain.PaymentLine
+	for _, p := range all {
+		if p.ProjectVendorID != projectVendorID {
+			continue
+		}
+		line := domain.PaymentLine{Type: p.Type, Amount: p.Amount}
+		before = append(before, line)
+		if p.ID != origID {
+			after = append(after, line)
+		}
+	}
+	if next != nil {
+		after = append(after, *next)
+	}
+	return checkChange(before, after, contract, "harga vendor", next == nil)
 }
 
 func (s *PaymentService) List(ctx context.Context, projectID int64) ([]domain.VendorPayment, error) {
@@ -44,6 +73,12 @@ type PaymentInput struct {
 }
 
 func (s *PaymentService) Create(ctx context.Context, projectID int64, actorStaffID int64, input PaymentInput) (*domain.VendorPayment, error) {
+	if err := checkAmount(input.Amount); err != nil {
+		return nil, err
+	}
+	if err := s.checkChange(ctx, projectID, input.ProjectVendorID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+		return nil, err
+	}
 	p := &domain.VendorPayment{
 		ProjectID: projectID, ProjectVendorID: input.ProjectVendorID, Type: input.Type, Amount: input.Amount,
 		PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
@@ -70,6 +105,12 @@ func (s *PaymentService) Update(ctx context.Context, projectID, id int64, actorS
 	if p == nil {
 		return nil, apperror.NotFound("Pembayaran tidak ditemukan")
 	}
+	if err := checkAmount(input.Amount); err != nil {
+		return nil, err
+	}
+	if err := s.checkChange(ctx, projectID, p.ProjectVendorID, id, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+		return nil, err
+	}
 	p.Type, p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes =
 		input.Type, input.Amount, input.PaymentDate, input.Method, input.ReferenceNumber, input.Notes
 	if err := s.repo.Update(ctx, projectID, id, *p); err != nil {
@@ -94,6 +135,9 @@ func (s *PaymentService) Delete(ctx context.Context, projectID, id int64, actorS
 	}
 	if p == nil {
 		return apperror.NotFound("Pembayaran tidak ditemukan")
+	}
+	if err := s.checkChange(ctx, projectID, p.ProjectVendorID, id, nil); err != nil {
+		return err
 	}
 	if err := s.evidence.DeleteForRelated(ctx, domain.RelatedPayment, id); err != nil {
 		return err

@@ -76,6 +76,11 @@ type DashboardStats struct {
 	NearDDayProjects        []Project
 	LaggingProjects         []LaggingProjectRow
 	UpcomingProjects        []Project
+	OverdueTerms            []DashboardTermRow
+	OverdueTermsTotal       int64
+	DueSoonTerms            []DashboardTermRow
+	TasksDueThisWeek        []DashboardTaskRow
+	StageCounts             ProjectStageCounts
 	RecentActivity          []ActivityLogEntry
 	Revenue                 RevenueSummary
 	ProjectTrend            []ProjectTrendPoint
@@ -116,4 +121,71 @@ func IsLagging(prepStartDate, eventDate, asOf time.Time, overallPercent int) boo
 		}
 	}
 	return float64(overallPercent)/100 < expectedRatio-0.15
+}
+
+// DashboardTermRow is one unpaid client installment that needs a look: it is
+// overdue, or falls due within the next 30 days.
+type DashboardTermRow struct {
+	ProjectID   int64
+	ProjectName string
+	Label       string
+	DueDate     time.Time
+	Remaining   int64
+}
+
+// DashboardTaskRow is a project Timeline item due soon.
+type DashboardTaskRow struct {
+	ProjectID   int64
+	ProjectName string
+	Name        string
+	TargetDate  time.Time
+}
+
+// TermWithProject is a stored installment together with its project's name,
+// as the dashboard reads them across the whole workspace.
+type TermWithProject struct {
+	Term        PaymentTerm
+	ProjectName string
+}
+
+// ProjectStageCounts is how many open projects sit at each stage.
+type ProjectStageCounts struct {
+	Draft       int
+	Preparation int
+	Ready       int
+}
+
+const termAlertHorizonDays = 30
+
+// BuildTermAlerts allocates each project's real payments over its schedule
+// (see AllocateTerms) and returns the installments still unpaid that are
+// overdue (with their total) or due within the next 30 days. `applied` maps a
+// project id to what its client has paid against the contract.
+func BuildTermAlerts(rows []TermWithProject, applied map[int64]int64, today time.Time) (overdue []DashboardTermRow, overdueTotal int64, dueSoon []DashboardTermRow) {
+	byProject := make(map[int64][]PaymentTerm)
+	names := make(map[int64]string)
+	var order []int64
+	for _, r := range rows {
+		id := r.Term.ProjectID
+		if _, seen := names[id]; !seen {
+			order = append(order, id)
+		}
+		names[id] = r.ProjectName
+		byProject[id] = append(byProject[id], r.Term)
+	}
+	for _, id := range order {
+		for _, tp := range AllocateTerms(byProject[id], applied[id], today) {
+			if tp.Status == TermPaid {
+				continue
+			}
+			row := DashboardTermRow{ProjectID: id, ProjectName: names[id], Label: tp.Term.Label, DueDate: tp.Term.DueDate, Remaining: tp.Remaining}
+			if tp.Status == TermOverdue {
+				overdue = append(overdue, row)
+				overdueTotal += tp.Remaining
+			} else if daysBetween(today, tp.Term.DueDate) <= termAlertHorizonDays {
+				dueSoon = append(dueSoon, row)
+			}
+		}
+	}
+	return overdue, overdueTotal, dueSoon
 }

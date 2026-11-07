@@ -57,7 +57,7 @@ var Catalog = []Permission{
 	{"team.manage", KindStaff, "Pengaturan", "Kelola tim", "Mengundang, mengubah, dan menonaktifkan staf."},
 	{"role.manage", KindStaff, "Pengaturan", "Kelola peran & akses", "Membuat dan mengubah peran serta izinnya."},
 	{"subscription.manage", KindStaff, "Pengaturan", "Kelola langganan", "Melihat tagihan dan membayar langganan ElProof."},
-	{"business_profile.manage", KindStaff, "Pengaturan", "Kelola profil usaha", "Mengubah nama WO, WhatsApp, kota, dan logo."},
+	{"business_profile.manage", KindStaff, "Pengaturan", "Kelola profil usaha", "Mengubah nama WO, WhatsApp, kota, logo, warna merek, serta alamat dan rekening tempat klien membayar. Beri izin ini hanya kepada orang yang Anda percaya."},
 
 	{"portal.finance.view", KindClient, "Portal client", "Lihat keuangan", "Melihat nilai kontrak, tagihan, dan riwayat pembayaran."},
 	{"portal.vendor.view", KindClient, "Portal client", "Lihat vendor & venue", "Melihat vendor dan venue beserta progres persiapannya."},

@@ -41,7 +41,9 @@ type projectResponse struct {
 	// pattern as Progress below. Empty string when unresolved (e.g. the
 	// staff row was hard-deleted) rather than omitted, so the frontend never
 	// has to distinguish "not fetched yet" from "no name available".
-	PICName     string            `json:"picName"`
+	PICName string `json:"picName"`
+	// PICPhone is set only for a client principal (the portal's WhatsApp button).
+	PICPhone    string            `json:"picPhone,omitempty"`
 	Description string            `json:"description"`
 	IsArchived  bool              `json:"isArchived"`
 	Progress    *progressResponse `json:"progress,omitempty"`
