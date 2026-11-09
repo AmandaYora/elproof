@@ -192,6 +192,7 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
   writeAuth(AUTH.client, webURL, clientSession);
   writeAuth(AUTH.admin, webURL, admin);
   writeAuth(AUTH.empty, webURL, empty.session);
+  writeAuth(AUTH.paying, webURL, paying.session);
   writeAuth(AUTH.anon, webURL, null);
 
   return {

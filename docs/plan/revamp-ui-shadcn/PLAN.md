@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (9 Nov 2026): **Tahap 0–3 dikerjakan dan dikomit; Tahap 4 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (9 Nov 2026): **Tahap 0–4 dikerjakan dan dikomit; Tahap 5 dikerjakan, belum dikomit** (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -260,6 +260,23 @@ status kendala, PIC, tanggal; `projects/lib/payments.ts` tidak lagi meniru atura
 (FLOW-IDEAL §2.3); `OnboardingChecklist` ≤ 5 langkah.
 **Selesai bila:** Detail Proyek memuat dengan ≤ 3 panggilan; tab Vendor ≤ 2; header tidak basi setelah mutasi apa pun
 (tes); tidak ada nama "Sistem" palsu.
+
+*Tahap 5 (10 Nov 2026).* API (ADR-0034): `GET /projects/{id}/overview` (E1: proyek, keuangan dengan margin hanya untuk `finance.margin.view`, aksi,
+tahapan berikutnya, tim, klien), vendor proyek dengan `picName`/`evidenceCount`, aktivitas dipaginasi dengan `actorName` (E2, E12), semua mutasi
+membawa `projectProgress` (+ `ledgerSummary`) (E8), hapus lunak + `restore` + pembersihan terjadwal untuk pembayaran klien/vendor/venue,
+vendor proyek, dan klien (E13), kendala tanpa vendor + `isClientVisible`, tiga bagian baru `/dashboard` (arus kas 8 minggu, tagihan vendor, vendor
+belum pasti). UI: header, panel kanan, dan Ringkasan dari satu panggilan; penulisan apa pun di bawah `/projects/{id}` otomatis menerapkan progres
+baru dan memuat ulang overview (header tidak basi); hapus pembayaran/klien tanpa "Yakin?" + toast "Urungkan" (pembayaran terverifikasi dan klien
+tetap minta konfirmasi); Batalkan/Hapus proyek kini dialog konfirmasi nyata (hapus permanen minta nama diketik); tab Kendala WO (tambah, ubah,
+status langsung, kendala tentang acara, terlihat klien); tab Vendor memuat dua panggilan dan sisanya saat dibuka; Beranda WO dengan arus kas
+dan tagihan vendor dan tanpa memuat seluruh vendor.
+Terukur (`reports/BASELINE.md` vs `before-t0/`, termasuk 4 panggilan kerangka): Detail Proyek Ringkasan 16 → 5 panggilan, tab Vendor 24 → 7, tab
+Keuangan 19 → 9, tab Kendala 16 → 7. Tes: `overview.spec.ts` (anggaran panggilan), `tahap5.spec.ts` (header mengikuti perubahan, hapus + urungkan, project
+`mutating`), 20+ tes lain hijau; tes Go dan 291 permintaan isolasi hijau.
+**Belum / berbeda:** (1) edit di tempat hanya untuk status kendala (PIC dan tanggal menunggu PATCH parsial, Tahap 8). (2) `projects/lib/payments.ts` masih dipakai
+modal *ubah* pembayaran dan petunjuk venue/vendor; sisa tagihan klien kini dari server. (3) `OnboardingChecklist` sudah 5 langkah (paket langganan, bukan
+'atur termin'); tidak diubah. (4) Tidak ada UI hapus vendor proyek maupun hapus tahapan proyek (rutenya tidak ada). (5) Overview memakai 16 SELECT, di atas target ~10.
+(6) Klien yang dihapus/dipulihkan belum masuk log aktivitas. (7) Perilaku API berubah: `GET /activity` tanpa parameter hanya 20 terbaru, DELETE tidak lagi `data:null`.
 
 ### Tahap 6 — Tabel dan daftar
 API: **E11** (urutan dan filter server, kolom turunan), **E14**, aksi massal vendor/venue (E13 P3). UI: `Table` dengan

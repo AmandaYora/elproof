@@ -9,7 +9,7 @@ const API = (path: string) => `${apiURL()}/api/v1${path}`;
 const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
 
 test("project creation is one all-or-nothing call; a bad row creates nothing", async ({ browser }, info) => {
-  const { page, close } = await open(browser, info, "owner");
+  const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
   const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
   const auth = { Authorization: `Bearer ${session.accessToken}` };
@@ -44,7 +44,7 @@ test("project creation is one all-or-nothing call; a bad row creates nothing", a
 
 test("a payment and its proof are one call: a failure keeps the drawer open with nothing saved, the retry saves once", async ({ browser }, info) => {
   test.skip(!state().storage, "needs object storage (MinIO)");
-  const { page, close } = await open(browser, info, "owner");
+  const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
   const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
   const auth = { Authorization: `Bearer ${session.accessToken}` };
@@ -104,7 +104,7 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
 });
 
 test("a project can be created with the keyboard alone, from the first field to the last button", async ({ browser }, info) => {
-  const { page, close } = await open(browser, info, "owner");
+  const { page, close } = await open(browser, info, "paying");
   await visit(page, "/projects/baru");
   const bride = page.getByLabel(/Nama mempelai wanita/);
   await expect(bride).toBeFocused();

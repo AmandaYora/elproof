@@ -74,6 +74,8 @@ export const AUTH = {
   owner: path.join(AUTH_DIR, "owner.json"),
   client: path.join(AUTH_DIR, "client.json"),
   admin: path.join(AUTH_DIR, "admin.json"),
+  /** A second, empty-ish workspace that the tests which WRITE data use, so they never touch the golden data of "owner". */
+  paying: path.join(AUTH_DIR, "paying.json"),
   empty: path.join(AUTH_DIR, "empty.json"),
   anon: path.join(AUTH_DIR, "anon.json"),
 };
