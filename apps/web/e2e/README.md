@@ -87,3 +87,11 @@ cache lokal). Lihat `reports/BASELINE.md`.
 Pakai gambar resmi dengan versi yang sama dengan `@playwright/test` (sekarang **1.64.0**):
 `mcr.microsoft.com/playwright:v1.64.0-noble`, jalankan `npm ci` lalu `npm run e2e`. Butuh MySQL 8 (service container) dan Go.
 `E2E_MYSQL_ADMIN` menunjuk ke servicenya; `start-mysql.sh` hanya untuk lokal macOS/Homebrew.
+
+## Perilaku overlay (`--project=behavior`)
+
+`tests/overlays.spec.ts` menguji fokus, Escape, status sibuk, dan menu pada Modal/Drawer/ConfirmDialog/ActionMenu.
+Tidak memakai potret. Jalankan: `npx playwright test -c e2e/playwright.config.ts --project=behavior`.
+
+Catatan potret: `--update-snapshots` hanya menulis ulang yang melewati ambang 1%, jadi perubahan kecil (mis. warna
+garis 1 px) tidak tertulis. Pakai `--update-snapshots=all` bila perubahan memang disengaja.

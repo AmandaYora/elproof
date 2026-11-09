@@ -38,6 +38,12 @@ export default defineConfig({
       use: { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, userAgent: ANDROID_UA },
     },
     {
+      // Overlay behavior (focus, Escape, busy, menus): functional, no screenshots, desktop keyboard.
+      name: "behavior",
+      testMatch: /overlays\.spec\.ts$/,
+      use: { viewport: { width: 1280, height: 800 } },
+    },
+    {
       // Lab measurements on the mobile profile (4x CPU, ~Fast 3G). Run alone: `npm run e2e -- --project=baseline`.
       name: "baseline",
       testMatch: /baseline\.spec\.ts$/,

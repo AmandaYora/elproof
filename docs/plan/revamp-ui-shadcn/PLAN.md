@@ -1,6 +1,7 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status: **RENCANA revisi 2, 9 Nov 2026, belum dikerjakan.** Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
+> Status (9 Nov 2026): **Tahap 0 dan 1 dikerjakan dan dikomit; Tahap 2 dikerjakan, belum dikomit** (lihat "Catatan
+> pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
 > Keputusan: D1 = Base UI (8 Nov), D16 = perubahan API diizinkan (9 Nov). Keputusan lain (§9) masih usulan dan
@@ -187,6 +188,22 @@ Dialog, AlertDialog, Sheet, DropdownMenu, Popover, Tabs, Sonner (+ aksi "Urungka
 dipensiunkan. Diuji: modal menunggu hasil simpan, galat di dalam modal, Escape hanya menutup dialog teratas, fokus
 kembali ke pemicu. **Selesai bila:** 41 pemakai Modal dan 6 ConfirmDialog tanpa perubahan sumber; uji iOS Safari dan
 Android Chrome lulus; tidak ada `role="dialog"` buatan sendiri.
+
+**Catatan pelaksanaan (9 Nov 2026).**
+- *Tahap 0:* harness, token, formatter, glosarium, format galat dan tambalan "Sistem" selesai. Garis dasar uji kegunaan
+  menunggu manusia (`UJI-KEGUNAAN.md`). Prototipe (b) variabel tenant di portal, (c) pembungkus `Select` yang menerima
+  `<option>`, (d) keterbacaan font kecil, dan `shadcn add sonner --dry-run` belum dijalankan; (a) iOS Safari nyata butuh
+  perangkat. Axe: serius 68 → 10, kontras warna 0; sisanya struktural (Tahap 5/7).
+- *Tahap 1:* penggantian 42 `<button>` dan 26 `<input>` mentah **ditunda**: input teks diganti saat formulirnya disentuh
+  (Tahap 3/4), tombol struktural (sidebar, akordeon, tab) di Tahap 5–7. Huruf kapital pada pil ("BUKTI BELUM ADA") di
+  sapuan bahasa Tahap 7.
+- *Tahap 2:* `Modal`, `Drawer`, `ConfirmDialog` (kini AlertDialog), `ActionMenu` (DropdownMenu), `EvidenceViewerModal`,
+  dan `Toaster` (Sonner) memakai kit tanpa perubahan di titik panggil; `useDialogBehavior` dihapus; `toast.success(msg,
+  { undo })` menambah aksi "Urungkan". `TabNav` tetap `<nav>` karena itu navigasi rute, bukan tab dalam halaman.
+  Tes perilaku: `e2e/tests/overlays.spec.ts` (fokus masuk/kembali, Tab terkunci, Escape, galat di dalam dialog,
+  drawer menolak tutup saat menyimpan, menu → dialog). **Belum diuji:** Escape pada dialog bersarang, iOS Safari dan
+  Android Chrome nyata. Ditemukan: konfirmasi batalkan/hapus proyek memakai banner inline, bukan dialog (diperbaiki di
+  Tahap 5).
 
 ### Tahap 3 — Irisan vertikal: Portal Klien + `ProofStamp`
 API: **E4** (migrasi verifikasi + bukti di respons + endpoint verifikasi), **E5** (`/projects/me/home`), **E6** (nama
