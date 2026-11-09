@@ -92,6 +92,11 @@ type Evidence struct {
 	// Defaults false (safe-by-default): a staff member must explicitly opt
 	// a document in before a client can see it.
 	IsClientVisible bool
+	// ClientHidden is computed by the repository, never stored: the file hangs
+	// off a kendala that staff did not share with the client (is_client_visible
+	// = 0). Such a file is never visible to a client, whatever else the rule
+	// below says.
+	ClientHidden bool
 }
 
 // ClientCanSeeEvidence is the per-document visibility rule for a `client`
@@ -107,6 +112,9 @@ type Evidence struct {
 // A timeline attachment additionally needs IsClientVisible (ADR-0032): staff
 // decide which photos of a step the couple sees.
 func ClientCanSeeEvidence(e Evidence, can func(string) bool) bool {
+	if e.ClientHidden {
+		return false
+	}
 	switch e.RelatedKind {
 	case RelatedClientPayment:
 		return can("portal.finance.view")

@@ -100,9 +100,13 @@ func TestIssueMustUseAnEngagementOfTheSameProject(t *testing.T) {
 	if err := s.validateEngagement(context.Background(), 5, 1); err != nil {
 		t.Errorf("own engagement: %v", err)
 	}
-	for _, c := range []struct{ project, pv int64 }{{5, 2}, {6, 1}, {5, 0}, {5, 99}} {
+	for _, c := range []struct{ project, pv int64 }{{5, 2}, {6, 1}, {5, 99}} {
 		if err := s.validateEngagement(context.Background(), c.project, c.pv); err == nil {
 			t.Errorf("project %d with engagement %d must be refused", c.project, c.pv)
 		}
+	}
+	// 0 is "no vendor": a kendala about the event in general (E13).
+	if err := s.validateEngagement(context.Background(), 5, 0); err != nil {
+		t.Errorf("a kendala without a vendor must pass: %v", err)
 	}
 }

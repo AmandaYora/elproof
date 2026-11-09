@@ -43,6 +43,10 @@ type stack struct {
 	client  *http.Client
 	ipCount int
 	mu      sync.Mutex // guards ipCount (some scenarios send requests concurrently)
+	// bin/env/dir are how the server was started, so a scenario can run the same
+	// binary's other subcommands (`purge`) against the same database.
+	bin, dir string
+	env      []string
 }
 
 type fakeGoogle struct {
@@ -181,7 +185,7 @@ func startStackWith(t *testing.T, extraEnv ...string) *stack {
 		}
 	})
 
-	s := &stack{t: t, base: "http://127.0.0.1:" + port, db: db, google: g, client: &http.Client{Timeout: 20 * time.Second}}
+	s := &stack{t: t, base: "http://127.0.0.1:" + port, db: db, google: g, client: &http.Client{Timeout: 20 * time.Second}, bin: bin, dir: tmp, env: env}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		resp, err := s.client.Get(s.base + "/api/v1/health")

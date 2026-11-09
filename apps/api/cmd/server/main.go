@@ -20,11 +20,13 @@ import (
 	"elproof/internal/modules/audit"
 	"elproof/internal/modules/billing"
 	"elproof/internal/modules/clients"
+	clientscontracts "elproof/internal/modules/clients/contracts"
 	"elproof/internal/modules/identity"
 	"elproof/internal/modules/payment"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform"
 	"elproof/internal/modules/projects"
+	projectsapp "elproof/internal/modules/projects/application"
 	"elproof/internal/modules/staff"
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	"elproof/internal/modules/vendors"
@@ -74,6 +76,23 @@ func (r staffNameResolver) StaffNames(ctx context.Context, tenantID int64, ids [
 	return r.contracts.StaffNames(ctx, tenantID, ids)
 }
 
+// clientDirectory adapts clients' contract to the narrow, primitive-typed port the
+// project overview lists a project's clients through (same bridging idiom as
+// staffNameResolver: projects never imports clients).
+type clientDirectory struct{ clients clientscontracts.Contracts }
+
+func (d clientDirectory) ListProjectClients(ctx context.Context, tenantID, projectID int64) ([]projectsapp.ProjectClientInfo, error) {
+	list, err := d.clients.ListProjectClients(ctx, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]projectsapp.ProjectClientInfo, 0, len(list))
+	for _, c := range list {
+		out = append(out, projectsapp.ProjectClientInfo{ID: c.ID, Name: c.Name, Role: c.Role, HasLogin: c.HasLogin})
+	}
+	return out, nil
+}
+
 // staffRoles / clientRoles adapt the access module's contract to the narrow
 // role ports staff and clients declare (they never import access).
 type staffRoles struct{ access accesscontracts.Contracts }
@@ -117,6 +136,9 @@ func (r clientRoles) RoleNames(ctx context.Context, tenantID int64) (map[int64]s
 //	./api migrate up|down        apply/roll back one embedded SQL migration step
 //	./api migrate force <version> clear a "dirty" migration state without running SQL
 //	./api seed                   reset to the minimal clean-slate dataset
+//	./api purge                  permanently remove what stayed deleted for over 24 h
+//	                              (payments, vendor engagements, clients, their proof files);
+//	                              idempotent, safe next to a running server
 //	./api healthcheck             exit 0/1 for Docker's HEALTHCHECK (self GET /api/v1/health)
 //	./api upload-login-slides <dir>  compress+upload the login page's fixed
 //	                                  marketing photos to object storage
@@ -130,6 +152,9 @@ func main() {
 			return
 		case "seed":
 			runSeed(cfg)
+			return
+		case "purge":
+			runPurge(cfg)
 			return
 		case "healthcheck":
 			runHealthcheck(cfg)
@@ -365,6 +390,8 @@ func serve(cfg config.Config) {
 	// clientsModule.Contracts() satisfies both ClientAccessResolver and
 	// ClientCleaner, so this is the same object as the call above.
 	projectsModule.SetClientCleaner(clientsModule.Contracts())
+	// The project overview lists the project's clients through a narrow port.
+	projectsModule.SetClientDirectory(clientDirectory{clientsModule.Contracts()})
 	// Free-trial caps (PLAN.md decision K6): staff, projects and clients each
 	// count their own rows; platform says whether the tenant is on trial
 	// and what the cap is. The onboarding checklist reads client usage.
@@ -392,6 +419,10 @@ func serve(cfg config.Config) {
 	// Keeps tenants.subscription_status (list filters, dashboards) in step
 	// with the date-derived lifecycle; access never depends on it.
 	platformModule.StartSubscriptionStatusSweeper(context.Background(), time.Hour)
+	// Permanently removes what has stayed deleted for over 24 hours (payments,
+	// vendor engagements, clients; ADR-0034). Low frequency, idempotent, and safe
+	// with several instances (a database lock lets one purge at a time).
+	startPurger(context.Background(), cfg.PurgeInterval, projectsModule, clientsModule)
 
 	identityModule.RegisterAuthedRoutes(mux, authed)
 	// A WO's changes to its own roles, and to its own business profile (including

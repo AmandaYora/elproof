@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/utils"
@@ -16,13 +17,14 @@ func NewMySQLVenuePaymentRepository(db *sql.DB) *MySQLVenuePaymentRepository {
 	return &MySQLVenuePaymentRepository{db: db}
 }
 
-const venuePaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes`
+const venuePaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes, deleted_at`
 
 func scanVenuePayment(scan func(dest ...interface{}) error) (*domain.VenuePayment, error) {
 	var p domain.VenuePayment
 	var paymentType string
 	var notes sql.NullString
-	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes)
+	var deletedAt sql.NullTime
+	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -31,11 +33,12 @@ func scanVenuePayment(scan func(dest ...interface{}) error) (*domain.VenuePaymen
 	}
 	p.Type = domain.PaymentType(paymentType)
 	p.Notes = notes.String
+	p.DeletedAt = deletedStamp(deletedAt)
 	return &p, nil
 }
 
 func (r *MySQLVenuePaymentRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.VenuePayment, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? ORDER BY payment_date DESC, id DESC`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? AND deleted_at IS NULL ORDER BY payment_date DESC, id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +62,7 @@ func (r *MySQLVenuePaymentRepository) ListByProjects(ctx context.Context, projec
 	if len(projectIDs) == 0 {
 		return nil, nil
 	}
-	query := `SELECT ` + venuePaymentColumns + ` FROM venue_payments WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, payment_date DESC, id DESC`
+	query := `SELECT ` + venuePaymentColumns + ` FROM venue_payments WHERE deleted_at IS NULL AND project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, payment_date DESC, id DESC`
 	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
@@ -78,8 +81,25 @@ func (r *MySQLVenuePaymentRepository) ListByProjects(ctx context.Context, projec
 }
 
 func (r *MySQLVenuePaymentRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.VenuePayment, error) {
-	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1`, projectID, id)
 	return scanVenuePayment(row.Scan)
+}
+
+// FindDeletedByID is the restore lookup (nil unless the payment waits in the
+// "deleted" state).
+func (r *MySQLVenuePaymentRepository) FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.VenuePayment, error) {
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? AND id = ? AND deleted_at IS NOT NULL LIMIT 1`, projectID, id)
+	return scanVenuePayment(row.Scan)
+}
+
+// SoftDelete hides the payment until it is restored or purged.
+func (r *MySQLVenuePaymentRepository) SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error) {
+	return softDeleteRow(ctx, r.db, "venue_payments", projectID, id, at)
+}
+
+// Restore brings back a payment deleted after notBefore.
+func (r *MySQLVenuePaymentRepository) Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error) {
+	return restoreRow(ctx, r.db, "venue_payments", projectID, id, notBefore)
 }
 
 func (r *MySQLVenuePaymentRepository) Create(ctx context.Context, p *domain.VenuePayment) error {
@@ -105,10 +125,5 @@ func (r *MySQLVenuePaymentRepository) Update(ctx context.Context, projectID, id 
 		 WHERE project_id = ? AND id = ?`,
 		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, projectID, id,
 	)
-	return err
-}
-
-func (r *MySQLVenuePaymentRepository) Delete(ctx context.Context, projectID, id int64) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM venue_payments WHERE project_id = ? AND id = ?`, projectID, id)
 	return err
 }

@@ -16,7 +16,13 @@ type PaymentRepository interface {
 	FindByID(ctx context.Context, projectID, id int64) (*domain.VendorPayment, error)
 	Create(ctx context.Context, p *domain.VendorPayment) error
 	Update(ctx context.Context, projectID, id int64, p domain.VendorPayment) error
-	Delete(ctx context.Context, projectID, id int64) error
+	// SoftDelete hides a live payment (deleted_at = at); false when there was none.
+	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
+	// FindDeletedByID is the restore lookup (nil unless the payment waits in the
+	// "deleted" state).
+	FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.VendorPayment, error)
+	// Restore clears the stamp of a payment deleted after notBefore.
+	Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error)
 }
 
 type PaymentService struct {
@@ -125,33 +131,98 @@ func (s *PaymentService) Update(ctx context.Context, projectID, id int64, actorS
 	return p, nil
 }
 
-// Delete hard-deletes the payment and, first, every evidence row attached to
-// it -- see EvidenceService.DeleteForRelated and PLAN.md §2.4 for why
-// evidence is cleaned up BEFORE the payment row itself (so a failure here
-// never leaves an un-deletable "ghost" evidence row behind). The Owner-only
-// role check lives in the HTTP handler (deletePayment), matching
-// deleteProject's own convention -- this service method has no opinion on
-// who's calling.
-func (s *PaymentService) Delete(ctx context.Context, projectID, id int64, actorStaffID int64) error {
-	p, err := s.repo.FindByID(ctx, projectID, id)
+// Delete soft-deletes the payment (ADR-0034): it leaves the list, the vendor's
+// paid total and progress, and its proof files are hidden with it, until it is
+// restored (24 hours) or purged. The permission check lives in the HTTP handler.
+// It returns the deleted payment (the handler needs its engagement for the
+// ledger) and the instant restoring stops being possible.
+func (s *PaymentService) Delete(ctx context.Context, projectID, id int64, actorStaffID int64, now time.Time) (*domain.VendorPayment, time.Time, error) {
+	var deleted *domain.VendorPayment
+	var until time.Time
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		if err := s.checkChange(ctx, projectID, p.ProjectVendorID, id, nil); err != nil {
+			return err
+		}
+		ok, err := s.repo.SoftDelete(ctx, projectID, id, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		deleted, until = p, domain.RestorableUntil(now)
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "vendor_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran vendor dihapus")
+		return nil
+	})
+	return deleted, until, err
+}
+
+// Restore brings a deleted vendor payment back, after re-checking what can now
+// fail: its vendor engagement must still exist (422 on `projectVendorId`:
+// restore the vendor first) and the payment must not take the engagement past
+// its agreed price (422 on `amount`). Not deleted, or past the retention: 404.
+func (s *PaymentService) Restore(ctx context.Context, projectID, id int64, actorStaffID int64, now time.Time) (*domain.VendorPayment, error) {
+	var restored *domain.VendorPayment
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindDeletedByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil || p.DeletedAt == nil || !domain.CanRestore(*p.DeletedAt, now) {
+			return errNotRestorable()
+		}
+		if _, err := s.contracts.EngagementContractValue(ctx, projectID, p.ProjectVendorID); err != nil {
+			if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
+				msg := "Kerja sama vendor untuk pembayaran ini sudah dihapus. Pulihkan vendornya lebih dulu."
+				return apperror.Validation(msg, map[string][]string{"projectVendorId": {msg}})
+			}
+			return err
+		}
+		if err := s.checkChange(ctx, projectID, p.ProjectVendorID, 0, &domain.PaymentLine{Type: p.Type, Amount: p.Amount}); err != nil {
+			return err
+		}
+		ok, err := s.repo.Restore(ctx, projectID, id, domain.PurgeCutoff(now))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errNotRestorable()
+		}
+		p.DeletedAt = nil
+		restored = p
+		s.activity.Record(ctx, &projectID, domain.ActivityRestored, actorStaffID, "vendor_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran vendor dipulihkan")
+		return nil
+	})
+	return restored, err
+}
+
+// LedgerSummary is where one engagement's agreed price stands against its live
+// payments (the `ledgerSummary` of a mutation response).
+func (s *PaymentService) LedgerSummary(ctx context.Context, projectID, projectVendorID int64) (domain.Ledger, error) {
+	contract, err := s.contracts.EngagementContractValue(ctx, projectID, projectVendorID)
 	if err != nil {
-		return err
+		return domain.Ledger{}, err
 	}
-	if p == nil {
-		return apperror.NotFound("Pembayaran tidak ditemukan")
+	all, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return domain.Ledger{}, err
 	}
-	if err := s.checkChange(ctx, projectID, p.ProjectVendorID, id, nil); err != nil {
-		return err
+	var lines []domain.PaymentLine
+	for _, q := range all {
+		if q.ProjectVendorID == projectVendorID {
+			lines = append(lines, lineOf(q.Type, q.Amount))
+		}
 	}
-	if err := s.evidence.DeleteForRelated(ctx, domain.RelatedPayment, id); err != nil {
-		return err
-	}
-	if err := s.repo.Delete(ctx, projectID, id); err != nil {
-		return err
-	}
-	s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "vendor_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran vendor dihapus")
-	return nil
+	return domain.ComputeLedger(lines, contract), nil
 }
 
 // VendorPaymentCreated is the outcome of recording a vendor payment: the

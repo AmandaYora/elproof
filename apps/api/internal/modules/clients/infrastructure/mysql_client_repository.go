@@ -19,14 +19,14 @@ func NewMySQLClientRepository(db *sql.DB) *MySQLClientRepository {
 }
 
 const clientColumns = `id, tenant_id, project_id, role, IFNULL(access_role_id, 0), username, relation_note, name, phone, email, is_active,
-	last_credential_reset_at, created_at, updated_at`
+	last_credential_reset_at, created_at, updated_at, deleted_at`
 
 func scanClient(scan func(dest ...interface{}) error) (*domain.Client, error) {
 	var c domain.Client
 	var role string
-	var lastReset sql.NullTime
+	var lastReset, deletedAt sql.NullTime
 	err := scan(&c.ID, &c.TenantID, &c.ProjectID, &role, &c.AccessRoleID, &c.Username, &c.RelationNote, &c.Name, &c.Phone, &c.Email, &c.IsActive,
-		&lastReset, &c.CreatedAt, &c.UpdatedAt)
+		&lastReset, &c.CreatedAt, &c.UpdatedAt, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -37,11 +37,14 @@ func scanClient(scan func(dest ...interface{}) error) (*domain.Client, error) {
 	if lastReset.Valid {
 		c.LastCredentialResetAt = &lastReset.Time
 	}
+	if deletedAt.Valid {
+		c.DeletedAt = &deletedAt.Time
+	}
 	return &c, nil
 }
 
 func (r *MySQLClientRepository) ListByProject(ctx context.Context, tenantID, projectID int64) ([]domain.Client, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND project_id = ? ORDER BY id`, tenantID, projectID)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND project_id = ? AND deleted_at IS NULL ORDER BY id`, tenantID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +62,7 @@ func (r *MySQLClientRepository) ListByProject(ctx context.Context, tenantID, pro
 }
 
 func (r *MySQLClientRepository) ListByTenant(ctx context.Context, tenantID int64) ([]domain.Client, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? ORDER BY id`, tenantID)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY id`, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +82,8 @@ func (r *MySQLClientRepository) ListByTenant(ctx context.Context, tenantID int64
 // ListByTenantPaginated backs the real `GET /clients` list page (no
 // projectId filter) — ListByTenant above stays as-is for global search.
 func (r *MySQLClientRepository) ListByTenantPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Client, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM clients WHERE tenant_id = ?`
-	listQuery := `SELECT ` + clientColumns + ` FROM clients WHERE tenant_id = ?`
+	countQuery := `SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND deleted_at IS NULL`
+	listQuery := `SELECT ` + clientColumns + ` FROM clients WHERE tenant_id = ? AND deleted_at IS NULL`
 	args := []interface{}{tenantID}
 	if search != "" {
 		countQuery += ` AND (name LIKE ? OR email LIKE ?)`
@@ -113,8 +116,110 @@ func (r *MySQLClientRepository) ListByTenantPaginated(ctx context.Context, tenan
 }
 
 func (r *MySQLClientRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Client, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND id = ? LIMIT 1`, tenantID, id)
+	row := r.db.QueryRowContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1`, tenantID, id)
 	return scanClient(row.Scan)
+}
+
+// FindDeletedByID is the restore lookup: the client while it waits in the
+// "deleted" state (nil when it is live or never existed).
+func (r *MySQLClientRepository) FindDeletedByID(ctx context.Context, tenantID, id int64) (*domain.Client, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND id = ? AND deleted_at IS NOT NULL LIMIT 1`, tenantID, id)
+	return scanClient(row.Scan)
+}
+
+// ListAllByProject lists every client of the project, deleted ones included. Only
+// the project hard delete needs it, so no row of a purged project is left behind.
+func (r *MySQLClientRepository) ListAllByProject(ctx context.Context, tenantID, projectID int64) ([]domain.Client, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE tenant_id = ? AND project_id = ? ORDER BY id`, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []domain.Client
+	for rows.Next() {
+		c, err := scanClient(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *c)
+	}
+	return list, rows.Err()
+}
+
+// SoftDelete hides a live client; false when there was none.
+func (r *MySQLClientRepository) SoftDelete(ctx context.Context, tenantID, id int64, at time.Time) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `UPDATE clients SET deleted_at = ? WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL`, at, tenantID, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// Restore clears the stamp of a client deleted after notBefore (the purge
+// cutoff, the exact complement of the purge's `deleted_at <= cutoff`).
+func (r *MySQLClientRepository) Restore(ctx context.Context, tenantID, id int64, notBefore time.Time) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE clients SET deleted_at = NULL WHERE tenant_id = ? AND id = ? AND deleted_at IS NOT NULL AND deleted_at > ?`, tenantID, id, notBefore)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// ListExpired returns up to limit clients deleted at or before cutoff.
+func (r *MySQLClientRepository) ListExpired(ctx context.Context, cutoff time.Time, limit int) ([]domain.Client, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE deleted_at IS NOT NULL AND deleted_at <= ? ORDER BY id LIMIT ?`, cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []domain.Client
+	for rows.Next() {
+		c, err := scanClient(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *c)
+	}
+	return list, rows.Err()
+}
+
+// PurgeDelete hard-deletes a client that is still due for the purge (conditional,
+// so a row restored in the meantime is never removed); false when it was not.
+func (r *MySQLClientRepository) PurgeDelete(ctx context.Context, tenantID, id int64, cutoff time.Time) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM clients WHERE tenant_id = ? AND id = ? AND deleted_at IS NOT NULL AND deleted_at <= ?`, tenantID, id, cutoff)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// purgeLockName makes only one API instance purge clients at a time.
+const purgeLockName = "elproof_clients_purge"
+
+// TryLock takes the purge lock without waiting (ok false: another instance holds
+// it). The lock lives on a dedicated connection and goes away with it.
+func (r *MySQLClientRepository) TryLock(ctx context.Context) (release func(), ok bool, err error) {
+	c, err := r.db.Conn(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	var got sql.NullInt64
+	if err := c.QueryRowContext(ctx, `SELECT GET_LOCK(?, 0)`, purgeLockName).Scan(&got); err != nil {
+		c.Close()
+		return nil, false, err
+	}
+	if !got.Valid || got.Int64 != 1 {
+		c.Close()
+		return nil, false, nil
+	}
+	return func() {
+		_, _ = c.ExecContext(context.Background(), `SELECT RELEASE_LOCK(?)`, purgeLockName)
+		c.Close()
+	}, true, nil
 }
 
 func (r *MySQLClientRepository) Create(ctx context.Context, c *domain.Client) error {
@@ -176,6 +281,6 @@ func (r *MySQLClientRepository) Delete(ctx context.Context, tenantID, id int64) 
 // CountActive counts active client accounts (trial cap, PLAN.md K6).
 func (r *MySQLClientRepository) CountActive(ctx context.Context, tenantID int64) (int, error) {
 	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND is_active = TRUE`, tenantID).Scan(&n)
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND is_active = TRUE AND deleted_at IS NULL`, tenantID).Scan(&n)
 	return n, err
 }

@@ -780,7 +780,9 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 		})
 	}
 
-	evidences, err := s.evidence.List(ctx, id)
+	// Every file of the project, the ones hidden because their payment or
+	// vendor waits in the "deleted" state included: their objects must go too.
+	evidences, err := s.evidence.ListAll(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -1009,34 +1011,151 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 
 // --- Progress computation (mirrors mock/selectors.ts computeProjectProgress) ---
 
+// ComputeProgress is a project's progress as staff see it (every kendala
+// counts). It reads everything in a fixed number of queries (see
+// loadProgressData), whatever the number of vendors.
 func (s *ProjectService) ComputeProgress(ctx context.Context, tenantID, projectID int64, asOf time.Time) (*domain.ProjectProgress, error) {
+	return s.computeOne(ctx, tenantID, projectID, asOf, false)
+}
+
+// ComputeClientProgress is the same figure as a client may see it: only the
+// kendala staff shared with the client count, so a hidden kendala can neither be
+// counted nor push the condition to "Attention"/"At Risk" (ADR-0034).
+func (s *ProjectService) ComputeClientProgress(ctx context.Context, tenantID, projectID int64, asOf time.Time) (*domain.ProjectProgress, error) {
+	return s.computeOne(ctx, tenantID, projectID, asOf, true)
+}
+
+func (s *ProjectService) computeOne(ctx context.Context, tenantID, projectID int64, asOf time.Time, clientView bool) (*domain.ProjectProgress, error) {
 	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
 		return nil, err
 	}
-
-	projectMilestones, err := s.milestones.ListByProject(ctx, projectID)
+	data, err := s.loadProgressData(ctx, []int64{projectID})
 	if err != nil {
 		return nil, err
 	}
-	projectStats := domain.ComputeMilestoneStats(toMilestoneLikes(projectMilestones), asOf)
+	progress := data.progressFor(projectID, asOf, clientView)
+	return &progress, nil
+}
 
-	vendorEngagements, err := s.vendorEngagements.ListByProject(ctx, projectID)
+// ComputeProgressBatch computes progress for every id in projectIDs using
+// ONE query per data source (WHERE project_id IN (...)) -- see PLAN.md
+// "Performance remediation". Every project in projectIDs is assumed to
+// already belong to tenantID (callers fetch the roster themselves), so,
+// unlike ComputeProgress, this does not re-verify each id via s.Get. Staff view.
+func (s *ProjectService) ComputeProgressBatch(ctx context.Context, tenantID int64, projectIDs []int64, asOf time.Time) (map[int64]domain.ProjectProgress, error) {
+	return s.computeBatch(ctx, projectIDs, asOf, false)
+}
+
+// ComputeClientProgressBatch is ComputeProgressBatch as a client may see it
+// (see ComputeClientProgress).
+func (s *ProjectService) ComputeClientProgressBatch(ctx context.Context, tenantID int64, projectIDs []int64, asOf time.Time) (map[int64]domain.ProjectProgress, error) {
+	return s.computeBatch(ctx, projectIDs, asOf, true)
+}
+
+func (s *ProjectService) computeBatch(ctx context.Context, projectIDs []int64, asOf time.Time, clientView bool) (map[int64]domain.ProjectProgress, error) {
+	result := make(map[int64]domain.ProjectProgress, len(projectIDs))
+	if len(projectIDs) == 0 {
+		return result, nil
+	}
+	data, err := s.loadProgressData(ctx, projectIDs)
 	if err != nil {
 		return nil, err
 	}
-	var allVendorMilestones []domain.VendorMilestone
-	for _, pv := range vendorEngagements {
-		vms, err := s.vendorMilestones.ListByProjectVendor(ctx, pv.ID)
-		if err != nil {
-			return nil, err
-		}
-		allVendorMilestones = append(allVendorMilestones, vms...)
+	for _, projectID := range projectIDs {
+		result[projectID] = data.progressFor(projectID, asOf, clientView)
 	}
-	vendorStats := domain.ComputeMilestoneStats(toVendorMilestoneLikes(allVendorMilestones), asOf)
+	return result, nil
+}
 
-	issues, err := s.issues.ListByProject(ctx, projectID)
+// progressData is every row progress is computed from, grouped per project.
+// Deleted engagements, payments and the kendala of a deleted engagement are not
+// in it (the repositories skip them), so they count for nothing.
+type progressData struct {
+	milestones       map[int64][]domain.ProjectMilestone
+	engagements      map[int64][]domain.ProjectVendor
+	vendorMilestones map[int64][]domain.VendorMilestone // by engagement
+	issues           map[int64][]domain.VendorIssue
+	payments         map[int64][]domain.VendorPayment
+	venuePayments    map[int64][]domain.VenuePayment
+	evidence         map[int64][]domain.Evidence
+}
+
+// loadProgressData reads the seven sources in seven queries.
+func (s *ProjectService) loadProgressData(ctx context.Context, projectIDs []int64) (*progressData, error) {
+	d := &progressData{
+		milestones: map[int64][]domain.ProjectMilestone{}, engagements: map[int64][]domain.ProjectVendor{},
+		vendorMilestones: map[int64][]domain.VendorMilestone{}, issues: map[int64][]domain.VendorIssue{},
+		payments: map[int64][]domain.VendorPayment{}, venuePayments: map[int64][]domain.VenuePayment{},
+		evidence: map[int64][]domain.Evidence{},
+	}
+	milestones, err := s.milestones.ListByProjects(ctx, projectIDs)
 	if err != nil {
 		return nil, err
+	}
+	for _, m := range milestones {
+		d.milestones[m.ProjectID] = append(d.milestones[m.ProjectID], m)
+	}
+	engagements, err := s.vendorEngagements.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	engagementIDs := make([]int64, 0, len(engagements))
+	for _, pv := range engagements {
+		d.engagements[pv.ProjectID] = append(d.engagements[pv.ProjectID], pv)
+		engagementIDs = append(engagementIDs, pv.ID)
+	}
+	vendorMilestones, err := s.vendorMilestones.ListByProjectVendors(ctx, engagementIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, vm := range vendorMilestones {
+		d.vendorMilestones[vm.ProjectVendorID] = append(d.vendorMilestones[vm.ProjectVendorID], vm)
+	}
+	issues, err := s.issues.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, i := range issues {
+		d.issues[i.ProjectID] = append(d.issues[i.ProjectID], i)
+	}
+	payments, err := s.payments.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range payments {
+		d.payments[p.ProjectID] = append(d.payments[p.ProjectID], p)
+	}
+	venuePayments, err := s.venuePayments.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range venuePayments {
+		d.venuePayments[p.ProjectID] = append(d.venuePayments[p.ProjectID], p)
+	}
+	evidence, err := s.evidence.ListByProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range evidence {
+		d.evidence[e.ProjectID] = append(d.evidence[e.ProjectID], e)
+	}
+	return d, nil
+}
+
+// progressFor computes one project's progress from the loaded rows. clientView
+// counts only the kendala shared with the client.
+func (d *progressData) progressFor(projectID int64, asOf time.Time, clientView bool) domain.ProjectProgress {
+	projectStats := domain.ComputeMilestoneStats(toMilestoneLikes(d.milestones[projectID]), asOf)
+
+	var vendorMilestones []domain.VendorMilestone
+	for _, pv := range d.engagements[projectID] {
+		vendorMilestones = append(vendorMilestones, d.vendorMilestones[pv.ID]...)
+	}
+	vendorStats := domain.ComputeMilestoneStats(toVendorMilestoneLikes(vendorMilestones), asOf)
+
+	issues := d.issues[projectID]
+	if clientView {
+		issues = domain.ClientVisibleIssues(issues)
 	}
 	var openIssues []domain.VendorIssue
 	for _, i := range issues {
@@ -1045,150 +1164,21 @@ func (s *ProjectService) ComputeProgress(ctx context.Context, tenantID, projectI
 		}
 	}
 
-	payments, err := s.payments.ListByProject(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
-	evidences, err := s.evidence.List(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
+	evidences := d.evidence[projectID]
 	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
 	incompleteCount := 0
-	for _, p := range payments {
+	for _, p := range d.payments[projectID] {
 		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof) {
 			incompleteCount++
 		}
 	}
-
-	venuePayments, err := s.venuePayments.ListByProject(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
 	vHasInvoice, vHasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
-	for _, p := range venuePayments {
+	for _, p := range d.venuePayments[projectID] {
 		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, vHasInvoice, vHasProof) {
 			incompleteCount++
 		}
 	}
-
-	progress := domain.ComputeProjectProgress(projectStats, vendorStats, openIssues, incompleteCount)
-	return &progress, nil
-}
-
-// ComputeProgressBatch computes progress for every id in projectIDs using
-// ONE query per data source (WHERE project_id IN (...)) instead of
-// ComputeProgress's ~7 queries repeated per project — see PLAN.md
-// "Performance remediation". Every project in projectIDs is assumed to
-// already belong to tenantID (callers fetch the roster themselves), so,
-// unlike ComputeProgress, this does not re-verify each id via s.Get.
-func (s *ProjectService) ComputeProgressBatch(ctx context.Context, tenantID int64, projectIDs []int64, asOf time.Time) (map[int64]domain.ProjectProgress, error) {
-	result := make(map[int64]domain.ProjectProgress, len(projectIDs))
-	if len(projectIDs) == 0 {
-		return result, nil
-	}
-
-	allMilestones, err := s.milestones.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	milestonesByProject := make(map[int64][]domain.ProjectMilestone)
-	for _, m := range allMilestones {
-		milestonesByProject[m.ProjectID] = append(milestonesByProject[m.ProjectID], m)
-	}
-
-	allEngagements, err := s.vendorEngagements.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	engagementsByProject := make(map[int64][]domain.ProjectVendor)
-	engagementIDs := make([]int64, 0, len(allEngagements))
-	for _, pv := range allEngagements {
-		engagementsByProject[pv.ProjectID] = append(engagementsByProject[pv.ProjectID], pv)
-		engagementIDs = append(engagementIDs, pv.ID)
-	}
-
-	allVendorMilestones, err := s.vendorMilestones.ListByProjectVendors(ctx, engagementIDs)
-	if err != nil {
-		return nil, err
-	}
-	vendorMilestonesByEngagement := make(map[int64][]domain.VendorMilestone)
-	for _, vm := range allVendorMilestones {
-		vendorMilestonesByEngagement[vm.ProjectVendorID] = append(vendorMilestonesByEngagement[vm.ProjectVendorID], vm)
-	}
-
-	allIssues, err := s.issues.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	issuesByProject := make(map[int64][]domain.VendorIssue)
-	for _, i := range allIssues {
-		issuesByProject[i.ProjectID] = append(issuesByProject[i.ProjectID], i)
-	}
-
-	allPayments, err := s.payments.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	paymentsByProject := make(map[int64][]domain.VendorPayment)
-	for _, p := range allPayments {
-		paymentsByProject[p.ProjectID] = append(paymentsByProject[p.ProjectID], p)
-	}
-
-	allVenuePayments, err := s.venuePayments.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	venuePaymentsByProject := make(map[int64][]domain.VenuePayment)
-	for _, p := range allVenuePayments {
-		venuePaymentsByProject[p.ProjectID] = append(venuePaymentsByProject[p.ProjectID], p)
-	}
-
-	allEvidence, err := s.evidence.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	evidenceByProject := make(map[int64][]domain.Evidence)
-	for _, e := range allEvidence {
-		evidenceByProject[e.ProjectID] = append(evidenceByProject[e.ProjectID], e)
-	}
-
-	for _, projectID := range projectIDs {
-		projectStats := domain.ComputeMilestoneStats(toMilestoneLikes(milestonesByProject[projectID]), asOf)
-
-		var vendorMilestonesForProject []domain.VendorMilestone
-		for _, pv := range engagementsByProject[projectID] {
-			vendorMilestonesForProject = append(vendorMilestonesForProject, vendorMilestonesByEngagement[pv.ID]...)
-		}
-		vendorStats := domain.ComputeMilestoneStats(toVendorMilestoneLikes(vendorMilestonesForProject), asOf)
-
-		var openIssues []domain.VendorIssue
-		for _, i := range issuesByProject[projectID] {
-			if i.Status.IsOpen() {
-				openIssues = append(openIssues, i)
-			}
-		}
-
-		evidences := evidenceByProject[projectID]
-		hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
-		incompleteCount := 0
-		for _, p := range paymentsByProject[projectID] {
-			if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof) {
-				incompleteCount++
-			}
-		}
-
-		vHasInvoice, vHasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
-		for _, p := range venuePaymentsByProject[projectID] {
-			if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, vHasInvoice, vHasProof) {
-				incompleteCount++
-			}
-		}
-
-		result[projectID] = domain.ComputeProjectProgress(projectStats, vendorStats, openIssues, incompleteCount)
-	}
-
-	return result, nil
+	return domain.ComputeProjectProgress(projectStats, vendorStats, openIssues, incompleteCount)
 }
 
 func toMilestoneLikes(ms []domain.ProjectMilestone) []domain.MilestoneLike {

@@ -184,7 +184,7 @@ func (s *ClientHomeService) Get(ctx context.Context, tenantID, projectID int64, 
 	}
 
 	if canTimeline {
-		progress, err := s.projects.ComputeProgressBatch(ctx, tenantID, []int64{projectID}, now)
+		progress, err := s.projects.ComputeClientProgressBatch(ctx, tenantID, []int64{projectID}, now)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +211,9 @@ func (s *ClientHomeService) Get(ctx context.Context, tenantID, projectID int64, 
 		if err != nil {
 			return nil, err
 		}
-		for _, i := range issues {
+		// Only what staff shared with the client counts: a hidden kendala is neither
+		// counted, nor an action, nor "sudah teratasi" news.
+		for _, i := range domain.ClientVisibleIssues(issues) {
 			if i.Status.IsOpen() {
 				openIssues++
 				continue

@@ -274,7 +274,15 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	c, err := h.clients.Get(r.Context(), tenantID, id)
+	// A deleted client is only reachable through restore: look it up (for the
+	// permission check on its project) instead of the live row.
+	restoring := len(segments) == 2 && segments[1] == "restore" && r.Method == http.MethodPost
+	var c *domain.Client
+	if restoring {
+		c, err = h.clients.GetDeleted(r.Context(), tenantID, id)
+	} else {
+		c, err = h.clients.Get(r.Context(), tenantID, id)
+	}
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -288,6 +296,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.updateContact(w, r, tenantID, id)
 	case len(segments) == 1 && r.Method == http.MethodDelete:
 		h.delete(w, r, tenantID, id)
+	case restoring:
+		h.restore(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
 		h.toggleActive(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "access-link" && r.Method == http.MethodPost:
@@ -327,12 +337,34 @@ func (h *Handler) updateContact(w http.ResponseWriter, r *http.Request, tenantID
 	response.OK(w, "Kontak client berhasil diperbarui", h.withLoginStatus(r, *c))
 }
 
+// deletedResponse is the body of a soft DELETE: what was deleted and until when
+// it can be restored.
+type deletedResponse struct {
+	ID              int64  `json:"id"`
+	RestorableUntil string `json:"restorableUntil"`
+}
+
+// delete soft-deletes the client (ADR-0034): it leaves every list at once, the
+// login is switched off, and POST /clients/{id}/restore brings it back for 24 hours.
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
-	if err := h.clients.Delete(r.Context(), tenantID, id); err != nil {
+	until, err := h.clients.Delete(r.Context(), tenantID, id, time.Now())
+	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Client berhasil dihapus", nil)
+	response.OK(w, "Client berhasil dihapus", deletedResponse{ID: id, RestorableUntil: until.Format(time.RFC3339)})
+}
+
+// restore is POST /clients/{id}/restore: the client as the list shows it. 404
+// when it is not deleted or was purged; 422 when the project is gone or the
+// workspace's trial quota has no room for it.
+func (h *Handler) restore(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	c, err := h.clients.Restore(r.Context(), tenantID, id, time.Now())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Client dipulihkan", h.withLoginStatus(r, *c))
 }
 
 func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

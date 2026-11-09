@@ -14,7 +14,13 @@ type ClientPaymentRepository interface {
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ClientPayment, error)
 	Create(ctx context.Context, p *domain.ClientPayment) error
 	Update(ctx context.Context, projectID, id int64, p domain.ClientPayment) error
-	Delete(ctx context.Context, projectID, id int64) error
+	// SoftDelete hides a live payment (deleted_at = at); false when there was none.
+	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
+	// FindDeletedByID is the restore lookup: the payment while it waits in the
+	// "deleted" state, nil otherwise.
+	FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.ClientPayment, error)
+	// Restore clears the stamp of a payment deleted after notBefore.
+	Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error)
 	// SetVerification records a verification only when there is none yet and
 	// reports whether this call set it (idempotent under concurrent verifies).
 	SetVerification(ctx context.Context, projectID, id int64, at time.Time, byStaffID int64) (bool, error)
@@ -205,30 +211,85 @@ func (s *ClientPaymentService) AfterEvidenceRemoved(ctx context.Context, e domai
 		"Verifikasi pembayaran client dibatalkan karena bukti terakhir dihapus")
 }
 
-// Delete hard-deletes the payment and, first, its attached evidence -- see
-// PaymentService.Delete for the full reasoning (evidence-first ordering,
-// Owner-only role check living in the HTTP handler, not here).
-func (s *ClientPaymentService) Delete(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64) error {
-	p, err := s.repo.FindByID(ctx, projectID, id)
-	if err != nil {
-		return err
-	}
-	if p == nil {
-		return apperror.NotFound("Pembayaran tidak ditemukan")
-	}
-	// Removing a Refund raises what counts as paid, so a delete is checked too.
-	if err := s.checkChange(ctx, tenantID, projectID, id, nil); err != nil {
-		return err
-	}
-	if err := s.evidence.DeleteForRelated(ctx, domain.RelatedClientPayment, id); err != nil {
-		return err
-	}
-	if err := s.repo.Delete(ctx, projectID, id); err != nil {
-		return err
-	}
-	s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran client dihapus")
-	return nil
+// Delete soft-deletes the payment (ADR-0034): it disappears from the list, the
+// ledger, the schedule, the portal and the dashboard, its proof files with it,
+// and can be restored for 24 hours. A verified payment is deletable like any
+// other; its verification stays on the row, so restoring brings the stamp back.
+// The permission check (finance.payment.delete) lives in the HTTP handler.
+// restorableUntil is the instant after which restoring is no longer possible.
+func (s *ClientPaymentService) Delete(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, now time.Time) (time.Time, error) {
+	var until time.Time
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		// Removing a Refund raises what counts as paid, so a delete is checked too.
+		if err := s.checkChange(ctx, tenantID, projectID, id, nil); err != nil {
+			return err
+		}
+		ok, err := s.repo.SoftDelete(ctx, projectID, id, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		until = domain.RestorableUntil(now)
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran client dihapus")
+		return nil
+	})
+	return until, err
+}
+
+// errNotRestorable is the 404 for restoring something that is not deleted,
+// never existed, or has been deleted for longer than the retention.
+func errNotRestorable() error {
+	return apperror.NotFound("Data ini tidak ditemukan atau sudah tidak dapat dipulihkan")
+}
+
+// Restore brings a deleted payment back, with its proof files and its
+// verification, after re-checking the rule that can now fail: adding it back
+// must not take the paid total past the contract (422 on `amount`, as when it
+// was recorded). A payment that is not deleted, or was deleted longer ago than
+// the retention, is a 404.
+func (s *ClientPaymentService) Restore(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, now time.Time) (*domain.ClientPayment, error) {
+	var restored *domain.ClientPayment
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindDeletedByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil || p.DeletedAt == nil || !domain.CanRestore(*p.DeletedAt, now) {
+			return errNotRestorable()
+		}
+		if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: p.Type, Amount: p.Amount}); err != nil {
+			return err
+		}
+		ok, err := s.repo.Restore(ctx, projectID, id, domain.PurgeCutoff(now))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errNotRestorable()
+		}
+		p.DeletedAt = nil
+		restored = p
+		s.activity.Record(ctx, &projectID, domain.ActivityRestored, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran client dipulihkan")
+		return nil
+	})
+	return restored, err
+}
+
+// LedgerSummary is where the client's contract and each installment of the
+// schedule stand now (the `ledgerSummary` of a mutation response).
+func (s *ClientPaymentService) LedgerSummary(ctx context.Context, tenantID, projectID int64, today time.Time) (domain.Ledger, []domain.TermProgress, error) {
+	return s.ledgerAndTerms(ctx, tenantID, projectID, today)
 }
 
 // ClientPaymentCreated is the outcome of recording a client payment: the

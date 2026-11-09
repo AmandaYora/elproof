@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,11 +13,19 @@ import (
 	"elproof/internal/shared/response"
 )
 
-func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, projectID int64, isClient bool) {
+func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, tenantID, projectID int64, isClient bool) {
 	list, err := h.evidence.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
+	}
+	var names map[int64]string
+	if !isClient {
+		ids := make([]int64, 0, len(list))
+		for _, e := range list {
+			ids = append(ids, e.UploadedByStaffID)
+		}
+		names = h.projects.StaffNames(r.Context(), tenantID, ids)
 	}
 	result := make([]evidenceResponse, 0, len(list))
 	for _, e := range list {
@@ -24,6 +33,7 @@ func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, projectID
 			continue
 		}
 		resp := toEvidenceResponse(e)
+		resp.UploadedByName = names[e.UploadedByStaffID]
 		if isClient {
 			redactEvidenceForClient(&resp)
 		}
@@ -79,14 +89,14 @@ func (h *Handler) uploadEvidence(w http.ResponseWriter, r *http.Request, claims 
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Evidence berhasil diunggah", toEvidenceResponse(*e))
+	response.Created(w, "Evidence berhasil diunggah", h.mutated(r.Context(), claims.tenantID, projectID, h.evidenceResponseFor(r.Context(), claims.tenantID, *e)))
 }
 
 // toggleEvidenceClientVisible flips a general-kind document's client
 // visibility without re-uploading the file — see
 // EvidenceService.ToggleClientVisible for why this is rejected for every
 // other RelatedKind.
-func (h *Handler) toggleEvidenceClientVisible(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string) {
+func (h *Handler) toggleEvidenceClientVisible(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, evidenceIDRaw string) {
 	evidenceID, err := parseInt64(evidenceIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
@@ -97,7 +107,46 @@ func (h *Handler) toggleEvidenceClientVisible(w http.ResponseWriter, r *http.Req
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Visibilitas dokumen diperbarui", toEvidenceResponse(*e))
+	response.OK(w, "Visibilitas dokumen diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, h.evidenceResponseFor(r.Context(), claims.tenantID, *e)))
+}
+
+// evidenceResponseFor is a file as a staff mutation answers it: the row plus the
+// uploader's name.
+func (h *Handler) evidenceResponseFor(ctx context.Context, tenantID int64, e domain.Evidence) evidenceResponse {
+	resp := toEvidenceResponse(e)
+	resp.UploadedByName = h.projects.ResolvePICName(ctx, tenantID, e.UploadedByStaffID)
+	return resp
+}
+
+// deleteEvidence is DELETE /projects/{id}/evidence/{eid}: removes one proof file
+// for good (row and stored object). It needs project.edit (or finance.record),
+// like every evidence write, and finance.payment.delete when the file is the
+// proof of a payment, since removing it changes what the payment is worth. A
+// verified client payment loses its verification with its last file (ADR-0032).
+// The answer is {"id", "projectProgress"}.
+func (h *Handler) deleteEvidence(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, evidenceIDRaw string) {
+	evidenceID, err := parseInt64(evidenceIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	e, err := h.evidence.Find(r.Context(), projectID, evidenceID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	switch e.RelatedKind {
+	case domain.RelatedClientPayment, domain.RelatedPayment, domain.RelatedVenuePayment:
+		if !claims.can("finance.payment.delete") {
+			forbiddenPermission(w, "Peran Anda tidak dapat menghapus bukti pembayaran")
+			return
+		}
+	}
+	if err := h.evidence.Delete(r.Context(), projectID, evidenceID, claims.staffID); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Evidence berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, map[string]int64{"id": evidenceID}))
 }
 
 func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string, isClient bool) {

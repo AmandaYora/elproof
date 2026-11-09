@@ -3,6 +3,7 @@ package presentation
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -80,7 +81,7 @@ func (h *Handler) createVenuePaymentNow(w http.ResponseWriter, r *http.Request, 
 	p := created.Payment
 	resp := toVenuePaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
 	resp.Evidence = evidenceRefs(created.Evidence)
-	response.Created(w, "Pembayaran venue berhasil dicatat", venuePaymentCreatedResponse{venuePaymentResponse: resp, LedgerSummary: toLedgerSummary(created.Ledger)})
+	response.Created(w, "Pembayaran venue berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, venuePaymentCreatedResponse{venuePaymentResponse: resp, LedgerSummary: toLedgerSummary(created.Ledger)}))
 }
 
 // updateVenuePayment is a full-field overwrite, no role-gate — see
@@ -117,11 +118,16 @@ func (h *Handler) updateVenuePayment(w http.ResponseWriter, r *http.Request, cla
 	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
 	resp := toVenuePaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
 	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedVenuePayment, p.ID)
-	response.OK(w, "Pembayaran venue berhasil diperbarui", resp)
+	ledger, err := h.venuePayments.LedgerSummary(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran venue berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", toLedgerSummary(ledger)}))
 }
 
-// deleteVenuePayment hard-deletes the payment (and its own evidence).
-// Owner-or-Admin — see deletePayment's doc comment.
+// deleteVenuePayment soft-deletes the payment (finance.payment.delete); see
+// deleteClientPayment for the answer.
 func (h *Handler) deleteVenuePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	if !claims.can("finance.payment.delete") {
 		forbiddenPermission(w, "Peran Anda tidak dapat menghapus pembayaran")
@@ -132,9 +138,44 @@ func (h *Handler) deleteVenuePayment(w http.ResponseWriter, r *http.Request, cla
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	if err := h.venuePayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID); err != nil {
+	until, err := h.venuePayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran venue berhasil dihapus", nil)
+	ledger, err := h.venuePayments.LedgerSummary(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran venue berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, toDeletedResponse(paymentID, until), extra{"ledgerSummary", toLedgerSummary(ledger)}))
+}
+
+// restoreVenuePayment is POST /projects/{id}/venue-payments/{pid}/restore
+// (finance.payment.delete); see restoreClientPayment.
+func (h *Handler) restoreVenuePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
+	paymentID, err := parseInt64(paymentIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	p, err := h.venuePayments.Restore(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	evidences, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
+	resp := toVenuePaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
+	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedVenuePayment, p.ID)
+	ledger, err := h.venuePayments.LedgerSummary(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran venue dipulihkan", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", toLedgerSummary(ledger)}))
 }

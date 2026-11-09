@@ -17,6 +17,12 @@ type VendorEngagementRepository interface {
 	Create(ctx context.Context, pv *domain.ProjectVendor) error
 	Update(ctx context.Context, pv *domain.ProjectVendor) error
 	SetStatus(ctx context.Context, projectID, id int64, status domain.EngagementStatus) error
+	// SoftDelete hides a live engagement (deleted_at = at); false when there was none.
+	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
+	// FindDeletedByID is the restore lookup (nil unless it waits in the "deleted" state).
+	FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.ProjectVendor, error)
+	// Restore clears the stamp of an engagement deleted after notBefore.
+	Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error)
 	ListByVendor(ctx context.Context, tenantID, vendorID int64) ([]domain.VendorEngagementHistoryRow, error)
 }
 
@@ -134,6 +140,58 @@ func (s *VendorEngagementService) Cancel(ctx context.Context, projectID, id int6
 	pv.EngagementStatus = domain.EngagementCancelled
 	s.activity.Record(ctx, &projectID, domain.ActivityVendorStatusChanged, actorStaffID, "project_vendor", formatID(pv.ID), pv.Scope,
 		"Kerja sama vendor dibatalkan")
+	return pv, nil
+}
+
+// Delete soft-deletes the engagement (ADR-0034): it leaves the vendor list, the
+// progress, the dashboard and the vendor's project history, and so do its
+// milestones, payments, kendala and their proof files, until it is restored (24
+// hours) or purged. It returns the instant restoring stops being possible.
+func (s *VendorEngagementService) Delete(ctx context.Context, projectID, id int64, actorStaffID int64, now time.Time) (*domain.ProjectVendor, time.Time, error) {
+	pv, err := s.Get(ctx, projectID, id)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	ok, err := s.repo.SoftDelete(ctx, projectID, id, now)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if !ok {
+		return nil, time.Time{}, apperror.NotFound("Kerja sama vendor tidak ditemukan")
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityVendorDeleted, actorStaffID, "project_vendor", formatID(pv.ID), pv.Scope,
+		"Kerja sama vendor dihapus")
+	return pv, domain.RestorableUntil(now), nil
+}
+
+// Restore brings a deleted engagement back with everything that hung off it.
+// check runs first, on the deleted engagement, and may refuse the restore with a
+// validation error: the handler uses it to confirm that the vendor and category
+// still exist (a vendor hard-deleted meanwhile cannot come back as a ghost). Not
+// deleted, or past the retention: 404.
+func (s *VendorEngagementService) Restore(ctx context.Context, projectID, id int64, actorStaffID int64, now time.Time, check func(ctx context.Context, pv *domain.ProjectVendor) error) (*domain.ProjectVendor, error) {
+	pv, err := s.repo.FindDeletedByID(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	if pv == nil || pv.DeletedAt == nil || !domain.CanRestore(*pv.DeletedAt, now) {
+		return nil, errNotRestorable()
+	}
+	if check != nil {
+		if err := check(ctx, pv); err != nil {
+			return nil, err
+		}
+	}
+	ok, err := s.repo.Restore(ctx, projectID, id, domain.PurgeCutoff(now))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errNotRestorable()
+	}
+	pv.DeletedAt = nil
+	s.activity.Record(ctx, &projectID, domain.ActivityRestored, actorStaffID, "project_vendor", formatID(pv.ID), pv.Scope,
+		"Kerja sama vendor dipulihkan")
 	return pv, nil
 }
 

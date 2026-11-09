@@ -22,12 +22,28 @@ type DashboardRepository interface {
 	ListOpenProjectTerms(ctx context.Context, tenantID int64) ([]domain.TermWithProject, error)
 	ListAppliedToContract(ctx context.Context, tenantID int64) (map[int64]int64, error)
 	ListProjectMilestonesDue(ctx context.Context, tenantID int64, from, to time.Time) ([]domain.DashboardTaskRow, error)
+	// ListOpenEngagementBalances / ListUnconfirmedVendors back the cash flow,
+	// "pembayaran vendor jatuh tempo" and "vendor belum terkonfirmasi" sections.
+	ListOpenEngagementBalances(ctx context.Context, tenantID int64) ([]domain.EngagementBalanceRow, error)
+	ListUnconfirmedVendors(ctx context.Context, tenantID int64, from, to time.Time, limit int) ([]domain.UnconfirmedVendorRow, error)
 }
 
 type DashboardService struct {
 	projects *ProjectService
 	repo     DashboardRepository
 	evidence *EvidenceService
+	refs     *References
+}
+
+// SetReferences gives the dashboard the vendor-name lookup (the rows carry names,
+// not just ids).
+func (s *DashboardService) SetReferences(r *References) { s.refs = r }
+
+// DashboardOptions chooses the optional parts of the dashboard.
+type DashboardOptions struct {
+	// IncludeMoney computes cashFlow and vendorPaymentsDue (the caller has
+	// dashboard.revenue.view); without it they are not even read.
+	IncludeMoney bool
 }
 
 func NewDashboardService(projects *ProjectService, repo DashboardRepository, evidence *EvidenceService) *DashboardService {
@@ -36,7 +52,7 @@ func NewDashboardService(projects *ProjectService, repo DashboardRepository, evi
 
 const trendMonthsBack = 12
 
-func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Time) (*domain.DashboardStats, error) {
+func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Time, opts DashboardOptions) (*domain.DashboardStats, error) {
 	totalProjects, err := s.projects.CountAll(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -174,6 +190,11 @@ func (s *DashboardService) Get(ctx context.Context, tenantID int64, asOf time.Ti
 	}
 	stats.RecentActivity = recentActivity
 
+	// Three sections added for the new Beranda (ADR-0034).
+	if err := s.addTodaySections(ctx, tenantID, asOf, opts, stats, terms, applied); err != nil {
+		return nil, err
+	}
+
 	stats.ProjectTrend = buildProjectTrend(allProjects, asOf, trendMonthsBack)
 	stats.RevenueTrend = buildRevenueTrend(allProjects, asOf, trendMonthsBack)
 	stats.Revenue = buildRevenueSummary(stats.RevenueTrend)
@@ -298,4 +319,71 @@ func daysBetweenPublic(from, to time.Time) int {
 	f := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
 	t := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, time.UTC)
 	return int(t.Sub(f).Hours() / 24)
+}
+
+// addTodaySections fills the cash flow (next 8 weeks), the vendor payments that
+// are due and the vendors still unconfirmed close to the event. The money
+// sections are skipped unless the caller may see revenue figures.
+func (s *DashboardService) addTodaySections(ctx context.Context, tenantID int64, asOf time.Time, opts DashboardOptions, stats *domain.DashboardStats, terms []domain.TermWithProject, applied map[int64]int64) error {
+	if opts.IncludeMoney {
+		balances, err := s.repo.ListOpenEngagementBalances(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		in := incomingDue(terms, applied, asOf)
+		var out []domain.DueAmount
+		var due []domain.VendorDue
+		for _, b := range balances {
+			out = append(out, domain.DueAmount{DueDate: b.DueDate, Remaining: b.Remaining()})
+			due = append(due, domain.VendorDue{ProjectID: b.ProjectID, ProjectName: b.ProjectName, VendorID: b.VendorID, DueDate: b.DueDate, Remaining: b.Remaining()})
+		}
+		stats.CashFlow = domain.BuildCashFlow(asOf, in, out)
+		stats.VendorPaymentsDue = domain.SelectVendorPaymentsDue(asOf, due)
+		stats.MoneySections = true
+	}
+	unconfirmed, err := s.repo.ListUnconfirmedVendors(ctx, tenantID,
+		time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, time.UTC),
+		time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 30), domain.MaxDashboardRows)
+	if err != nil {
+		return err
+	}
+	stats.UnconfirmedVendors = unconfirmed
+	return nil
+}
+
+// incomingDue turns the open projects' payment schedules into what the clients
+// still owe, by due date: each project's real payments are allocated over its
+// schedule and every installment with something left counts.
+func incomingDue(rows []domain.TermWithProject, applied map[int64]int64, today time.Time) []domain.DueAmount {
+	byProject := make(map[int64][]domain.PaymentTerm)
+	var order []int64
+	for _, r := range rows {
+		id := r.Term.ProjectID
+		if _, seen := byProject[id]; !seen {
+			order = append(order, id)
+		}
+		byProject[id] = append(byProject[id], r.Term)
+	}
+	var out []domain.DueAmount
+	for _, id := range order {
+		for _, tp := range domain.AllocateTerms(byProject[id], applied[id], today) {
+			if tp.Remaining > 0 {
+				out = append(out, domain.DueAmount{DueDate: tp.Term.DueDate, Remaining: tp.Remaining})
+			}
+		}
+	}
+	return out
+}
+
+// VendorNames names the vendors of dashboard rows (best effort, one lookup).
+func (s *DashboardService) VendorNames(ctx context.Context, tenantID int64, ids []int64) map[int64]string {
+	if s.refs == nil {
+		return map[int64]string{}
+	}
+	return s.refs.VendorNames(ctx, tenantID, ids)
+}
+
+// StaffNames names actors (best effort, one lookup).
+func (s *DashboardService) StaffNames(ctx context.Context, tenantID int64, ids []int64) map[int64]string {
+	return s.projects.StaffNames(ctx, tenantID, ids)
 }

@@ -124,12 +124,12 @@ func (h *Handler) createClientPaymentNow(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Pembayaran client berhasil dicatat", clientPaymentCreatedResponse{
+	response.Created(w, "Pembayaran client berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, clientPaymentCreatedResponse{
 		clientPaymentResponse: resp,
 		LedgerSummary: clientLedgerSummaryResponse{
 			ledgerSummaryResponse: toLedgerSummary(created.Ledger), Terms: toPaymentTermResponses(created.Terms),
 		},
-	})
+	}))
 }
 
 // updateClientPayment is a full-field overwrite, no role-gate — see
@@ -163,7 +163,21 @@ func (h *Handler) updateClientPayment(w http.ResponseWriter, r *http.Request, cl
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client berhasil diperbarui", resp)
+	ledger, err := h.clientLedgerSummary(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran client berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", ledger}))
+}
+
+// clientLedgerSummary is where the contract and the schedule stand now.
+func (h *Handler) clientLedgerSummary(ctx context.Context, tenantID, projectID int64) (clientLedgerSummaryResponse, error) {
+	ledger, terms, err := h.clientPayments.LedgerSummary(ctx, tenantID, projectID, nowWIB())
+	if err != nil {
+		return clientLedgerSummaryResponse{}, err
+	}
+	return clientLedgerSummaryResponse{ledgerSummaryResponse: toLedgerSummary(ledger), Terms: toPaymentTermResponses(terms)}, nil
 }
 
 // verifyClientPayment is POST /projects/{id}/client-payments/{pid}/verify
@@ -186,11 +200,12 @@ func (h *Handler) verifyClientPayment(w http.ResponseWriter, r *http.Request, cl
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client diverifikasi", resp)
+	response.OK(w, "Pembayaran client diverifikasi", h.mutated(r.Context(), claims.tenantID, projectID, resp))
 }
 
-// deleteClientPayment hard-deletes the payment (and its own evidence).
-// Owner-or-Admin — see deletePayment's doc comment.
+// deleteClientPayment soft-deletes the payment (finance.payment.delete): it
+// answers with when it can still be restored, the fresh ledger and schedule, and
+// the project's progress. POST .../restore brings it back.
 func (h *Handler) deleteClientPayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	if !claims.can("finance.payment.delete") {
 		forbiddenPermission(w, "Peran Anda tidak dapat menghapus pembayaran")
@@ -201,9 +216,43 @@ func (h *Handler) deleteClientPayment(w http.ResponseWriter, r *http.Request, cl
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	if err := h.clientPayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID); err != nil {
+	until, err := h.clientPayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client berhasil dihapus", nil)
+	ledger, err := h.clientLedgerSummary(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran client berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, toDeletedResponse(paymentID, until), extra{"ledgerSummary", ledger}))
+}
+
+// restoreClientPayment is POST /projects/{id}/client-payments/{pid}/restore
+// (finance.payment.delete): the payment as listed, plus the ledger and progress.
+// 404 when it is not deleted or was purged; 422 `amount` when putting it back
+// would overpay the contract.
+func (h *Handler) restoreClientPayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
+	paymentID, err := parseInt64(paymentIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	p, err := h.clientPayments.Restore(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	resp, err := h.oneClientPaymentResponse(r.Context(), claims, projectID, *p)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	ledger, err := h.clientLedgerSummary(r.Context(), claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran client dipulihkan", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", ledger}))
 }

@@ -74,6 +74,7 @@ type VendorPayment struct {
 	Method          string
 	ReferenceNumber string
 	Notes           string
+	DeletedAt       *time.Time
 }
 
 // PaymentEvidenceStatus cross-references a project's (or, for the
@@ -143,6 +144,9 @@ type ClientPayment struct {
 	// (ADR-0032), so "verified" only ever describes the payment as it stands.
 	VerifiedAt        *time.Time
 	VerifiedByStaffID int64
+	// DeletedAt is set while the payment waits in the "deleted" state (soft
+	// delete, ADR-0034); only restore lookups ever see such a row.
+	DeletedAt *time.Time
 }
 
 // ErrVerifyNeedsEvidence is returned by Verify when no proof is attached.
@@ -205,6 +209,7 @@ type VenuePayment struct {
 	Method          string
 	ReferenceNumber string
 	Notes           string
+	DeletedAt       *time.Time
 }
 
 // PaymentLine is the part of a payment the overpayment rule needs, shared by

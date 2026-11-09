@@ -29,6 +29,16 @@ func TestStaffWritePermission(t *testing.T) {
 		{http.MethodPost, []string{"milestones"}, "project.edit", ""},
 		{http.MethodPost, []string{"vendors", "2", "cancel"}, "project.edit", ""},
 		{http.MethodPatch, []string{"issues", "9"}, "project.edit", ""},
+		// Tahap 5: restoring a payment is the same decision as deleting it.
+		{http.MethodPost, []string{"client-payments", "4", "restore"}, "finance.payment.delete", ""},
+		{http.MethodPost, []string{"payments", "4", "restore"}, "finance.payment.delete", ""},
+		{http.MethodPost, []string{"venue-payments", "4", "restore"}, "finance.payment.delete", ""},
+		{http.MethodDelete, []string{"payments", "4"}, "finance.payment.delete", ""},
+		{http.MethodDelete, []string{"vendors", "2"}, "project.edit", ""},
+		{http.MethodPost, []string{"vendors", "2", "restore"}, "project.edit", ""},
+		{http.MethodDelete, []string{"evidence", "9"}, "project.edit", "finance.record"},
+		{http.MethodGet, []string{"overview"}, "", ""},
+		{http.MethodGet, []string{"activity"}, "", ""},
 	}
 	for _, c := range cases {
 		perm, alt := staffWritePermission(c.method, c.rest)

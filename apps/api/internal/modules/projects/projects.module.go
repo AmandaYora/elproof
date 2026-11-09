@@ -4,8 +4,10 @@
 package projects
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
+	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/contracts"
@@ -21,6 +23,19 @@ type Module struct {
 	contracts                contracts.Contracts
 	projectService           *application.ProjectService
 	clientHome               *application.ClientHomeService
+	overview                 *application.OverviewService
+	purge                    *application.PurgeService
+}
+
+// PurgeSummary is what one purge run removed, in plain numbers (the composition
+// root logs it; it never sees this module's domain types).
+type PurgeSummary struct {
+	// Ran is false when another instance held the purge lock.
+	Ran bool
+	// Rows counts the rows removed (payments, vendor engagements and what hung
+	// off them); Evidence the proof rows among them; Objects the stored files
+	// deleted from object storage.
+	Rows, Evidence, Objects int
 }
 
 // NewModule builds the module. signingSecret is the application's one secret
@@ -71,7 +86,14 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	references := application.NewReferences(staff)
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
 
+	// The project overview (E1), the dashboard's names and the scheduled purge of
+	// what stayed deleted for longer than the retention (E13, ADR-0034).
+	overviewService := application.NewOverviewService(projectService, clientPaymentRepo, paymentTermService, references)
+	dashboardService.SetReferences(references)
+	purgeService := application.NewPurgeService(infrastructure.NewMySQLPurgeRepository(db), evidenceService)
+
 	handler.SetReferences(references)
+	handler.SetOverview(overviewService)
 	handler.SetClientHome(clientHomeService)
 	handler.SetUploads(uploadService)
 	handler.SetIdempotency(application.NewIdempotencyService(idempotencyRepo))
@@ -83,7 +105,24 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 		contracts:                contracts.New(projectService, vendorEngagementService, milestoneTemplateService),
 		projectService:           projectService,
 		clientHome:               clientHomeService,
+		overview:                 overviewService,
+		purge:                    purgeService,
 	}
+}
+
+// PurgeExpired permanently removes what has been deleted for longer than the
+// retention: payments and vendor engagements, their evidence rows and stored
+// files. Idempotent and safe with several instances (a database lock lets one
+// work at a time). It is what `api purge` and the server's ticker run.
+func (m *Module) PurgeExpired(ctx context.Context, now time.Time) (PurgeSummary, error) {
+	report, ran, err := m.purge.Run(ctx, now)
+	return PurgeSummary{Ran: ran, Rows: report.Total(), Evidence: report.Evidence, Objects: report.Objects}, err
+}
+
+// SetClientDirectory completes the two-phase wiring with `clients` for the
+// overview's client list (see application.ClientDirectory).
+func (m *Module) SetClientDirectory(d application.ClientDirectory) {
+	m.overview.SetClients(d)
 }
 
 func (m *Module) Contracts() contracts.Contracts {

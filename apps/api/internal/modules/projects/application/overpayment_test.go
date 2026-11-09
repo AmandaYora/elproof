@@ -24,12 +24,22 @@ type fakeClientPayments struct {
 	created int
 }
 
+// live is what a repository returns: rows that are not deleted.
+func (f *fakeClientPayments) live() []domain.ClientPayment {
+	var out []domain.ClientPayment
+	for _, r := range f.rows {
+		if r.DeletedAt == nil {
+			out = append(out, r)
+		}
+	}
+	return out
+}
 func (f *fakeClientPayments) ListByProject(context.Context, int64) ([]domain.ClientPayment, error) {
-	return f.rows, nil
+	return f.live(), nil
 }
 func (f *fakeClientPayments) FindByID(_ context.Context, _, id int64) (*domain.ClientPayment, error) {
 	for i := range f.rows {
-		if f.rows[i].ID == id {
+		if f.rows[i].ID == id && f.rows[i].DeletedAt == nil {
 			p := f.rows[i] // a copy, like a database read
 			return &p, nil
 		}
@@ -48,7 +58,33 @@ func (f *fakeClientPayments) Update(_ context.Context, _, id int64, p domain.Cli
 	}
 	return nil
 }
-func (f *fakeClientPayments) Delete(context.Context, int64, int64) error { return nil }
+func (f *fakeClientPayments) SoftDelete(_ context.Context, _, id int64, at time.Time) (bool, error) {
+	for i := range f.rows {
+		if f.rows[i].ID == id && f.rows[i].DeletedAt == nil {
+			f.rows[i].DeletedAt = &at
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *fakeClientPayments) FindDeletedByID(_ context.Context, _, id int64) (*domain.ClientPayment, error) {
+	for i := range f.rows {
+		if f.rows[i].ID == id && f.rows[i].DeletedAt != nil {
+			p := f.rows[i]
+			return &p, nil
+		}
+	}
+	return nil, nil
+}
+func (f *fakeClientPayments) Restore(_ context.Context, _, id int64, notBefore time.Time) (bool, error) {
+	for i := range f.rows {
+		if f.rows[i].ID == id && f.rows[i].DeletedAt != nil && f.rows[i].DeletedAt.After(notBefore) {
+			f.rows[i].DeletedAt = nil
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (f *fakeClientPayments) SetVerification(_ context.Context, _, id int64, at time.Time, by int64) (bool, error) {
 	for i := range f.rows {
 		if f.rows[i].ID == id && f.rows[i].VerifiedAt == nil {
@@ -120,7 +156,7 @@ func TestClientPaymentDeleteOfRefundIsChecked(t *testing.T) {
 		{ID: 3, Type: domain.PaymentTermin, Amount: 50},
 	}}
 	svc := NewClientPaymentService(repo, nil, nil, fakeContracts{project: 100})
-	err := svc.Delete(context.Background(), 1, 10, 2, 5)
+	_, err := svc.Delete(context.Background(), 1, 10, 2, 5, time.Now())
 	if codeOf(err) != "payment_exceeds_contract" {
 		t.Fatalf("deleting the refund must be refused, got %v", err)
 	}

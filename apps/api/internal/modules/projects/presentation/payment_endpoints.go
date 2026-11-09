@@ -3,6 +3,7 @@ package presentation
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -83,7 +84,7 @@ func (h *Handler) createPaymentNow(w http.ResponseWriter, r *http.Request, claim
 	p := created.Payment
 	resp := toPaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
 	resp.Evidence = evidenceRefs(created.Evidence)
-	response.Created(w, "Pembayaran berhasil dicatat", paymentCreatedResponse{paymentResponse: resp, LedgerSummary: toLedgerSummary(created.Ledger)})
+	response.Created(w, "Pembayaran berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, paymentCreatedResponse{paymentResponse: resp, LedgerSummary: toLedgerSummary(created.Ledger)}))
 }
 
 // updatePayment is a full-field overwrite, no role-gate -- same convention
@@ -120,13 +121,17 @@ func (h *Handler) updatePayment(w http.ResponseWriter, r *http.Request, claims s
 	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
 	resp := toPaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
 	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedPayment, p.ID)
-	response.OK(w, "Pembayaran berhasil diperbarui", resp)
+	ledger, err := h.payments.LedgerSummary(r.Context(), projectID, p.ProjectVendorID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", toLedgerSummary(ledger)}))
 }
 
-// deletePayment hard-deletes the payment (and its own evidence, cascaded
-// inside PaymentService.Delete). Owner-or-Admin -- see isOwnerOrAdmin's doc
-// comment, checked here rather than in the service so the service stays
-// agnostic of who's calling.
+// deletePayment soft-deletes the payment (finance.payment.delete); see
+// deleteClientPayment for the answer. The ledger is the payment's vendor
+// engagement's.
 func (h *Handler) deletePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	if !claims.can("finance.payment.delete") {
 		forbiddenPermission(w, "Peran Anda tidak dapat menghapus pembayaran")
@@ -137,9 +142,45 @@ func (h *Handler) deletePayment(w http.ResponseWriter, r *http.Request, claims s
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	if err := h.payments.Delete(r.Context(), projectID, paymentID, claims.staffID); err != nil {
+	p, until, err := h.payments.Delete(r.Context(), projectID, paymentID, claims.staffID, time.Now())
+	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran berhasil dihapus", nil)
+	ledger, err := h.payments.LedgerSummary(r.Context(), projectID, p.ProjectVendorID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, toDeletedResponse(paymentID, until), extra{"ledgerSummary", toLedgerSummary(ledger)}))
+}
+
+// restorePayment is POST /projects/{id}/payments/{pid}/restore
+// (finance.payment.delete); see restoreClientPayment. 422 `projectVendorId`
+// when the payment's vendor engagement is itself deleted (restore it first).
+func (h *Handler) restorePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
+	paymentID, err := parseInt64(paymentIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	p, err := h.payments.Restore(r.Context(), projectID, paymentID, claims.staffID, time.Now())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	evidences, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
+	resp := toPaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
+	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedPayment, p.ID)
+	ledger, err := h.payments.LedgerSummary(r.Context(), projectID, p.ProjectVendorID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pembayaran dipulihkan", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", toLedgerSummary(ledger)}))
 }

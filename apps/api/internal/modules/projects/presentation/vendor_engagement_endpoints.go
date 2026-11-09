@@ -19,19 +19,28 @@ import (
 // Correctness". A missing key correctly defaults to Go's int64 zero value
 // (no payments recorded yet).
 func (h *Handler) vendorPaidAmounts(ctx context.Context, projectID int64) (map[int64]int64, error) {
+	paid, _, err := h.vendorPaymentsOf(ctx, projectID)
+	return paid, err
+}
+
+// vendorPaymentsOf is vendorPaidAmounts plus the ids of each engagement's live
+// payments (their proof files count towards the engagement's evidenceCount).
+func (h *Handler) vendorPaymentsOf(ctx context.Context, projectID int64) (paid map[int64]int64, ids map[int64][]int64, err error) {
 	payments, err := h.payments.List(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	paid := make(map[int64]int64, len(payments))
+	paid = make(map[int64]int64, len(payments))
+	ids = make(map[int64][]int64, len(payments))
 	for _, p := range payments {
+		ids[p.ProjectVendorID] = append(ids[p.ProjectVendorID], p.ID)
 		if p.Type == domain.PaymentRefund {
 			paid[p.ProjectVendorID] -= p.Amount
 		} else {
 			paid[p.ProjectVendorID] += p.Amount
 		}
 	}
-	return paid, nil
+	return paid, ids, nil
 }
 
 // listVendorEngagements embeds each engagement's own milestones in the same
@@ -39,58 +48,79 @@ func (h *Handler) vendorPaidAmounts(ctx context.Context, projectID int64) (map[i
 // frontend's fetchVendorSection no longer needs its own per-engagement
 // Promise.all loop — PLAN.md "Performance remediation" Phase E.
 func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
-	isClient := claims.isClient
 	list, err := h.vendors.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	paid, err := h.vendorPaidAmounts(r.Context(), projectID)
+	result, err := h.vendorRows(r.Context(), claims, projectID, list)
 	if err != nil {
 		writeAppError(w, err)
 		return
+	}
+	response.OK(w, "ok", result)
+}
+
+// vendorRows builds the full list rows (names, PIC, milestones with their proof,
+// evidence count, paid amount) for the given engagements of a project from ONE
+// query per source, however many engagements there are. The restore answer uses
+// it for the one engagement it brings back.
+func (h *Handler) vendorRows(ctx context.Context, claims staffClaims, projectID int64, list []domain.ProjectVendor) ([]projectVendorResponse, error) {
+	isClient := claims.isClient
+	paid, paymentIDs, err := h.vendorPaymentsOf(ctx, projectID)
+	if err != nil {
+		return nil, err
 	}
 	pvIDs := make([]int64, len(list))
 	for i, pv := range list {
 		pvIDs[i] = pv.ID
 	}
-	milestonesByEngagement, err := h.vendors.ListMilestonesByProjectVendors(r.Context(), pvIDs)
+	milestonesByEngagement, err := h.vendors.ListMilestonesByProjectVendors(ctx, pvIDs)
 	if err != nil {
-		writeAppError(w, err)
-		return
+		return nil, err
 	}
-	evidences, err := h.evidence.List(r.Context(), projectID)
+	evidences, err := h.evidence.List(ctx, projectID)
 	if err != nil {
-		writeAppError(w, err)
-		return
+		return nil, err
 	}
 	ix := indexEvidence(evidences, isClient, claims.can)
 	// Names come from this project's own engagements only, resolved inside the
 	// caller's workspace in one lookup each: another vendor's name can never
 	// reach a client, whatever ids exist in the directory.
-	vendorIDs, categoryIDs := make([]int64, 0, len(list)), make([]int64, 0, len(list))
+	vendorIDs, categoryIDs, picIDs := make([]int64, 0, len(list)), make([]int64, 0, len(list)), make([]int64, 0, len(list))
 	for _, pv := range list {
 		vendorIDs, categoryIDs = append(vendorIDs, pv.VendorID), append(categoryIDs, pv.CategoryID)
+		picIDs = append(picIDs, pv.PICStaffID)
 	}
-	vendorNames := h.refs.VendorNames(r.Context(), claims.tenantID, vendorIDs)
-	categoryNames := h.refs.CategoryNames(r.Context(), claims.tenantID, categoryIDs)
+	vendorNames := h.refs.VendorNames(ctx, claims.tenantID, vendorIDs)
+	categoryNames := h.refs.CategoryNames(ctx, claims.tenantID, categoryIDs)
+	var picNames map[int64]string
+	if !isClient {
+		picNames = h.projects.StaffNames(ctx, claims.tenantID, picIDs)
+	}
 	result := make([]projectVendorResponse, 0, len(list))
 	for _, pv := range list {
 		resp := toProjectVendorResponse(pv, paid[pv.ID])
 		resp.VendorName, resp.CategoryName = vendorNames[pv.VendorID], categoryNames[pv.CategoryID]
+		resp.PICName = picNames[pv.PICStaffID]
 		milestones := milestonesByEngagement[pv.ID]
 		resp.Milestones = make([]vendorMilestoneResponse, 0, len(milestones))
+		resp.EvidenceCount = len(ix.refs(domain.RelatedProjectVendor, pv.ID))
 		for _, m := range milestones {
 			mr := toVendorMilestoneResponse(m)
 			mr.Evidence = ix.refs(domain.RelatedVendorMilestone, m.ID)
+			resp.EvidenceCount += len(mr.Evidence)
 			resp.Milestones = append(resp.Milestones, mr)
+		}
+		for _, payID := range paymentIDs[pv.ID] {
+			resp.EvidenceCount += len(ix.refs(domain.RelatedPayment, payID))
 		}
 		if isClient {
 			redactVendorForClient(&resp)
 		}
 		result = append(result, resp)
 	}
-	response.OK(w, "ok", result)
+	return result, nil
 }
 
 type vendorEngagementInputBody struct {
@@ -213,7 +243,7 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 	}
 	// A freshly created engagement has no vendor_payments rows yet — 0 paid,
 	// no ledger lookup needed.
-	response.Created(w, "Vendor berhasil ditambahkan ke project", toProjectVendorResponse(*pv, 0))
+	response.Created(w, "Vendor berhasil ditambahkan ke project", h.mutated(ctx, claims.tenantID, projectID, toProjectVendorResponse(*pv, 0)))
 }
 
 // collectValidation folds a validation error's fields into fields and reports
@@ -271,7 +301,7 @@ func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kerja sama vendor berhasil diperbarui", toProjectVendorResponse(*pv, paid[pv.ID]))
+	response.OK(w, "Kerja sama vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toProjectVendorResponse(*pv, paid[pv.ID])))
 }
 
 func (h *Handler) cancelVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
@@ -290,7 +320,60 @@ func (h *Handler) cancelVendorEngagement(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kerja sama vendor dibatalkan", toProjectVendorResponse(*pv, paid[pv.ID]))
+	response.OK(w, "Kerja sama vendor dibatalkan", h.mutated(r.Context(), claims.tenantID, projectID, toProjectVendorResponse(*pv, paid[pv.ID])))
+}
+
+// deleteVendorEngagement is DELETE /projects/{id}/vendors/{pvid}: a soft delete
+// (project.edit). The engagement, its milestones, payments, kendala and their
+// proof files disappear from every list, total and screen; the answer says until
+// when it can be restored and carries the project's fresh progress.
+func (h *Handler) deleteVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
+	pvID, err := parseInt64(pvIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	_, until, err := h.vendors.Delete(r.Context(), projectID, pvID, claims.staffID, time.Now())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Kerja sama vendor dihapus", h.mutated(r.Context(), claims.tenantID, projectID, toDeletedResponse(pvID, until)))
+}
+
+// restoreVendorEngagement is POST /projects/{id}/vendors/{pvid}/restore
+// (project.edit): the engagement as GET /projects/{id}/vendors lists it, plus
+// the project's progress. 404 when it is not deleted or was purged; 422
+// `vendorId`/`categoryId` when its vendor or category no longer exists.
+func (h *Handler) restoreVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
+	pvID, err := parseInt64(pvIDRaw)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
+		return
+	}
+	pv, err := h.vendors.Restore(r.Context(), projectID, pvID, claims.staffID, time.Now(), func(ctx context.Context, pv *domain.ProjectVendor) error {
+		fields := map[string][]string{}
+		if err := h.refs.Vendor(ctx, claims.tenantID, "vendorId", pv.VendorID); err != nil && !collectValidation(fields, err) {
+			return err
+		}
+		if err := h.refs.Category(ctx, claims.tenantID, "categoryId", pv.CategoryID); err != nil && !collectValidation(fields, err) {
+			return err
+		}
+		if len(fields) > 0 {
+			return apperror.Validation("Vendor atau kategorinya sudah tidak ada, jadi kerja sama ini tidak bisa dipulihkan", fields)
+		}
+		return nil
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	rows, err := h.vendorRows(r.Context(), claims, projectID, []domain.ProjectVendor{*pv})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Kerja sama vendor dipulihkan", h.mutated(r.Context(), claims.tenantID, projectID, rows[0]))
 }
 
 // --- Vendor milestones ---
@@ -347,7 +430,7 @@ func (h *Handler) createVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Timeline vendor berhasil ditambahkan", toVendorMilestoneResponse(*m))
+	response.Created(w, "Timeline vendor berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
 }
 
 type vendorMilestoneUpdateBody struct {
@@ -392,5 +475,5 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Timeline vendor berhasil diperbarui", toVendorMilestoneResponse(*m))
+	response.OK(w, "Timeline vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
 }

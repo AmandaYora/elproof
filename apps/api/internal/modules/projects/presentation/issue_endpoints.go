@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -15,6 +16,10 @@ func (h *Handler) listIssues(w http.ResponseWriter, r *http.Request, claims staf
 	if err != nil {
 		writeAppError(w, err)
 		return
+	}
+	// A client sees only the kendala staff shared with them (isClientVisible).
+	if claims.isClient {
+		list = domain.ClientVisibleIssues(list)
 	}
 	// Names: this project's engagements (project-scoped) -> their vendors
 	// (workspace-scoped, one lookup) and their milestones (one query). Proof
@@ -50,9 +55,18 @@ func (h *Handler) listIssues(w http.ResponseWriter, r *http.Request, claims staf
 		return
 	}
 	ix := indexEvidence(evidences, claims.isClient, claims.can)
+	var picNames map[int64]string
+	if !claims.isClient {
+		picIDs := make([]int64, 0, len(list))
+		for _, i := range list {
+			picIDs = append(picIDs, i.PICStaffID)
+		}
+		picNames = h.projects.StaffNames(r.Context(), claims.tenantID, picIDs)
+	}
 	result := make([]issueResponse, 0, len(list))
 	for _, i := range list {
 		resp := toIssueResponse(i)
+		resp.PICName = picNames[i.PICStaffID]
 		resp.VendorName = vendorNames[vendorOf[i.ProjectVendorID]]
 		if i.VendorMilestoneID != nil {
 			resp.VendorMilestoneName = milestoneName[*i.VendorMilestoneID]
@@ -64,6 +78,8 @@ func (h *Handler) listIssues(w http.ResponseWriter, r *http.Request, claims staf
 }
 
 type issueInputBody struct {
+	// ProjectVendorID is optional: omitted, null or 0 is a kendala about the event
+	// in general.
 	ProjectVendorID int64 `json:"projectVendorId"`
 	// VendorMilestoneID is nil/omitted when the kendala is general to the
 	// vendor engagement, not tied to one specific deliverable.
@@ -75,6 +91,8 @@ type issueInputBody struct {
 	ResolutionPlan       string `json:"resolutionPlan"`
 	PICStaffID           int64  `json:"picStaffId"`
 	TargetResolutionDate string `json:"targetResolutionDate"`
+	// IsClientVisible: omitted means shown to the client (the default).
+	IsClientVisible *bool `json:"isClientVisible"`
 }
 
 func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
@@ -96,12 +114,13 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request, claims sta
 		ProjectVendorID: body.ProjectVendorID, VendorMilestoneID: body.VendorMilestoneID, Title: body.Title, Description: body.Description,
 		Impact: domain.IssueImpact(body.Impact), FoundDate: foundDate, ResolutionPlan: body.ResolutionPlan,
 		PICStaffID: body.PICStaffID, TargetResolutionDate: parseOptionalDate(body.TargetResolutionDate),
+		IsClientVisible: body.IsClientVisible,
 	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Kendala berhasil dicatat", toIssueResponse(*issue))
+	response.Created(w, "Kendala berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, h.issueResponseFor(r.Context(), claims.tenantID, projectID, *issue)))
 }
 
 // issueUpdateBody is issueInputBody's shape plus Status -- a full overwrite,
@@ -119,6 +138,8 @@ type issueUpdateBody struct {
 	ResolutionPlan       string `json:"resolutionPlan"`
 	PICStaffID           int64  `json:"picStaffId"`
 	TargetResolutionDate string `json:"targetResolutionDate"`
+	// IsClientVisible: omitted keeps what the kendala has now.
+	IsClientVisible *bool `json:"isClientVisible"`
 }
 
 func (h *Handler) updateIssue(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, issueIDRaw string) {
@@ -145,10 +166,34 @@ func (h *Handler) updateIssue(w http.ResponseWriter, r *http.Request, claims sta
 		ProjectVendorID: body.ProjectVendorID, VendorMilestoneID: body.VendorMilestoneID, Title: body.Title, Description: body.Description,
 		Impact: domain.IssueImpact(body.Impact), FoundDate: foundDate, Status: domain.IssueStatus(body.Status), ResolutionPlan: body.ResolutionPlan,
 		PICStaffID: body.PICStaffID, TargetResolutionDate: parseOptionalDate(body.TargetResolutionDate),
+		IsClientVisible: body.IsClientVisible,
 	}, time.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kendala berhasil diperbarui", toIssueResponse(*issue))
+	response.OK(w, "Kendala berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, h.issueResponseFor(r.Context(), claims.tenantID, projectID, *issue)))
+}
+
+// issueResponseFor is a kendala as a mutation answers it: the row plus the
+// names the list also carries (the PIC, the vendor and the vendor milestone,
+// "" when there is none), without another round of listing the whole project.
+func (h *Handler) issueResponseFor(ctx context.Context, tenantID, projectID int64, i domain.VendorIssue) issueResponse {
+	resp := toIssueResponse(i)
+	resp.PICName = h.projects.ResolvePICName(ctx, tenantID, i.PICStaffID)
+	if i.HasVendor() {
+		if pv, err := h.vendors.Get(ctx, projectID, i.ProjectVendorID); err == nil {
+			resp.VendorName = h.refs.VendorNames(ctx, tenantID, []int64{pv.VendorID})[pv.VendorID]
+		}
+		if i.VendorMilestoneID != nil {
+			if ms, err := h.vendors.ListMilestones(ctx, projectID, i.ProjectVendorID); err == nil {
+				for _, m := range ms {
+					if m.ID == *i.VendorMilestoneID {
+						resp.VendorMilestoneName = m.Name
+					}
+				}
+			}
+		}
+	}
+	return resp
 }

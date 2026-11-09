@@ -162,7 +162,14 @@ type projectVendorResponse struct {
 	PaidAmount       int64   `json:"paidAmount"`
 	DueDate          *string `json:"dueDate"`
 	PICStaffID       int64   `json:"picStaffId"`
-	Notes            string  `json:"notes"`
+	// PICName is the engagement PIC's name ("" when unresolved, and always ""
+	// for a client). Filled by GET /projects/{id}/vendors and the restore answer.
+	PICName string `json:"picName"`
+	// EvidenceCount counts every proof file of the engagement itself, of its
+	// milestones and of its payments that the caller may see (staff: all).
+	// Filled by GET /projects/{id}/vendors; 0 on the other answers.
+	EvidenceCount int    `json:"evidenceCount"`
+	Notes         string `json:"notes"`
 	// Milestones is only populated by listVendorEngagements (PLAN.md
 	// "Performance remediation" Phase E) — omitted (nil) from
 	// create/update/cancel responses, which have no batch to draw from and
@@ -325,22 +332,28 @@ func evidenceRefs(list []domain.Evidence) []evidenceRefResponse {
 }
 
 type issueResponse struct {
-	ID              int64 `json:"id"`
-	ProjectVendorID int64 `json:"projectVendorId"`
+	ID int64 `json:"id"`
+	// ProjectVendorID is null for a kendala about the event in general.
+	ProjectVendorID *int64 `json:"projectVendorId"`
 	// VendorMilestoneID is null when the kendala is general to the vendor
 	// engagement, not tied to one specific deliverable (PLAN.md "Retire the
 	// standalone Kendala tab").
-	VendorMilestoneID    *int64  `json:"vendorMilestoneId"`
-	Title                string  `json:"title"`
-	Description          string  `json:"description"`
-	Impact               string  `json:"impact"`
-	FoundDate            string  `json:"foundDate"`
-	Status               string  `json:"status"`
-	ResolutionPlan       string  `json:"resolutionPlan"`
-	PICStaffID           int64   `json:"picStaffId"`
+	VendorMilestoneID *int64 `json:"vendorMilestoneId"`
+	Title             string `json:"title"`
+	Description       string `json:"description"`
+	Impact            string `json:"impact"`
+	FoundDate         string `json:"foundDate"`
+	Status            string `json:"status"`
+	ResolutionPlan    string `json:"resolutionPlan"`
+	PICStaffID        int64  `json:"picStaffId"`
+	// PICName is the kendala PIC's name ("" when unresolved, and always "" for a
+	// client). Filled by every staff answer that carries an issue.
+	PICName              string  `json:"picName"`
 	TargetResolutionDate *string `json:"targetResolutionDate"`
 	ResolvedDate         *string `json:"resolvedDate"`
 	ResolutionNotes      string  `json:"resolutionNotes"`
+	// IsClientVisible: whether the couple sees this kendala in the Client Portal.
+	IsClientVisible bool `json:"isClientVisible"`
 	// VendorName/VendorMilestoneName/Evidence are filled by GET
 	// /projects/{id}/issues (names from this project's own engagements; "" when
 	// there is none; client: only the proof portal.issues.view allows).
@@ -350,8 +363,13 @@ type issueResponse struct {
 }
 
 func toIssueResponse(i domain.VendorIssue) issueResponse {
-	return issueResponse{Evidence: []evidenceRefResponse{},
-		ID: i.ID, ProjectVendorID: i.ProjectVendorID, VendorMilestoneID: i.VendorMilestoneID, Title: i.Title, Description: i.Description,
+	var vendorID *int64
+	if i.HasVendor() {
+		id := i.ProjectVendorID
+		vendorID = &id
+	}
+	return issueResponse{Evidence: []evidenceRefResponse{}, IsClientVisible: i.IsClientVisible,
+		ID: i.ID, ProjectVendorID: vendorID, VendorMilestoneID: i.VendorMilestoneID, Title: i.Title, Description: i.Description,
 		Impact: string(i.Impact), FoundDate: i.FoundDate.Format(dateLayout), Status: string(i.Status),
 		ResolutionPlan: i.ResolutionPlan, PICStaffID: i.PICStaffID,
 		TargetResolutionDate: formatDatePtr(i.TargetResolutionDate), ResolvedDate: formatDatePtr(i.ResolvedDate),
@@ -360,17 +378,19 @@ func toIssueResponse(i domain.VendorIssue) issueResponse {
 }
 
 type evidenceResponse struct {
-	ID              int64   `json:"id"`
-	Name            string  `json:"name"`
-	Type            string  `json:"type"`
-	FileName        string  `json:"fileName"`
-	DocumentDate    *string `json:"documentDate"`
-	UploadedAt      string  `json:"uploadedAt"`
-	Description     string  `json:"description"`
-	UploadedBy      int64   `json:"uploadedByStaffId"`
-	RelatedKind     string  `json:"relatedKind"`
-	RelatedID       int64   `json:"relatedId"`
-	IsClientVisible bool    `json:"isClientVisible"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	FileName     string  `json:"fileName"`
+	DocumentDate *string `json:"documentDate"`
+	UploadedAt   string  `json:"uploadedAt"`
+	Description  string  `json:"description"`
+	UploadedBy   int64   `json:"uploadedByStaffId"`
+	// UploadedByName is the uploader's name ("" when unresolved; always "" for a client).
+	UploadedByName  string `json:"uploadedByName"`
+	RelatedKind     string `json:"relatedKind"`
+	RelatedID       int64  `json:"relatedId"`
+	IsClientVisible bool   `json:"isClientVisible"`
 }
 
 func toEvidenceResponse(e domain.Evidence) evidenceResponse {
@@ -406,9 +426,12 @@ func toEvidenceRef(e domain.Evidence) evidenceRefResponse {
 }
 
 type activityResponse struct {
-	ID          int64  `json:"id"`
-	Type        string `json:"type"`
-	ActorID     int64  `json:"actorStaffId"`
+	ID      int64  `json:"id"`
+	Type    string `json:"type"`
+	ActorID int64  `json:"actorStaffId"`
+	// ActorName is the actor's name; "" when the actor is unknown, no longer
+	// exists or the entry has none (never a made-up label).
+	ActorName   string `json:"actorName"`
 	ProjectID   *int64 `json:"projectId"`
 	EntityType  string `json:"entityType"`
 	EntityID    string `json:"entityId"`

@@ -55,6 +55,12 @@ type Config struct {
 	// `unpaid` before the reconciler force-resolves it as `expired`.
 	SubscriptionChargeMaxAge time.Duration
 
+	// PurgeInterval is how often the server permanently removes what has stayed
+	// deleted (payments, vendor engagements, clients) for longer than 24 hours
+	// (ADR-0034). 0 switches the in-process ticker off (the `api purge` command
+	// still works, e.g. from cron).
+	PurgeInterval time.Duration
+
 	// GoogleClientID is the OAuth web client ID for Sign in with Google
 	// (public: it is also shipped to the browser via /public/config).
 	GoogleClientID string
@@ -101,6 +107,8 @@ func Load() Config {
 
 		SubscriptionReconcileInterval: getDuration("SUBSCRIPTION_RECONCILE_INTERVAL", 3*time.Minute),
 		SubscriptionChargeMaxAge:      getDuration("SUBSCRIPTION_CHARGE_MAX_AGE", 24*time.Hour),
+
+		PurgeInterval: getDuration("PURGE_INTERVAL", 30*time.Minute),
 
 		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", DefaultGoogleClientID),
 		GoogleJWKSURL:  getEnv("GOOGLE_JWKS_URL", ""),

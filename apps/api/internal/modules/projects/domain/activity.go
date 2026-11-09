@@ -21,7 +21,22 @@ const (
 	ActivityEvidenceUploaded ActivityType = "evidence_uploaded"
 	ActivityIssueCreated     ActivityType = "issue_created"
 	ActivityIssueUpdated     ActivityType = "issue_updated"
+	// ActivityRestored is written when something deleted is brought back
+	// ("Urungkan"); the delete itself is logged as the existing *_deleted /
+	// vendor_status_changed types (ADR-0034).
+	ActivityRestored ActivityType = "item_restored"
+	// ActivityEvidenceDeleted: one proof file was removed.
+	ActivityEvidenceDeleted ActivityType = "evidence_deleted"
+	// ActivityVendorDeleted: a vendor engagement was deleted (it can be restored).
+	ActivityVendorDeleted ActivityType = "vendor_deleted"
 )
+
+// ActivityFilter narrows a project's activity to one entity; an empty field
+// matches everything.
+type ActivityFilter struct {
+	EntityType string
+	EntityID   string
+}
 
 // ActivityLogEntry is append-only — see ADR-0007. Every mutating use case in
 // this module appends one row; nothing ever updates or deletes an entry.

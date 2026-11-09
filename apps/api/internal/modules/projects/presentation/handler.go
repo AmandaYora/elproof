@@ -42,6 +42,7 @@ type Handler struct {
 	clientAccess   ClientAccessResolver
 	refs           *application.References
 	clientHome     *application.ClientHomeService
+	overview       *application.OverviewService
 	uploads        *application.UploadService
 	idem           *application.IdempotencyService
 }
@@ -68,6 +69,9 @@ func NewHandler(
 
 // SetClientHome gives the handler the Client Portal home assembler (E5).
 func (h *Handler) SetClientHome(s *application.ClientHomeService) { h.clientHome = s }
+
+// SetOverview gives the handler the project overview assembler (E1).
+func (h *Handler) SetOverview(s *application.OverviewService) { h.overview = s }
 
 // SetUploads gives the handler the signed-upload service (E3).
 func (h *Handler) SetUploads(s *application.UploadService) { h.uploads = s }
@@ -147,6 +151,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.cancelProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "transition" && r.Method == http.MethodPost:
 		h.transitionProject(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "overview" && r.Method == http.MethodGet:
+		h.getOverview(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "payment-terms" && r.Method == http.MethodGet:
 		h.listPaymentTerms(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "payment-terms" && r.Method == http.MethodPut:
@@ -171,6 +177,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.createVendorEngagement(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "vendors" && r.Method == http.MethodPatch:
 		h.updateVendorEngagement(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "vendors" && r.Method == http.MethodDelete:
+		h.deleteVendorEngagement(w, r, claims, projectID, rest[1])
+	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "restore" && r.Method == http.MethodPost:
+		h.restoreVendorEngagement(w, r, claims, projectID, rest[1])
 	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "cancel" && r.Method == http.MethodPost:
 		h.cancelVendorEngagement(w, r, claims, projectID, rest[1])
 	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "milestones" && r.Method == http.MethodGet:
@@ -187,6 +197,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.updatePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodDelete:
 		h.deletePayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 3 && rest[0] == "payments" && rest[2] == "restore" && r.Method == http.MethodPost:
+		h.restorePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodGet:
 		h.listClientPayments(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
@@ -197,6 +209,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.updateClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodDelete:
 		h.deleteClientPayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 3 && rest[0] == "client-payments" && rest[2] == "restore" && r.Method == http.MethodPost:
+		h.restoreClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodGet:
 		h.listVenuePayments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodPost:
@@ -205,6 +219,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.updateVenuePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "venue-payments" && r.Method == http.MethodDelete:
 		h.deleteVenuePayment(w, r, claims, projectID, rest[1])
+	case len(rest) == 3 && rest[0] == "venue-payments" && rest[2] == "restore" && r.Method == http.MethodPost:
+		h.restoreVenuePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodGet:
 		h.listIssues(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:
@@ -212,7 +228,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "issues" && r.Method == http.MethodPatch:
 		h.updateIssue(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodGet:
-		h.listEvidence(w, r, projectID, claims.isClient)
+		h.listEvidence(w, r, claims.tenantID, projectID, claims.isClient)
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodPost:
 		h.uploadEvidence(w, r, claims, projectID)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "file" && r.Method == http.MethodGet:
@@ -220,7 +236,9 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "link" && r.Method == http.MethodGet:
 		h.linkEvidence(w, r, projectID, rest[1], claims.isClient)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "toggle-client-visible" && r.Method == http.MethodPost:
-		h.toggleEvidenceClientVisible(w, r, projectID, rest[1])
+		h.toggleEvidenceClientVisible(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "evidence" && r.Method == http.MethodDelete:
+		h.deleteEvidence(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "uploads" && r.Method == http.MethodPost:
 		h.createUpload(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "uploads" && r.Method == http.MethodPut:
@@ -228,7 +246,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 1 && rest[0] == "documents" && r.Method == http.MethodGet:
 		h.listDocuments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "activity" && r.Method == http.MethodGet:
-		h.listActivity(w, r, projectID)
+		h.listActivity(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "venue" && r.Method == http.MethodGet:
 		h.getProjectVenue(w, r, claims.tenantID, projectID)
 	default:
@@ -301,7 +319,9 @@ func staffWritePermission(method string, rest []string) (perm string, alt string
 	case "duplicate":
 		return "project.duplicate", ""
 	case "payments", "client-payments", "venue-payments", "payment-terms":
-		if method == http.MethodDelete {
+		// Deleting a payment and bringing it back ("Urungkan") are the same
+		// decision: both need finance.payment.delete.
+		if method == http.MethodDelete || rest[len(rest)-1] == "restore" {
 			return "finance.payment.delete", ""
 		}
 		return "finance.record", ""

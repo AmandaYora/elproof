@@ -29,6 +29,14 @@ type ClientRepository interface {
 	CountActive(ctx context.Context, tenantID int64) (int, error)
 	UpdateAccessRole(ctx context.Context, tenantID, id, roleID int64) error
 	UpdateUsername(ctx context.Context, tenantID, id int64, username string) error
+	// Soft delete / restore / purge (ADR-0034).
+	SoftDelete(ctx context.Context, tenantID, id int64, at time.Time) (bool, error)
+	FindDeletedByID(ctx context.Context, tenantID, id int64) (*domain.Client, error)
+	Restore(ctx context.Context, tenantID, id int64, notBefore time.Time) (bool, error)
+	ListAllByProject(ctx context.Context, tenantID, projectID int64) ([]domain.Client, error)
+	ListExpired(ctx context.Context, cutoff time.Time, limit int) ([]domain.Client, error)
+	PurgeDelete(ctx context.Context, tenantID, id int64, cutoff time.Time) (bool, error)
+	TryLock(ctx context.Context) (release func(), ok bool, err error)
 }
 
 // RoleResolver is the slice of the access module clients need (portal
@@ -56,6 +64,19 @@ func NewClientService(repo ClientRepository, projects projectscontracts.Contract
 
 func (s *ClientService) ListByProject(ctx context.Context, tenantID, projectID int64) ([]domain.Client, error) {
 	return s.repo.ListByProject(ctx, tenantID, projectID)
+}
+
+// GetDeleted is the deleted client (404 when it is live, never existed, or has
+// been purged), for the restore route's permission check.
+func (s *ClientService) GetDeleted(ctx context.Context, tenantID, id int64) (*domain.Client, error) {
+	c, err := s.repo.FindDeletedByID(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if c == nil {
+		return nil, apperror.NotFound("Client tidak ditemukan atau sudah tidak dapat dipulihkan")
+	}
+	return c, nil
 }
 
 // VerifyAssignedProject confirms a staff member whose role only reaches
@@ -224,44 +245,110 @@ func (s *ClientService) syncEmail(ctx context.Context, c *domain.Client, previou
 	return nil
 }
 
-// Delete permanently removes a client row — the one hard-delete in this
-// module (every other toggle elsewhere in the codebase is soft, via
-// SetActive/is_active). It exists specifically to let an operator clear out
-// a client stuck with no working login credential (e.g. left behind by the
-// compensating rollback in Create, or from before that rollback existed) —
-// SetActive alone wouldn't free up the client's role slot for the project,
-// since ProjectClientsSection looks up "the client for this role" without
-// filtering on is_active. Best-effort deactivates the identity credential
-// first (if one even exists) so its username isn't left silently usable;
-// failure there doesn't block the delete itself, since the whole point of
-// this method is to clear rows that may have no working credential at all.
-func (s *ClientService) Delete(ctx context.Context, tenantID, id int64) error {
+// Delete soft-deletes a client (ADR-0034): the row disappears from every list,
+// count and the project's client slots, and the login is switched off at once (it
+// is kept, deactivated, so Restore can bring the client back exactly as they
+// were; the username and email stay reserved until the purge removes the login).
+// It returns the instant after which Restore is no longer possible. If the login
+// cannot be switched off the client is NOT deleted: a deleted client must not be
+// able to sign in.
+func (s *ClientService) Delete(ctx context.Context, tenantID, id int64, now time.Time) (time.Time, error) {
 	c, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalClient, formatID(c.ID), false); err != nil {
+		return time.Time{}, err
+	}
+	ok, err := s.repo.SoftDelete(ctx, tenantID, id, now)
+	if err == nil && !ok {
+		err = apperror.NotFound("Client tidak ditemukan")
+	}
+	if err != nil {
+		// Put the login back as it was; the row is still live.
+		if rbErr := s.identity.SetActive(ctx, identitycontracts.PrincipalClient, formatID(c.ID), c.IsActive); rbErr != nil {
+			logger.Error("failed to re-activate the login of client %d after a failed delete: %v", c.ID, rbErr)
+		}
+		return time.Time{}, err
+	}
+	return domain.RestorableUntil(now), nil
+}
+
+// Restore brings a deleted client back with their login as it was (active again
+// only if the client was active when deleted) after re-checking what can now
+// fail: the project must still exist (422 `projectId`) and, for an active client,
+// the workspace's trial quota must have room (the same 422 as creating one). A
+// client that is not deleted, or was deleted longer ago than the retention, is a
+// 404.
+func (s *ClientService) Restore(ctx context.Context, tenantID, id int64, now time.Time) (*domain.Client, error) {
+	c, err := s.repo.FindDeletedByID(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if c == nil || c.DeletedAt == nil || !domain.CanRestore(*c.DeletedAt, now) {
+		return nil, apperror.NotFound("Client tidak ditemukan atau sudah tidak dapat dipulihkan")
+	}
+	exists, err := s.projects.ProjectExists(ctx, tenantID, c.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, apperror.Validation("Project client ini sudah tidak ada", map[string][]string{"projectId": {"Project tidak ditemukan"}})
+	}
+	if c.IsActive {
+		if err := s.checkClientQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
+	}
+	ok, err := s.repo.Restore(ctx, tenantID, id, domain.PurgeCutoff(now))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, apperror.NotFound("Client tidak ditemukan atau sudah tidak dapat dipulihkan")
+	}
+	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalClient, formatID(c.ID), c.IsActive); err != nil {
+		// Without its login the client would be restored but locked out: undo.
+		_, _ = s.repo.SoftDelete(ctx, tenantID, id, *c.DeletedAt)
+		return nil, err
+	}
+	c.DeletedAt = nil
+	return c, nil
+}
+
+// hardDeleteLogin removes a client's login for good (the purge). The login goes
+// before the row and must succeed unless the client never had one; a failure
+// leaves the row for the next run, so nothing is half removed.
+func (s *ClientService) hardDeleteLogin(ctx context.Context, c domain.Client) error {
+	exists, err := s.identity.CredentialExists(ctx, identitycontracts.PrincipalClient, formatID(c.ID))
 	if err != nil {
 		return err
 	}
-	// Remove the login entirely so its username and email are free again.
-	if err := s.identity.DeleteCredential(ctx, identitycontracts.PrincipalClient, formatID(c.ID)); err != nil {
-		logger.Error("failed to remove login of client %d before delete: %v", c.ID, err)
+	if !exists {
+		return nil
 	}
-	return s.repo.Delete(ctx, tenantID, id)
+	return s.identity.DeleteCredential(ctx, identitycontracts.PrincipalClient, formatID(c.ID))
 }
 
-// DeleteAllForProject best-effort deletes every client tied to a project —
-// called only by `projects`' hard-delete flow (ADR-0013) via the
-// ClientCleaner bridge (see projects.module.go's two-phase wiring). Continues
-// past an individual client's failure (logged) rather than aborting, same
-// best-effort spirit as Delete's own credential-deactivation step — the
-// whole point is clearing out a project being permanently removed, not
-// preserving partial state if one row is awkward.
+// DeleteAllForProject permanently deletes every client tied to a project, the
+// ones waiting in the "deleted" state included — called only by `projects`'
+// hard-delete flow (ADR-0013) via the ClientCleaner bridge (see
+// projects.module.go's two-phase wiring). Continues past an individual client's
+// failure (logged) rather than aborting, same best-effort spirit as before: the
+// whole point is clearing out a project being permanently removed.
 func (s *ClientService) DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error {
-	list, err := s.repo.ListByProject(ctx, tenantID, projectID)
+	list, err := s.repo.ListAllByProject(ctx, tenantID, projectID)
 	if err != nil {
 		return err
 	}
 	var firstErr error
 	for _, c := range list {
-		if err := s.Delete(ctx, tenantID, c.ID); err != nil {
+		// Remove the login entirely so its username and email are free again;
+		// like the old delete, a failure here does not stop the row from going.
+		if err := s.identity.DeleteCredential(ctx, identitycontracts.PrincipalClient, formatID(c.ID)); err != nil {
+			logger.Error("failed to remove login of client %d before delete: %v", c.ID, err)
+		}
+		if err := s.repo.Delete(ctx, tenantID, c.ID); err != nil {
 			logger.Error("failed to delete client %d while cleaning up deleted project %d: %v", c.ID, projectID, err)
 			if firstErr == nil {
 				firstErr = err
@@ -269,6 +356,75 @@ func (s *ClientService) DeleteAllForProject(ctx context.Context, tenantID, proje
 		}
 	}
 	return firstErr
+}
+
+// PurgeExpired removes the clients that have been deleted for longer than the
+// retention, with their logins (which frees the username and email). It returns
+// how many were removed; ran is false when another instance holds the purge lock.
+// Idempotent. A client whose login cannot be removed is left for the next run.
+func (s *ClientService) PurgeExpired(ctx context.Context, now time.Time) (removed int, ran bool, err error) {
+	release, ok, err := s.repo.TryLock(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	if !ok {
+		return 0, false, nil
+	}
+	defer release()
+	cutoff := domain.PurgeCutoff(now)
+	for pass := 0; pass < 50; pass++ {
+		list, err := s.repo.ListExpired(ctx, cutoff, 200)
+		if err != nil {
+			return removed, true, err
+		}
+		progress := 0
+		for _, c := range list {
+			if err := s.hardDeleteLogin(ctx, c); err != nil {
+				logger.Error("purge: removing the login of client %d: %v", c.ID, err)
+				continue
+			}
+			deleted, err := s.repo.PurgeDelete(ctx, c.TenantID, c.ID, cutoff)
+			if err != nil {
+				logger.Error("purge: deleting client %d: %v", c.ID, err)
+				continue
+			}
+			if deleted {
+				progress++
+			}
+		}
+		removed += progress
+		if progress == 0 {
+			break
+		}
+	}
+	if removed > 0 {
+		logger.Info("purge: removed %d clients", removed)
+	}
+	return removed, true, nil
+}
+
+// ProjectClient is one client of a project as the overview lists them.
+type ProjectClient struct {
+	ID   int64
+	Name string
+	Role string
+	// HasLogin: the client set a password and can sign in (an invitation not yet
+	// accepted does not count).
+	HasLogin bool
+}
+
+// ListProjectClients names a project's live clients with whether each can sign
+// in (one login lookup per client; a project has at most a handful).
+func (s *ClientService) ListProjectClients(ctx context.Context, tenantID, projectID int64) ([]ProjectClient, error) {
+	list, err := s.repo.ListByProject(ctx, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ProjectClient, 0, len(list))
+	for _, c := range list {
+		out = append(out, ProjectClient{ID: c.ID, Name: c.Name, Role: string(c.Role), HasLogin: c.IsActive && s.LoginStatus(ctx, c.ID) == "active"})
+	}
+	return out, nil
 }
 
 func (s *ClientService) SetActive(ctx context.Context, tenantID, id int64, isActive bool) (*domain.Client, error) {

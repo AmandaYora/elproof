@@ -17,15 +17,15 @@ func NewMySQLClientPaymentRepository(db *sql.DB) *MySQLClientPaymentRepository {
 }
 
 const clientPaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes,
-	IFNULL(recorded_by_staff_id, 0), verified_at, IFNULL(verified_by_staff_id, 0)`
+	IFNULL(recorded_by_staff_id, 0), verified_at, IFNULL(verified_by_staff_id, 0), deleted_at`
 
 func scanClientPayment(scan func(dest ...interface{}) error) (*domain.ClientPayment, error) {
 	var p domain.ClientPayment
 	var paymentType string
 	var notes sql.NullString
-	var verifiedAt sql.NullTime
+	var verifiedAt, deletedAt sql.NullTime
 	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes,
-		&p.RecordedByStaffID, &verifiedAt, &p.VerifiedByStaffID)
+		&p.RecordedByStaffID, &verifiedAt, &p.VerifiedByStaffID, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -38,11 +38,12 @@ func scanClientPayment(scan func(dest ...interface{}) error) (*domain.ClientPaym
 		t := verifiedAt.Time
 		p.VerifiedAt = &t
 	}
+	p.DeletedAt = deletedStamp(deletedAt)
 	return &p, nil
 }
 
 func (r *MySQLClientPaymentRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.ClientPayment, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+clientPaymentColumns+` FROM client_payments WHERE project_id = ? ORDER BY payment_date DESC, id DESC`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+clientPaymentColumns+` FROM client_payments WHERE project_id = ? AND deleted_at IS NULL ORDER BY payment_date DESC, id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,8 +61,25 @@ func (r *MySQLClientPaymentRepository) ListByProject(ctx context.Context, projec
 }
 
 func (r *MySQLClientPaymentRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.ClientPayment, error) {
-	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+clientPaymentColumns+` FROM client_payments WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+clientPaymentColumns+` FROM client_payments WHERE project_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1`, projectID, id)
 	return scanClientPayment(row.Scan)
+}
+
+// FindDeletedByID is the restore lookup (nil unless the payment waits in the
+// "deleted" state).
+func (r *MySQLClientPaymentRepository) FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.ClientPayment, error) {
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+clientPaymentColumns+` FROM client_payments WHERE project_id = ? AND id = ? AND deleted_at IS NOT NULL LIMIT 1`, projectID, id)
+	return scanClientPayment(row.Scan)
+}
+
+// SoftDelete hides the payment until it is restored or purged.
+func (r *MySQLClientPaymentRepository) SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error) {
+	return softDeleteRow(ctx, r.db, "client_payments", projectID, id, at)
+}
+
+// Restore brings back a payment deleted after notBefore.
+func (r *MySQLClientPaymentRepository) Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error) {
+	return restoreRow(ctx, r.db, "client_payments", projectID, id, notBefore)
 }
 
 func (r *MySQLClientPaymentRepository) Create(ctx context.Context, p *domain.ClientPayment) error {
@@ -89,11 +107,6 @@ func (r *MySQLClientPaymentRepository) Update(ctx context.Context, projectID, id
 		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes,
 		p.VerifiedAt, nullableID(p.VerifiedByStaffID), projectID, id,
 	)
-	return err
-}
-
-func (r *MySQLClientPaymentRepository) Delete(ctx context.Context, projectID, id int64) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM client_payments WHERE project_id = ? AND id = ?`, projectID, id)
 	return err
 }
 

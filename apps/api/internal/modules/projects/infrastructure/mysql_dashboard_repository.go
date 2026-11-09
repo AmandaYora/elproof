@@ -25,7 +25,7 @@ func (r *MySQLDashboardRepository) CountActiveVendors(ctx context.Context, tenan
 		SELECT COUNT(DISTINCT pv.vendor_id)
 		FROM project_vendors pv
 		JOIN projects p ON p.id = pv.project_id
-		WHERE p.tenant_id = ? AND p.status NOT IN ('Completed','Cancelled') AND pv.engagement_status != 'Cancelled'`,
+		WHERE p.tenant_id = ? AND p.status NOT IN ('Completed','Cancelled') AND pv.engagement_status != 'Cancelled' AND pv.deleted_at IS NULL`,
 		tenantID,
 	)
 	var count int
@@ -37,13 +37,13 @@ func (r *MySQLDashboardRepository) CountActiveVendors(ctx context.Context, tenan
 
 func (r *MySQLDashboardRepository) ListOpenIssues(ctx context.Context, tenantID int64) ([]domain.DashboardIssueRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT vi.id, vi.project_id, vi.project_vendor_id, vi.title, vi.description, vi.impact, vi.found_date, vi.status,
+		SELECT vi.id, vi.project_id, IFNULL(vi.project_vendor_id, 0), vi.title, vi.description, vi.impact, vi.found_date, vi.status,
 		       vi.resolution_plan, vi.pic_staff_id, vi.target_resolution_date, vi.resolved_date, vi.resolution_notes,
-		       p.name, pv.vendor_id
+		       p.name, IFNULL(pv.vendor_id, 0)
 		FROM vendor_issues vi
 		JOIN projects p ON p.id = vi.project_id
-		JOIN project_vendors pv ON pv.id = vi.project_vendor_id
-		WHERE p.tenant_id = ? AND vi.status NOT IN ('Resolved','Closed')
+		LEFT JOIN project_vendors pv ON pv.id = vi.project_vendor_id
+		WHERE p.tenant_id = ? AND vi.status NOT IN ('Resolved','Closed') AND pv.deleted_at IS NULL
 		ORDER BY vi.found_date DESC, vi.id DESC`,
 		tenantID,
 	)
@@ -86,7 +86,7 @@ func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Conte
 		FROM vendor_milestones vm
 		JOIN project_vendors pv ON pv.id = vm.project_vendor_id
 		JOIN projects p ON p.id = pv.project_id
-		WHERE p.tenant_id = ? AND vm.target_date < ? AND vm.status NOT IN ('Completed','Cancelled')
+		WHERE p.tenant_id = ? AND vm.target_date < ? AND vm.status NOT IN ('Completed','Cancelled') AND pv.deleted_at IS NULL
 		ORDER BY vm.target_date ASC`,
 		tenantID, asOf,
 	)
@@ -128,7 +128,7 @@ func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, te
 		FROM vendor_payments vp
 		JOIN projects p ON p.id = vp.project_id
 		JOIN project_vendors pv ON pv.id = vp.project_vendor_id
-		WHERE p.tenant_id = ? AND p.status != 'Cancelled'
+		WHERE p.tenant_id = ? AND p.status != 'Cancelled' AND vp.deleted_at IS NULL AND pv.deleted_at IS NULL
 		ORDER BY vp.payment_date DESC, vp.id DESC`,
 		tenantID,
 	)
@@ -161,7 +161,7 @@ func (r *MySQLDashboardRepository) ListVenuePaymentCandidates(ctx context.Contex
 		SELECT vp.id, vp.project_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number, vp.notes, p.name
 		FROM venue_payments vp
 		JOIN projects p ON p.id = vp.project_id
-		WHERE p.tenant_id = ? AND p.status != 'Cancelled'
+		WHERE p.tenant_id = ? AND p.status != 'Cancelled' AND vp.deleted_at IS NULL
 		ORDER BY vp.payment_date DESC, vp.id DESC`,
 		tenantID,
 	)

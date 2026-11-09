@@ -191,6 +191,7 @@ ledger is intentionally empty until an App switches its payment call from `payme
 | is_active | BOOLEAN DEFAULT TRUE | |
 | last_credential_reset_at | DATE NULL | |
 | created_at, updated_at | TIMESTAMP | |
+| deleted_at | DATETIME NULL, `KEY idx_clients_deleted` | migration `000068`, ADR-0034 — soft delete: `NULL` = live. A stamped row is invisible to every read (lists, counts, `CountActive`, the project's client slots, the portal's project lookup); the client's `identity` login is **kept but deactivated** (so restore is always possible and the username/email stay reserved until the purge removes the login). Hard-deleted by the purge once older than 24 h |
 
 *(§6.3 resolved: "replace representative" (`POST /clients/{id}/replace-representative`) overwrites
 this row with no history table — a deliberate choice carried over from the frontend mock's existing
@@ -366,6 +367,7 @@ mirroring `vendors.SeedDefaultCategories`).
 | dp_amount | BIGINT UNSIGNED | plain reference figure ("what DP was agreed at booking") — never summed into any total |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
 | notes | TEXT NULL | |
+| deleted_at | DATETIME NULL, `KEY idx_project_vendors_deleted` | migration `000068`, ADR-0034 — soft delete. A stamped engagement hides its `vendor_milestones`, `vendor_payments`, `vendor_issues` and every `evidence` row hanging off any of them (the children carry no stamp of their own: visibility is decided by the engagement, so restoring it brings everything back). The purge removes the engagement and all its children together |
 
 No `paid_amount` column (removed, migration `000028`) — "Total Sudah Dibayar" is **computed**, summing
 this engagement's own `vendor_payments` rows (`Refund` netted as a subtraction) in the presentation
@@ -399,6 +401,7 @@ Displayed as "Timeline Vendor" in the UI — same display-only rename as `projec
 | method | VARCHAR(100) | frontend constrains this to a fixed `Tunai`/`Transfer Bank`/`QRIS` dropdown (`PAYMENT_METHOD_OPTIONS`, shared with `client_payments`); not enforced at this column, same lax convention as `pricing_tier`/`engagement_status` |
 | reference_number | VARCHAR(100) | optional in the frontend form (empty string allowed) — a `Tunai` payment has no transfer reference number |
 | notes | TEXT NULL | |
+| deleted_at | DATETIME NULL, `KEY idx_vendor_payments_deleted` | migration `000068`, ADR-0034 — soft delete. A payment is also hidden while its *engagement* is stamped (no stamp of its own then; restoring the engagement brings it back) |
 
 No `invoice_evidence_id`/`proof_evidence_id` columns (removed, migration `000029`) — confirmed via a
 full-repo search that no code path had ever written a non-null value to either since this table's
@@ -411,8 +414,8 @@ vendor paid-amount fix. A `Refund` only needs a `Transfer Proof`; every other ty
 collectible since "Tambah Pembayaran" attaches both file slots in the same submit that records the
 payment.
 
-Rows can now be edited (full-field overwrite, no role gate) and hard-deleted (Owner-or-Admin) — see
-ADR-0019. Deleting a row cascades to its own `evidence` rows (deleted first, then the payment row —
+Rows can now be edited (full-field overwrite, no role gate) and deleted (`finance.payment.delete`) — see
+ADR-0019. **Since ADR-0034 a delete is soft** (`deleted_at`, restorable for 24 h; the evidence is hidden, not removed, until the purge hard-deletes row, evidence rows and stored objects together). The description that follows is the earlier hard delete. Deleting a row cascades to its own `evidence` rows (deleted first, then the payment row —
 deliberately reversed order, see ADR-0019) and their S3 objects, best-effort; no schema change was
 needed for this.
 
@@ -460,6 +463,7 @@ transaction (`PUT`), and deleted with the project.
 | recorded_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who entered the payment; primitive id, **no FK** (cross-module); `NULL` on older rows, never sent to a client |
 | verified_at | DATETIME NULL | migration 65 — set by `POST .../verify` (whole seconds); cleared when the payment's amount/type/date/method/reference change or its last evidence file is removed (ADR-0032) |
 | verified_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who verified; primitive id, no FK |
+| deleted_at | DATETIME NULL, `KEY idx_client_payments_deleted` | migration `000068`, ADR-0034 — soft delete: a stamped row is invisible to every read (list, ledger, schedule allocation, portal home, dashboard) and so are its proof files; verification stays on the row and returns on restore. Hard-deleted by the purge after 24 h |
 
 Money coming **in** from the client against the project's own `contract_value` ("Uang Masuk dari
 Client") — the opposite accounting direction from `vendor_payments`, and structurally simpler: no
@@ -467,7 +471,7 @@ invoice/proof evidence-ID columns either, since it only ever has one evidence sl
 transfer proof) resolved via the polymorphic `evidence` table (`related_kind = 'clientPayment'`),
 not a direct FK column.
 
-Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR-0019.
+Edit — same as `vendor_payments` above, see ADR-0019; delete is a soft delete since ADR-0034 (the evidence cascade of ADR-0019 now happens in the purge).
 
 ### `venue_payments`
 | Column | Type | Notes |
@@ -481,20 +485,21 @@ Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR
 | reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `vendor_payments` |
 | notes | TEXT NULL | |
 | created_at | TIMESTAMP | |
+| deleted_at | DATETIME NULL, `KEY idx_venue_payments_deleted` | migration `000068`, ADR-0034 — soft delete, as `client_payments.deleted_at` |
 
 Money going **out** to the project's venue — same accounting direction and same two-slot evidence
 rule (Invoice + Transfer Proof, `Refund` needs only proof) as `vendor_payments`, resolved via the
 polymorphic `evidence` table (`related_kind = 'venuePayment'`), never a direct FK column — same
 lesson already learned from `vendor_payments`' now-removed dead columns.
 
-Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR-0019.
+Edit — same as `vendor_payments` above, see ADR-0019; delete is a soft delete since ADR-0034.
 
 ### `vendor_issues`
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
 | project_id | BIGINT UNSIGNED `FK` → projects.id | |
-| project_vendor_id | BIGINT UNSIGNED `FK` → project_vendors.id | |
+| project_vendor_id | BIGINT UNSIGNED NULL `FK` → project_vendors.id | **NULL since migration `000069`** (ADR-0034): a kendala about the event in general has no vendor. The FK stays (same module) |
 | title, description | VARCHAR(255), TEXT | |
 | impact | ENUM(...) | `IssueImpact` |
 | found_date | DATE | |
@@ -502,6 +507,9 @@ Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR
 | resolution_plan, resolution_notes | TEXT NULL | |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
 | target_resolution_date, resolved_date | DATE NULL | |
+| is_client_visible | BOOLEAN NOT NULL DEFAULT TRUE | migration `000069` — staff decide whether the couple sees the kendala; **every Client Portal read filters it** (list, home counts/actions/news, progress count and condition, proof files). Existing rows are `TRUE` |
+
+A kendala of a soft-deleted engagement is hidden with it (`project_vendor_id` points at a stamped engagement); a kendala with no vendor is never hidden that way.
 
 ### `evidence`
 | Column | Type | Notes |
@@ -697,6 +705,14 @@ Unique on `(provider, event_id)` — the same gateway callback delivered twice i
 time, never double-applied.
 
 ---
+
+### Soft delete, restore and purge — migrations `000068`, `000069`, ADR-0034
+
+* `deleted_at DATETIME NULL` (+ index) on `client_payments`, `vendor_payments`, `venue_payments`, `project_vendors` (module `projects`) and `clients` (module `clients`). `NULL` = live. The application writes the stamp (not `CURRENT_TIMESTAMP`), so `restorableUntil` is exactly `deleted_at + 24 h`.
+* **Every read of a live row filters it**: repositories, the batched progress sources, the dashboard queries, the portal home, the overview, `CountActive`. A deleted engagement hides its milestones, payments, kendala and their evidence by joining the stamp of the engagement (the children are not stamped). `evidence` rows hang off these items by `(related_kind, related_id)` with no foreign key; every evidence read adds `NOT (related_kind = … AND related_id IN (SELECT id FROM <table> WHERE deleted_at IS NOT NULL …))` per kind, so a deleted item's files are not listed, opened or linked until it is restored. The unique `evidence.storage_path` keeps a deleted payment's upload claimed (a token cannot be reused by a new payment before the purge); a deleted client keeps its username and email reserved (its login is deactivated, not removed).
+* **Purge** (`api purge`, ticker `PURGE_INTERVAL`): per module, under a MySQL advisory lock (`GET_LOCK`, `elproof_projects_purge` / `elproof_clients_purge`), `DELETE … WHERE deleted_at IS NOT NULL AND deleted_at <= now − 24 h` in batches of 200 per kind (evidence rows first, then the row; an engagement takes its vendor_issues → vendor_payments → vendor_milestones → itself), then the stored objects (best effort, after the commit). Restore accepts `deleted_at > now − 24 h`: exactly the complement, so a row is always restorable or due for purge, never both.
+* `vendor_issues.project_vendor_id` is NULLable and `vendor_issues.is_client_visible BOOLEAN NOT NULL DEFAULT TRUE` was added (migration `000069`).
+* Down migrations delete what the old shape cannot hold (soft-deleted rows with their evidence, kendala without a vendor); stored objects stay in the bucket.
 
 ## Cross-module reference summary (no SQL FKs across this boundary)
 

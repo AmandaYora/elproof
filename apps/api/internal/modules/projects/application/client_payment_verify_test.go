@@ -93,6 +93,9 @@ func (a activityRepoAdapter) Create(ctx context.Context, e *domain.ActivityLogEn
 func (a activityRepoAdapter) ListByProject(context.Context, int64, int) ([]domain.ActivityLogEntry, error) {
 	return nil, nil
 }
+func (a activityRepoAdapter) ListByProjectPaged(context.Context, int64, domain.ActivityFilter, int, int) ([]domain.ActivityLogEntry, int64, error) {
+	return nil, 0, nil
+}
 
 func (f *verifyFixture) attach(paymentID int64) int64 {
 	e := domain.Evidence{ProjectID: 10, Name: "Bukti", Type: domain.EvidenceTransferProof, FileName: "bukti.jpg", RelatedKind: domain.RelatedClientPayment, RelatedID: paymentID, UploadedAt: time.Now()}

@@ -57,6 +57,15 @@ type ProjectVendor struct {
 	DueDate    *time.Time
 	PICStaffID int64
 	Notes      string
+	// DeletedAt is set while the engagement waits in the "deleted" state (soft
+	// delete, ADR-0034). Its milestones, payments and kendala are hidden with it.
+	DeletedAt *time.Time
+}
+
+// IsUnconfirmed: the vendor has not been booked yet (still Planned or in
+// Negotiation).
+func (p ProjectVendor) IsUnconfirmed() bool {
+	return p.EngagementStatus == EngagementPlanned || p.EngagementStatus == EngagementNegotiation
 }
 
 // VendorEngagementHistoryRow is one row of a vendor's engagement history

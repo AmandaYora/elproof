@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/utils"
@@ -16,13 +17,14 @@ func NewMySQLPaymentRepository(db *sql.DB) *MySQLPaymentRepository {
 	return &MySQLPaymentRepository{db: db}
 }
 
-const paymentColumns = `id, project_id, project_vendor_id, type, amount, payment_date, method, reference_number, notes`
+const paymentColumns = `id, project_id, project_vendor_id, type, amount, payment_date, method, reference_number, notes, deleted_at`
 
 func scanPayment(scan func(dest ...interface{}) error) (*domain.VendorPayment, error) {
 	var p domain.VendorPayment
 	var paymentType string
 	var notes sql.NullString
-	err := scan(&p.ID, &p.ProjectID, &p.ProjectVendorID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes)
+	var deletedAt sql.NullTime
+	err := scan(&p.ID, &p.ProjectID, &p.ProjectVendorID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -31,11 +33,12 @@ func scanPayment(scan func(dest ...interface{}) error) (*domain.VendorPayment, e
 	}
 	p.Type = domain.PaymentType(paymentType)
 	p.Notes = notes.String
+	p.DeletedAt = deletedStamp(deletedAt)
 	return &p, nil
 }
 
 func (r *MySQLPaymentRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.VendorPayment, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+paymentColumns+` FROM vendor_payments WHERE project_id = ? ORDER BY payment_date DESC, id DESC`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+paymentColumns+` FROM vendor_payments WHERE project_id = ? AND `+liveVendorPaymentWhere+` ORDER BY payment_date DESC, id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +62,7 @@ func (r *MySQLPaymentRepository) ListByProjects(ctx context.Context, projectIDs 
 	if len(projectIDs) == 0 {
 		return nil, nil
 	}
-	query := `SELECT ` + paymentColumns + ` FROM vendor_payments WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, payment_date DESC, id DESC`
+	query := `SELECT ` + paymentColumns + ` FROM vendor_payments WHERE ` + liveVendorPaymentWhere + ` AND project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, payment_date DESC, id DESC`
 	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
@@ -78,8 +81,26 @@ func (r *MySQLPaymentRepository) ListByProjects(ctx context.Context, projectIDs 
 }
 
 func (r *MySQLPaymentRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.VendorPayment, error) {
-	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+paymentColumns+` FROM vendor_payments WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+paymentColumns+` FROM vendor_payments WHERE project_id = ? AND id = ? AND `+liveVendorPaymentWhere+` LIMIT 1`, projectID, id)
 	return scanPayment(row.Scan)
+}
+
+// FindDeletedByID is the restore lookup: the payment while it waits in the
+// "deleted" state (its own stamp; a payment hidden only because its engagement
+// was deleted is restored with the engagement).
+func (r *MySQLPaymentRepository) FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.VendorPayment, error) {
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+paymentColumns+` FROM vendor_payments WHERE project_id = ? AND id = ? AND deleted_at IS NOT NULL LIMIT 1`, projectID, id)
+	return scanPayment(row.Scan)
+}
+
+// SoftDelete hides the payment until it is restored or purged.
+func (r *MySQLPaymentRepository) SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error) {
+	return softDeleteRow(ctx, r.db, "vendor_payments", projectID, id, at)
+}
+
+// Restore brings back a payment deleted after notBefore.
+func (r *MySQLPaymentRepository) Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error) {
+	return restoreRow(ctx, r.db, "vendor_payments", projectID, id, notBefore)
 }
 
 func (r *MySQLPaymentRepository) Create(ctx context.Context, p *domain.VendorPayment) error {
@@ -105,10 +126,5 @@ func (r *MySQLPaymentRepository) Update(ctx context.Context, projectID, id int64
 		 WHERE project_id = ? AND id = ?`,
 		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, projectID, id,
 	)
-	return err
-}
-
-func (r *MySQLPaymentRepository) Delete(ctx context.Context, projectID, id int64) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM vendor_payments WHERE project_id = ? AND id = ?`, projectID, id)
 	return err
 }

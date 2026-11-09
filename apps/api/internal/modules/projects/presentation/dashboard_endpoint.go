@@ -3,6 +3,7 @@ package presentation
 import (
 	"net/http"
 
+	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/response"
 )
@@ -11,11 +12,13 @@ type dashboardIssueResponse struct {
 	ID          int64  `json:"id"`
 	ProjectID   int64  `json:"projectId"`
 	ProjectName string `json:"projectName"`
-	VendorID    int64  `json:"vendorId"`
-	Title       string `json:"title"`
-	Impact      string `json:"impact"`
-	FoundDate   string `json:"foundDate"`
-	Status      string `json:"status"`
+	// VendorID is 0 and VendorName "" for a kendala about the event in general.
+	VendorID   int64  `json:"vendorId"`
+	VendorName string `json:"vendorName"`
+	Title      string `json:"title"`
+	Impact     string `json:"impact"`
+	FoundDate  string `json:"foundDate"`
+	Status     string `json:"status"`
 }
 
 type dashboardMilestoneResponse struct {
@@ -23,6 +26,7 @@ type dashboardMilestoneResponse struct {
 	ProjectID   int64  `json:"projectId"`
 	ProjectName string `json:"projectName"`
 	VendorID    int64  `json:"vendorId"`
+	VendorName  string `json:"vendorName"`
 	Name        string `json:"name"`
 	TargetDate  string `json:"targetDate"`
 }
@@ -32,6 +36,7 @@ type dashboardPaymentResponse struct {
 	ProjectID   int64  `json:"projectId"`
 	ProjectName string `json:"projectName"`
 	VendorID    int64  `json:"vendorId"`
+	VendorName  string `json:"vendorName"`
 	Type        string `json:"type"`
 	Amount      int64  `json:"amount"`
 	PaymentDate string `json:"paymentDate"`
@@ -94,6 +99,30 @@ type revenueSummaryResponse struct {
 	DeltaPercent  *float64 `json:"deltaPercent"`
 }
 
+// cashFlowWeekResponse is one week of the 8-week cash flow: what is still
+// expected to come in (client installments) and go out (vendor balances).
+type cashFlowWeekResponse struct {
+	WeekStart   string `json:"weekStart"` // the Monday, YYYY-MM-DD
+	ExpectedIn  int64  `json:"expectedIn"`
+	ExpectedOut int64  `json:"expectedOut"`
+}
+
+type vendorPaymentDueResponse struct {
+	ProjectID   int64  `json:"projectId"`
+	ProjectName string `json:"projectName"`
+	VendorName  string `json:"vendorName"`
+	DueDate     string `json:"dueDate"`
+	Remaining   int64  `json:"remaining"`
+}
+
+type unconfirmedVendorResponse struct {
+	ProjectID        int64  `json:"projectId"`
+	ProjectName      string `json:"projectName"`
+	VendorName       string `json:"vendorName"`
+	EngagementStatus string `json:"engagementStatus"`
+	EventDate        string `json:"eventDate"`
+}
+
 type dashboardResponse struct {
 	TotalProjects           int                             `json:"totalProjects"`
 	ActiveProjects          int                             `json:"activeProjects"`
@@ -114,9 +143,16 @@ type dashboardResponse struct {
 	Revenue                 revenueSummaryResponse          `json:"revenue"`
 	ProjectTrend            []projectTrendPointResponse     `json:"projectTrend"`
 	RevenueTrend            []revenueTrendPointResponse     `json:"revenueTrend"`
+	// CashFlow and VendorPaymentsDue are money: absent (the keys are not even
+	// there) without dashboard.revenue.view. UnconfirmedVendors is always present.
+	CashFlow           *[]cashFlowWeekResponse     `json:"cashFlow,omitempty"`
+	VendorPaymentsDue  *[]vendorPaymentDueResponse `json:"vendorPaymentsDue,omitempty"`
+	UnconfirmedVendors []unconfirmedVendorResponse `json:"unconfirmedVendors"`
 }
 
-func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
+// vendorNames/actorNames name the vendors and actors of the rows (ids that do not
+// resolve show an empty name).
+func toDashboardResponse(s domain.DashboardStats, vendorNames, actorNames map[int64]string) dashboardResponse {
 	resp := dashboardResponse{
 		TotalProjects:     s.TotalProjects,
 		ActiveProjects:    s.ActiveProjects,
@@ -140,23 +176,24 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 		RecentActivity:          make([]activityResponse, 0, len(s.RecentActivity)),
 		ProjectTrend:            make([]projectTrendPointResponse, 0, len(s.ProjectTrend)),
 		RevenueTrend:            make([]revenueTrendPointResponse, 0, len(s.RevenueTrend)),
+		UnconfirmedVendors:      make([]unconfirmedVendorResponse, 0, len(s.UnconfirmedVendors)),
 	}
 	for _, row := range s.OpenIssues {
 		resp.OpenIssues = append(resp.OpenIssues, dashboardIssueResponse{
-			ID: row.Issue.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID,
+			ID: row.Issue.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID, VendorName: vendorNames[row.VendorID],
 			Title: row.Issue.Title, Impact: string(row.Issue.Impact), FoundDate: row.Issue.FoundDate.Format(dateLayout),
 			Status: string(row.Issue.Status),
 		})
 	}
 	for _, row := range s.OverdueVendorMilestones {
 		resp.OverdueVendorMilestones = append(resp.OverdueVendorMilestones, dashboardMilestoneResponse{
-			ID: row.Milestone.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID,
+			ID: row.Milestone.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID, VendorName: vendorNames[row.VendorID],
 			Name: row.Milestone.Name, TargetDate: row.Milestone.TargetDate.Format(dateLayout),
 		})
 	}
 	for _, row := range s.IncompletePayments {
 		resp.IncompletePayments = append(resp.IncompletePayments, dashboardPaymentResponse{
-			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID,
+			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID, VendorName: vendorNames[row.VendorID],
 			Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
 		})
 	}
@@ -191,7 +228,29 @@ func toDashboardResponse(s domain.DashboardStats) dashboardResponse {
 		resp.UpcomingProjects = append(resp.UpcomingProjects, toProjectResponse(p))
 	}
 	for _, a := range s.RecentActivity {
-		resp.RecentActivity = append(resp.RecentActivity, toActivityResponse(a))
+		ar := toActivityResponse(a)
+		ar.ActorName = actorNames[a.ActorStaffID]
+		resp.RecentActivity = append(resp.RecentActivity, ar)
+	}
+	if s.MoneySections {
+		weeks := make([]cashFlowWeekResponse, 0, len(s.CashFlow))
+		for _, w := range s.CashFlow {
+			weeks = append(weeks, cashFlowWeekResponse{WeekStart: w.WeekStart.Format(dateLayout), ExpectedIn: w.ExpectedIn, ExpectedOut: w.ExpectedOut})
+		}
+		due := make([]vendorPaymentDueResponse, 0, len(s.VendorPaymentsDue))
+		for _, d := range s.VendorPaymentsDue {
+			due = append(due, vendorPaymentDueResponse{
+				ProjectID: d.ProjectID, ProjectName: d.ProjectName, VendorName: vendorNames[d.VendorID],
+				DueDate: d.DueDate.Format(dateLayout), Remaining: d.Remaining,
+			})
+		}
+		resp.CashFlow, resp.VendorPaymentsDue = &weeks, &due
+	}
+	for _, u := range s.UnconfirmedVendors {
+		resp.UnconfirmedVendors = append(resp.UnconfirmedVendors, unconfirmedVendorResponse{
+			ProjectID: u.ProjectID, ProjectName: u.ProjectName, VendorName: vendorNames[u.VendorID],
+			EngagementStatus: string(u.EngagementStatus), EventDate: u.EventDate.Format(dateLayout),
+		})
 	}
 	for _, pt := range s.ProjectTrend {
 		resp.ProjectTrend = append(resp.ProjectTrend, projectTrendPointResponse{Key: pt.Key, Label: pt.Label, Count: pt.Count})
@@ -223,13 +282,35 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 		return
 	}
-	stats, err := h.dashboard.Get(r.Context(), claims.tenantID, nowWIB())
+	canRevenue := claims.can("dashboard.revenue.view")
+	stats, err := h.dashboard.Get(r.Context(), claims.tenantID, nowWIB(), application.DashboardOptions{IncludeMoney: canRevenue})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	resp := toDashboardResponse(*stats)
-	if !claims.can("dashboard.revenue.view") {
+	// One lookup each for the vendors and the actors named in the rows.
+	var vendorIDs, actorIDs []int64
+	for _, r := range stats.OpenIssues {
+		vendorIDs = append(vendorIDs, r.VendorID)
+	}
+	for _, r := range stats.OverdueVendorMilestones {
+		vendorIDs = append(vendorIDs, r.VendorID)
+	}
+	for _, r := range stats.IncompletePayments {
+		vendorIDs = append(vendorIDs, r.VendorID)
+	}
+	for _, r := range stats.VendorPaymentsDue {
+		vendorIDs = append(vendorIDs, r.VendorID)
+	}
+	for _, r := range stats.UnconfirmedVendors {
+		vendorIDs = append(vendorIDs, r.VendorID)
+	}
+	for _, a := range stats.RecentActivity {
+		actorIDs = append(actorIDs, a.ActorStaffID)
+	}
+	resp := toDashboardResponse(*stats,
+		h.dashboard.VendorNames(r.Context(), claims.tenantID, vendorIDs), h.dashboard.StaffNames(r.Context(), claims.tenantID, actorIDs))
+	if !canRevenue {
 		resp.Revenue = revenueSummaryResponse{}
 		resp.RevenueTrend = []revenueTrendPointResponse{}
 	}

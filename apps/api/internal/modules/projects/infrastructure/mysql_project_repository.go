@@ -118,15 +118,15 @@ func (r *MySQLProjectRepository) ListByStaffPIC(ctx context.Context, tenantID, s
 		`SELECT p.id, p.name FROM projects p WHERE p.tenant_id = ? AND p.pic_staff_id = ?
 		 UNION
 		 SELECT p.id, p.name FROM project_vendors pv JOIN projects p ON p.id = pv.project_id
-		   WHERE p.tenant_id = ? AND pv.pic_staff_id = ?
+		   WHERE p.tenant_id = ? AND pv.pic_staff_id = ? AND pv.deleted_at IS NULL
 		 UNION
 		 SELECT p.id, p.name FROM vendor_milestones vm
 		   JOIN project_vendors pv ON pv.id = vm.project_vendor_id
 		   JOIN projects p ON p.id = pv.project_id
-		   WHERE p.tenant_id = ? AND vm.pic_staff_id = ?
+		   WHERE p.tenant_id = ? AND vm.pic_staff_id = ? AND pv.deleted_at IS NULL
 		 UNION
 		 SELECT p.id, p.name FROM vendor_issues vi JOIN projects p ON p.id = vi.project_id
-		   WHERE p.tenant_id = ? AND vi.pic_staff_id = ?`,
+		   WHERE p.tenant_id = ? AND vi.pic_staff_id = ? AND (vi.project_vendor_id IS NULL OR vi.project_vendor_id NOT IN (`+deletedEngagementIDs+`))`,
 		tenantID, staffID, tenantID, staffID, tenantID, staffID, tenantID, staffID,
 	)
 	if err != nil {

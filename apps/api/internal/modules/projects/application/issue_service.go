@@ -33,6 +33,9 @@ func NewIssueService(repo IssueRepository, vendorMilestones VendorMilestoneRepos
 // the project in the path is already the caller's own, but the engagement id in
 // the body is not, and an issue must never hang off another workspace's vendor.
 func (s *IssueService) validateEngagement(ctx context.Context, projectID, projectVendorID int64) error {
+	if projectVendorID == 0 {
+		return nil // a kendala about the event in general has no vendor
+	}
 	pv, err := s.engagements.FindByID(ctx, projectID, projectVendorID)
 	if err != nil {
 		return err
@@ -67,6 +70,10 @@ func (s *IssueService) validateVendorMilestone(ctx context.Context, projectVendo
 	if vendorMilestoneID == nil {
 		return nil
 	}
+	if projectVendorID == 0 {
+		// A deliverable belongs to a vendor: without one there is nothing to attach to.
+		return apperror.Validation("Timeline vendor tidak valid", map[string][]string{"vendorMilestoneId": {"Pilih vendornya dulu untuk memilih timeline vendor"}})
+	}
 	milestone, err := s.vendorMilestones.FindByID(ctx, projectVendorID, *vendorMilestoneID)
 	if err != nil {
 		return err
@@ -78,6 +85,7 @@ func (s *IssueService) validateVendorMilestone(ctx context.Context, projectVendo
 }
 
 type IssueInput struct {
+	// ProjectVendorID is 0 for a kendala about the event in general.
 	ProjectVendorID int64
 	// VendorMilestoneID is nil when the kendala is general to the vendor
 	// engagement rather than about one specific deliverable.
@@ -89,6 +97,8 @@ type IssueInput struct {
 	ResolutionPlan       string
 	PICStaffID           int64
 	TargetResolutionDate *time.Time
+	// IsClientVisible: nil means the default, shown to the client.
+	IsClientVisible *bool
 }
 
 func (s *IssueService) Create(ctx context.Context, projectID int64, actorStaffID int64, input IssueInput) (*domain.VendorIssue, error) {
@@ -103,6 +113,7 @@ func (s *IssueService) Create(ctx context.Context, projectID int64, actorStaffID
 		Title: input.Title, Description: input.Description,
 		Impact: input.Impact, FoundDate: input.FoundDate, Status: domain.IssueOpen, ResolutionPlan: input.ResolutionPlan,
 		PICStaffID: input.PICStaffID, TargetResolutionDate: input.TargetResolutionDate,
+		IsClientVisible: input.IsClientVisible == nil || *input.IsClientVisible,
 	}
 	if err := s.repo.Create(ctx, issue); err != nil {
 		return nil, err
@@ -129,6 +140,8 @@ type IssueUpdateInput struct {
 	ResolutionPlan       string
 	PICStaffID           int64
 	TargetResolutionDate *time.Time
+	// IsClientVisible: nil keeps what the kendala has now.
+	IsClientVisible *bool
 }
 
 // Update overwrites every editable field and mirrors the frontend's exact
@@ -157,6 +170,9 @@ func (s *IssueService) Update(ctx context.Context, projectID, id int64, actorSta
 	issue.PICStaffID = input.PICStaffID
 	issue.TargetResolutionDate = input.TargetResolutionDate
 	issue.Status = input.Status
+	if input.IsClientVisible != nil {
+		issue.IsClientVisible = *input.IsClientVisible
+	}
 	shouldStamp := (input.Status == domain.IssueResolved || input.Status == domain.IssueClosed) && issue.ResolvedDate == nil
 	if shouldStamp {
 		issue.ResolvedDate = &asOf

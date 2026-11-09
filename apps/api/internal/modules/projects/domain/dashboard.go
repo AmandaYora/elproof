@@ -85,6 +85,12 @@ type DashboardStats struct {
 	Revenue                 RevenueSummary
 	ProjectTrend            []ProjectTrendPoint
 	RevenueTrend            []RevenueTrendPoint
+	// CashFlow/VendorPaymentsDue are only filled for a caller who may see revenue
+	// figures (MoneySections); UnconfirmedVendors never needs that permission.
+	CashFlow           []CashFlowWeek
+	VendorPaymentsDue  []VendorDue
+	UnconfirmedVendors []UnconfirmedVendorRow
+	MoneySections      bool
 }
 
 const nearDDayThresholdDays = 30

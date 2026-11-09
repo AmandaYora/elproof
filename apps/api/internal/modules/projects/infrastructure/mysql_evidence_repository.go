@@ -19,8 +19,11 @@ func NewMySQLEvidenceRepository(db *sql.DB) *MySQLEvidenceRepository {
 	return &MySQLEvidenceRepository{db: db}
 }
 
+// client_hidden is computed: the file hangs off a kendala that is not shared with
+// the client, so no client may see it (domain.Evidence.ClientHidden).
 const evidenceColumns = `id, project_id, name, type, storage_path, file_name, document_date, uploaded_at,
-	description, uploaded_by_staff_id, related_kind, related_id, is_client_visible`
+	description, uploaded_by_staff_id, related_kind, related_id, is_client_visible,
+	(related_kind = 'issue' AND related_id IN (SELECT id FROM vendor_issues WHERE is_client_visible = FALSE)) AS client_hidden`
 
 func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error) {
 	var e domain.Evidence
@@ -28,7 +31,7 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 	var documentDate sql.NullTime
 	var description sql.NullString
 	err := scan(&e.ID, &e.ProjectID, &e.Name, &evidenceType, &e.StoragePath, &e.FileName, &documentDate, &e.UploadedAt,
-		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID, &e.IsClientVisible)
+		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID, &e.IsClientVisible, &e.ClientHidden)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -45,7 +48,28 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 }
 
 func (r *MySQLEvidenceRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? ORDER BY uploaded_at DESC, id DESC`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? `+evidenceLiveWhere+` ORDER BY uploaded_at DESC, id DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.Evidence
+	for rows.Next() {
+		e, err := scanEvidence(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *e)
+	}
+	return list, rows.Err()
+}
+
+// ListAllByProject lists every file of the project, hidden ones included. It
+// exists for the project hard delete, which must remove the stored objects of
+// files that were waiting in the "deleted" state too.
+func (r *MySQLEvidenceRepository) ListAllByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? ORDER BY id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +94,7 @@ func (r *MySQLEvidenceRepository) ListByProjects(ctx context.Context, projectIDs
 	if len(projectIDs) == 0 {
 		return nil, nil
 	}
-	query := `SELECT ` + evidenceColumns + ` FROM evidence WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, uploaded_at DESC, id DESC`
+	query := `SELECT ` + evidenceColumns + ` FROM evidence WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ` + evidenceLiveWhere + ` ORDER BY project_id, uploaded_at DESC, id DESC`
 	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
@@ -89,7 +113,7 @@ func (r *MySQLEvidenceRepository) ListByProjects(ctx context.Context, projectIDs
 }
 
 func (r *MySQLEvidenceRepository) ListByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) ([]domain.Evidence, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE related_kind = ? AND related_id = ? ORDER BY uploaded_at DESC`, string(kind), relatedID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE related_kind = ? AND related_id = ? `+evidenceLiveWhere+` ORDER BY uploaded_at DESC`, string(kind), relatedID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +134,7 @@ func (r *MySQLEvidenceRepository) ListByRelated(ctx context.Context, kind domain
 // EvidenceRepository.ListClientVisibleGeneral's doc comment.
 func (r *MySQLEvidenceRepository) ListClientVisibleGeneral(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
 	rows, err := conn(ctx, r.db).QueryContext(ctx,
-		`SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND related_kind = ? AND is_client_visible = TRUE ORDER BY uploaded_at DESC, id DESC`,
+		`SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND related_kind = ? AND is_client_visible = TRUE `+evidenceLiveWhere+` ORDER BY uploaded_at DESC, id DESC`,
 		projectID, string(domain.RelatedGeneral),
 	)
 	if err != nil {
@@ -130,7 +154,7 @@ func (r *MySQLEvidenceRepository) ListClientVisibleGeneral(ctx context.Context, 
 }
 
 func (r *MySQLEvidenceRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
-	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND id = ? `+evidenceLiveWhere+` LIMIT 1`, projectID, id)
 	return scanEvidence(row.Scan)
 }
 
@@ -191,12 +215,12 @@ func (r *MySQLEvidenceRepository) DeleteByID(ctx context.Context, projectID, id 
 // relatedOwnershipQueries: per kind, one query that is true only when the
 // thing the document attaches to is a row of this very project.
 var relatedOwnershipQueries = map[domain.EvidenceRelatedKind]string{
-	domain.RelatedVendorMilestone:  `SELECT 1 FROM vendor_milestones vm JOIN project_vendors pv ON pv.id = vm.project_vendor_id WHERE vm.id = ? AND pv.project_id = ?`,
-	domain.RelatedPayment:          `SELECT 1 FROM vendor_payments WHERE id = ? AND project_id = ?`,
-	domain.RelatedProjectVendor:    `SELECT 1 FROM project_vendors WHERE id = ? AND project_id = ?`,
-	domain.RelatedIssue:            `SELECT 1 FROM vendor_issues WHERE id = ? AND project_id = ?`,
-	domain.RelatedClientPayment:    `SELECT 1 FROM client_payments WHERE id = ? AND project_id = ?`,
-	domain.RelatedVenuePayment:     `SELECT 1 FROM venue_payments WHERE id = ? AND project_id = ?`,
+	domain.RelatedVendorMilestone:  `SELECT 1 FROM vendor_milestones vm JOIN project_vendors pv ON pv.id = vm.project_vendor_id WHERE vm.id = ? AND pv.project_id = ? AND pv.deleted_at IS NULL`,
+	domain.RelatedPayment:          `SELECT 1 FROM vendor_payments WHERE id = ? AND project_id = ? AND ` + liveVendorPaymentWhere,
+	domain.RelatedProjectVendor:    `SELECT 1 FROM project_vendors WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+	domain.RelatedIssue:            `SELECT 1 FROM vendor_issues WHERE id = ? AND project_id = ? AND ` + liveIssueWhere,
+	domain.RelatedClientPayment:    `SELECT 1 FROM client_payments WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+	domain.RelatedVenuePayment:     `SELECT 1 FROM venue_payments WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
 	domain.RelatedProjectMilestone: `SELECT 1 FROM project_milestones WHERE id = ? AND project_id = ?`,
 }
 

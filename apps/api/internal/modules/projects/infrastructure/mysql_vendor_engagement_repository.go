@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/utils"
@@ -17,7 +18,7 @@ func NewMySQLVendorEngagementRepository(db *sql.DB) *MySQLVendorEngagementReposi
 }
 
 const projectVendorColumns = `id, project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
-	booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes`
+	booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes, deleted_at`
 
 // timeToHHMM/hhmmToTime convert between MySQL's TIME wire format
 // ("15:04:05") and the "HH:MM" shape ProjectVendor.EventStartTime/
@@ -37,8 +38,9 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 	var bookingDate, dueDate sql.NullTime
 	var eventStartTime, eventEndTime sql.NullString
 	var notes sql.NullString
+	var deletedAt sql.NullTime
 	err := scan(&pv.ID, &pv.ProjectID, &pv.VendorID, &pv.CategoryID, &pv.Scope, &pv.ContractValue, &pricingTier, &status,
-		&bookingDate, &pv.EventDate, &eventStartTime, &eventEndTime, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes)
+		&bookingDate, &pv.EventDate, &eventStartTime, &eventEndTime, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -62,11 +64,12 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 		pv.EventEndTime = &v
 	}
 	pv.Notes = notes.String
+	pv.DeletedAt = deletedStamp(deletedAt)
 	return &pv, nil
 }
 
 func (r *MySQLVendorEngagementRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectVendor, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? ORDER BY id`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? AND deleted_at IS NULL ORDER BY id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +93,7 @@ func (r *MySQLVendorEngagementRepository) ListByProjects(ctx context.Context, pr
 	if len(projectIDs) == 0 {
 		return nil, nil
 	}
-	query := `SELECT ` + projectVendorColumns + ` FROM project_vendors WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, id`
+	query := `SELECT ` + projectVendorColumns + ` FROM project_vendors WHERE deleted_at IS NULL AND project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, id`
 	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
@@ -109,8 +112,26 @@ func (r *MySQLVendorEngagementRepository) ListByProjects(ctx context.Context, pr
 }
 
 func (r *MySQLVendorEngagementRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectVendor, error) {
-	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1`, projectID, id)
 	return scanProjectVendor(row.Scan)
+}
+
+// FindDeletedByID is the restore lookup: the engagement while it waits in the
+// "deleted" state (nil when it is live, never existed or is another project's).
+func (r *MySQLVendorEngagementRepository) FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.ProjectVendor, error) {
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? AND id = ? AND deleted_at IS NOT NULL LIMIT 1`, projectID, id)
+	return scanProjectVendor(row.Scan)
+}
+
+// SoftDelete hides the engagement (and with it its milestones, payments and
+// kendala) until it is restored or purged.
+func (r *MySQLVendorEngagementRepository) SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error) {
+	return softDeleteRow(ctx, r.db, "project_vendors", projectID, id, at)
+}
+
+// Restore brings back an engagement deleted after notBefore.
+func (r *MySQLVendorEngagementRepository) Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error) {
+	return restoreRow(ctx, r.db, "project_vendors", projectID, id, notBefore)
 }
 
 func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain.ProjectVendor) error {
@@ -157,7 +178,7 @@ func (r *MySQLVendorEngagementRepository) ListByVendor(ctx context.Context, tena
 		`SELECT pv.project_id, p.name, p.event_date, p.venue, pv.engagement_status
 		 FROM project_vendors pv
 		 JOIN projects p ON p.id = pv.project_id
-		 WHERE pv.vendor_id = ? AND p.tenant_id = ?
+		 WHERE pv.vendor_id = ? AND p.tenant_id = ? AND pv.deleted_at IS NULL
 		 ORDER BY p.event_date DESC`,
 		vendorID, tenantID,
 	)

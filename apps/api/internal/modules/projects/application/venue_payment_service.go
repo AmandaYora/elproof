@@ -16,7 +16,13 @@ type VenuePaymentRepository interface {
 	FindByID(ctx context.Context, projectID, id int64) (*domain.VenuePayment, error)
 	Create(ctx context.Context, p *domain.VenuePayment) error
 	Update(ctx context.Context, projectID, id int64, p domain.VenuePayment) error
-	Delete(ctx context.Context, projectID, id int64) error
+	// SoftDelete hides a live payment (deleted_at = at); false when there was none.
+	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
+	// FindDeletedByID is the restore lookup (nil unless the payment waits in the
+	// "deleted" state).
+	FindDeletedByID(ctx context.Context, projectID, id int64) (*domain.VenuePayment, error)
+	// Restore clears the stamp of a payment deleted after notBefore.
+	Restore(ctx context.Context, projectID, id int64, notBefore time.Time) (bool, error)
 }
 
 type VenuePaymentService struct {
@@ -119,28 +125,82 @@ func (s *VenuePaymentService) Update(ctx context.Context, tenantID, projectID, i
 	return p, nil
 }
 
-// Delete hard-deletes the payment and, first, its attached evidence -- see
-// PaymentService.Delete for the full reasoning.
-func (s *VenuePaymentService) Delete(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64) error {
-	p, err := s.repo.FindByID(ctx, projectID, id)
+// Delete soft-deletes the venue payment (ADR-0034); see PaymentService.Delete.
+func (s *VenuePaymentService) Delete(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, now time.Time) (time.Time, error) {
+	var until time.Time
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		if err := s.checkChange(ctx, tenantID, projectID, id, nil); err != nil {
+			return err
+		}
+		ok, err := s.repo.SoftDelete(ctx, projectID, id, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		until = domain.RestorableUntil(now)
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "venue_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran venue dihapus")
+		return nil
+	})
+	return until, err
+}
+
+// Restore brings a deleted venue payment back after re-checking the overpayment
+// rule against the venue's cost (422 on `amount`); see PaymentService.Restore.
+func (s *VenuePaymentService) Restore(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, now time.Time) (*domain.VenuePayment, error) {
+	var restored *domain.VenuePayment
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindDeletedByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil || p.DeletedAt == nil || !domain.CanRestore(*p.DeletedAt, now) {
+			return errNotRestorable()
+		}
+		if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: p.Type, Amount: p.Amount}); err != nil {
+			return err
+		}
+		ok, err := s.repo.Restore(ctx, projectID, id, domain.PurgeCutoff(now))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errNotRestorable()
+		}
+		p.DeletedAt = nil
+		restored = p
+		s.activity.Record(ctx, &projectID, domain.ActivityRestored, actorStaffID, "venue_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran venue dipulihkan")
+		return nil
+	})
+	return restored, err
+}
+
+// LedgerSummary is where the venue's cost (rental price + charge) stands against
+// its live payments (the `ledgerSummary` of a mutation response).
+func (s *VenuePaymentService) LedgerSummary(ctx context.Context, tenantID, projectID int64) (domain.Ledger, error) {
+	cost, err := s.contracts.VenueCost(ctx, tenantID, projectID)
 	if err != nil {
-		return err
+		return domain.Ledger{}, err
 	}
-	if p == nil {
-		return apperror.NotFound("Pembayaran tidak ditemukan")
+	all, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return domain.Ledger{}, err
 	}
-	if err := s.checkChange(ctx, tenantID, projectID, id, nil); err != nil {
-		return err
+	lines := make([]domain.PaymentLine, 0, len(all))
+	for _, q := range all {
+		lines = append(lines, lineOf(q.Type, q.Amount))
 	}
-	if err := s.evidence.DeleteForRelated(ctx, domain.RelatedVenuePayment, id); err != nil {
-		return err
-	}
-	if err := s.repo.Delete(ctx, projectID, id); err != nil {
-		return err
-	}
-	s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "venue_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran venue dihapus")
-	return nil
+	return domain.ComputeLedger(lines, cost), nil
 }
 
 // VenuePaymentCreated is the outcome of recording a venue payment: the payment,

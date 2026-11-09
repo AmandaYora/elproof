@@ -41,7 +41,7 @@ func (r *MySQLDashboardRepository) ListAppliedToContract(ctx context.Context, te
 		                         WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END), 0)
 		FROM client_payments cp
 		JOIN projects p ON p.id = cp.project_id
-		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled')
+		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled') AND cp.deleted_at IS NULL
 		GROUP BY cp.project_id`, tenantID)
 	if err != nil {
 		return nil, err
@@ -78,6 +78,67 @@ func (r *MySQLDashboardRepository) ListProjectMilestonesDue(ctx context.Context,
 		if err := rows.Scan(&row.ProjectID, &row.ProjectName, &row.Name, &row.TargetDate); err != nil {
 			return nil, err
 		}
+		list = append(list, row)
+	}
+	return list, rows.Err()
+}
+
+// ListOpenEngagementBalances returns, per vendor engagement of the workspace's
+// open projects (not completed, cancelled or archived) that is not cancelled or
+// deleted and has a due date, what is agreed and what has been paid against it
+// (DP + Termin + Pelunasan - Refund over its live payments). It backs the
+// dashboard's cash flow and "pembayaran vendor jatuh tempo".
+func (r *MySQLDashboardRepository) ListOpenEngagementBalances(ctx context.Context, tenantID int64) ([]domain.EngagementBalanceRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT pv.id, pv.project_id, p.name, pv.vendor_id, pv.contract_value, pv.due_date,
+		       COALESCE((SELECT SUM(CASE WHEN vp.type IN ('DP','Termin','Pelunasan') THEN vp.amount
+		                                 WHEN vp.type = 'Refund' THEN -CAST(vp.amount AS SIGNED) ELSE 0 END)
+		                 FROM vendor_payments vp WHERE vp.project_vendor_id = pv.id AND vp.deleted_at IS NULL), 0)
+		FROM project_vendors pv
+		JOIN projects p ON p.id = pv.project_id
+		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled')
+		  AND pv.deleted_at IS NULL AND pv.engagement_status <> 'Cancelled' AND pv.due_date IS NOT NULL
+		ORDER BY pv.due_date, pv.id`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []domain.EngagementBalanceRow
+	for rows.Next() {
+		var row domain.EngagementBalanceRow
+		if err := rows.Scan(&row.EngagementID, &row.ProjectID, &row.ProjectName, &row.VendorID, &row.ContractValue, &row.DueDate, &row.Applied); err != nil {
+			return nil, err
+		}
+		list = append(list, row)
+	}
+	return list, rows.Err()
+}
+
+// ListUnconfirmedVendors returns the vendors of open projects whose event falls
+// from `from` to `to` (inclusive) and that are still Planned or in Negotiation,
+// soonest event first, at most `limit`.
+func (r *MySQLDashboardRepository) ListUnconfirmedVendors(ctx context.Context, tenantID int64, from, to time.Time, limit int) ([]domain.UnconfirmedVendorRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT pv.id, pv.project_id, p.name, pv.vendor_id, pv.engagement_status, p.event_date
+		FROM project_vendors pv
+		JOIN projects p ON p.id = pv.project_id
+		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled')
+		  AND pv.deleted_at IS NULL AND pv.engagement_status IN ('Planned','Negotiation')
+		  AND p.event_date BETWEEN ? AND ?
+		ORDER BY p.event_date, pv.id
+		LIMIT ?`, tenantID, from.Format("2006-01-02"), to.Format("2006-01-02"), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []domain.UnconfirmedVendorRow
+	for rows.Next() {
+		var row domain.UnconfirmedVendorRow
+		var status string
+		if err := rows.Scan(&row.EngagementID, &row.ProjectID, &row.ProjectName, &row.VendorID, &status, &row.EventDate); err != nil {
+			return nil, err
+		}
+		row.EngagementStatus = domain.EngagementStatus(status)
 		list = append(list, row)
 	}
 	return list, rows.Err()

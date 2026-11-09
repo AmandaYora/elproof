@@ -288,7 +288,12 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 		writeAppError(w, err)
 		return
 	}
-	progress, err := h.projects.ComputeProgress(r.Context(), tenantID, projectID, time.Now())
+	// A client's progress counts only the kendala staff shared with them.
+	compute := h.projects.ComputeProgress
+	if isClient {
+		compute = h.projects.ComputeClientProgress
+	}
+	progress, err := compute(r.Context(), tenantID, projectID, time.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -478,7 +483,7 @@ func (h *Handler) createMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Timeline berhasil ditambahkan", toMilestoneResponse(*m))
+	response.Created(w, "Timeline berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toMilestoneResponse(*m)))
 }
 
 type milestoneUpdateBody struct {
@@ -510,7 +515,7 @@ func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Timeline berhasil diperbarui", toMilestoneResponse(*m))
+	response.OK(w, "Timeline berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toMilestoneResponse(*m)))
 }
 
 type milestoneReorderBody struct {
@@ -527,7 +532,7 @@ func (h *Handler) reorderMilestones(w http.ResponseWriter, r *http.Request, clai
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Urutan timeline berhasil diperbarui", nil)
+	response.OK(w, "Urutan timeline berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, nil))
 }
 
 type transitionBody struct {

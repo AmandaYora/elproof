@@ -50,6 +50,8 @@ func TestClientPortalAllowed(t *testing.T) {
 		"/api/v1/projects/12/payments",
 		"/api/v1/projects/12/venue-payments",
 		"/api/v1/projects/12/activity",
+		// Tahap 5: the staff overview carries margin, vendor costs and internal actions.
+		"/api/v1/projects/12/overview",
 		// Other tenants' / other couples' data and staff-only directories.
 		"/api/v1/projects",
 		"/api/v1/clients",

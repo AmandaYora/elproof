@@ -23,6 +23,9 @@ const maxDecodedSize = 15 * 1024 * 1024
 
 type EvidenceRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error)
+	// ListAllByProject lists every file of the project, hidden ones (belonging to
+	// something deleted) included; only the project hard delete needs it.
+	ListAllByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error)
 	// ListByProjects backs ComputeProgressBatch: every matching row across
 	// the given projects in one query (WHERE project_id IN (...)).
 	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.Evidence, error)
@@ -99,6 +102,27 @@ func (s *EvidenceService) List(ctx context.Context, projectID int64) ([]domain.E
 	return s.repo.ListByProject(ctx, projectID)
 }
 
+// ListAll lists every file of the project including the ones hidden because the
+// payment, vendor or kendala they hang off was deleted (see ListByProject's
+// filter). Used only by the project hard delete, to remove all stored objects.
+func (s *EvidenceService) ListAll(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
+	return s.repo.ListAllByProject(ctx, projectID)
+}
+
+// DeleteStorageKeys best-effort deletes stored objects by key (the purge calls
+// it after its transaction committed).
+func (s *EvidenceService) DeleteStorageKeys(ctx context.Context, keys []string) int {
+	deleted := 0
+	for _, k := range keys {
+		if err := s.storage.Delete(ctx, k); err != nil {
+			logger.Error("failed to delete storage object %q: %v", k, err)
+			continue
+		}
+		deleted++
+	}
+	return deleted
+}
+
 // ListForRelated lists the files attached to one item (a client payment, a
 // milestone, ...). The caller has already confirmed the item is in its project.
 func (s *EvidenceService) ListForRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) ([]domain.Evidence, error) {
@@ -108,8 +132,8 @@ func (s *EvidenceService) ListForRelated(ctx context.Context, kind domain.Eviden
 // Delete removes one evidence file of a project: the row first, then (best
 // effort) the stored object, then observers run, so a rule such as "a verified
 // payment keeps at least one proof" is applied on every removal path. No HTTP
-// route reaches this yet (evidence has no standalone delete today); it is here
-// so the rule cannot be bypassed when one is added.
+// route (DELETE /projects/{id}/evidence/{eid}, E8) reaches it, and the rule is
+// applied on every removal path.
 func (s *EvidenceService) Delete(ctx context.Context, projectID, id, actorStaffID int64) error {
 	e, err := s.repo.FindByID(ctx, projectID, id)
 	if err != nil {
@@ -122,6 +146,8 @@ func (s *EvidenceService) Delete(ctx context.Context, projectID, id, actorStaffI
 		return err
 	}
 	s.DeleteStorageObjects(ctx, []domain.Evidence{*e})
+	s.activity.Record(ctx, &projectID, domain.ActivityEvidenceDeleted, actorStaffID, "evidence", formatID(e.ID), e.Name,
+		"Evidence dihapus: "+e.Name)
 	for _, o := range s.removed {
 		o.AfterEvidenceRemoved(ctx, *e, actorStaffID)
 	}

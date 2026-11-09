@@ -24,6 +24,17 @@ type Contracts interface {
 	// — called by `projects` (ADR-0013's hard delete) via the ClientCleaner
 	// bridge, never awaited to block the project delete itself.
 	DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error
+	// ListProjectClients names a project's live clients with whether each can
+	// sign in — the project overview's client list.
+	ListProjectClients(ctx context.Context, tenantID, projectID int64) ([]ProjectClient, error)
+}
+
+// ProjectClient is the cross-module-safe shape of one client of a project.
+type ProjectClient struct {
+	ID       int64
+	Name     string
+	Role     string
+	HasLogin bool
 }
 
 type impl struct {
@@ -47,6 +58,18 @@ func (c *impl) ProjectIDForClient(ctx context.Context, tenantID, clientID int64)
 
 func (c *impl) DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error {
 	return c.clients.DeleteAllForProject(ctx, tenantID, projectID)
+}
+
+func (c *impl) ListProjectClients(ctx context.Context, tenantID, projectID int64) ([]ProjectClient, error) {
+	list, err := c.clients.ListProjectClients(ctx, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ProjectClient, 0, len(list))
+	for _, pc := range list {
+		out = append(out, ProjectClient{ID: pc.ID, Name: pc.Name, Role: pc.Role, HasLogin: pc.HasLogin})
+	}
+	return out, nil
 }
 
 func (c *impl) CountActiveClients(ctx context.Context, tenantID int64) (int, error) {

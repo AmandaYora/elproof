@@ -126,3 +126,20 @@ var (
 func lineOf(t domain.PaymentType, amount int64) domain.PaymentLine {
 	return domain.PaymentLine{Type: t, Amount: amount}
 }
+
+// inLockedTx runs fn in one transaction that holds the project's write lock, so
+// a delete or a restore is checked against the same payments every other money
+// write of the project sees. Without transaction support (unit tests, a service
+// wired without a database) it simply runs fn.
+func inLockedTx(ctx context.Context, proof *ProofSupport, projectID int64, fn func(ctx context.Context) error) error {
+	var tx Transactor = noTransactor{}
+	if proof != nil && proof.tx != nil {
+		tx = proof.tx
+	}
+	return tx.InTx(ctx, func(ctx context.Context) error {
+		if err := tx.LockProject(ctx, projectID); err != nil {
+			return err
+		}
+		return fn(ctx)
+	})
+}
