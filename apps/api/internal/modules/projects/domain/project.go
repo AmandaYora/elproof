@@ -52,9 +52,9 @@ type Project struct {
 	// see PLAN.md revisi-timeline-vendor-role-sales.
 	PICSalesStaffID int64
 	Description     string
-	IsArchived       bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	IsArchived      bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // ProjectRef is a minimal {id, name} projection of a project — backs the

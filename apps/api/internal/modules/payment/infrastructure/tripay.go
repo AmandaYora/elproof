@@ -135,16 +135,16 @@ func (g *tripayGateway) ListChannels(ctx context.Context) ([]domain.Channel, err
 }
 
 type tripayCreateTransactionRequest struct {
-	Method        string                       `json:"method"`
-	MerchantRef   string                       `json:"merchant_ref"`
-	Amount        int64                        `json:"amount"`
-	CustomerName  string                       `json:"customer_name"`
-	CustomerEmail string                       `json:"customer_email"`
-	CustomerPhone string                       `json:"customer_phone"`
-	OrderItems    []tripayOrderItem            `json:"order_items"`
-	CallbackURL   string                       `json:"callback_url"`
-	ExpiredTime   int64                        `json:"expired_time"`
-	Signature     string                       `json:"signature"`
+	Method        string            `json:"method"`
+	MerchantRef   string            `json:"merchant_ref"`
+	Amount        int64             `json:"amount"`
+	CustomerName  string            `json:"customer_name"`
+	CustomerEmail string            `json:"customer_email"`
+	CustomerPhone string            `json:"customer_phone"`
+	OrderItems    []tripayOrderItem `json:"order_items"`
+	CallbackURL   string            `json:"callback_url"`
+	ExpiredTime   int64             `json:"expired_time"`
+	Signature     string            `json:"signature"`
 }
 
 type tripayOrderItem struct {
@@ -168,9 +168,9 @@ type tripayTransactionData struct {
 }
 
 type tripayCreateTransactionResponse struct {
-	Success bool                   `json:"success"`
-	Message string                 `json:"message"`
-	Data    tripayTransactionData  `json:"data"`
+	Success bool                  `json:"success"`
+	Message string                `json:"message"`
+	Data    tripayTransactionData `json:"data"`
 }
 
 func (g *tripayGateway) signCreate(merchantRef string, amount int64) string {

@@ -597,10 +597,10 @@ func (s *PaymentService) reconcileOne(ctx context.Context, dispatch domain.Charg
 // --- Admin CRUD (called directly by this module's own presentation layer) ---
 
 type GatewayConfigView struct {
-	ActiveProvider     string
-	IsSandbox          bool
-	TripayMerchantCode string
-	HasTripayAPIKey    bool
+	ActiveProvider      string
+	IsSandbox           bool
+	TripayMerchantCode  string
+	HasTripayAPIKey     bool
 	HasTripayPrivateKey bool
 }
 

@@ -67,20 +67,20 @@ func ComputeMilestoneStats(milestones []MilestoneLike, asOf time.Time) Milestone
 type ProjectCondition string
 
 const (
-	ConditionOnTrack  ProjectCondition = "On Track"
+	ConditionOnTrack   ProjectCondition = "On Track"
 	ConditionAttention ProjectCondition = "Attention"
 	ConditionAtRisk    ProjectCondition = "At Risk"
 )
 
 type ProjectProgress struct {
-	ProjectMilestoneStats     MilestoneStats
-	VendorMilestoneStats      MilestoneStats
-	OverallPercent            int
-	Condition                 ProjectCondition
-	OpenIssueCount            int
-	CriticalOrHighOpenCount   int
-	OverdueMilestoneCount     int
-	IncompleteEvidenceCount   int
+	ProjectMilestoneStats   MilestoneStats
+	VendorMilestoneStats    MilestoneStats
+	OverallPercent          int
+	Condition               ProjectCondition
+	OpenIssueCount          int
+	CriticalOrHighOpenCount int
+	OverdueMilestoneCount   int
+	IncompleteEvidenceCount int
 }
 
 // ComputeProjectProgress ports mock/selectors.ts's computeProjectProgress —
