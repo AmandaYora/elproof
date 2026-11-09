@@ -123,6 +123,14 @@ func (m *Module) TrialLimit(ctx context.Context, tenantID int64, resource string
 	return m.tenantService.TrialLimit(ctx, tenantID, resource)
 }
 
+// PortalContact implements projects' TenantContactReader port (wired in
+// cmd/server): the business WhatsApp number and the bank account clients pay
+// into, for the Client Portal home. Empty strings when not filled in. The
+// caller decides who may see the bank account.
+func (m *Module) PortalContact(ctx context.Context, tenantID int64) (whatsapp, bankName, accountNumber, accountHolder string, err error) {
+	return m.tenantService.PortalContact(ctx, tenantID)
+}
+
 // TenantName implements identity's TenantNameResolver (invitation pages
 // name the WO).
 func (m *Module) TenantName(ctx context.Context, tenantID int64) (string, error) {

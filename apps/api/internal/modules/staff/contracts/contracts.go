@@ -56,6 +56,9 @@ type Contracts interface {
 	// degrades to "no name available" rather than breaking the whole
 	// response it's embedded in.
 	GetSummary(ctx context.Context, tenantID, staffID int64) (*Summary, error)
+	// StaffNames resolves several names in one query, tenant-scoped; ids that
+	// do not resolve are absent from the map (never an error).
+	StaffNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 	// FindOwner returns the tenant's Owner staff id ("" when none yet) —
 	// lets workspace provisioning resume without creating a second Owner.
 	FindOwner(ctx context.Context, tenantID int64) (string, error)
@@ -88,6 +91,10 @@ func (c *impl) GetSummary(ctx context.Context, tenantID, staffID int64) (*Summar
 		return nil, err
 	}
 	return &Summary{ID: member.ID, Name: member.Name, Phone: member.Phone}, nil
+}
+
+func (c *impl) StaffNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return c.service.Names(ctx, tenantID, ids)
 }
 
 func (c *impl) FindOwner(ctx context.Context, tenantID int64) (string, error) {

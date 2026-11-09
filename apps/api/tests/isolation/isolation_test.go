@@ -86,6 +86,7 @@ func TestTenantIsolation(t *testing.T) {
 	// Order matters: read-only checks first, then the attacks (whose controls
 	// may change B's data), then the integrity check.
 	t.Run("client principal", func(t *testing.T) { w.clientIsolation(t, s) })
+	t.Run("client portal (E4/E5/E6)", func(t *testing.T) { w.portalScenarios(t, s) })
 	t.Run("lists and dashboards", func(t *testing.T) { w.lists(t, s) })
 	t.Run("attack matrix", func(t *testing.T) { w.attackMatrix(t, s) })
 	t.Run("mixed ids", func(t *testing.T) { w.mixedIDs(t, s) })

@@ -41,6 +41,7 @@ type Handler struct {
 	myProjects     *application.MyProjectsService
 	clientAccess   ClientAccessResolver
 	refs           *application.References
+	clientHome     *application.ClientHomeService
 }
 
 func NewHandler(
@@ -62,6 +63,9 @@ func NewHandler(
 		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard, closing: closing, terms: terms, myProjects: myProjects,
 	}
 }
+
+// SetClientHome gives the handler the Client Portal home assembler (E5).
+func (h *Handler) SetClientHome(s *application.ClientHomeService) { h.clientHome = s }
 
 // SetReferences gives the handler the checks that ids named inside a request
 // body (PICs, vendors, categories) belong to the caller's own workspace.
@@ -107,6 +111,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.me(w, r)
 		return
 	}
+	if segments[0] == "me" && len(segments) == 2 && segments[1] == "home" && r.Method == http.MethodGet {
+		h.meHome(w, r)
+		return
+	}
 
 	projectID, err := strconv.ParseInt(segments[0], 10, 64)
 	if err != nil {
@@ -142,7 +150,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 1 && rest[0] == "duplicate" && r.Method == http.MethodPost:
 		h.duplicateProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodGet:
-		h.listMilestones(w, r, claims.tenantID, projectID)
+		h.listMilestones(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodPost:
 		h.createMilestone(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodPatch:
@@ -150,7 +158,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "milestones" && r.Method == http.MethodPatch:
 		h.updateMilestone(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodGet:
-		h.listVendorEngagements(w, r, projectID, claims.isClient)
+		h.listVendorEngagements(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodPost:
 		h.createVendorEngagement(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "vendors" && r.Method == http.MethodPatch:
@@ -172,9 +180,11 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodDelete:
 		h.deletePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodGet:
-		h.listClientPayments(w, r, projectID, claims.isClient)
+		h.listClientPayments(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
 		h.createClientPayment(w, r, claims, projectID)
+	case len(rest) == 3 && rest[0] == "client-payments" && rest[2] == "verify" && r.Method == http.MethodPost:
+		h.verifyClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodPatch:
 		h.updateClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "client-payments" && r.Method == http.MethodDelete:
@@ -188,7 +198,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "venue-payments" && r.Method == http.MethodDelete:
 		h.deleteVenuePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodGet:
-		h.listIssues(w, r, projectID)
+		h.listIssues(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:
 		h.createIssue(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "issues" && r.Method == http.MethodPatch:
@@ -309,7 +319,16 @@ func clientReadPermission(rest []string) string {
 		return "portal.finance.view"
 	case "issues":
 		return "portal.issues.view"
-	case "evidence", "documents":
+	case "evidence":
+		// The list is the documents tab. A single file (/evidence/{id}/file|link)
+		// is the proof behind a payment, a step, a vendor deliverable or an issue,
+		// so its permission is the one of what it hangs off: judged per file by
+		// clientCanSeeEvidence, not up front.
+		if len(rest) == 1 {
+			return "portal.documents.view"
+		}
+		return ""
+	case "documents":
 		return "portal.documents.view"
 	}
 	return ""

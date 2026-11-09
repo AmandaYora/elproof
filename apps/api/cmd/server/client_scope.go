@@ -31,16 +31,16 @@ func clientPortalAllowed(method, path string) bool {
 		return true
 	case match(s, "tenants", "me", "branding"), match(s, "tenants", "me", "logo"), match(s, "tenants", "me", "contact"):
 		return true
-	case match(s, "projects", "me"):
+	case match(s, "projects", "me"), match(s, "projects", "me", "home"):
 		return true
 	case len(s) >= 2 && s[0] == "projects" && isID(s[1]):
 		// /projects/{id}/... — the projects module narrows this further
 		// (own project only, allowlisted sub-resources, redaction).
 		return clientProjectSubpathAllowed(s[2:])
-	case match(s, "vendors", "summary"):
-		return true
-	case match(s, "vendor-categories"):
-		return true
+	// NOT allowed: vendors/summary and vendor-categories list every vendor and
+	// category of the workspace. The portal gets vendor and category names
+	// inside GET /projects/{id}/vendors, for the project's own vendors only
+	// (E6, ADR-0032).
 	case len(s) == 3 && s[0] == "venues" && isID(s[1]) && s[2] == "attachment":
 		return true
 	default:

@@ -84,3 +84,41 @@ type Evidence struct {
 	// a document in before a client can see it.
 	IsClientVisible bool
 }
+
+// ClientCanSeeEvidence is the per-document visibility rule for a `client`
+// principal (Client Portal). Only evidence that backs something the portal
+// already shows is visible: proof of the client's own payments, documents
+// attached to a kendala or a vendor deliverable, and project-level documents or
+// timeline attachments a staff member explicitly opted in. Vendor/venue payment
+// proofs and booking proofs stay internal.
+//
+// can is the client's portal permission check (ADR-0026): a payment receipt is
+// finance data, so a role without portal.finance.view (Keluarga by default)
+// never sees it; issue, vendor and timeline attachments follow their own tabs.
+// A timeline attachment additionally needs IsClientVisible (ADR-0032): staff
+// decide which photos of a step the couple sees.
+func ClientCanSeeEvidence(e Evidence, can func(string) bool) bool {
+	switch e.RelatedKind {
+	case RelatedClientPayment:
+		return can("portal.finance.view")
+	case RelatedIssue:
+		return can("portal.issues.view")
+	case RelatedVendorMilestone:
+		return can("portal.vendor.view")
+	case RelatedProjectMilestone:
+		return can("portal.timeline.view") && e.IsClientVisible
+	case RelatedGeneral:
+		// The Dokumen tab: shared documents also need portal.documents.view
+		// (the per-file routes no longer ask for it up front, see
+		// clientReadPermission, so this rule is the only gate for a file).
+		return e.IsClientVisible && can("portal.documents.view")
+	default:
+		return false
+	}
+}
+
+// SupportsClientVisibility: only these kinds carry the opt-in IsClientVisible
+// flag; for every other kind the flag is meaningless and stored false.
+func (k EvidenceRelatedKind) SupportsClientVisibility() bool {
+	return k == RelatedGeneral || k == RelatedProjectMilestone
+}

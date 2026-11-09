@@ -170,3 +170,27 @@ func (r *MySQLStaffRepository) FindOwnerID(ctx context.Context, tenantID int64) 
 func nullableRoleID(id int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: id, Valid: id > 0}
 }
+
+// NamesByIDs resolves names for the given staff ids, tenant-scoped, in one
+// query. Ids that do not exist in this tenant are simply absent.
+func (r *MySQLStaffRepository) NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := append([]interface{}{tenantID}, utils.Int64Args(ids)...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name FROM staff_members WHERE tenant_id = ? AND id IN (`+utils.Placeholders(len(ids))+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}

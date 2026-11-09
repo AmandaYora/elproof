@@ -128,19 +128,28 @@ type milestoneResponse struct {
 	Status        string  `json:"status"`
 	TargetDate    string  `json:"targetDate"`
 	CompletedDate *string `json:"completedDate"`
+	// Evidence is filled by GET /projects/{id}/milestones (all attachments for
+	// staff, only the ones the client may see for a client); `[]` elsewhere.
+	Evidence []evidenceRefResponse `json:"evidence"`
 }
 
 func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 	return milestoneResponse{
 		ID: m.ID, SortOrder: m.SortOrder, Name: m.Name, Status: string(m.Status),
 		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate),
+		Evidence: []evidenceRefResponse{},
 	}
 }
 
 type projectVendorResponse struct {
-	ID               int64   `json:"id"`
-	VendorID         int64   `json:"vendorId"`
-	CategoryID       int64   `json:"categoryId"`
+	ID         int64 `json:"id"`
+	VendorID   int64 `json:"vendorId"`
+	CategoryID int64 `json:"categoryId"`
+	// VendorName/CategoryName are filled by GET /projects/{id}/vendors from
+	// this workspace's directory, for this project's own vendors only ("" when
+	// unresolved or on mutation responses).
+	VendorName       string  `json:"vendorName"`
+	CategoryName     string  `json:"categoryName"`
 	Scope            string  `json:"scope"`
 	ContractValue    int64   `json:"contractValue"`
 	PricingTier      string  `json:"pricingTier"`
@@ -187,13 +196,16 @@ type vendorMilestoneResponse struct {
 	CompletedDate *string `json:"completedDate"`
 	PICStaffID    int64   `json:"picStaffId"`
 	Notes         string  `json:"notes"`
+	// Evidence is filled inside GET /projects/{id}/vendors (client: only what
+	// portal.vendor.view allows); `[]` elsewhere.
+	Evidence []evidenceRefResponse `json:"evidence"`
 }
 
 func toVendorMilestoneResponse(m domain.VendorMilestone) vendorMilestoneResponse {
 	return vendorMilestoneResponse{
 		ID: m.ID, SortOrder: m.SortOrder, Name: m.Name, Description: m.Description, Status: string(m.Status),
 		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate),
-		PICStaffID: m.PICStaffID, Notes: m.Notes,
+		PICStaffID: m.PICStaffID, Notes: m.Notes, Evidence: []evidenceRefResponse{},
 	}
 }
 
@@ -224,6 +236,11 @@ func toPaymentResponse(p domain.VendorPayment, evidenceComplete bool) paymentRes
 	}
 }
 
+// personRef names a person without exposing an id.
+type personRef struct {
+	Name string `json:"name"`
+}
+
 type clientPaymentResponse struct {
 	ID               int64  `json:"id"`
 	Type             string `json:"type"`
@@ -233,12 +250,22 @@ type clientPaymentResponse struct {
 	ReferenceNumber  string `json:"referenceNumber"`
 	Notes            string `json:"notes"`
 	EvidenceComplete bool   `json:"evidenceComplete"`
+	// RecordedBy is internal: always null for a client principal, and null when
+	// the recorder is unknown or no longer exists.
+	RecordedBy *personRef `json:"recordedBy"`
+	// VerifiedAt/VerifiedBy: set only while the payment is verified (RFC 3339);
+	// VerifiedBy is null when the verifier no longer exists.
+	VerifiedAt *string    `json:"verifiedAt"`
+	VerifiedBy *personRef `json:"verifiedBy"`
+	// Evidence: the payment's proof files (client: only what it may see).
+	Evidence []evidenceRefResponse `json:"evidence"`
 }
 
 func toClientPaymentResponse(p domain.ClientPayment, evidenceComplete bool) clientPaymentResponse {
 	return clientPaymentResponse{
 		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
 		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
+		VerifiedAt: formatTimePtr(p.VerifiedAt), Evidence: []evidenceRefResponse{},
 	}
 }
 
@@ -280,10 +307,16 @@ type issueResponse struct {
 	TargetResolutionDate *string `json:"targetResolutionDate"`
 	ResolvedDate         *string `json:"resolvedDate"`
 	ResolutionNotes      string  `json:"resolutionNotes"`
+	// VendorName/VendorMilestoneName/Evidence are filled by GET
+	// /projects/{id}/issues (names from this project's own engagements; "" when
+	// there is none; client: only the proof portal.issues.view allows).
+	VendorName          string                `json:"vendorName"`
+	VendorMilestoneName string                `json:"vendorMilestoneName"`
+	Evidence            []evidenceRefResponse `json:"evidence"`
 }
 
 func toIssueResponse(i domain.VendorIssue) issueResponse {
-	return issueResponse{
+	return issueResponse{Evidence: []evidenceRefResponse{},
 		ID: i.ID, ProjectVendorID: i.ProjectVendorID, VendorMilestoneID: i.VendorMilestoneID, Title: i.Title, Description: i.Description,
 		Impact: string(i.Impact), FoundDate: i.FoundDate.Format(dateLayout), Status: string(i.Status),
 		ResolutionPlan: i.ResolutionPlan, PICStaffID: i.PICStaffID,
@@ -313,6 +346,29 @@ func toEvidenceResponse(e domain.Evidence) evidenceResponse {
 		Description: e.Description, UploadedBy: e.UploadedByStaffID, RelatedKind: string(e.RelatedKind), RelatedID: e.RelatedID,
 		IsClientVisible: e.IsClientVisible,
 	}
+}
+
+// evidenceRefResponse is the short form of a proof file embedded in another
+// item's response; the file itself is fetched through the evidence routes.
+type evidenceRefResponse struct {
+	ID         int64  `json:"id"`
+	Type       string `json:"type"`
+	FileName   string `json:"fileName"`
+	UploadedAt string `json:"uploadedAt"`
+}
+
+const timeLayout = "2006-01-02T15:04:05Z07:00"
+
+func formatTimePtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format(timeLayout)
+	return &s
+}
+
+func toEvidenceRef(e domain.Evidence) evidenceRefResponse {
+	return evidenceRefResponse{ID: e.ID, Type: string(e.Type), FileName: e.FileName, UploadedAt: e.UploadedAt.Format(timeLayout)}
 }
 
 type activityResponse struct {

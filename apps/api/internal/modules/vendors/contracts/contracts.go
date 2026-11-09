@@ -37,6 +37,11 @@ type Contracts interface {
 	// vendor category of this workspace (another workspace's id is "no").
 	VendorExists(ctx context.Context, tenantID, vendorID int64) (bool, error)
 	CategoryExists(ctx context.Context, tenantID, categoryID int64) (bool, error)
+	// VendorNames and CategoryNames resolve display names for the given ids in
+	// one query, scoped to the workspace: an id that is not this workspace's is
+	// absent from the map, so a name can never cross a tenant boundary.
+	VendorNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
+	CategoryNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 }
 
 type impl struct {
@@ -52,6 +57,14 @@ func New(categories *application.VendorCategoryService, venues *application.Venu
 func (c *impl) VendorExists(ctx context.Context, tenantID, vendorID int64) (bool, error) {
 	_, err := c.vendors.Get(ctx, tenantID, vendorID)
 	return foundOrNot(err)
+}
+
+func (c *impl) VendorNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return c.vendors.Names(ctx, tenantID, ids)
+}
+
+func (c *impl) CategoryNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return c.categories.Names(ctx, tenantID, ids)
 }
 
 func (c *impl) CategoryExists(ctx context.Context, tenantID, categoryID int64) (bool, error) {

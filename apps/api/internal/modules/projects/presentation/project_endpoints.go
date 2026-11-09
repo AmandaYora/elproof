@@ -174,31 +174,42 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims s
 // the `platform` module's `GET /tenants/me` self-service pattern from Fase 2
 // (handled as a special segment inside Item, not a separate mux route).
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.FromContext(r.Context())
-	if !ok || claims.PrincipalType != "client" {
-		response.Error(w, http.StatusForbidden, "Hanya client yang dapat mengakses endpoint ini", nil)
+	tenantID, projectID, ok := h.resolveOwnClientProject(w, r)
+	if !ok {
 		return
 	}
-	tenantID, ok := claims.TenantIDInt()
+	h.getProject(w, r, tenantID, projectID, true)
+}
+
+// resolveOwnClientProject is the shared front of the client's self-service
+// reads (`me`, `me/home`): the caller must be a client principal, and the
+// project is the one `clients` says is theirs.
+func (h *Handler) resolveOwnClientProject(w http.ResponseWriter, r *http.Request) (tenantID, projectID int64, ok bool) {
+	claims, found := middleware.FromContext(r.Context())
+	if !found || claims.PrincipalType != "client" {
+		response.Error(w, http.StatusForbidden, "Hanya client yang dapat mengakses endpoint ini", nil)
+		return 0, 0, false
+	}
+	tenantID, ok = claims.TenantIDInt()
 	if !ok {
 		response.Error(w, http.StatusForbidden, "Akun ini tidak terikat ke tenant manapun", nil)
-		return
+		return 0, 0, false
 	}
 	clientID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
 	if err != nil {
 		response.Error(w, http.StatusForbidden, "Identitas client tidak valid", nil)
-		return
+		return 0, 0, false
 	}
 	if h.clientAccess == nil {
 		response.Error(w, http.StatusForbidden, "Akses client belum dikonfigurasi", nil)
-		return
+		return 0, 0, false
 	}
-	projectID, err := h.clientAccess.ProjectIDForClient(r.Context(), tenantID, clientID)
+	projectID, err = h.clientAccess.ProjectIDForClient(r.Context(), tenantID, clientID)
 	if err != nil {
 		writeAppError(w, err)
-		return
+		return 0, 0, false
 	}
-	h.getProject(w, r, tenantID, projectID, true)
+	return tenantID, projectID, true
 }
 
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, projectID int64, isClient bool) {
@@ -353,15 +364,25 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 
 // --- Project milestones ---
 
-func (h *Handler) listMilestones(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) {
-	milestones, err := h.projects.ListMilestones(r.Context(), tenantID, projectID)
+func (h *Handler) listMilestones(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	milestones, err := h.projects.ListMilestones(r.Context(), claims.tenantID, projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
+	// Each step's attachments come from one project-wide evidence query; a
+	// client only gets the ones it may see (a step's photos are opt-in, ADR-0032).
+	evidences, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	ix := indexEvidence(evidences, claims.isClient, claims.can)
 	result := make([]milestoneResponse, 0, len(milestones))
 	for _, m := range milestones {
-		result = append(result, toMilestoneResponse(m))
+		resp := toMilestoneResponse(m)
+		resp.Evidence = ix.refs(domain.RelatedProjectMilestone, m.ID)
+		result = append(result, resp)
 	}
 	response.OK(w, "ok", result)
 }

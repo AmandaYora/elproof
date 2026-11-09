@@ -13,6 +13,8 @@ type VendorCategoryRepository interface {
 	List(ctx context.Context, tenantID int64) ([]domain.VendorCategory, error)
 	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.VendorCategory, int64, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.VendorCategory, error)
+	// NamesByIDs resolves several category names in one query.
+	NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 	Create(ctx context.Context, category *domain.VendorCategory) error
 	Update(ctx context.Context, category *domain.VendorCategory) error
 	SetActive(ctx context.Context, tenantID, id int64, isActive bool) error
@@ -161,4 +163,9 @@ func (s *VendorCategoryService) SetActive(ctx context.Context, tenantID, id int6
 	}
 	category.IsActive = isActive
 	return category, nil
+}
+
+// Names resolves several categories' names at once, scoped to the workspace.
+func (s *VendorCategoryService) Names(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return s.repo.NamesByIDs(ctx, tenantID, ids)
 }

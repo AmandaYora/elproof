@@ -37,7 +37,8 @@ func (h *Handler) vendorPaidAmounts(ctx context.Context, projectID int64) (map[i
 // response (one batched query via ListMilestonesByProjectVendors) so the
 // frontend's fetchVendorSection no longer needs its own per-engagement
 // Promise.all loop — PLAN.md "Performance remediation" Phase E.
-func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, projectID int64, isClient bool) {
+func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	isClient := claims.isClient
 	list, err := h.vendors.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
@@ -57,13 +58,31 @@ func (h *Handler) listVendorEngagements(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
+	evidences, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	ix := indexEvidence(evidences, isClient, claims.can)
+	// Names come from this project's own engagements only, resolved inside the
+	// caller's workspace in one lookup each: another vendor's name can never
+	// reach a client, whatever ids exist in the directory.
+	vendorIDs, categoryIDs := make([]int64, 0, len(list)), make([]int64, 0, len(list))
+	for _, pv := range list {
+		vendorIDs, categoryIDs = append(vendorIDs, pv.VendorID), append(categoryIDs, pv.CategoryID)
+	}
+	vendorNames := h.refs.VendorNames(r.Context(), claims.tenantID, vendorIDs)
+	categoryNames := h.refs.CategoryNames(r.Context(), claims.tenantID, categoryIDs)
 	result := make([]projectVendorResponse, 0, len(list))
 	for _, pv := range list {
 		resp := toProjectVendorResponse(pv, paid[pv.ID])
+		resp.VendorName, resp.CategoryName = vendorNames[pv.VendorID], categoryNames[pv.CategoryID]
 		milestones := milestonesByEngagement[pv.ID]
 		resp.Milestones = make([]vendorMilestoneResponse, 0, len(milestones))
 		for _, m := range milestones {
-			resp.Milestones = append(resp.Milestones, toVendorMilestoneResponse(m))
+			mr := toVendorMilestoneResponse(m)
+			mr.Evidence = ix.refs(domain.RelatedVendorMilestone, m.ID)
+			resp.Milestones = append(resp.Milestones, mr)
 		}
 		if isClient {
 			redactVendorForClient(&resp)

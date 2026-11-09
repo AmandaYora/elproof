@@ -12,6 +12,10 @@ import (
 type VendorDirectory interface {
 	VendorExists(ctx context.Context, tenantID, vendorID int64) (bool, error)
 	CategoryExists(ctx context.Context, tenantID, categoryID int64) (bool, error)
+	// VendorNames/CategoryNames resolve display names in one query, scoped to
+	// the workspace (an id that is not this workspace's is absent).
+	VendorNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
+	CategoryNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 }
 
 // References confirms that ids a request body names — a PIC, a vendor, a
@@ -80,4 +84,29 @@ func (r *References) Category(ctx context.Context, tenantID int64, field string,
 		return notFoundField(field, "Kategori vendor tidak ditemukan")
 	}
 	return nil
+}
+
+// VendorNames names the given vendors for display (best effort: a failure or
+// an unknown id leaves the id out, so an unresolved name shows as empty).
+func (r *References) VendorNames(ctx context.Context, tenantID int64, ids []int64) map[int64]string {
+	if r.vendors == nil || len(ids) == 0 {
+		return map[int64]string{}
+	}
+	names, err := r.vendors.VendorNames(ctx, tenantID, ids)
+	if err != nil || names == nil {
+		return map[int64]string{}
+	}
+	return names
+}
+
+// CategoryNames is VendorNames for vendor categories.
+func (r *References) CategoryNames(ctx context.Context, tenantID int64, ids []int64) map[int64]string {
+	if r.vendors == nil || len(ids) == 0 {
+		return map[int64]string{}
+	}
+	names, err := r.vendors.CategoryNames(ctx, tenantID, ids)
+	if err != nil || names == nil {
+		return map[int64]string{}
+	}
+	return names
 }

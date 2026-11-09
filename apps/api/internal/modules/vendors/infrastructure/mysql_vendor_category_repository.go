@@ -125,3 +125,8 @@ func (r *MySQLVendorCategoryRepository) Delete(ctx context.Context, tenantID, id
 	_, err := r.db.ExecContext(ctx, `DELETE FROM vendor_categories WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }
+
+// NamesByIDs resolves category names for the given ids, tenant-scoped, in one query.
+func (r *MySQLVendorCategoryRepository) NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return namesByIDs(ctx, r.db, "vendor_categories", tenantID, ids)
+}

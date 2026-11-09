@@ -457,6 +457,9 @@ transaction (`PUT`), and deleted with the project.
 | reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `vendor_payments` |
 | notes | TEXT NULL | |
 | created_at | TIMESTAMP | |
+| recorded_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who entered the payment; primitive id, **no FK** (cross-module); `NULL` on older rows, never sent to a client |
+| verified_at | DATETIME NULL | migration 65 — set by `POST .../verify` (whole seconds); cleared when the payment's amount/type/date/method/reference change or its last evidence file is removed (ADR-0032) |
+| verified_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who verified; primitive id, no FK |
 
 Money coming **in** from the client against the project's own `contract_value` ("Uang Masuk dari
 Client") — the opposite accounting direction from `vendor_payments`, and structurally simpler: no

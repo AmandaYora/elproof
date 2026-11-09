@@ -20,6 +20,7 @@ type Module struct {
 	milestoneTemplateHandler *presentation.MilestoneTemplateHandler
 	contracts                contracts.Contracts
 	projectService           *application.ProjectService
+	clientHome               *application.ClientHomeService
 }
 
 func NewModule(db *sql.DB, storageClient *storage.Client, staff application.StaffNameResolver) *Module {
@@ -52,10 +53,13 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	myProjectsService := application.NewMyProjectsService(projectService, paymentTermService)
 	closingService := application.NewClosingChecklistService(projectService, clientPaymentRepo, paymentRepo, venuePaymentRepo, vendorEngagementRepo, issueRepo)
 
+	clientHomeService := application.NewClientHomeService(projectService, clientPaymentRepo, paymentTermService, evidenceService, issueRepo)
+
 	references := application.NewReferences(staff)
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
 
 	handler.SetReferences(references)
+	handler.SetClientHome(clientHomeService)
 
 	return &Module{
 		references:               references,
@@ -63,6 +67,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 		milestoneTemplateHandler: presentation.NewMilestoneTemplateHandler(milestoneTemplateService),
 		contracts:                contracts.New(projectService, vendorEngagementService, milestoneTemplateService),
 		projectService:           projectService,
+		clientHome:               clientHomeService,
 	}
 }
 
@@ -99,6 +104,13 @@ func (m *Module) SetTrialQuota(q application.TrialQuota) {
 // category named in a request body can be confirmed to be this workspace's.
 func (m *Module) SetVendorDirectory(d application.VendorDirectory) {
 	m.references.SetVendors(d)
+}
+
+// SetTenantContact completes the two-phase wiring with `platform`, whose
+// business profile holds the WhatsApp number and bank account the Client
+// Portal home shows (see application.TenantContactReader).
+func (m *Module) SetTenantContact(c application.TenantContactReader) {
+	m.clientHome.SetTenantContact(c)
 }
 
 func (m *Module) SetVenueResolver(resolver application.VenueResolver) {

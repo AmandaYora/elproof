@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type PaymentType string
 
@@ -91,6 +94,60 @@ type ClientPayment struct {
 	Method          string
 	ReferenceNumber string
 	Notes           string
+	// RecordedByStaffID is the staff member who entered the payment (0 =
+	// unknown, e.g. rows from before migration 000065). A primitive reference
+	// into `staff`, never a foreign key.
+	RecordedByStaffID int64
+	// VerifiedAt/VerifiedByStaffID: a staff member confirmed the money arrived
+	// and the proof matches. A verified payment always has at least one
+	// evidence file and any change to what was paid clears the verification
+	// (ADR-0032), so "verified" only ever describes the payment as it stands.
+	VerifiedAt        *time.Time
+	VerifiedByStaffID int64
+}
+
+// ErrVerifyNeedsEvidence is returned by Verify when no proof is attached.
+var ErrVerifyNeedsEvidence = errors.New("a client payment needs at least one evidence file before it can be verified")
+
+// IsVerified reports whether the payment currently carries a verification.
+func (p ClientPayment) IsVerified() bool { return p.VerifiedAt != nil }
+
+// ClearVerification removes the verification. It reports whether there was one.
+func (p *ClientPayment) ClearVerification() bool {
+	was := p.IsVerified()
+	p.VerifiedAt, p.VerifiedByStaffID = nil, 0
+	return was
+}
+
+// Verify marks the payment verified by `actor` at `now`. It is idempotent: an
+// already verified payment is left exactly as it is (same person, same time)
+// and changed is false. A payment with no evidence file cannot be verified.
+func (p *ClientPayment) Verify(now time.Time, actor int64, evidenceCount int) (changed bool, err error) {
+	if p.IsVerified() {
+		return false, nil
+	}
+	if evidenceCount < 1 {
+		return false, ErrVerifyNeedsEvidence
+	}
+	// Whole seconds: the column is a DATETIME, which would round a fractional
+	// second, and the verify response must say exactly what a later read says.
+	at := now.Truncate(time.Second)
+	p.VerifiedAt, p.VerifiedByStaffID = &at, actor
+	return true, nil
+}
+
+// ApplyEdit overwrites the payment's fields with an edit. Changing what was
+// paid (type, amount, date, method or reference number) invalidates a
+// verification, so it is cleared and cleared is true; changing only the note
+// keeps it.
+func (p *ClientPayment) ApplyEdit(t PaymentType, amount int64, date time.Time, method, reference, notes string) (cleared bool) {
+	material := p.Type != t || p.Amount != amount || p.PaymentDate.Format("2006-01-02") != date.Format("2006-01-02") ||
+		p.Method != method || p.ReferenceNumber != reference
+	p.Type, p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes = t, amount, date, method, reference, notes
+	if material {
+		return p.ClearVerification()
+	}
+	return false
 }
 
 // VenuePayment tracks money going OUT to the project's venue -- same

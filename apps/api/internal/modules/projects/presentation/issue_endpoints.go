@@ -10,15 +10,55 @@ import (
 	"elproof/internal/shared/response"
 )
 
-func (h *Handler) listIssues(w http.ResponseWriter, r *http.Request, projectID int64) {
+func (h *Handler) listIssues(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
 	list, err := h.issues.List(r.Context(), projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
+	// Names: this project's engagements (project-scoped) -> their vendors
+	// (workspace-scoped, one lookup) and their milestones (one query). Proof
+	// files: one project-wide evidence query, filtered for a client.
+	engagements, err := h.vendors.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	vendorOf := make(map[int64]int64, len(engagements))
+	pvIDs := make([]int64, 0, len(engagements))
+	vendorIDs := make([]int64, 0, len(engagements))
+	for _, pv := range engagements {
+		vendorOf[pv.ID] = pv.VendorID
+		pvIDs = append(pvIDs, pv.ID)
+		vendorIDs = append(vendorIDs, pv.VendorID)
+	}
+	milestonesByEngagement, err := h.vendors.ListMilestonesByProjectVendors(r.Context(), pvIDs)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	milestoneName := make(map[int64]string)
+	for _, ms := range milestonesByEngagement {
+		for _, m := range ms {
+			milestoneName[m.ID] = m.Name
+		}
+	}
+	vendorNames := h.refs.VendorNames(r.Context(), claims.tenantID, vendorIDs)
+	evidences, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	ix := indexEvidence(evidences, claims.isClient, claims.can)
 	result := make([]issueResponse, 0, len(list))
 	for _, i := range list {
-		result = append(result, toIssueResponse(i))
+		resp := toIssueResponse(i)
+		resp.VendorName = vendorNames[vendorOf[i.ProjectVendorID]]
+		if i.VendorMilestoneID != nil {
+			resp.VendorMilestoneName = milestoneName[*i.VendorMilestoneID]
+		}
+		resp.Evidence = ix.refs(domain.RelatedIssue, i.ID)
+		result = append(result, resp)
 	}
 	response.OK(w, "ok", result)
 }

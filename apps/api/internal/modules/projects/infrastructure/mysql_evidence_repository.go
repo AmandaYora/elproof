@@ -163,6 +163,12 @@ func (r *MySQLEvidenceRepository) DeleteByRelated(ctx context.Context, kind doma
 	return err
 }
 
+// DeleteByID hard-deletes one evidence row of a project.
+func (r *MySQLEvidenceRepository) DeleteByID(ctx context.Context, projectID, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM evidence WHERE project_id = ? AND id = ?`, projectID, id)
+	return err
+}
+
 // relatedOwnershipQueries: per kind, one query that is true only when the
 // thing the document attaches to is a row of this very project.
 var relatedOwnershipQueries = map[domain.EvidenceRelatedKind]string{

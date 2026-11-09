@@ -86,6 +86,9 @@ type StaffNameResolver interface {
 	GetName(ctx context.Context, tenantID, staffID int64) (name string, ok bool, err error)
 	// GetPhone resolves the same member's contact number ("" when none).
 	GetPhone(ctx context.Context, tenantID, staffID int64) (phone string, ok bool, err error)
+	// StaffNames resolves several names in one query; ids that do not resolve
+	// are absent from the map.
+	StaffNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 }
 
 type MilestoneRepository interface {
@@ -150,6 +153,32 @@ func (s *ProjectService) ResolvePICName(ctx context.Context, tenantID, staffID i
 		return ""
 	}
 	return name
+}
+
+// StaffNames resolves the names of the given staff ids in one query, best
+// effort like ResolvePICName: a failure, a nil resolver or an id that no longer
+// resolves just leaves that id out of the map. Zero ids are skipped and
+// duplicates asked once.
+func (s *ProjectService) StaffNames(ctx context.Context, tenantID int64, ids []int64) map[int64]string {
+	if s.staff == nil {
+		return map[int64]string{}
+	}
+	seen := make(map[int64]bool, len(ids))
+	var want []int64
+	for _, id := range ids {
+		if id != 0 && !seen[id] {
+			seen[id] = true
+			want = append(want, id)
+		}
+	}
+	if len(want) == 0 {
+		return map[int64]string{}
+	}
+	names, err := s.staff.StaffNames(ctx, tenantID, want)
+	if err != nil || names == nil {
+		return map[int64]string{}
+	}
+	return names
 }
 
 // ResolvePICPhone is the PIC's contact number for the Client Portal's

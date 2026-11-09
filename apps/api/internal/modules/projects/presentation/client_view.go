@@ -44,28 +44,10 @@ func clientCanRead(rest []string) bool {
 }
 
 // clientCanSeeEvidence is the per-document visibility rule for a client
-// principal. Only evidence that backs something the portal already shows the
-// client is visible: proof of the client's own payments, documents attached
-// to a kendala or a vendor deliverable (both rendered in the portal), and
-// general documents a staff member explicitly opted in. Vendor/venue payment
-// proofs, booking proofs and internal Timeline attachments stay internal.
-//
-// can is the client's portal permission check (ADR-0026): a payment receipt
-// is finance data, so a role without portal.finance.view (Keluarga by
-// default) never sees it; issue and vendor photos follow their own tabs.
+// principal; the rule itself lives in domain.ClientCanSeeEvidence so the
+// Client Portal home (application layer) applies the very same one.
 func clientCanSeeEvidence(e domain.Evidence, can func(string) bool) bool {
-	switch e.RelatedKind {
-	case domain.RelatedClientPayment:
-		return can("portal.finance.view")
-	case domain.RelatedIssue:
-		return can("portal.issues.view")
-	case domain.RelatedVendorMilestone:
-		return can("portal.vendor.view")
-	case domain.RelatedGeneral:
-		return e.IsClientVisible
-	default:
-		return false
-	}
+	return domain.ClientCanSeeEvidence(e, can)
 }
 
 // redactProjectForClient removes fields that are internal to the WO: the
@@ -93,10 +75,12 @@ func redactVendorForClient(v *projectVendorResponse) {
 	}
 }
 
-// redactClientPaymentForClient drops the staff-only note on a payment the
-// client made; amount, date, method and reference stay visible to them.
+// redactClientPaymentForClient drops the staff-only note and who recorded a
+// payment the client made; amount, date, method, reference, the verification
+// (when and by whom) and the visible proof files stay visible to them.
 func redactClientPaymentForClient(p *clientPaymentResponse) {
 	p.Notes = ""
+	p.RecordedBy = nil
 }
 
 // redactEvidenceForClient hides which staff member uploaded a document.

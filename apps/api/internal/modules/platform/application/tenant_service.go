@@ -799,3 +799,17 @@ func computeNewExpiryAt(tenant *domain.Tenant, durationMonths int, now time.Time
 func ParseTenantID(raw string) (int64, error) {
 	return strconv.ParseInt(raw, 10, 64)
 }
+
+// PortalContact returns the workspace's business phone (the WhatsApp number)
+// and bank account details, as the Client Portal home needs them.
+func (s *TenantService) PortalContact(ctx context.Context, tenantID int64) (whatsapp, bankName, accountNumber, accountHolder string, err error) {
+	t, err := s.Get(ctx, tenantID)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	d, err := s.GetBusinessDetails(ctx, tenantID)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return t.Phone, d.BankName, d.BankAccountNumber, d.BankAccountHolder, nil
+}

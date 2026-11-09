@@ -40,6 +40,8 @@ type EvidenceRepository interface {
 	// DeleteByRelated hard-deletes every evidence row for one related_kind+
 	// related_id pair — backs DeleteForRelated below.
 	DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error
+	// DeleteByID hard-deletes one evidence row of a project.
+	DeleteByID(ctx context.Context, projectID, id int64) error
 	// RelatedBelongsToProject: the item a document attaches to must be a row of the same project.
 	RelatedBelongsToProject(ctx context.Context, projectID int64, kind domain.EvidenceRelatedKind, relatedID int64) (bool, error)
 }
@@ -64,11 +66,26 @@ type Presigner interface {
 // EvidenceLinkTTL is how long a direct link works. The browser uses it at once.
 const EvidenceLinkTTL = 2 * time.Minute
 
+// EvidenceRemovalObserver is told after a single evidence file was removed, so
+// a rule that depends on "this item still has proof" can react. Registered by
+// ClientPaymentService (a verified payment must keep at least one file).
+type EvidenceRemovalObserver interface {
+	AfterEvidenceRemoved(ctx context.Context, e domain.Evidence, actorStaffID int64)
+}
+
 type EvidenceService struct {
 	repo     EvidenceRepository
 	storage  ObjectStorage
 	buildKey func(tenantID, projectID, category, filename string) string
 	activity *ActivityService
+	removed  []EvidenceRemovalObserver
+}
+
+// OnRemoved registers an observer of single-file removals (wiring time only).
+func (s *EvidenceService) OnRemoved(o EvidenceRemovalObserver) {
+	if s != nil {
+		s.removed = append(s.removed, o)
+	}
 }
 
 func NewEvidenceService(repo EvidenceRepository, storage ObjectStorage, buildKey func(string, string, string, string) string, activity *ActivityService) *EvidenceService {
@@ -77,6 +94,35 @@ func NewEvidenceService(repo EvidenceRepository, storage ObjectStorage, buildKey
 
 func (s *EvidenceService) List(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
 	return s.repo.ListByProject(ctx, projectID)
+}
+
+// ListForRelated lists the files attached to one item (a client payment, a
+// milestone, ...). The caller has already confirmed the item is in its project.
+func (s *EvidenceService) ListForRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) ([]domain.Evidence, error) {
+	return s.repo.ListByRelated(ctx, kind, relatedID)
+}
+
+// Delete removes one evidence file of a project: the row first, then (best
+// effort) the stored object, then observers run, so a rule such as "a verified
+// payment keeps at least one proof" is applied on every removal path. No HTTP
+// route reaches this yet (evidence has no standalone delete today); it is here
+// so the rule cannot be bypassed when one is added.
+func (s *EvidenceService) Delete(ctx context.Context, projectID, id, actorStaffID int64) error {
+	e, err := s.repo.FindByID(ctx, projectID, id)
+	if err != nil {
+		return err
+	}
+	if e == nil {
+		return apperror.NotFound("Evidence tidak ditemukan")
+	}
+	if err := s.repo.DeleteByID(ctx, projectID, id); err != nil {
+		return err
+	}
+	s.DeleteStorageObjects(ctx, []domain.Evidence{*e})
+	for _, o := range s.removed {
+		o.AfterEvidenceRemoved(ctx, *e, actorStaffID)
+	}
+	return nil
 }
 
 // ListClientDocuments backs GET /projects/{id}/documents — Client Portal's
@@ -88,12 +134,11 @@ func (s *EvidenceService) ListClientDocuments(ctx context.Context, projectID int
 	return s.repo.ListClientVisibleGeneral(ctx, projectID)
 }
 
-// ToggleClientVisible flips a `general`-kind document's client visibility
-// without needing to re-upload the file — rejected for any other
-// RelatedKind, since visibility only ever means anything for a document
-// with no other, already-visible-to-the-client context to inherit from
-// (every other kind stays unconditionally client-visible, unaffected by
-// this field entirely).
+// ToggleClientVisible flips a document's client visibility without needing to
+// re-upload the file. It applies to `general` documents and to timeline
+// (`projectMilestone`) attachments, the two kinds staff decide on one by one
+// (ADR-0032); it is rejected for any other RelatedKind, whose visibility
+// follows the thing it hangs off (the field means nothing there).
 func (s *EvidenceService) ToggleClientVisible(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
 	e, err := s.repo.FindByID(ctx, projectID, id)
 	if err != nil {
@@ -102,9 +147,9 @@ func (s *EvidenceService) ToggleClientVisible(ctx context.Context, projectID, id
 	if e == nil {
 		return nil, apperror.NotFound("Evidence tidak ditemukan")
 	}
-	if e.RelatedKind != domain.RelatedGeneral {
-		return nil, apperror.Validation("Visibilitas hanya berlaku untuk dokumen umum", map[string][]string{
-			"relatedKind": {"Evidence ini bukan dokumen umum, visibilitasnya tidak dapat diubah"},
+	if !e.RelatedKind.SupportsClientVisibility() {
+		return nil, apperror.Validation("Visibilitas hanya berlaku untuk dokumen umum dan lampiran timeline", map[string][]string{
+			"relatedKind": {"Visibilitas lampiran ini mengikuti data yang dilampirinya dan tidak dapat diubah"},
 		})
 	}
 	newVisible := !e.IsClientVisible
@@ -165,8 +210,9 @@ type UploadEvidenceInput struct {
 	Description  string
 	RelatedKind  domain.EvidenceRelatedKind
 	RelatedID    int64
-	// IsClientVisible is only ever honored when RelatedKind is
-	// RelatedGeneral — see Upload's own normalization below.
+	// IsClientVisible is only ever honored for the kinds that carry the flag
+	// (general documents, timeline attachments) — see Upload's own
+	// normalization below.
 	IsClientVisible bool
 }
 
@@ -214,10 +260,10 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 	}
 
 	// Server-side, not just trusted from the request body: IsClientVisible
-	// can only ever be true for a general-kind document — a client-visible
-	// flag on any other kind would be meaningless (those stay unconditionally
-	// visible regardless) and misleading to display back.
-	isClientVisible := input.IsClientVisible && input.RelatedKind == domain.RelatedGeneral
+	// can only ever be true for a kind that carries the flag (a general
+	// document or a timeline attachment) — on any other kind it would be
+	// meaningless and misleading to display back.
+	isClientVisible := input.IsClientVisible && input.RelatedKind.SupportsClientVisibility()
 
 	e := &domain.Evidence{
 		ProjectID: projectID, Name: input.Name, Type: input.Type, StoragePath: key, FileName: input.FileName,
@@ -233,22 +279,27 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 	return e, nil
 }
 
-// Download returns the evidence metadata plus a stream of exactly the bytes
-// that were stored (already compressed at upload time — never reprocessed on
-// read, see ADR-0010).
-func (s *EvidenceService) Download(ctx context.Context, projectID, id int64) (*domain.Evidence, io.ReadCloser, error) {
+// Find returns one evidence row of the project (404 when it is not this
+// project's). It touches no storage, so a handler can judge visibility first.
+func (s *EvidenceService) Find(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
 	e, err := s.repo.FindByID(ctx, projectID, id)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if e == nil {
-		return nil, nil, apperror.NotFound("Evidence tidak ditemukan")
+		return nil, apperror.NotFound("Evidence tidak ditemukan")
 	}
+	return e, nil
+}
+
+// Open streams exactly the bytes that were stored (already compressed at upload
+// time — never reprocessed on read, see ADR-0010).
+func (s *EvidenceService) Open(ctx context.Context, e *domain.Evidence) (io.ReadCloser, error) {
 	reader, err := s.storage.Open(ctx, e.StoragePath)
 	if err != nil {
-		return nil, nil, apperror.Internal("Gagal mengambil file dari object storage")
+		return nil, apperror.Internal("Gagal mengambil file dari object storage")
 	}
-	return e, reader, nil
+	return reader, nil
 }
 
 // ErrLinkUnavailable means direct links are switched off; stream instead.

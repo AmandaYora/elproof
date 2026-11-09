@@ -46,19 +46,30 @@ func (s *PaymentTermService) List(ctx context.Context, tenantID, projectID int64
 }
 
 func (s *PaymentTermService) progress(ctx context.Context, projectID int64, today time.Time) ([]domain.TermProgress, error) {
-	terms, err := s.repo.ListByProject(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
 	payments, err := s.clientPayments.ListByProject(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
+	return s.progressWith(ctx, projectID, payments, today)
+}
+
+// progressWith is progress for a caller that already loaded the project's
+// client payments (one query instead of two).
+func (s *PaymentTermService) progressWith(ctx context.Context, projectID int64, payments []domain.ClientPayment, today time.Time) ([]domain.TermProgress, error) {
+	terms, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return domain.AllocateTerms(terms, appliedFromPayments(payments), today), nil
+}
+
+// appliedFromPayments is how much of the contract the payments cover.
+func appliedFromPayments(payments []domain.ClientPayment) int64 {
 	lines := make([]domain.PaymentLine, 0, len(payments))
 	for _, p := range payments {
 		lines = append(lines, domain.PaymentLine{Type: p.Type, Amount: p.Amount})
 	}
-	return domain.AllocateTerms(terms, domain.AppliedToContract(lines), today), nil
+	return domain.AppliedToContract(lines)
 }
 
 // Replace saves the whole schedule. The installments together may not exceed

@@ -19,6 +19,16 @@ func (s staffByTenant) GetPhone(context.Context, int64, int64) (string, bool, er
 	return "", false, nil
 }
 
+func (s staffByTenant) StaffNames(_ context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	for _, id := range ids {
+		if name, ok := s[tenantID][id]; ok {
+			out[id] = name
+		}
+	}
+	return out, nil
+}
+
 type vendorsByTenant struct{ vendors, categories map[int64]map[int64]bool }
 
 func (v vendorsByTenant) VendorExists(_ context.Context, t, id int64) (bool, error) {
@@ -26,6 +36,13 @@ func (v vendorsByTenant) VendorExists(_ context.Context, t, id int64) (bool, err
 }
 func (v vendorsByTenant) CategoryExists(_ context.Context, t, id int64) (bool, error) {
 	return v.categories[t][id], nil
+}
+
+func (v vendorsByTenant) VendorNames(context.Context, int64, []int64) (map[int64]string, error) {
+	return map[int64]string{}, nil
+}
+func (v vendorsByTenant) CategoryNames(context.Context, int64, []int64) (map[int64]string, error) {
+	return map[int64]string{}, nil
 }
 
 func TestReferencesOnlyAcceptTheCallersOwnWorkspace(t *testing.T) {

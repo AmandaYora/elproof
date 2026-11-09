@@ -19,6 +19,7 @@ func TestStaffWritePermission(t *testing.T) {
 		{http.MethodPost, []string{"toggle-archive"}, "project.archive", ""},
 		{http.MethodPost, []string{"duplicate"}, "project.duplicate", ""},
 		{http.MethodPost, []string{"payments"}, "finance.record", ""},
+		{http.MethodPost, []string{"client-payments", "4", "verify"}, "finance.record", ""},
 		{http.MethodDelete, []string{"client-payments", "4"}, "finance.payment.delete", ""},
 		{http.MethodPatch, []string{"venue-payments", "4"}, "finance.record", ""},
 		{http.MethodPost, []string{"evidence"}, "project.edit", "finance.record"},
@@ -53,6 +54,12 @@ func TestClientReadPermission(t *testing.T) {
 		}
 		if got := clientReadPermission(r); got != want {
 			t.Errorf("%q: got %q, want %q", rest, got, want)
+		}
+	}
+	// A single file is judged per file (clientCanSeeEvidence), not by the documents tab's permission.
+	for _, tail := range []string{"file", "link"} {
+		if got := clientReadPermission([]string{"evidence", "9", tail}); got != "" {
+			t.Errorf("evidence/9/%s: got %q, want no up-front permission", tail, got)
 		}
 	}
 }

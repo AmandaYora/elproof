@@ -106,19 +106,25 @@ func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, proje
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	e, reader, err := h.evidence.Download(r.Context(), projectID, evidenceID)
+	e, err := h.evidence.Find(r.Context(), projectID, evidenceID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	// Same rule as listEvidence: a client who learns an internal document's
+	// id still cannot fetch its file. 404 (not 403) so the response doesn't
+	// confirm the document exists. Judged before storage is touched, so the
+	// answer never depends on the file being there.
+	if isClient && !clientCanSeeEvidence(*e, middleware.GrantsFrom(r.Context()).Can) {
+		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
+		return
+	}
+	reader, err := h.evidence.Open(r.Context(), e)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
 	defer reader.Close()
-	// Same rule as listEvidence: a client who learns an internal document's
-	// id still cannot fetch its file. 404 (not 403) so the response doesn't
-	// confirm the document exists.
-	if isClient && !clientCanSeeEvidence(*e, middleware.GrantsFrom(r.Context()).Can) {
-		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
-		return
-	}
 
 	w.Header().Set("Content-Disposition", `inline; filename="`+e.FileName+`"`)
 	w.WriteHeader(http.StatusOK)

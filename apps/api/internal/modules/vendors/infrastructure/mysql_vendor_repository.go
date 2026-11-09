@@ -253,3 +253,9 @@ func (r *MySQLVendorRepository) Delete(ctx context.Context, tenantID, id int64) 
 	_, err := r.db.ExecContext(ctx, `DELETE FROM vendors WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }
+
+// NamesByIDs resolves vendor names for the given ids, tenant-scoped, in one
+// query. Ids that are not this tenant's vendors are absent.
+func (r *MySQLVendorRepository) NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return namesByIDs(ctx, r.db, "vendors", tenantID, ids)
+}

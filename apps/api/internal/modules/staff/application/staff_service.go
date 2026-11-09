@@ -26,6 +26,8 @@ type StaffRepository interface {
 	Delete(ctx context.Context, tenantID, id int64) error
 	CountActiveNonOwner(ctx context.Context, tenantID int64) (int, error)
 	FindOwnerID(ctx context.Context, tenantID int64) (*int64, error)
+	// NamesByIDs resolves several names in one query (absent = no such staff).
+	NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 }
 
 // ProjectReferenceLookup is the narrow shape StaffService needs from
@@ -182,6 +184,12 @@ func (s *StaffService) Get(ctx context.Context, tenantID, id int64) (*domain.Sta
 		return nil, apperror.NotFound("Pengguna tidak ditemukan")
 	}
 	return member, nil
+}
+
+// Names resolves the names of several staff members of one workspace at once;
+// ids that do not resolve (hard-deleted, or another workspace's) are absent.
+func (s *StaffService) Names(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return s.repo.NamesByIDs(ctx, tenantID, ids)
 }
 
 type StaffInput struct {

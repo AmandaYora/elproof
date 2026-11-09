@@ -39,6 +39,8 @@ type VendorRepository interface {
 	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
 	ListFiltered(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Vendor, error)
+	// NamesByIDs resolves several vendor names in one query (absent = not this tenant's).
+	NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 	Create(ctx context.Context, vendor *domain.Vendor) error
 	CreateBatch(ctx context.Context, vendors []domain.Vendor) error
 	Update(ctx context.Context, vendor *domain.Vendor) error
@@ -434,4 +436,9 @@ func (s *VendorService) ImportVendors(ctx context.Context, tenantID int64, rows 
 	}
 
 	return result, nil
+}
+
+// Names resolves several vendors' names at once, scoped to the workspace.
+func (s *VendorService) Names(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return s.repo.NamesByIDs(ctx, tenantID, ids)
 }

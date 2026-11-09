@@ -30,7 +30,8 @@ func (f *fakeClientPayments) ListByProject(context.Context, int64) ([]domain.Cli
 func (f *fakeClientPayments) FindByID(_ context.Context, _, id int64) (*domain.ClientPayment, error) {
 	for i := range f.rows {
 		if f.rows[i].ID == id {
-			return &f.rows[i], nil
+			p := f.rows[i] // a copy, like a database read
+			return &p, nil
 		}
 	}
 	return nil, nil
@@ -39,10 +40,32 @@ func (f *fakeClientPayments) Create(context.Context, *domain.ClientPayment) erro
 	f.created++
 	return nil
 }
-func (f *fakeClientPayments) Update(context.Context, int64, int64, domain.ClientPayment) error {
+func (f *fakeClientPayments) Update(_ context.Context, _, id int64, p domain.ClientPayment) error {
+	for i := range f.rows {
+		if f.rows[i].ID == id {
+			f.rows[i] = p
+		}
+	}
 	return nil
 }
 func (f *fakeClientPayments) Delete(context.Context, int64, int64) error { return nil }
+func (f *fakeClientPayments) SetVerification(_ context.Context, _, id int64, at time.Time, by int64) (bool, error) {
+	for i := range f.rows {
+		if f.rows[i].ID == id && f.rows[i].VerifiedAt == nil {
+			f.rows[i].VerifiedAt, f.rows[i].VerifiedByStaffID = &at, by
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *fakeClientPayments) ClearVerification(_ context.Context, _, id int64) error {
+	for i := range f.rows {
+		if f.rows[i].ID == id {
+			f.rows[i].VerifiedAt, f.rows[i].VerifiedByStaffID = nil, 0
+		}
+	}
+	return nil
+}
 
 func codeOf(err error) string {
 	if ae, ok := apperror.As(err); ok {

@@ -70,6 +70,10 @@ func (r staffNameResolver) GetPhone(ctx context.Context, tenantID, staffID int64
 	return summary.Phone, true, nil
 }
 
+func (r staffNameResolver) StaffNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return r.contracts.StaffNames(ctx, tenantID, ids)
+}
+
 // staffRoles / clientRoles adapt the access module's contract to the narrow
 // role ports staff and clients declare (they never import access).
 type staffRoles struct{ access accesscontracts.Contracts }
@@ -349,6 +353,9 @@ func serve(cfg config.Config) {
 	// built above, before vendorsModule exists.
 	projectsModule.SetVenueResolver(vendorsModule.Contracts())
 	projectsModule.SetVendorDirectory(vendorsModule.Contracts())
+	// The Client Portal home shows the WO's WhatsApp number and bank account,
+	// which live in platform's business profile.
+	projectsModule.SetTenantContact(platformModule)
 	clientsModule := clients.NewModule(db, projectsModule.Contracts(), identityModule.Contracts())
 	// Two-phase wiring: projects needs clients' contract (Fase 6 client-portal
 	// scoping) but clients.NewModule already needs projects.Contracts() to

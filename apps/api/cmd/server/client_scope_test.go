@@ -14,6 +14,7 @@ func TestClientPortalAllowed(t *testing.T) {
 		"/api/v1/tenants/me/branding",
 		"/api/v1/tenants/me/logo",
 		"/api/v1/projects/me",
+		"/api/v1/projects/me/home",
 		"/api/v1/projects/12",
 		"/api/v1/projects/12/milestones",
 		"/api/v1/projects/12/vendors",
@@ -26,8 +27,6 @@ func TestClientPortalAllowed(t *testing.T) {
 		"/api/v1/projects/12/evidence/7/link",
 		"/api/v1/projects/12/documents",
 		"/api/v1/projects/12/venue",
-		"/api/v1/vendors/summary",
-		"/api/v1/vendor-categories",
 		"/api/v1/venues/3/attachment",
 	}
 	for _, p := range allowed {
@@ -37,6 +36,16 @@ func TestClientPortalAllowed(t *testing.T) {
 	}
 
 	denied := []string{
+		// E6: these list every vendor and category name of the workspace; the
+		// portal reads names inside /projects/{id}/vendors and /issues instead.
+		"/api/v1/vendors/summary",
+		"/api/v1/vendor-categories",
+		"/api/v1/vendor-categories?all=true",
+		// Only the exact self-service paths exist under projects/me.
+		"/api/v1/projects/me/other",
+		"/api/v1/projects/me/home/extra",
+		// Verifying a payment is a staff write; GET on it is not a route either.
+		"/api/v1/projects/12/client-payments/3/verify",
 		// Internal finance and audit data of the client's own project.
 		"/api/v1/projects/12/payments",
 		"/api/v1/projects/12/venue-payments",
@@ -74,8 +83,10 @@ func TestClientPortalAllowed(t *testing.T) {
 	}
 
 	for _, m := range []string{http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete} {
-		if clientPortalAllowed(m, "/api/v1/projects/12/issues") {
-			t.Errorf("%s must be denied for a client", m)
+		for _, p := range []string{"/api/v1/projects/12/issues", "/api/v1/projects/12/client-payments/3/verify", "/api/v1/projects/me/home"} {
+			if clientPortalAllowed(m, p) {
+				t.Errorf("%s %s must be denied for a client", m, p)
+			}
 		}
 	}
 }
