@@ -49,6 +49,25 @@ func (e *AppError) Details() any {
 	return map[string]string{"code": e.Code}
 }
 
+// Payload is the `errors` body for any error: for a validation error the
+// per-field messages (plus a `code` string when the failure has a stable
+// machine-readable reason, so a form can show the fields and still react to
+// the code); for other kinds `{code}` or nothing.
+func (e *AppError) Payload() any {
+	if e.Kind != KindValidation {
+		return e.Details()
+	}
+	if e.Code == "" {
+		return e.Fields
+	}
+	out := make(map[string]any, len(e.Fields)+1)
+	for field, messages := range e.Fields {
+		out[field] = messages
+	}
+	out["code"] = e.Code
+	return out
+}
+
 func (e *AppError) Error() string {
 	return e.Message
 }

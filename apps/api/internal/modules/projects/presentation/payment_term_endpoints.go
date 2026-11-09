@@ -1,8 +1,11 @@
 package presentation
 
 import (
+	"elproof/internal/shared/apperror"
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -55,17 +58,31 @@ func (h *Handler) replacePaymentTerms(w http.ResponseWriter, r *http.Request, cl
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	// A date that is not YYYY-MM-DD is reported on its own row; the service
+	// reports every other problem, and the two are merged so nothing is hidden.
 	inputs := make([]application.PaymentTermInput, 0, len(body.Terms))
-	for _, t := range body.Terms {
+	badDates := map[string][]string{}
+	for i, t := range body.Terms {
 		due, err := parseDate(t.DueDate)
-		if err != nil {
-			response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"dueDate": {"Gunakan format YYYY-MM-DD"}})
-			return
+		if err != nil && t.DueDate != "" {
+			badDates["terms["+strconv.Itoa(i)+"].dueDate"] = []string{"Gunakan format YYYY-MM-DD"}
+			due = time.Time{}
 		}
 		inputs = append(inputs, application.PaymentTermInput{Label: t.Label, Amount: t.Amount, DueDate: due})
 	}
 	list, err := h.terms.Replace(r.Context(), claims.tenantID, projectID, claims.staffID, inputs, nowWIB())
 	if err != nil {
+		if appErr, ok := apperror.As(err); ok && appErr.Kind == apperror.KindValidation && len(badDates) > 0 {
+			merged := *appErr
+			merged.Fields = map[string][]string{}
+			for k, v := range appErr.Fields {
+				merged.Fields[k] = v
+			}
+			for k, v := range badDates {
+				merged.Fields[k] = v // the format message is more precise than "isi tanggal"
+			}
+			err = &merged
+		}
 		writeAppError(w, err)
 		return
 	}

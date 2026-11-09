@@ -11,9 +11,7 @@ import (
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform/application"
 	"elproof/internal/modules/platform/domain"
-	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/httpx"
-	"elproof/internal/shared/logger"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/response"
@@ -586,17 +584,7 @@ func requirePlatformAdmin(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func writeAppError(w http.ResponseWriter, err error) {
-	status := apperror.HTTPStatus(err)
-	if appErr, ok := apperror.As(err); ok {
-		if appErr.Kind == apperror.KindValidation {
-			response.Error(w, status, appErr.Message, appErr.Fields)
-			return
-		}
-		response.Error(w, status, appErr.Message, appErr.Details())
-		return
-	}
-	logger.Error("unhandled error: %v", err)
-	response.Error(w, status, "Terjadi kesalahan pada server", nil)
+	response.FromError(w, err)
 }
 
 // tenantFilterFrom reads ?search=, ?status=, ?planId= and ?source= (the same

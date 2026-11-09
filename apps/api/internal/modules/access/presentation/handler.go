@@ -10,7 +10,6 @@ import (
 
 	"elproof/internal/modules/access/application"
 	"elproof/internal/modules/access/domain"
-	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
@@ -59,16 +58,7 @@ type grantsResponse struct {
 }
 
 func writeAppError(w http.ResponseWriter, err error) {
-	status := apperror.HTTPStatus(err)
-	if appErr, ok := apperror.As(err); ok {
-		if appErr.Kind == apperror.KindValidation {
-			response.Error(w, status, appErr.Message, appErr.Fields)
-			return
-		}
-		response.Error(w, status, appErr.Message, appErr.Details())
-		return
-	}
-	response.Error(w, status, "Terjadi kesalahan pada server", nil)
+	response.FromError(w, err)
 }
 
 // staffTenant returns the caller's workspace when the caller is staff.

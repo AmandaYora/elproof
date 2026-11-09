@@ -73,7 +73,7 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		return err
 	}
 	if existing != nil {
-		return apperror.Conflict("Username sudah digunakan")
+		return apperror.Validation("Username sudah digunakan", map[string][]string{"username": {"Username ini sudah dipakai, pilih yang lain"}})
 	}
 
 	// Login can resolve either identifier now (see AuthService.Login), so an
@@ -87,7 +87,7 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 			return err
 		}
 		if len(existingByEmail) > 0 {
-			return apperror.Conflict("Email sudah digunakan akun lain")
+			return apperror.Validation("Email sudah digunakan akun lain", map[string][]string{"email": {"Email ini sudah dipakai akun lain"}})
 		}
 	}
 
@@ -276,7 +276,7 @@ func (s *ManagementService) EmailTaken(ctx context.Context, email string) (bool,
 func (s *ManagementService) UpdateEmail(ctx context.Context, principalType domain.PrincipalType, principalID string, email string) error {
 	err := s.credentials.UpdateEmail(ctx, principalType, principalID, email)
 	if errors.Is(err, domain.ErrEmailTaken) {
-		return apperror.Conflict("Email sudah digunakan akun lain")
+		return apperror.Validation("Email sudah digunakan akun lain", map[string][]string{"email": {"Email ini sudah dipakai akun lain"}})
 	}
 	return err
 }
@@ -296,7 +296,7 @@ func (s *ManagementService) ResetSignIn(ctx context.Context, principalType domai
 	if newUsername != "" && newUsername != cred.Username {
 		if err := s.credentials.UpdateUsername(ctx, cred.ID, newUsername); err != nil {
 			if errors.Is(err, domain.ErrUsernameTaken) {
-				return apperror.Conflict("Nama pengguna sudah dipakai")
+				return apperror.Validation("Nama pengguna sudah dipakai", map[string][]string{"username": {"Nama pengguna ini sudah dipakai, pilih yang lain"}})
 			}
 			return err
 		}

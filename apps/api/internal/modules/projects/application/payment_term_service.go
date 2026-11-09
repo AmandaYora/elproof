@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,20 +74,9 @@ func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, a
 			"terms": {"Maksimal 20 termin per project"},
 		})
 	}
-	var total int64
-	terms := make([]domain.PaymentTerm, 0, len(inputs))
-	for _, in := range inputs {
-		label := strings.TrimSpace(in.Label)
-		switch {
-		case label == "" || len([]rune(label)) > 100:
-			return nil, apperror.Validation("Nama termin wajib diisi (maksimal 100 karakter)", map[string][]string{"label": {"Isi nama termin"}})
-		case in.Amount <= 0 || in.Amount > domain.MaxMoney:
-			return nil, apperror.Validation("Nominal termin harus lebih dari 0 dan wajar", map[string][]string{"amount": {"Nominal harus lebih dari 0 dan wajar"}})
-		case in.DueDate.IsZero():
-			return nil, apperror.Validation("Tanggal jatuh tempo wajib diisi", map[string][]string{"dueDate": {"Isi tanggal jatuh tempo"}})
-		}
-		total += in.Amount
-		terms = append(terms, domain.PaymentTerm{ProjectID: projectID, Label: label, Amount: in.Amount, DueDate: in.DueDate})
+	terms, total, err := buildTerms(projectID, inputs)
+	if err != nil {
+		return nil, err
 	}
 	if p.ContractValue > 0 && total > p.ContractValue {
 		msg := "Jumlah termin " + formatRupiah(total) + " melebihi nilai kontrak " + formatRupiah(p.ContractValue) + ". Kurangi nominal salah satu termin."
@@ -98,4 +88,43 @@ func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, a
 	s.activity.Record(ctx, &projectID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(projectID), p.Name,
 		"Jadwal pembayaran client diperbarui")
 	return s.progress(ctx, projectID, today)
+}
+
+// buildTerms validates every row and reports every problem at once, keyed by
+// row ("terms[2].amount"), so the form can mark each one instead of stopping at
+// the first.
+func buildTerms(projectID int64, inputs []PaymentTermInput) ([]domain.PaymentTerm, int64, error) {
+	var total int64
+	fields := map[string][]string{}
+	var first string
+	problem := func(key, msg string) {
+		fields[key] = append(fields[key], msg)
+		if first == "" {
+			first = msg
+		}
+	}
+	terms := make([]domain.PaymentTerm, 0, len(inputs))
+	for i, in := range inputs {
+		row := "terms[" + strconv.Itoa(i) + "]"
+		label := strings.TrimSpace(in.Label)
+		if label == "" || len([]rune(label)) > 100 {
+			problem(row+".label", "Isi nama termin (maksimal 100 karakter)")
+		}
+		if in.Amount <= 0 || in.Amount > domain.MaxMoney {
+			problem(row+".amount", "Nominal harus lebih dari 0 dan wajar")
+		}
+		if in.DueDate.IsZero() {
+			problem(row+".dueDate", "Isi tanggal jatuh tempo")
+		}
+		total += in.Amount
+		terms = append(terms, domain.PaymentTerm{ProjectID: projectID, Label: label, Amount: in.Amount, DueDate: in.DueDate})
+	}
+	if len(fields) > 0 {
+		msg := first
+		if n := len(fields); n > 1 {
+			msg += " Ada " + strconv.Itoa(n-1) + " isian lain yang perlu diperbaiki."
+		}
+		return nil, 0, apperror.Validation(msg, fields)
+	}
+	return terms, total, nil
 }

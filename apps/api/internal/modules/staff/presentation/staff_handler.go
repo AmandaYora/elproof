@@ -8,7 +8,6 @@ import (
 
 	"elproof/internal/modules/staff/application"
 	"elproof/internal/modules/staff/domain"
-	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/httpx"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
@@ -317,14 +316,5 @@ func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID,
 }
 
 func writeAppError(w http.ResponseWriter, err error) {
-	status := apperror.HTTPStatus(err)
-	if appErr, ok := apperror.As(err); ok {
-		if appErr.Kind == apperror.KindValidation {
-			response.Error(w, status, appErr.Message, appErr.Fields)
-			return
-		}
-		response.Error(w, status, appErr.Message, appErr.Details())
-		return
-	}
-	response.Error(w, status, "Terjadi kesalahan pada server", nil)
+	response.FromError(w, err)
 }

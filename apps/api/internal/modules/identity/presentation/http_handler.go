@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"elproof/internal/modules/identity/application"
-	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
@@ -163,16 +162,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeAppError(w http.ResponseWriter, err error) {
-	status := apperror.HTTPStatus(err)
-	if appErr, ok := apperror.As(err); ok {
-		if appErr.Kind == apperror.KindValidation {
-			response.Error(w, status, appErr.Message, appErr.Fields)
-			return
-		}
-		response.Error(w, status, appErr.Message, appErr.Details())
-		return
-	}
-	response.Error(w, status, "Terjadi kesalahan pada server", nil)
+	response.FromError(w, err)
 }
 
 type mfaVerifyRequest struct {
