@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (9 Nov 2026): **Tahap 0 dan 1 dikerjakan dan dikomit; Tahap 2 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (9 Nov 2026): **Tahap 0–2 dikerjakan dan dikomit; Tahap 3 dikerjakan, belum dikomit** (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -214,6 +214,17 @@ atas), Vendor, Kendala, tab bawah ≥ 44 px, judul Fraunces (D8), banner luring,
 **Selesai bila:** Beranda Portal memuat dengan ≤ 2 panggilan API; LCP ≤ 2,5 dtk di Android kelas menengah; tes isolasi
 membuktikan klien tidak bisa membaca nama vendor di luar proyeknya; `ProofStamp` tidak pernah muncul tanpa bukti (tes);
 **uji kegunaan putaran 2** dengan 5 klien pada tugas Portal.
+
+*Tahap 3 (9 Nov 2026).* API: E4 (migrasi 000065, verifikasi pembayaran, `evidence[]` dan nama pada respons, bukti tahapan
+terlihat klien bila ditandai), E5 (`GET /projects/me/home`), E6 (nama vendor/kategori/tahapan di respons; `vendors/summary`
+dan `vendor-categories` ditutup untuk klien) selesai dengan tes unit dan 256 skenario isolasi hijau; ADR-0032. UI: Beranda
+dari satu panggilan, `ProofStamp` (sekali per peramban untuk animasinya), Jadwal dua rel (berikutnya, selesai terbaru di atas),
+Pembayaran/Vendor/Kendala dari satu panggilan masing-masing, banner luring, petunjuk Layar Utama, tombol "Verifikasi" di buku
+pembayaran WO. Terukur (`reports/BASELINE.md` vs `before-t0/`): panggilan API saat Beranda Portal dibuka 10 → 3 (access/me,
+branding, home), JS gzip 148 → 172 KB, LCP 2292 → 2420 ms (target ≤ 2500 terpenuhi, margin tipis). Sonner dan penampil bukti
+kini dimuat saat dibutuhkan; tanpa itu JS gzip Beranda 213 KB dan LCP 2672 ms. **Belum:** target "≤ 2 panggilan" tercapai untuk data
+Beranda (1 panggilan) tetapi 3 bila kerangka dihitung; uji kegunaan putaran 2 (manusia); LCP di Android nyata; iOS Safari.
+**Perlu diketahui:** potret kini mengandaikan MinIO lokal (lihat `e2e/README.md`).
 
 ### Tahap 4 — Formulir dan aksi atomik
 API: **E3** (unggah bertanda tangan, pembayaran + bukti satu transaksi, `Idempotency-Key`, `ledgerSummary`), **E7**

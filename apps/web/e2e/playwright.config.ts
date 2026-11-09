@@ -38,9 +38,9 @@ export default defineConfig({
       use: { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, userAgent: ANDROID_UA },
     },
     {
-      // Overlay behavior (focus, Escape, busy, menus): functional, no screenshots, desktop keyboard.
+      // Behavior (overlays, proof stamps, call budgets): functional, no screenshots.
       name: "behavior",
-      testMatch: /overlays\.spec\.ts$/,
+      testMatch: /(overlays|proof)\.spec\.ts$/,
       use: { viewport: { width: 1280, height: 800 } },
     },
     {

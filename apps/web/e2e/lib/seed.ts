@@ -127,9 +127,9 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
       { label: "Pelunasan", amount: 65_000_000, dueDate: "2027-02-14" },
     ],
   }));
-  must("client payment", await call(s.api, t, "POST", `/api/v1/projects/${p1}/client-payments`, {
+  const dp = must("client payment", await call(s.api, t, "POST", `/api/v1/projects/${p1}/client-payments`, {
     type: "DP", amount: 45_000_000, paymentDate: day(-38), method: "Transfer", referenceNumber: "TRF-0001", notes: "Transfer BCA",
-  }));
+  })).json.data.id as number;
   must("vendor payment", await call(s.api, t, "POST", `/api/v1/projects/${p1}/payments`, {
     projectVendorId: engagement, type: "DP", amount: 15_000_000, paymentDate: day(-35), method: "Transfer", referenceNumber: "VND-0001", notes: "",
   }));
@@ -138,6 +138,16 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
     foundDate: day(-3), resolutionPlan: "Telepon katering dan minta konfirmasi tertulis.", picStaffId: owner.staffId, targetResolutionDate: day(4),
   }));
   if (s.s3) {
+    // Proof (E4): the DP has its transfer receipt and the WO has verified it; the first finished step has a shared report.
+    must("dp proof", await call(s.api, t, "POST", `/api/v1/projects/${p1}/evidence`, {
+      name: "Bukti transfer DP", type: "Transfer Proof", fileName: "bukti-dp.pdf", mimeType: "application/pdf", base64Data: pdf, documentDate: day(-38), description: "",
+      relatedKind: "clientPayment", relatedId: dp, isClientVisible: false,
+    }));
+    must("verify dp", await call(s.api, t, "POST", `/api/v1/projects/${p1}/client-payments/${dp}/verify`));
+    must("step proof", await call(s.api, t, "POST", `/api/v1/projects/${p1}/evidence`, {
+      name: "Laporan survei lokasi", type: "Document", fileName: "survei-lokasi.pdf", mimeType: "application/pdf", base64Data: pdf, documentDate: day(-20), description: "",
+      relatedKind: "projectMilestone", relatedId: ms[0].id, isClientVisible: true,
+    }));
     must("document", await call(s.api, t, "POST", `/api/v1/projects/${p1}/evidence`, {
       name: "Kontrak katering", type: "Contract", fileName: "kontrak.pdf", mimeType: "application/pdf", base64Data: pdf, documentDate: day(-40), description: "",
       relatedKind: "general", relatedId: 0, isClientVisible: true,

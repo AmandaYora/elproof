@@ -21,6 +21,10 @@ export const config = {
   mysqlBin: env.E2E_MYSQL_BIN ?? "mysql",
   dbName: env.E2E_DB_NAME ?? "elproof_e2e_pw",
   reuse: env.E2E_REUSE === "1",
+  /** A throwaway MinIO is started when `minio` is on PATH (E2E_MINIO=0 turns that off); otherwise no files can be stored. */
+  minioPort: Number(env.E2E_MINIO_PORT ?? 19000),
+  minioBin: env.E2E_MINIO_BIN ?? "minio",
+  minio: env.E2E_MINIO !== "0",
   s3Endpoint: env.E2E_S3_ENDPOINT ?? "",
   s3Access: env.E2E_S3_ACCESS_KEY ?? "x",
   s3Secret: env.E2E_S3_SECRET_KEY ?? "x",
@@ -50,6 +54,8 @@ export interface Session {
 export interface State {
   apiURL: string;
   webURL: string;
+  /** Whether proof files could be stored (MinIO was available), so the seed attached some. */
+  storage: boolean;
   ids: {
     project: number; // "Citra & Bima": overdue installment, the richest one
     projectDone: number;

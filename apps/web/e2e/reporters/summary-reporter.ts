@@ -73,7 +73,7 @@ export default class SummaryReporter implements Reporter {
     const lines = [
       "# Baseline performa dan jumlah panggilan API",
       "",
-      "Diukur dengan `npm run e2e:perf` pada UI lama (sebelum revamp). Profil: HP 375×812, UA Android Chrome, CPU 4×,",
+      "Diukur dengan `npm run e2e:perf` (garis dasar UI lama ada di `reports/before-t0/`; berkas ini selalu pengukuran terakhir). Profil: HP 375×812, UA Android Chrome, CPU 4×,",
       "1,6 Mbps / 150 ms RTT, cache dingin, build produksi lewat `vite preview` (yang mengirim gzip; kolom JS gzip dihitung dari berkas",
       "build untuk chunk yang benar-benar dimuat). Jam peramban memakai waktu nyata (jam palsu Playwright ikut menggantikan Resource Timing). INP tidak dapat diukur dari skrip; kolom **INP-like** adalah durasi acara terbesar pada satu klik navigasi",
       "(indikatif, bukan INP lapangan). Angka API dihitung sampai jaringan idle dan **termasuk panggilan kerangka** (branding, izin, langganan,",

@@ -40,6 +40,40 @@ function spawnDetached(cmd: string, args: string[], opts: { env?: NodeJS.Process
   return child;
 }
 
+function minioAvailable(): boolean {
+  try {
+    execFileSync(config.minioBin, ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Object storage for proof files. An explicit E2E_S3_ENDPOINT wins; otherwise a
+ * throwaway MinIO (data in e2e/.tmp/minio, bucket "e2e" = a folder in it) is
+ * started so payments and steps can really carry proof. Without either, files
+ * cannot be stored and the seed skips them.
+ */
+async function ensureObjectStorage(pids: Record<string, number>): Promise<{ endpoint: string; access: string; secret: string } | null> {
+  if (config.s3Endpoint) return { endpoint: config.s3Endpoint, access: config.s3Access, secret: config.s3Secret };
+  if (!config.minio || !minioAvailable()) return null;
+  const root = path.join(TMP, "minio");
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(path.join(root, "data", "e2e"), { recursive: true });
+  const access = "e2eaccess";
+  const secret = "e2esecretkey";
+  const address = `127.0.0.1:${config.minioPort}`;
+  log(`starting the throwaway MinIO on ${config.minioPort}`);
+  const child = spawnDetached(config.minioBin, ["server", path.join(root, "data"), "--address", address, "--console-address", `127.0.0.1:${config.minioPort + 1}`], {
+    env: { ...process.env, MINIO_ROOT_USER: access, MINIO_ROOT_PASSWORD: secret },
+    logFile: path.join(TMP, "minio.log"),
+  });
+  pids.minio = child.pid!;
+  await waitFor(`http://${address}/minio/health/live`, "MinIO");
+  return { endpoint: address, access, secret };
+}
+
 function ensureMySQL() {
   const reachable = () => {
     try {
@@ -110,7 +144,8 @@ export async function startStack(): Promise<State> {
   pids.google = google.pid!;
   await waitFor(`${googleURL}/jwks`, "fake Google");
 
-  const s3 = config.s3Endpoint !== "";
+  const storage = await ensureObjectStorage(pids);
+  const s3 = storage !== null;
   const apiEnv: NodeJS.ProcessEnv = {
     ...process.env,
     APP_ENV: "development",
@@ -119,12 +154,12 @@ export async function startStack(): Promise<State> {
     JWT_SECRET: "e2e-jwt-secret-not-for-anything-real-0123456789",
     JWT_ACCESS_TTL: "24h",
     GOOGLE_JWKS_URL: `${googleURL}/jwks`,
-    S3_ENDPOINT: s3 ? config.s3Endpoint : "127.0.0.1:9",
+    S3_ENDPOINT: storage ? storage.endpoint : "127.0.0.1:9",
     S3_BUCKET: "e2e",
     S3_USE_SSL: "false",
     S3_REGION: "us-east-1",
-    S3_ACCESS_KEY: config.s3Access,
-    S3_SECRET_KEY: config.s3Secret,
+    S3_ACCESS_KEY: storage ? storage.access : config.s3Access,
+    S3_SECRET_KEY: storage ? storage.secret : config.s3Secret,
     PAYMENT_ENCRYPTION_KEY: "e2e-payment-encryption-key-long-random-0123456789",
   };
   log("migrating and seeding the platform admin");
@@ -156,7 +191,7 @@ export async function startStack(): Promise<State> {
 
   log("seeding workspaces");
   const ids = await seed({ api: apiURL(), google: googleURL, s3, db }, webURL());
-  const state: State = { apiURL: apiURL(), webURL: webURL(), ids, bundle: buildBundleStats(outDir) };
+  const state: State = { apiURL: apiURL(), webURL: webURL(), storage: s3, ids, bundle: buildBundleStats(outDir) };
   writeState(STATE_FILE, state);
   log("stack ready");
   return state;
@@ -174,7 +209,7 @@ export async function stopStack(opts: { dropDatabase: boolean }) {
     void name;
   }
   // The preview server spawns its own child; free the ports if something is still listening.
-  for (const port of [config.apiPort, config.webPort, config.googlePort]) {
+  for (const port of [config.apiPort, config.webPort, config.googlePort, config.minioPort, config.minioPort + 1]) {
     try {
       const out = execFileSync("lsof", ["-tiTCP:" + port, "-sTCP:LISTEN"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
       for (const pid of out.split("\n").filter(Boolean)) process.kill(Number(pid), "SIGTERM");

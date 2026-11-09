@@ -95,3 +95,10 @@ Tidak memakai potret. Jalankan: `npx playwright test -c e2e/playwright.config.ts
 
 Catatan potret: `--update-snapshots` hanya menulis ulang yang melewati ambang 1%, jadi perubahan kecil (mis. warna
 garis 1 px) tidak tertulis. Pakai `--update-snapshots=all` bila perubahan memang disengaja.
+
+## Penyimpanan berkas (MinIO)
+
+Bila `minio` ada di PATH (atau `E2E_MINIO_BIN`), tumpukan menyalakan MinIO sementara di port `E2E_MINIO_PORT` (19000;
+`E2E_MINIO=0` mematikannya) sehingga benih bisa melampirkan bukti: DP terverifikasi dan satu tahapan selesai dengan berkas
+yang dibagikan. Tanpa MinIO benih tidak punya bukti dan tes yang membutuhkannya dilewati (`state().storage`).
+Potret sekarang mengandaikan MinIO ada; CI harus menyediakannya.
