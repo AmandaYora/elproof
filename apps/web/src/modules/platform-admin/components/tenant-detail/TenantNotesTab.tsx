@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Field, Textarea } from "@/shared/components/ui/Input";
@@ -6,11 +6,14 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { toast } from "@/shared/stores/useToastStore";
 import { formatDateTime } from "@/shared/lib/formatters";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { TenantNote } from "@/modules/platform-admin/data/console.types";
 import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { noteSchema } from "@/modules/platform-admin/schemas/console.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { body: "Catatan" };
 
 export function TenantNotesTab({ tenantId }: { tenantId: string }) {
   const fetchTenantNotes = useConsoleStore((s) => s.fetchTenantNotes);
@@ -18,9 +21,8 @@ export function TenantNotesTab({ tenantId }: { tenantId: string }) {
   const canWrite = usePlatformCan("tenant-manage");
   const [notes, setNotes] = useState<TenantNote[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [body, setBody] = useState("");
-  const [error, setError] = useState<string | undefined>();
-  const [saving, setSaving] = useState(false);
+  const form = useZodForm({ schema: noteSchema, initial: { body: "" } });
+  const formRef = useRef<HTMLFormElement>(null);
 
   const load = useCallback(() => {
     setFailed(false);
@@ -33,25 +35,15 @@ export function TenantNotesTab({ tenantId }: { tenantId: string }) {
     load();
   }, [load]);
 
-  async function handleAdd() {
-    const parsed = noteSchema.safeParse({ body });
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message);
-      return;
-    }
-    setError(undefined);
-    setSaving(true);
-    try {
-      await addTenantNote(tenantId, parsed.data.body);
-      setBody("");
+  const handleAdd = form.handleSubmit(
+    async (parsed) => {
+      await addTenantNote(tenantId, parsed.body);
+      form.reset({ body: "" });
       toast.success("Catatan disimpan");
       load();
-    } catch (err) {
-      setError(getApiErrorMessage(err, "Catatan belum bisa disimpan"));
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Catatan belum bisa disimpan. Periksa koneksi lalu coba lagi.", known: (key) => key in FIELD_LABELS },
+  );
 
   if (failed) return <LoadError onRetry={load} />;
 
@@ -60,15 +52,18 @@ export function TenantNotesTab({ tenantId }: { tenantId: string }) {
       {canWrite && (
         <Card>
           <CardHeader title="Tambah catatan" subtitle="Hanya terlihat oleh tim ElProof. Catat hasil percakapan, janji, atau konteks yang perlu diketahui rekan lain." />
-          <CardContent className="flex flex-col gap-3">
-            <Field label="Catatan" error={error}>
-              <Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} aria-invalid={error ? true : undefined} />
-            </Field>
-            <div>
-              <Button onClick={() => void handleAdd()} disabled={saving}>
-                {saving ? "Menyimpan..." : "Simpan catatan"}
-              </Button>
-            </div>
+          <CardContent>
+            <form ref={formRef} noValidate onSubmit={(e) => void handleAdd(e)} className="flex flex-col gap-3">
+              <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+              <Field label="Catatan" name="body" error={form.errors.body}>
+                <Textarea rows={3} value={form.values.body} onChange={(e) => form.set("body", e.target.value)} onBlur={() => form.blur("body")} />
+              </Field>
+              <div>
+                <Button type="submit" disabled={form.submitting}>
+                  {form.submitting ? "Menyimpan..." : "Simpan catatan"}
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       )}

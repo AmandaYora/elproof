@@ -24,6 +24,7 @@ function acceptsAria(child: ReactElement): boolean {
 export function Field({
   label,
   htmlFor,
+  name,
   hint,
   error,
   required,
@@ -31,6 +32,8 @@ export function Field({
 }: {
   label: string;
   htmlFor?: string;
+  /** The field's key in the form: lets an error summary jump to it (data-field). */
+  name?: string;
   hint?: string;
   /** Validation message: shown in the danger color with an icon, replacing the hint. */
   error?: string;
@@ -46,7 +49,7 @@ export function Field({
         })
       : children;
   return (
-    <label htmlFor={htmlFor} className="flex flex-col gap-1.5">
+    <label htmlFor={htmlFor} data-field={name} className="flex flex-col gap-1.5">
       <span className="text-[13px] font-medium text-foreground">
         {label}
         {required && (

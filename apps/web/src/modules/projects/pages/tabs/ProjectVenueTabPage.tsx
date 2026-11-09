@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { useOutletContext } from "react-router-dom";
 import { Building2, ExternalLink } from "lucide-react";
@@ -16,6 +16,11 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
+import { projectVenueSchema } from "@/modules/projects/schemas/project-venue.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { venueId: "Venue", rentalPrice: "Harga sewa", charge: "Charge" };
 
 // Staff-facing (WO Console) — unlike Client Portal's Venue tab, this shows
 // the full record (rental price, charge, PIC contact), fetched directly
@@ -34,7 +39,6 @@ export default function ProjectVenueTabPage() {
   const [venue, setVenue] = useState<Venue | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [selectedVenueId, setSelectedVenueId] = useState("");
   // Per-project cost snapshot being edited in the picker — prefilled from
   // the project's own existing snapshot when reopening for the
   // already-attached venue, or from the newly-picked venue's current
@@ -42,10 +46,10 @@ export default function ProjectVenueTabPage() {
   // handleVenueSelect) — never silently overwritten by re-fetching master
   // data just because the modal was opened. See PLAN.md "Financial
   // Calculation Correctness".
-  const [rentalPrice, setRentalPrice] = useState(0);
-  const [charge, setCharge] = useState(0);
+  const form = useZodForm({ schema: projectVenueSchema, initial: { venueId: "", rentalPrice: 0, charge: 0 } });
+  const { values, errors, set } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void fetchVenues();
@@ -80,9 +84,11 @@ export default function ProjectVenueTabPage() {
   }, [currentProject?.venueId, fetchVenue]);
 
   function openPicker() {
-    setSelectedVenueId(currentProject?.venueId ?? "");
-    setRentalPrice(currentProject?.venueRentalPrice ?? 0);
-    setCharge(currentProject?.venueCharge ?? 0);
+    form.reset({
+      venueId: currentProject?.venueId ?? "",
+      rentalPrice: currentProject?.venueRentalPrice ?? 0,
+      charge: currentProject?.venueCharge ?? 0,
+    });
     setActionError(null);
     setPickerOpen(true);
   }
@@ -93,30 +99,26 @@ export default function ProjectVenueTabPage() {
   // existing snapshot instead (so merely opening the picker and clicking
   // around never silently discards an already-agreed price).
   function handleVenueSelect(newVenueId: string) {
-    setSelectedVenueId(newVenueId);
+    set("venueId", newVenueId);
     if (newVenueId === (currentProject?.venueId ?? "")) {
-      setRentalPrice(currentProject?.venueRentalPrice ?? 0);
-      setCharge(currentProject?.venueCharge ?? 0);
+      set("rentalPrice", currentProject?.venueRentalPrice ?? 0);
+      set("charge", currentProject?.venueCharge ?? 0);
       return;
     }
     const picked = venues.find((v) => v.id === newVenueId);
-    setRentalPrice(picked?.rentalPrice ?? 0);
-    setCharge(picked?.charge ?? 0);
+    set("rentalPrice", picked?.rentalPrice ?? 0);
+    set("charge", picked?.charge ?? 0);
   }
 
-  async function handleSave() {
-    if (!selectedVenueId) return;
-    setSaving(true);
-    setActionError(null);
-    try {
-      await setProjectVenue(projectId, selectedVenueId, rentalPrice, charge);
+  // Errors propagate to the form: a 422 shows on its fields, anything else inside the modal.
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      setActionError(null);
+      await setProjectVenue(projectId, parsed.venueId, parsed.rentalPrice, parsed.charge);
       setPickerOpen(false);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan venue"));
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Venue belum tersimpan. Periksa koneksi lalu coba lagi." },
+  );
 
   async function handleDetach() {
     setActionError(null);
@@ -247,20 +249,22 @@ export default function ProjectVenueTabPage() {
         title="Pilih Venue"
         description="Pilih venue dari direktori untuk project ini."
         size="sm"
+        busy={form.submitting}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setPickerOpen(false)}>
+            <Button variant="secondary" onClick={() => setPickerOpen(false)} disabled={form.submitting}>
               Batal
             </Button>
-            <Button onClick={() => void handleSave()} disabled={!selectedVenueId || saving}>
-              {saving ? "Menyimpan..." : "Simpan"}
+            <Button type="submit" form="project-venue-form" disabled={form.submitting}>
+              {form.submitting ? "Menyimpan..." : "Simpan venue"}
             </Button>
           </>
         }
       >
-        <div className="flex flex-col gap-4">
-          <Field label="Venue">
-            <Select value={selectedVenueId} onChange={(e) => handleVenueSelect(e.target.value)}>
+        <form id="project-venue-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+          <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+          <Field label="Venue" required name="venueId" error={errors.venueId}>
+            <Select value={values.venueId} onChange={(e) => handleVenueSelect(e.target.value)}>
               <option value="">Pilih venue...</option>
               {venues
                 .filter((v) => v.isActive)
@@ -271,13 +275,13 @@ export default function ProjectVenueTabPage() {
                 ))}
             </Select>
           </Field>
-          <Field label="Harga Sewa (untuk project ini)" hint="Terisi dari harga master venue, bisa diubah sesuai kesepakatan project ini.">
-            <CurrencyInput value={rentalPrice} onChange={setRentalPrice} />
+          <Field label="Harga Sewa (untuk project ini)" name="rentalPrice" error={errors.rentalPrice} hint="Terisi dari harga master venue, bisa diubah sesuai kesepakatan project ini.">
+            <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} aria-invalid={errors.rentalPrice ? true : undefined} />
           </Field>
-          <Field label="Charge (untuk project ini)">
-            <CurrencyInput value={charge} onChange={setCharge} />
+          <Field label="Charge (untuk project ini)" name="charge" error={errors.charge}>
+            <CurrencyInput value={values.charge} onChange={(n) => set("charge", n)} aria-invalid={errors.charge ? true : undefined} />
           </Field>
-        </div>
+        </form>
       </Modal>
     </div>
   );

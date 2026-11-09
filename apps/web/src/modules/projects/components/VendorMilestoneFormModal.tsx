@@ -1,14 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { vendorMilestoneSchema, type VendorMilestoneFormValues } from "@/modules/projects/schemas/vendor-milestone.schema";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { name: "Nama timeline", targetDate: "Target tanggal", picStaffId: "PIC" };
 
 interface VendorMilestoneFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: VendorMilestoneFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSubmit: (values: VendorMilestoneFormValues) => Promise<void>;
   vendorName: string;
 }
 
@@ -19,8 +24,9 @@ function emptyValues(defaultStaffId = ""): VendorMilestoneFormValues {
 export function VendorMilestoneFormModal({ open, onClose, onSubmit, vendorName }: VendorMilestoneFormModalProps) {
   const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
-  const [values, setValues] = useState<VendorMilestoneFormValues>(() => emptyValues());
-  const [errors, setErrors] = useState<Partial<Record<keyof VendorMilestoneFormValues, string>>>({});
+  const form = useZodForm({ schema: vendorMilestoneSchema, initial: emptyValues() });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     void fetchStaff();
@@ -28,28 +34,11 @@ export function VendorMilestoneFormModal({ open, onClose, onSubmit, vendorName }
 
   useEffect(() => {
     if (!values.picStaffId && staff.length > 0) {
-      setValues((prev) => ({ ...prev, picStaffId: staff[0].id }));
+      set("picStaffId", staff[0].id);
     }
-  }, [staff, values.picStaffId]);
+  }, [staff, values.picStaffId, set]);
 
-  function set<K extends keyof VendorMilestoneFormValues>(key: K, value: VendorMilestoneFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleSubmit() {
-    const result = vendorMilestoneSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof VendorMilestoneFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof VendorMilestoneFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-    setValues(emptyValues(staff[0]?.id ?? ""));
-    setErrors({});
-  }
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Timeline vendor belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   return (
     <Modal
@@ -57,31 +46,35 @@ export function VendorMilestoneFormModal({ open, onClose, onSubmit, vendorName }
       onClose={onClose}
       title="Tambah Timeline Vendor"
       description={`Timeline baru untuk ${vendorName}, ditambahkan di urutan paling akhir.`}
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Timeline</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="vendor-milestone-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Simpan timeline"}
+          </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <Field label="Nama Timeline" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Survey Lokasi" />
+      <form id="vendor-milestone-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+        <Field label="Nama Timeline" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Survey Lokasi" />
         </Field>
-        <Field label="Deskripsi">
-          <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} />
+        <Field label="Deskripsi" name="description" error={errors.description}>
+          <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
         </Field>
-        <Field label="Target Tanggal" required hint={errors.targetDate}>
-          <Input type="date" value={values.targetDate} onChange={(e) => set("targetDate", e.target.value)} />
+        <Field label="Target Tanggal" required name="targetDate" error={errors.targetDate}>
+          <Input type="date" value={values.targetDate} onChange={(e) => set("targetDate", e.target.value)} onBlur={() => blur("targetDate")} />
         </Field>
-        <Field label="PIC" required hint={errors.picStaffId}>
+        <Field label="PIC" required name="picStaffId" error={errors.picStaffId}>
           <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
             ))}
           </Select>
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }

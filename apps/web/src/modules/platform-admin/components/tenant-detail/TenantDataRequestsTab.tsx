@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -7,13 +7,16 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { toast } from "@/shared/stores/useToastStore";
 import { formatDate } from "@/shared/lib/formatters";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { DataRequest } from "@/modules/platform-admin/data/console.types";
 import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { dataRequestSchema } from "@/modules/platform-admin/schemas/console.schema";
 import { DATA_REQUEST_KIND_LABEL, DATA_REQUEST_STATUS, dueText } from "@/modules/platform-admin/lib/data-requests";
 import { CompleteDataRequestModal } from "@/modules/platform-admin/components/CompleteDataRequestModal";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { kind: "Jenis permintaan", requestedBy: "Diminta oleh", note: "Catatan" };
 
 export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { tenantId: string; ownerEmail: string; onChanged: () => void }) {
   const fetchTenantDataRequests = useConsoleStore((s) => s.fetchTenantDataRequests);
@@ -22,14 +25,10 @@ export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { ten
   const canWrite = usePlatformCan("tenant-manage");
   const [requests, setRequests] = useState<DataRequest[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [kind, setKind] = useState<"export" | "delete">("export");
-  const [requestedBy, setRequestedBy] = useState(ownerEmail);
-  const [note, setNote] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
+  const form = useZodForm({ schema: dataRequestSchema, initial: { kind: "export", requestedBy: ownerEmail, note: "" } });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [closing, setClosing] = useState<DataRequest | undefined>(undefined);
-  const [closeError, setCloseError] = useState<string | null>(null);
-  const [closingBusy, setClosingBusy] = useState(false);
 
   const load = useCallback(() => {
     setFailed(false);
@@ -42,44 +41,26 @@ export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { ten
     load();
   }, [load]);
 
-  async function handleAdd() {
-    const parsed = dataRequestSchema.safeParse({ kind, requestedBy, note });
-    if (!parsed.success) {
-      const next: Record<string, string> = {};
-      for (const issue of parsed.error.issues) next[String(issue.path[0])] ??= issue.message;
-      setErrors(next);
-      return;
-    }
-    setErrors({});
-    setSaving(true);
-    try {
-      await addTenantDataRequest(tenantId, parsed.data);
-      setNote("");
+  // The person, the kind and the requester stay for the next entry; only the note is cleared.
+  const handleAdd = form.handleSubmit(
+    async (parsed) => {
+      await addTenantDataRequest(tenantId, parsed);
+      form.reset({ kind: parsed.kind, requestedBy: parsed.requestedBy, note: "" });
       toast.success("Permintaan data dicatat. Batas jawab 30 hari.");
       load();
       onChanged();
-    } catch (err) {
-      setErrors({ note: getApiErrorMessage(err, "Permintaan belum bisa dicatat") });
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Permintaan belum bisa dicatat. Periksa koneksi lalu coba lagi.", known: (key) => key in FIELD_LABELS },
+  );
 
+  // Errors are not caught here: they propagate to the modal, which shows them inside.
   async function handleClose(status: "done" | "rejected", closeNote: string) {
     if (!closing) return;
-    setCloseError(null);
-    setClosingBusy(true);
-    try {
-      await completeDataRequest(closing.id, status, closeNote);
-      toast.success("Permintaan data ditutup");
-      setClosing(undefined);
-      load();
-      onChanged();
-    } catch (err) {
-      setCloseError(getApiErrorMessage(err, "Permintaan belum bisa ditutup"));
-    } finally {
-      setClosingBusy(false);
-    }
+    await completeDataRequest(closing.id, status, closeNote);
+    toast.success("Permintaan data ditutup");
+    setClosing(undefined);
+    load();
+    onChanged();
   }
 
   if (failed) return <LoadError onRetry={load} />;
@@ -89,26 +70,31 @@ export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { ten
       {canWrite && (
         <Card>
           <CardHeader title="Catat permintaan data" subtitle="Saat pemilik WO meminta salinan atau penghapusan datanya (UU PDP), catat di sini. Batas menjawab 30 hari sejak dicatat." />
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Jenis permintaan" error={errors.kind}>
-              <Select value={kind} onChange={(e) => setKind(e.target.value as "export" | "delete")}>
-                <option value="export">{DATA_REQUEST_KIND_LABEL.export}</option>
-                <option value="delete">{DATA_REQUEST_KIND_LABEL.delete}</option>
-              </Select>
-            </Field>
-            <Field label="Diminta oleh" error={errors.requestedBy}>
-              <Input value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} aria-invalid={errors.requestedBy ? true : undefined} />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Catatan" error={errors.note}>
-                <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={errors.note ? true : undefined} />
-              </Field>
-            </div>
-            <div className="sm:col-span-2">
-              <Button onClick={() => void handleAdd()} disabled={saving}>
-                {saving ? "Menyimpan..." : "Catat permintaan"}
-              </Button>
-            </div>
+          <CardContent>
+            <form ref={formRef} noValidate onSubmit={(e) => void handleAdd(e)} className="flex flex-col gap-4">
+              <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Jenis permintaan" name="kind" error={errors.kind}>
+                  <Select value={values.kind} onChange={(e) => set("kind", e.target.value as "export" | "delete")}>
+                    <option value="export">{DATA_REQUEST_KIND_LABEL.export}</option>
+                    <option value="delete">{DATA_REQUEST_KIND_LABEL.delete}</option>
+                  </Select>
+                </Field>
+                <Field label="Diminta oleh" name="requestedBy" error={errors.requestedBy}>
+                  <Input value={values.requestedBy} onChange={(e) => set("requestedBy", e.target.value)} onBlur={() => blur("requestedBy")} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Catatan" name="note" error={errors.note}>
+                    <Textarea rows={2} value={values.note} onChange={(e) => set("note", e.target.value)} onBlur={() => blur("note")} />
+                  </Field>
+                </div>
+              </div>
+              <div>
+                <Button type="submit" disabled={form.submitting}>
+                  {form.submitting ? "Menyimpan..." : "Catat permintaan"}
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       )}
@@ -140,7 +126,7 @@ export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { ten
                     </p>
                   </div>
                   {r.status === "open" && canWrite && (
-                    <Button size="sm" variant="secondary" className="shrink-0" onClick={() => { setCloseError(null); setClosing(r); }}>
+                    <Button size="sm" variant="secondary" className="shrink-0" onClick={() => setClosing(r)}>
                       Tutup permintaan
                     </Button>
                   )}
@@ -151,7 +137,7 @@ export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { ten
         )}
       </Card>
 
-      <CompleteDataRequestModal key={closing?.id ?? "none"} request={closing} onClose={() => setClosing(undefined)} onSubmit={handleClose} error={closeError} isSubmitting={closingBusy} />
+      <CompleteDataRequestModal key={closing?.id ?? "none"} request={closing} onClose={() => setClosing(undefined)} onSubmit={handleClose} />
     </div>
   );
 }

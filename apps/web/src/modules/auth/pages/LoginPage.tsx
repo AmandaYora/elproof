@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Lock } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
-import { loginSchema, type LoginFormValues } from "@/modules/auth/schemas/login.schema";
+import { loginSchema, googleLinkSchema, mfaCodeSchema } from "@/modules/auth/schemas/login.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { clearLoginNotice, peekLoginNotice } from "@/shared/lib/session-notice";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
@@ -25,17 +27,36 @@ const ICON_BOX_CLASS = "bg-slate-800";
 // The gradient scrim behind the headline over the photo slider.
 const SCRIM_CLASS = "bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent";
 
+/** What the person is told when a sign-in call fails: the server's own words, or a connection hint when it never answered. */
+function loginErrorMessage(err: unknown, fallback: string) {
+  if (axios.isAxiosError(err)) {
+    if (!err.response) return "Tidak dapat terhubung ke server. Periksa koneksi internet Anda lalu coba lagi.";
+    const message = (err.response.data as { message?: string })?.message;
+    if (message) return message;
+  }
+  return fallback;
+}
+
+const LOGIN_FIELDS = (key: string) => key === "username" || key === "password";
+const LINK_FIELDS = (key: string) => key === "password";
+const MFA_FIELDS = (key: string) => key === "code";
+
 export default function LoginPage() {
   usePageMeta({ title: "Masuk", description: "Masuk ke ElProof sebagai tim WO, klien, atau admin platform.", noindex: true });
   const navigate = useNavigate();
-  const [values, setValues] = useState<LoginFormValues>({ username: "", password: "" });
-  const [errors, setErrors] = useState<Partial<Record<keyof LoginFormValues, string>>>({});
-  const [authError, setAuthError] = useState<string | null>(null);
+  // Three small forms, one per step; the page shows the message of the one on screen.
+  const loginForm = useZodForm({ schema: loginSchema, initial: { username: "", password: "" } });
+  const linkForm = useZodForm({ schema: googleLinkSchema, initial: { password: "" } });
+  const mfaForm = useZodForm({ schema: mfaCodeSchema, initial: { code: "" } });
+  const loginFormRef = useRef<HTMLFormElement>(null);
+  const linkFormRef = useRef<HTMLFormElement>(null);
+  const mfaFormRef = useRef<HTMLFormElement>(null);
+  const setLoginError = loginForm.setFormError;
+  const resetLink = linkForm.reset;
+  const resetMfa = mfaForm.reset;
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   // Second login step for Platform Console admins with two-factor on.
   const [mfaToken, setMfaToken] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
   // Why the app ended the previous session (e.g. tenant frozen), once.
   const [notice] = useState(() => peekLoginNotice());
   // Google account whose email matches an existing staff login: confirm
@@ -44,15 +65,9 @@ export default function LoginPage() {
   const [googleLink, setGoogleLink] = useState<GoogleSignupState | null>(
     () => (location.state as { googleLink?: GoogleSignupState } | null)?.googleLink ?? null,
   );
-  const [linkPassword, setLinkPassword] = useState("");
   useEffect(() => {
     clearLoginNotice();
   }, []);
-
-  function set<K extends keyof LoginFormValues>(key: K, value: LoginFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-    setAuthError(null);
-  }
 
   const [googleBusy, setGoogleBusy] = useState(false);
 
@@ -78,14 +93,14 @@ export default function LoginPage() {
   // ElProof login yet continues to the workspace form.
   const handleGoogleCredential = useCallback(
     async (credential: string) => {
-      setAuthError(null);
+      setLoginError(null);
       setGoogleBusy(true);
       try {
         const res = await httpClient.post(API.auth.google, { credential });
         const data = res.data.data as AuthSession | GoogleAuthOutcome;
         if ("linkRequired" in data) {
           setGoogleLink({ credential, email: data.email, name: data.name });
-          setLinkPassword("");
+          resetLink({ password: "" });
           return;
         }
         if ("signupRequired" in data) {
@@ -95,99 +110,78 @@ export default function LoginPage() {
         }
         finishLogin(data);
       } catch (err) {
-        setAuthError(loginErrorMessage(err, "Masuk dengan Google gagal. Silakan coba lagi."));
+        setLoginError(loginErrorMessage(err, "Masuk dengan Google gagal. Silakan coba lagi."));
       } finally {
         setGoogleBusy(false);
       }
     },
-    [finishLogin, navigate],
+    [finishLogin, navigate, setLoginError, resetLink],
   );
 
-  function loginErrorMessage(err: unknown, fallback: string) {
-    if (axios.isAxiosError(err)) {
-      if (!err.response) return "Tidak dapat terhubung ke server. Periksa koneksi internet Anda lalu coba lagi.";
-      const message = (err.response.data as { message?: string })?.message;
-      if (message) return message;
-    }
-    return fallback;
-  }
-
-  async function attemptLogin(username: string, password: string) {
-    setAuthError(null);
-    setIsSubmitting(true);
-    try {
-      const res = await httpClient.post(API.auth.login, { username, password });
-      const data = res.data.data as AuthSession | { mfaRequired: true; mfaToken: string };
-      if ("mfaRequired" in data && data.mfaRequired) {
-        setMfaToken(data.mfaToken);
-        setMfaCode("");
-        return;
+  // Wrong password, locked account, too many attempts: the server's own message
+  // (or a connection hint) lands in the form's message, or on the field when the server pins it there.
+  const submitLogin = loginForm.handleSubmit(
+    async ({ username, password }) => {
+      try {
+        const res = await httpClient.post(API.auth.login, { username, password });
+        const data = res.data.data as AuthSession | { mfaRequired: true; mfaToken: string };
+        if ("mfaRequired" in data && data.mfaRequired) {
+          setMfaToken(data.mfaToken);
+          resetMfa({ code: "" });
+          return;
+        }
+        finishLogin(data as AuthSession);
+      } catch (err) {
+        loginForm.applyServerError(err, loginErrorMessage(err, "Username atau kata sandi salah."), LOGIN_FIELDS);
       }
-      finishLogin(data as AuthSession);
-    } catch (err) {
-      setAuthError(loginErrorMessage(err, "Username atau kata sandi salah."));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+    },
+    { root: () => loginFormRef.current },
+  );
 
-  async function linkGoogle() {
-    if (!googleLink) return;
-    if (!linkPassword) {
-      setAuthError("Masukkan kata sandi ElProof akun ini.");
-      return;
-    }
-    setAuthError(null);
-    setIsSubmitting(true);
-    try {
-      const res = await httpClient.post(API.auth.googleLink, { credential: googleLink.credential, password: linkPassword });
-      finishLogin(res.data.data as AuthSession);
-    } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-      if (status === 401 && /google/i.test(loginErrorMessage(err, ""))) {
-        // The Google credential expired: start over with the button.
-        setGoogleLink(null);
+  const submitLink = linkForm.handleSubmit(
+    async ({ password }) => {
+      if (!googleLink) return;
+      try {
+        const res = await httpClient.post(API.auth.googleLink, { credential: googleLink.credential, password });
+        finishLogin(res.data.data as AuthSession);
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        if (status === 401 && /google/i.test(loginErrorMessage(err, ""))) {
+          // The Google credential expired: start over with the button, and say why there.
+          setGoogleLink(null);
+          setLoginError(loginErrorMessage(err, "Kata sandi salah."));
+          return;
+        }
+        linkForm.applyServerError(err, loginErrorMessage(err, "Kata sandi salah."), LINK_FIELDS);
       }
-      setAuthError(loginErrorMessage(err, "Kata sandi salah."));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+    },
+    { root: () => linkFormRef.current },
+  );
 
-  async function verifyMfa() {
-    if (!mfaToken) return;
-    if (mfaCode.length !== 6) {
-      setAuthError("Masukkan 6 digit kode dari aplikasi authenticator.");
-      return;
-    }
-    setAuthError(null);
-    setIsSubmitting(true);
-    try {
-      const res = await httpClient.post(API.auth.mfaVerify, { mfaToken, code: mfaCode });
-      finishLogin(res.data.data as AuthSession);
-    } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-      setAuthError(loginErrorMessage(err, "Kode verifikasi salah atau sudah kedaluwarsa."));
-      // An expired challenge cannot be retried: go back to the password step.
-      if (status === 401 && /sesi verifikasi/i.test(loginErrorMessage(err, ""))) setMfaToken(null);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  function handleSubmit() {
-    const result = loginSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof LoginFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof LoginFormValues] = issue.message;
+  const submitMfa = mfaForm.handleSubmit(
+    async ({ code }) => {
+      if (!mfaToken) return;
+      try {
+        const res = await httpClient.post(API.auth.mfaVerify, { mfaToken, code });
+        finishLogin(res.data.data as AuthSession);
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        const message = loginErrorMessage(err, "Kode verifikasi salah atau sudah kedaluwarsa.");
+        // An expired challenge cannot be retried: go back to the password step, and say why there.
+        if (status === 401 && /sesi verifikasi/i.test(message)) {
+          setMfaToken(null);
+          setLoginError(message);
+          return;
+        }
+        mfaForm.applyServerError(err, message, MFA_FIELDS);
       }
-      setErrors(fieldErrors);
-      return;
-    }
-    setErrors({});
-    void attemptLogin(values.username, values.password);
-  }
+    },
+    { root: () => mfaFormRef.current },
+  );
+
+  // The message of the step on screen.
+  const activeForm = googleLink && !mfaToken ? linkForm : mfaToken ? mfaForm : loginForm;
+  const activeRoot = googleLink && !mfaToken ? linkFormRef : mfaToken ? mfaFormRef : loginFormRef;
 
   return (
     <div className="flex min-h-screen">
@@ -222,47 +216,46 @@ export default function LoginPage() {
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
-            {notice && !authError && (
+            {notice && !activeForm.formError && (
               <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] font-medium text-warning-text">
                 {notice}
               </p>
             )}
-            {authError && (
-              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-                {authError}
-              </p>
-            )}
+            <FormErrorSummary errors={activeForm.errorList} formError={activeForm.formError} root={() => activeRoot.current} />
 
             {googleLink && !mfaToken ? (
               <>
-                <p className="rounded-md border border-border bg-surface-muted px-3.5 py-3 text-[13px] leading-relaxed text-text-secondary">
-                  Email <span className="font-semibold text-text-primary">{googleLink.email}</span> sudah terdaftar sebagai akun staf
-                  di ElProof. Masukkan kata sandi ElProof akun tersebut sekali untuk menghubungkannya dengan Google. Setelah itu
-                  cukup masuk dengan Google.
-                </p>
-                <Field label="Kata sandi ElProof" required>
-                  <Input
-                    type="password"
-                    value={linkPassword}
-                    onChange={(e) => {
-                      setLinkPassword(e.target.value);
-                      setAuthError(null);
-                    }}
-                    autoComplete="current-password"
-                    autoFocus
-                    onKeyDown={(e) => e.key === "Enter" && void linkGoogle()}
-                  />
-                </Field>
-                <Button variant="neutral" className="mt-2 w-full justify-center" onClick={() => void linkGoogle()} disabled={isSubmitting}>
-                  {isSubmitting ? "Menghubungkan..." : "Hubungkan dan masuk"}
-                </Button>
+                <form ref={linkFormRef} noValidate onSubmit={(e) => void submitLink(e)} className="flex flex-col gap-5">
+                  <p className="rounded-md border border-border bg-surface-muted px-3.5 py-3 text-[13px] leading-relaxed text-text-secondary">
+                    Email <span className="font-semibold text-text-primary">{googleLink.email}</span> sudah terdaftar sebagai akun staf
+                    di ElProof. Masukkan kata sandi ElProof akun tersebut sekali untuk menghubungkannya dengan Google. Setelah itu
+                    cukup masuk dengan Google.
+                  </p>
+                  <Field label="Kata sandi ElProof" required name="password" error={linkForm.errors.password}>
+                    <Input
+                      type="password"
+                      value={linkForm.values.password}
+                      onChange={(e) => {
+                        linkForm.set("password", e.target.value);
+                        linkForm.setFormError(null);
+                      }}
+                      autoComplete="current-password"
+                      autoFocus
+                    />
+                  </Field>
+                  <Button type="submit" variant="neutral" className="mt-2 w-full justify-center" disabled={linkForm.submitting}>
+                    {linkForm.submitting ? "Menghubungkan..." : "Hubungkan dan masuk"}
+                  </Button>
+                </form>
                 <div className="flex flex-wrap justify-between gap-2 text-[13px]">
                   <button
                     type="button"
                     onClick={() => {
                       setGoogleLink(null);
-                      setAuthError(null);
+                      linkForm.setFormError(null);
+                      loginForm.setFormError(null);
                     }}
+                    disabled={linkForm.submitting}
                     className="font-medium text-text-secondary hover:text-text-primary"
                   >
                     Batal
@@ -270,6 +263,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => navigate(ROUTE_PATHS.signupWorkspace, { state: googleLink })}
+                    disabled={linkForm.submitting}
                     className="font-medium text-text-secondary hover:text-text-primary"
                   >
                     Bukan akun saya, buat workspace baru
@@ -278,30 +272,33 @@ export default function LoginPage() {
               </>
             ) : mfaToken ? (
               <>
-                <Field label="Kode verifikasi" required hint="Buka aplikasi authenticator Anda dan masukkan 6 digit kode untuk ElProof.">
-                  <Input
-                    value={mfaCode}
-                    onChange={(e) => {
-                      setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6));
-                      setAuthError(null);
-                    }}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    autoFocus
-                    placeholder="123456"
-                    className="font-mono tracking-[0.3em]"
-                    onKeyDown={(e) => e.key === "Enter" && void verifyMfa()}
-                  />
-                </Field>
-                <Button variant="neutral" className="mt-2 w-full justify-center" onClick={() => void verifyMfa()} disabled={isSubmitting}>
-                  {isSubmitting ? "Memeriksa kode..." : "Verifikasi"}
-                </Button>
+                <form ref={mfaFormRef} noValidate onSubmit={(e) => void submitMfa(e)} className="flex flex-col gap-5">
+                  <Field label="Kode verifikasi" required name="code" error={mfaForm.errors.code} hint="Buka aplikasi authenticator Anda dan masukkan 6 digit kode untuk ElProof.">
+                    <Input
+                      value={mfaForm.values.code}
+                      onChange={(e) => {
+                        mfaForm.set("code", e.target.value.replace(/\D/g, "").slice(0, 6));
+                        mfaForm.setFormError(null);
+                      }}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      autoFocus
+                      placeholder="123456"
+                      className="font-mono tracking-[0.3em]"
+                    />
+                  </Field>
+                  <Button type="submit" variant="neutral" className="mt-2 w-full justify-center" disabled={mfaForm.submitting}>
+                    {mfaForm.submitting ? "Memeriksa kode..." : "Verifikasi kode"}
+                  </Button>
+                </form>
                 <button
                   type="button"
                   onClick={() => {
                     setMfaToken(null);
-                    setAuthError(null);
+                    mfaForm.setFormError(null);
+                    loginForm.setFormError(null);
                   }}
+                  disabled={mfaForm.submitting}
                   className="text-[13px] font-medium text-text-secondary hover:text-text-primary"
                 >
                   Kembali ke kata sandi
@@ -315,37 +312,38 @@ export default function LoginPage() {
                   atau dengan nama pengguna
                   <span className="h-px flex-1 bg-border" />
                 </div>
-                <form
-                  className="flex flex-col gap-5"
-                  noValidate
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleSubmit();
-                  }}
-                >
-                <Field label="Nama Pengguna atau Email" htmlFor="login-username" required error={errors.username}>
+                <form ref={loginFormRef} className="flex flex-col gap-5" noValidate onSubmit={(e) => void submitLogin(e)}>
+                <Field label="Nama Pengguna atau Email" htmlFor="login-username" required name="username" error={loginForm.errors.username}>
                   <Input
                     id="login-username"
                     name="username"
                     autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
-                    value={values.username}
-                    onChange={(e) => set("username", e.target.value)}
+                    value={loginForm.values.username}
+                    onChange={(e) => {
+                      loginForm.set("username", e.target.value);
+                      loginForm.setFormError(null);
+                    }}
+                    onBlur={() => loginForm.blur("username")}
                     placeholder="Masukkan nama pengguna atau email Anda"
                   />
                 </Field>
 
-                <Field label="Kata Sandi" htmlFor="login-password" required error={errors.password}>
+                <Field label="Kata Sandi" htmlFor="login-password" required name="password" error={loginForm.errors.password}>
                   <div className="relative">
                     <Input
                       id="login-password"
                       name="password"
                       autoComplete="current-password"
                       type={showPassword ? "text" : "password"}
-                      value={values.password}
-                      onChange={(e) => set("password", e.target.value)}
+                      value={loginForm.values.password}
+                      onChange={(e) => {
+                        loginForm.set("password", e.target.value);
+                        loginForm.setFormError(null);
+                      }}
                       placeholder="Masukkan kata sandi Anda"
+                      aria-invalid={loginForm.errors.password ? true : undefined}
                       className="pr-10"
                     />
                     <button
@@ -363,9 +361,9 @@ export default function LoginPage() {
                   type="submit"
                   variant="neutral"
                   className="mt-2 w-full justify-center"
-                  disabled={isSubmitting}
+                  disabled={loginForm.submitting}
                 >
-                  {isSubmitting ? "Memproses..." : "Masuk"}
+                  {loginForm.submitting ? "Memproses..." : "Masuk"}
                 </Button>
                 <p className="text-[12.5px] leading-relaxed text-text-secondary">
                   <span className="font-medium text-text-primary">Lupa kata sandi?</span> Client: minta link atur ulang ke WO Anda. Tim

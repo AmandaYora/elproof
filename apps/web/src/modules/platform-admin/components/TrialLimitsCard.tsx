@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardHeader } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Field, Input } from "@/shared/components/ui/Input";
@@ -7,6 +6,9 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { trialLimitsSchema } from "@/modules/platform-admin/schemas/console.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 interface TrialLimits {
   maxStaff: number;
@@ -20,6 +22,12 @@ const FIELDS: { key: keyof TrialLimits; label: string; hint: string }[] = [
   { key: "maxClients", label: "Akun client", hint: "Akun client aktif" },
 ];
 
+function toDraft(l: TrialLimits): Record<keyof TrialLimits, string> {
+  return { maxStaff: String(l.maxStaff), maxActiveProjects: String(l.maxActiveProjects), maxClients: String(l.maxClients) };
+}
+
+const FIELD_LABELS: Record<string, string> = { maxStaff: "Staf selain Owner", maxActiveProjects: "Project aktif", maxClients: "Akun client" };
+
 /**
  * Free-trial caps (decision K6): only trialing workspaces are limited;
  * paid plans are unlimited. Billing and Super Admin may change them.
@@ -28,10 +36,11 @@ export function TrialLimitsCard() {
   const role = useAuthStore((s) => s.session?.role);
   const canEdit = role === "Super Admin" || role === "Billing";
   const [saved, setSaved] = useState<TrialLimits | null>(null);
-  const [draft, setDraft] = useState<Record<keyof TrialLimits, string>>({ maxStaff: "", maxActiveProjects: "", maxClients: "" });
-  const [errors, setErrors] = useState<Partial<Record<keyof TrialLimits, string>>>({});
+  const form = useZodForm({ schema: trialLimitsSchema, initial: { maxStaff: "", maxActiveProjects: "", maxClients: "" } });
+  const { values: draft, errors } = form;
+  const { reset } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     httpClient
@@ -39,7 +48,7 @@ export function TrialLimitsCard() {
       .then((res) => {
         const l = res.data.data as TrialLimits;
         setSaved(l);
-        setDraft({ maxStaff: String(l.maxStaff), maxActiveProjects: String(l.maxActiveProjects), maxClients: String(l.maxClients) });
+        reset(toDraft(l));
       })
       .catch((err) => setMessage({ tone: "error", text: getApiErrorMessage(err, "Batas masa coba gagal dimuat.") }));
   }, []);
@@ -47,32 +56,18 @@ export function TrialLimitsCard() {
   const dirty =
     saved !== null && FIELDS.some((f) => draft[f.key] !== String(saved[f.key]));
 
-  async function save() {
-    const next: Partial<TrialLimits> = {};
-    const fieldErrors: Partial<Record<keyof TrialLimits, string>> = {};
-    for (const f of FIELDS) {
-      const n = Number(draft[f.key]);
-      if (!Number.isInteger(n) || n < 1 || n > 1000) fieldErrors[f.key] = "Isi angka 1–1000";
-      else next[f.key] = n;
-    }
-    setErrors(fieldErrors);
-    if (Object.keys(fieldErrors).length > 0) return;
-    setSaving(true);
-    setMessage(null);
-    try {
+  // A failure (a 422 on a field, or anything else) is shown above the fields by the form.
+  const save = form.handleSubmit(
+    async (next) => {
+      setMessage(null);
       const res = await httpClient.put(API.platform.trialLimits, next);
-      setSaved(res.data.data as TrialLimits);
+      const limits = res.data.data as TrialLimits;
+      setSaved(limits);
+      reset(toDraft(limits));
       setMessage({ tone: "ok", text: "Batas masa coba tersimpan. Berlaku untuk penambahan berikutnya di semua workspace masa coba." });
-    } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 422) {
-        const f = (err.response.data as { errors?: Record<string, string[]> }).errors ?? {};
-        setErrors({ maxStaff: f.maxStaff?.[0], maxActiveProjects: f.maxActiveProjects?.[0], maxClients: f.maxClients?.[0] });
-      }
-      setMessage({ tone: "error", text: getApiErrorMessage(err, "Batas masa coba belum tersimpan.") });
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Batas masa coba belum tersimpan.", known: (key) => key in FIELD_LABELS },
+  );
 
   return (
     <Card>
@@ -80,10 +75,11 @@ export function TrialLimitsCard() {
         title="Batas masa coba"
         subtitle="Berlaku hanya untuk workspace yang masih masa coba 14 hari. Paket berbayar tidak dibatasi."
       />
-      <div className="flex flex-col gap-4 p-5">
+      <form ref={formRef} noValidate onSubmit={(e) => void save(e)} className="flex flex-col gap-4 p-5">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {FIELDS.map((f) => (
-            <Field key={f.key} label={f.label} htmlFor={`trial-${f.key}`} hint={f.hint} error={errors[f.key]}>
+            <Field key={f.key} label={f.label} htmlFor={`trial-${f.key}`} name={f.key} hint={f.hint} error={errors[f.key]}>
               <Input
                 id={`trial-${f.key}`}
                 type="number"
@@ -93,10 +89,10 @@ export function TrialLimitsCard() {
                 value={draft[f.key]}
                 disabled={!canEdit || saved === null}
                 onChange={(e) => {
-                  setDraft((d) => ({ ...d, [f.key]: e.target.value }));
-                  setErrors((er) => ({ ...er, [f.key]: undefined }));
+                  form.set(f.key, e.target.value);
                   setMessage(null);
                 }}
+                onBlur={() => form.blur(f.key)}
               />
             </Field>
           ))}
@@ -112,12 +108,12 @@ export function TrialLimitsCard() {
             </p>
           )}
           {canEdit && (
-            <Button onClick={() => void save()} disabled={!dirty || saving}>
-              {saving ? "Menyimpan..." : "Simpan batas"}
+            <Button type="submit" disabled={!dirty || form.submitting}>
+              {form.submitting ? "Menyimpan..." : "Simpan batas"}
             </Button>
           )}
         </div>
-      </div>
+      </form>
     </Card>
   );
 }

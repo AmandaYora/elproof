@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, ExternalLink } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -14,6 +14,13 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nama vendor", categoryId: "Kategori", picName: "Nama PIC", phone: "No. telepon", email: "Email", city: "Kota",
+  priceAkad: "Harga akad", priceAkadResepsi: "Harga akad + resepsi", priceResepsi: "Harga resepsi saja", address: "Alamat", socialMedia: "Sosial media",
+};
 
 function toFormValues(vendor?: Vendor, defaultCategoryId = ""): VendorFormValues {
   if (!vendor) {
@@ -33,16 +40,21 @@ function toFormValues(vendor?: Vendor, defaultCategoryId = ""): VendorFormValues
 interface VendorFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmitCreate: (values: VendorCreateFormValues) => void;
-  onSubmitEdit: (values: VendorFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSubmitCreate: (values: VendorCreateFormValues) => Promise<void>;
+  onSubmitEdit: (values: VendorFormValues) => Promise<void>;
   initialVendor?: Vendor;
   categories: VendorCategory[];
 }
 
 export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, initialVendor, categories }: VendorFormModalProps) {
   const isEditing = Boolean(initialVendor);
-  const [values, setValues] = useState<VendorFormValues>(() => toFormValues(initialVendor, categories[0]?.id ?? ""));
-  const [errors, setErrors] = useState<Partial<Record<keyof VendorFormValues, string>>>({});
+  const form = useZodForm({
+    schema: isEditing ? vendorSchema : vendorCreateSchema,
+    initial: toFormValues(initialVendor, categories[0]?.id ?? ""),
+  });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
   const uploadVendorAttachment = useVendorStore((s) => s.uploadVendorAttachment);
 
@@ -56,21 +68,16 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
   // arrive, without clobbering a value the user already picked.
   useEffect(() => {
     if (!initialVendor && !values.categoryId && categories.length > 0) {
-      setValues((prev) => ({ ...prev, categoryId: categories[0].id }));
+      set("categoryId", categories[0].id);
     }
   }, [categories.length, initialVendor]);
 
   useEffect(() => {
-    setValues(toFormValues(initialVendor, categories[0]?.id ?? ""));
-    setErrors({});
+    form.reset(toFormValues(initialVendor, categories[0]?.id ?? ""));
     setHasAttachment(initialVendor?.hasAttachment ?? false);
     setAttachmentIsImage(initialVendor?.attachmentIsImage ?? false);
     setAttachmentError(null);
   }, [initialVendor, open]);
-
-  function set<K extends keyof VendorFormValues>(key: K, value: VendorFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
 
   async function handleAttachmentChange(file: File | undefined) {
     if (!file || !initialVendor) return;
@@ -98,24 +105,13 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
     }
   }
 
-  function handleSubmit() {
-    const schema = isEditing ? vendorSchema : vendorCreateSchema;
-    const result = schema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof VendorFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof VendorFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    setErrors({});
-    if (isEditing) {
-      onSubmitEdit(result.data);
-    } else {
-      onSubmitCreate(result.data as VendorCreateFormValues);
-    }
-  }
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      if (isEditing) await onSubmitEdit(parsed as VendorFormValues);
+      else await onSubmitCreate(parsed as VendorCreateFormValues);
+    },
+    { root: () => formRef.current, fallback: "Vendor belum tersimpan. Periksa koneksi lalu coba lagi." },
+  );
 
   return (
     <Modal
@@ -124,20 +120,25 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
       title={isEditing ? "Ubah Vendor" : "Tambah Vendor Baru"}
       description="Informasi vendor yang bekerja sama dengan WO."
       size="lg"
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>{isEditing ? "Simpan Perubahan" : "Simpan Vendor"}</Button>
+          <Button type="submit" form="vendor-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : isEditing ? "Simpan perubahan" : "Simpan vendor"}
+          </Button>
         </>
       }
     >
+      <form id="vendor-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Vendor" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Grand Ballroom Kemang" />
+        <Field label="Nama Vendor" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Grand Ballroom Kemang" />
         </Field>
-        <Field label="Kategori" required hint={errors.categoryId}>
+        <Field label="Kategori" required name="categoryId" error={errors.categoryId}>
           <Select value={values.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -146,16 +147,16 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
             ))}
           </Select>
         </Field>
-        <Field label="Nama PIC" required hint={errors.picName}>
-          <Input value={values.picName} onChange={(e) => set("picName", e.target.value)} />
+        <Field label="Nama PIC" required name="picName" error={errors.picName}>
+          <Input value={values.picName} onChange={(e) => set("picName", e.target.value)} onBlur={() => blur("picName")} />
         </Field>
-        <Field label="No Tlp Vendor" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0812-xxxx-xxxx" />
+        <Field label="No Tlp Vendor" required name="phone" error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="0812-xxxx-xxxx" />
         </Field>
-        <Field label="Email" hint={errors.email}>
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="Opsional" />
+        <Field label="Email" name="email" error={errors.email}>
+          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} placeholder="Opsional" />
         </Field>
-        <Field label="Kota" required={!isEditing} hint={errors.city}>
+        <Field label="Kota" required={!isEditing} name="city" error={errors.city}>
           <Combobox value={values.city} onChange={(e) => set("city", e.target.value)} placeholder="Cari kota/kabupaten...">
             {CITIES.map((city) => (
               <option key={city} value={city}>
@@ -164,23 +165,23 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
             ))}
           </Combobox>
         </Field>
-        <Field label="Harga Akad (Rp)" required={!isEditing} hint={errors.priceAkad}>
+        <Field label="Harga Akad (Rp)" required={!isEditing} name="priceAkad" error={errors.priceAkad}>
           <CurrencyInput value={values.priceAkad} onChange={(n) => set("priceAkad", n)} />
         </Field>
-        <Field label="Harga Akad+Resepsi (Rp)" required={!isEditing} hint={errors.priceAkadResepsi}>
+        <Field label="Harga Akad+Resepsi (Rp)" required={!isEditing} name="priceAkadResepsi" error={errors.priceAkadResepsi}>
           <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} />
         </Field>
-        <Field label="Harga Resepsi Only (Rp)" hint={errors.priceResepsi}>
+        <Field label="Harga Resepsi Only (Rp)" name="priceResepsi" error={errors.priceResepsi}>
           <CurrencyInput value={values.priceResepsi} onChange={(n) => set("priceResepsi", n)} />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Alamat" hint={errors.address}>
+          <Field label="Alamat" name="address" error={errors.address}>
             <Textarea rows={2} value={values.address} onChange={(e) => set("address", e.target.value)} placeholder="Opsional" />
           </Field>
         </div>
 
         <div className="sm:col-span-2">
-          <Field label="Sosial Media" hint={errors.socialMedia}>
+          <Field label="Sosial Media" name="socialMedia" error={errors.socialMedia}>
             <Textarea
               rows={2}
               value={values.socialMedia}
@@ -233,6 +234,7 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
           </div>
         )}
       </div>
+      </form>
     </Modal>
   );
 }

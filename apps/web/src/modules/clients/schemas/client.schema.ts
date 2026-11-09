@@ -5,15 +5,15 @@ export const CLIENT_ROLE_OPTIONS = ["Bride", "Groom", "Family Representative"] a
 const optionalEmail = z
   .string()
   .trim()
-  .refine((v) => v === "" || z.string().email().safeParse(v).success, "Email tidak valid");
+  .refine((v) => v === "" || z.string().email().safeParse(v).success, "Periksa email, contoh: nama@email.com");
 
 export const clientContactSchema = z.object({
-  name: z.string().trim().min(2, "Nama wajib diisi"),
+  name: z.string().trim().min(2, "Isi nama, minimal 2 karakter"),
   // WhatsApp: the invitation and reset links are sent there.
   phone: z
     .string()
     .trim()
-    .refine((v) => v.replace(/\D/g, "").length >= 9, "Masukkan nomor WhatsApp yang valid"),
+    .refine((v) => v.replace(/\D/g, "").length >= 9, "Isi nomor WhatsApp, minimal 9 angka"),
   email: optionalEmail,
   /** Portal role (ADR-0026); 0 / absent = keep / default. */
   accessRoleId: z.number().int().nonnegative().optional(),
@@ -34,7 +34,7 @@ export const clientCreateSchema = clientContactSchema.extend({
 export type ClientCreateFormValues = z.infer<typeof clientCreateSchema>;
 
 export const representativeSchema = clientContactSchema.extend({
-  relationNote: z.string().trim().min(2, "Keterangan hubungan wajib diisi"),
+  relationNote: z.string().trim().min(2, "Isi hubungan dengan pengantin"),
 });
 
 export type RepresentativeFormValues = z.infer<typeof representativeSchema>;

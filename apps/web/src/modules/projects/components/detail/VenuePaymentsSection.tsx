@@ -4,6 +4,8 @@ import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
+import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
+import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
@@ -13,17 +15,14 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
-import { useProjectStore, VenuePaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
+import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
 import {
-  venuePaymentSchema,
   venuePaymentUpdateSchema,
   VENUE_PAYMENT_TYPE_OPTIONS,
-  type VenuePaymentFormValues,
   type VenuePaymentUpdateFormValues,
 } from "@/modules/projects/schemas/venue-payment.schema";
 import { PAYMENT_METHOD_OPTIONS } from "@/modules/projects/schemas/payment.schema";
 import type { VenuePayment } from "@/modules/projects/types";
-import { todayISO } from "@/modules/projects/lib/dates";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { remainingToPay, overpaymentMessage } from "@/modules/projects/lib/payments";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
@@ -48,7 +47,6 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
   const canRecord = useCan("finance.record");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [editingPayment, setEditingPayment] = useState<VenuePayment | null>(null);
   const [deletingPayment, setDeletingPayment] = useState<VenuePayment | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -70,20 +68,10 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
   const totalRemaining = remainingToPay(venueValue, venuePayments);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(venuePayments);
 
-  async function handleAddPayment(values: VenuePaymentFormValues) {
-    setActionError(null);
-    try {
-      await createVenuePayment(projectId, values);
-      setModalOpen(false);
-    } catch (err) {
-      if (err instanceof VenuePaymentEvidenceError) {
-        setActionError(err.message);
-        setModalOpen(false);
-        return;
-      }
-      setActionError(getApiErrorMessage(err, "Gagal mencatat pembayaran venue"));
-      throw err;
-    }
+  // Payment and proof are one request: if it fails nothing was saved and the drawer stays open (errors show inside it).
+  async function handleAddPayment(values: PaymentFormValues, options: SaveOptions) {
+    await createVenuePayment(projectId, values, options);
+    setModalOpen(false);
   }
 
   async function handleEditPayment(values: VenuePaymentUpdateFormValues) {
@@ -144,9 +132,6 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
             <p className="rounded-md border border-dashed border-border px-3.5 py-2.5 text-[13px] text-text-secondary">
               Venue sudah dilepas dari project ini. Riwayat pembayaran berikut tetap ditampilkan sebagai catatan historis.
             </p>
-          )}
-          {actionError && (
-            <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
           )}
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <SummaryStat label="Nilai Sewa Venue" value={formatCurrency(venueValue)} />
@@ -235,16 +220,15 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      {modalOpen && (
-        <AddVenuePaymentModal
-          open={modalOpen}
-          onClose={() => { setModalOpen(false); setActionError(null); }}
-          onSubmit={handleAddPayment}
-          error={actionError}
-          venueValue={venueValue}
-          existing={venuePayments}
-        />
-      )}
+      <RecordPaymentDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Catat pembayaran venue"
+        description="Catat pembayaran baru ke venue untuk proyek ini, beserta invoice dan bukti transfernya."
+        slots={{ invoice: true }}
+        owed={() => ({ contractValue: venueValue, existing: venuePayments, owedLabel: "sisa biaya venue" })}
+        onSubmit={handleAddPayment}
+      />
 
       {editingPayment && (
         <EditVenuePaymentModal
@@ -315,139 +299,7 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function emptyValues(): VenuePaymentFormValues {
-  return {
-    type: "DP",
-    amount: 0,
-    paymentDate: todayISO(),
-    method: "Transfer Bank",
-    referenceNumber: "",
-    notes: "",
-    invoiceFile: undefined,
-    proofFile: undefined,
-  };
-}
 
-function AddVenuePaymentModal({
-  open,
-  onClose,
-  onSubmit,
-  error,
-  venueValue,
-  existing,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (values: VenuePaymentFormValues) => Promise<void>;
-  error: string | null;
-  venueValue: number;
-  existing: VenuePayment[];
-}) {
-  const [values, setValues] = useState<VenuePaymentFormValues>(emptyValues);
-  const [errors, setErrors] = useState<Partial<Record<keyof VenuePaymentFormValues, string>>>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  function set<K extends keyof VenuePaymentFormValues>(key: K, value: VenuePaymentFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleSubmit() {
-    const result = venuePaymentSchema.safeParse(values);
-    const fieldErrors: Partial<Record<keyof VenuePaymentFormValues, string>> = {};
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof VenuePaymentFormValues] ??= issue.message;
-      }
-    } else {
-      const over = overpaymentMessage(venueValue, existing, result.data, formatCurrency, "sisa biaya venue");
-      if (over) fieldErrors.amount = over;
-    }
-    if (!result.success || fieldErrors.amount) {
-      setErrors(fieldErrors);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await onSubmit(result.data);
-      setValues(emptyValues());
-      setErrors({});
-    } catch {
-      // The `error` prop (parent's actionError, passed back down) surfaces
-      // this inside the modal itself -- the modal stays open here, and its
-      // own fixed-overlay backdrop would otherwise hide a banner rendered
-      // only in the parent's now-obscured page content.
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Tambah Pembayaran Venue"
-      description="Catat pembayaran baru ke venue untuk project ini."
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? "Menyimpan..." : "Simpan Pembayaran"}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
-        )}
-        <Field label="Jenis Pembayaran" required>
-          <Select value={values.type} onChange={(e) => set("type", e.target.value as VenuePaymentFormValues["type"])}>
-            {VENUE_PAYMENT_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Nominal (Rp)" required error={errors.amount}>
-          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
-        </Field>
-        <Field label="Tanggal" required hint={errors.paymentDate}>
-          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
-        </Field>
-        <Field label="Metode" required hint={errors.method}>
-          <Select value={values.method} onChange={(e) => set("method", e.target.value as VenuePaymentFormValues["method"])}>
-            {PAYMENT_METHOD_OPTIONS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="No. Referensi" hint={errors.referenceNumber}>
-          <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
-        </Field>
-        <Field label="Invoice">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            onChange={(e) => set("invoiceFile", e.target.files?.[0] ?? undefined)}
-            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
-          />
-        </Field>
-        <Field label="Bukti Transfer">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            onChange={(e) => set("proofFile", e.target.files?.[0] ?? undefined)}
-            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
-          />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Catatan">
-            <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
-          </Field>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // Edit scope is the ledger fields only -- no file inputs (already covered by
 // the existing generic evidence tab), see PLAN.md §2.5.

@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { Plus, X } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { planSchema, type PlanFormValues } from "@/modules/platform-admin/schemas/plan.schema";
 import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { name: "Nama paket", durationMonths: "Durasi", price: "Harga", features: "Fitur paket" };
 
 function toFormValues(plan?: SubscriptionPlan): PlanFormValues {
   if (!plan) return { name: "", durationMonths: 12, price: 0, features: [""] };
@@ -19,89 +23,83 @@ function toFormValues(plan?: SubscriptionPlan): PlanFormValues {
 interface PlanFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: PlanFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: the message is shown inside it, a 422 on its fields. */
+  onSubmit: (values: PlanFormValues) => Promise<void>;
   initialPlan?: SubscriptionPlan;
 }
 
 export function PlanFormModal({ open, onClose, onSubmit, initialPlan }: PlanFormModalProps) {
-  const [values, setValues] = useState<PlanFormValues>(() => toFormValues(initialPlan));
-  const [errors, setErrors] = useState<Partial<Record<keyof PlanFormValues, string>>>({});
+  const form = useZodForm({ schema: planSchema, initial: toFormValues(initialPlan) });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
-  function set<K extends keyof PlanFormValues>(key: K, value: PlanFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
+  // The modal stays mounted while closed: start clean each time it opens.
+  useEffect(() => {
+    form.reset(toFormValues(initialPlan));
+  }, [initialPlan, open]);
 
   function setFeature(index: number, value: string) {
-    setValues((prev) => ({ ...prev, features: prev.features.map((f, i) => (i === index ? value : f)) }));
+    set("features", values.features.map((f, i) => (i === index ? value : f)));
   }
 
   function addFeature() {
-    setValues((prev) => ({ ...prev, features: [...prev.features, ""] }));
+    set("features", [...values.features, ""]);
   }
 
   function removeFeature(index: number) {
-    setValues((prev) => ({ ...prev, features: prev.features.filter((_, i) => i !== index) }));
+    set("features", values.features.filter((_, i) => i !== index));
   }
 
-  function handleSubmit() {
-    const cleanedFeatures = values.features.map((f) => f.trim()).filter((f) => f.length > 0);
-    const result = planSchema.safeParse({ ...values, features: cleanedFeatures });
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof PlanFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof PlanFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-    setErrors({});
-  }
-
-  function handleClose() {
-    setValues(toFormValues(initialPlan));
-    setErrors({});
-    onClose();
-  }
+  const submit = form.handleSubmit(onSubmit, {
+    root: () => formRef.current,
+    fallback: "Paket belum tersimpan. Periksa koneksi lalu coba lagi.",
+    known: (key) => key in FIELD_LABELS,
+  });
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
+      busy={form.submitting}
       title={initialPlan ? "Ubah Paket Langganan" : "Tambah Paket Langganan"}
       description="Paket ini akan tersedia untuk dipilih saat registrasi tenant atau aktivasi langganan."
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>{initialPlan ? "Simpan Perubahan" : "Simpan Paket"}</Button>
+          <Button type="submit" form="plan-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : initialPlan ? "Simpan perubahan" : "Simpan paket"}
+          </Button>
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-4">
-        <Field label="Nama Paket" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Paket 1 Tahun" />
+      <form id="plan-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+        <Field label="Nama Paket" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Paket 1 Tahun" />
         </Field>
-        <Field label="Durasi (bulan)" required hint={errors.durationMonths}>
+        <Field label="Durasi (bulan)" required name="durationMonths" error={errors.durationMonths}>
           <Input
             type="number"
             min={1}
             value={values.durationMonths}
             onChange={(e) => set("durationMonths", Number(e.target.value))}
+            onBlur={() => blur("durationMonths")}
             placeholder="12"
           />
         </Field>
-        <Field label="Harga (Rp)" required hint={errors.price}>
+        <Field label="Harga (Rp)" required name="price" error={errors.price}>
           <Input
             type="number"
             min={0}
             value={values.price}
             onChange={(e) => set("price", Number(e.target.value))}
+            onBlur={() => blur("price")}
             placeholder="2000000"
           />
         </Field>
-        <Field label="Fitur Paket" required hint={errors.features}>
+        <Field label="Fitur Paket" required name="features" error={errors.features}>
           <div className="flex flex-col gap-2">
             {values.features.map((feature, index) => (
               <div key={index} className="flex items-center gap-2">
@@ -122,11 +120,11 @@ export function PlanFormModal({ open, onClose, onSubmit, initialPlan }: PlanForm
               </div>
             ))}
             <Button type="button" variant="secondary" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={addFeature}>
-              Tambah Fitur
+              Tambah fitur
             </Button>
           </div>
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }

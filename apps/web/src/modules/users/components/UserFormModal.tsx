@@ -1,13 +1,16 @@
-import { useState } from "react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Select, Field } from "@/shared/components/ui/Input";
 import { userSchema, type UserFormValues } from "@/modules/users/schemas/user.schema";
 import { OWNER_ROLE_NAME, type StaffMember } from "@/modules/users/types";
 import { useRolesStore } from "@/modules/access/stores/useRolesStore";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { name: "Nama lengkap", roleId: "Peran", title: "Jabatan", phone: "Nomor WhatsApp", email: "Email akun Google" };
 
 function toFormState(user?: StaffMember): UserFormValues {
   if (!user) return { name: "", title: "", roleId: 0, email: "", phone: "" };
@@ -19,19 +22,18 @@ interface UserFormModalProps {
   onClose: () => void;
   initialUser?: StaffMember;
   /** Inviting: the parent shows the invitation link afterwards. */
-  onSubmitCreate: (values: UserFormValues) => void;
-  onSubmitEdit: (values: UserFormValues) => void;
-  submitting?: boolean;
-  /** Server refusal (e.g. trial limit), shown inside the form. */
-  error?: string | null;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 (or a refusal such as the trial limit) is shown inside it. */
+  onSubmitCreate: (values: UserFormValues) => Promise<void>;
+  onSubmitEdit: (values: UserFormValues) => Promise<void>;
 }
 
-export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSubmitEdit, submitting = false, error = null }: UserFormModalProps) {
+export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSubmitEdit }: UserFormModalProps) {
   const businessName = useTenantBrandingStore((s) => s.businessName) ?? APP_NAME;
   const isEditing = Boolean(initialUser);
   const pendingInvite = initialUser?.loginStatus === "invited";
-  const [values, setValues] = useState<UserFormValues>(() => toFormState(initialUser));
-  const [errors, setErrors] = useState<Partial<Record<keyof UserFormValues, string>>>({});
+  const form = useZodForm({ schema: userSchema, initial: toFormState(initialUser) });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const roles = useRolesStore((s) => s.roles.staff);
   const fetchRoles = useRolesStore((s) => s.fetchRoles);
   const assignable = roles.filter((r) => !r.isSystem);
@@ -40,61 +42,48 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
     void fetchRoles("staff").catch(() => undefined);
   }, [fetchRoles]);
 
-  function set<K extends keyof UserFormValues>(key: K, value: UserFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
-  }
+  // Mounted once and kept alive while closed: every opening starts from the person as they are now.
+  useEffect(() => {
+    form.reset(toFormState(initialUser));
+  }, [initialUser, open]);
 
-  function handleSubmit() {
-    const result = userSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof UserFormValues, string>> = {};
-      for (const issue of result.error.issues) fieldErrors[issue.path[0] as keyof UserFormValues] = issue.message;
-      setErrors(fieldErrors);
-      return;
-    }
-    setErrors({});
-    if (isEditing) onSubmitEdit(result.data);
-    else onSubmitCreate(result.data);
-  }
-
-  function handleClose() {
-    setValues(toFormState(initialUser));
-    setErrors({});
-    onClose();
-  }
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      if (isEditing) await onSubmitEdit(parsed);
+      else await onSubmitCreate(parsed);
+    },
+    { root: () => formRef.current, fallback: isEditing ? "Perubahan belum tersimpan. Periksa koneksi lalu coba lagi." : "Undangan belum dibuat. Periksa koneksi lalu coba lagi." },
+  );
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
       title={isEditing ? "Ubah Pengguna" : "Undang Pengguna"}
       description={
         isEditing
           ? `Data staf ${businessName}.`
           : `Orang ini menerima link undangan dan masuk ke ${businessName} dengan akun Google-nya.`
       }
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose} disabled={submitting}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {isEditing ? "Simpan Perubahan" : submitting ? "Membuat undangan..." : "Buat Undangan"}
+          <Button type="submit" form="user-form" disabled={form.submitting}>
+            {isEditing ? (form.submitting ? "Menyimpan..." : "Simpan perubahan") : form.submitting ? "Membuat undangan..." : "Buat undangan"}
           </Button>
         </>
       }
     >
+      <form id="user-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text sm:col-span-2">
-            {error}
-          </p>
-        )}
-        <Field label="Nama Lengkap" required error={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Anisa Putri" />
+        <Field label="Nama Lengkap" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Anisa Putri" />
         </Field>
-        <Field label="Peran" required error={errors.roleId} hint="Izin tiap peran diatur di Pengaturan → Peran & Akses.">
+        <Field label="Peran" required name="roleId" error={errors.roleId} hint="Izin tiap peran diatur di Pengaturan → Peran & Akses.">
           {initialUser?.role === OWNER_ROLE_NAME ? (
             <Input value={OWNER_ROLE_NAME} disabled />
           ) : (
@@ -110,16 +99,17 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
             </Select>
           )}
         </Field>
-        <Field label="Jabatan" required error={errors.title}>
-          <Input value={values.title} onChange={(e) => set("title", e.target.value)} placeholder="cth. Lead Planner" />
+        <Field label="Jabatan" required name="title" error={errors.title}>
+          <Input value={values.title} onChange={(e) => set("title", e.target.value)} onBlur={() => blur("title")} placeholder="cth. Lead Planner" />
         </Field>
-        <Field label="Nomor WhatsApp" error={errors.phone} hint="Untuk mengirim link undangan lewat WhatsApp">
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0812 3456 7890" inputMode="tel" />
+        <Field label="Nomor WhatsApp" name="phone" error={errors.phone} hint="Untuk mengirim link undangan lewat WhatsApp">
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="0812 3456 7890" inputMode="tel" />
         </Field>
         <div className="sm:col-span-2">
           <Field
             label="Email akun Google"
             required
+            name="email"
             error={errors.email}
             hint={
               isEditing && !pendingInvite
@@ -127,10 +117,11 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
                 : "Undangan hanya bisa diterima dengan akun Google yang memakai email ini."
             }
           >
-            <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@gmail.com" autoComplete="off" />
+            <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} placeholder="nama@gmail.com" autoComplete="off" />
           </Field>
         </div>
       </div>
+      </form>
     </Modal>
   );
 }

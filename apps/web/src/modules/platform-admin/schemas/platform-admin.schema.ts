@@ -12,11 +12,11 @@ export const PLATFORM_ADMIN_ROLE_DESCRIPTIONS: Record<(typeof PLATFORM_ADMIN_ROL
 };
 
 export const platformAdminSchema = z.object({
-  name: z.string().min(2, "Nama wajib diisi"),
-  title: z.string().min(2, "Jabatan wajib diisi"),
+  name: z.string().min(2, "Isi nama lengkap, minimal 2 karakter"),
+  title: z.string().min(2, "Isi jabatan, minimal 2 karakter"),
   role: z.enum(PLATFORM_ADMIN_ROLE_OPTIONS),
-  email: z.string().email("Email tidak valid"),
-  phone: z.string().min(6, "Nomor telepon tidak valid"),
+  email: z.string().trim().email("Isi email lengkap, misalnya nama@elproof.id"),
+  phone: z.string().min(6, "Isi nomor telepon, minimal 6 digit"),
 });
 
 export type PlatformAdminFormValues = z.infer<typeof platformAdminSchema>;
@@ -25,10 +25,10 @@ export const platformAdminCreateSchema = platformAdminSchema
   .extend({
     username: usernameSchema,
     password: z.string().min(8, "Password minimal 8 karakter"),
-    confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
+    confirmPassword: z.string().min(1, "Ulangi password"),
   })
   .refine((values) => values.password === values.confirmPassword, {
-    message: "Konfirmasi password tidak sama",
+    message: "Kedua password belum sama",
     path: ["confirmPassword"],
   });
 
@@ -37,10 +37,10 @@ export type PlatformAdminCreateFormValues = z.infer<typeof platformAdminCreateSc
 export const resetPlatformAdminPasswordSchema = z
   .object({
     password: z.string().min(8, "Password minimal 8 karakter"),
-    confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
+    confirmPassword: z.string().min(1, "Ulangi password"),
   })
   .refine((values) => values.password === values.confirmPassword, {
-    message: "Konfirmasi password tidak sama",
+    message: "Kedua password belum sama",
     path: ["confirmPassword"],
   });
 

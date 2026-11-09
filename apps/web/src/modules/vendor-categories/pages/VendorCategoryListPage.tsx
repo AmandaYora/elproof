@@ -70,19 +70,16 @@ export default function VendorCategoryListPage() {
     setEditingCategory(undefined);
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleSubmit(values: VendorCategoryFormValues) {
     setActionError(null);
-    try {
-      if (editingCategory) {
-        await updateCategory(editingCategory.id, values);
-      } else {
-        await createCategory(values);
-      }
-      closeModal();
-      await fetchCategoryPage(page, query);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan kategori vendor"));
+    if (editingCategory) {
+      await updateCategory(editingCategory.id, values);
+    } else {
+      await createCategory(values);
     }
+    closeModal();
+    await fetchCategoryPage(page, query);
   }
 
   async function handleToggleActive(category: VendorCategory) {
@@ -234,7 +231,7 @@ export default function VendorCategoryListPage() {
         key={editingCategory?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmit={(values) => void handleSubmit(values)}
+        onSubmit={handleSubmit}
         initialCategory={editingCategory}
       />
 

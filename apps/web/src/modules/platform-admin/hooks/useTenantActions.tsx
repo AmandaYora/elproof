@@ -36,8 +36,6 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
 
   const [editing, setEditing] = useState<Tenant | undefined>(undefined);
   const [activating, setActivating] = useState<Tenant | undefined>(undefined);
-  const [isActivating, setIsActivating] = useState(false);
-  const [activationError, setActivationError] = useState<string | null>(null);
   const [suspension, setSuspension] = useState<Tenant | undefined>(undefined);
   const [suspensionError, setSuspensionError] = useState<string | null>(null);
   const [isTogglingSuspension, setIsTogglingSuspension] = useState(false);
@@ -48,16 +46,13 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
     void fetchPlans().catch(() => undefined);
   }, [fetchPlans]);
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleEditSubmit(values: TenantFormValues) {
     if (!editing) return;
     setActionError(null);
-    try {
-      await updateTenant(editing.id, values);
-      setEditing(undefined);
-      await onChanged();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui tenant"));
-    }
+    await updateTenant(editing.id, values);
+    setEditing(undefined);
+    await onChanged();
   }
 
   async function reinvite(tenant: Tenant) {
@@ -77,18 +72,10 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
 
   async function handleActivateSubmit(values: ActivateSubscriptionFormValues) {
     if (!activating) return;
-    setActivationError(null);
-    setIsActivating(true);
-    try {
-      await activateTenantSubscription(activating.id, values);
-      await onChanged();
-      setActivating(undefined);
-    } catch (err) {
-      // Keep the dialog open with what was typed, so the admin can fix it.
-      setActivationError(getApiErrorMessage(err, "Gagal mengaktifkan langganan tenant"));
-    } finally {
-      setIsActivating(false);
-    }
+    // A failure keeps the dialog open with what was typed (the form shows it), so the admin can fix it.
+    await activateTenantSubscription(activating.id, values);
+    setActivating(undefined);
+    await onChanged();
   }
 
   async function handleConfirmSuspension() {
@@ -113,7 +100,7 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
         open={editing !== undefined}
         onClose={() => setEditing(undefined)}
         initialTenant={editing}
-        onSubmitCreate={() => undefined}
+        onSubmitCreate={async () => undefined}
         onSubmitEdit={handleEditSubmit}
         onUploadLogo={async (id, file) => {
           await uploadTenantLogo(id, file);
@@ -140,8 +127,6 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
         onClose={() => setActivating(undefined)}
         tenant={activating}
         plans={plans}
-        isSubmitting={isActivating}
-        error={activationError}
         onSubmit={handleActivateSubmit}
       />
 
@@ -179,7 +164,6 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
       setEditing(tenant);
     },
     openActivation: (tenant: Tenant) => {
-      setActivationError(null);
       setActivating(tenant);
     },
     openSuspension: (tenant: Tenant) => {

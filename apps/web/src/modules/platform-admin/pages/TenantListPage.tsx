@@ -85,21 +85,18 @@ export default function TenantListPage() {
     return actions.plans.find((p) => p.id === planId)?.name ?? "-";
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleRegister(values: TenantCreateFormValues) {
     actions.clearActionError();
-    try {
-      const result = await registerTenant(values);
-      setCreateOpen(false);
-      await refetch();
-      actions.showOwnerLink({
-        tenant: result.tenant,
-        link: result.invitation,
-        email: result.email,
-        notice: `${result.tenant.businessName} didaftarkan dengan masa coba 14 hari.`,
-      });
-    } catch (err) {
-      actions.setActionError(getApiErrorMessage(err, "Gagal mendaftarkan tenant"));
-    }
+    const result = await registerTenant(values);
+    setCreateOpen(false);
+    await refetch();
+    actions.showOwnerLink({
+      tenant: result.tenant,
+      link: result.invitation,
+      email: result.email,
+      notice: `${result.tenant.businessName} didaftarkan dengan masa coba 14 hari.`,
+    });
   }
 
   async function handleExport() {
@@ -336,7 +333,7 @@ export default function TenantListPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSubmitCreate={handleRegister}
-        onSubmitEdit={() => undefined}
+        onSubmitEdit={async () => undefined}
         onUploadLogo={uploadTenantLogo}
       />
 

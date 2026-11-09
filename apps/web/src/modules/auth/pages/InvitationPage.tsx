@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -14,6 +14,9 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatLinkExpiry, type AccessLinkPurpose } from "@/shared/lib/access-link";
 import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { invitationPasswordSchema, MIN_PASSWORD } from "@/modules/auth/schemas/invitation.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 interface LinkInfo {
   purpose: AccessLinkPurpose;
@@ -29,7 +32,8 @@ function errorCode(err: unknown): string | undefined {
   return (err.response?.data as { errors?: { code?: string } } | undefined)?.errors?.code;
 }
 
-const MIN_PASSWORD = 8;
+const FIELD_LABELS: Record<string, string> = { password: "Kata sandi baru", confirm: "Ulangi kata sandi" };
+const FIELDS = (key: string) => key === "password";
 
 /**
  * /undangan/:token — one page for every one-time link (PLAN.md Fase 3):
@@ -43,12 +47,13 @@ export default function InvitationPage() {
   const navigate = useNavigate();
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const form = useZodForm({ schema: invitationPasswordSchema, initial: { password: "", confirm: "" } });
+  const { values, errors } = form;
+  const formRef = useRef<HTMLFormElement>(null);
+  const setFormError = form.setFormError;
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const busy = googleBusy || form.submitting;
   const [showPassword, setShowPassword] = useState(false);
-  const [fieldError, setFieldError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,8 +83,8 @@ export default function InvitationPage() {
 
   const acceptWithGoogle = useCallback(
     async (credential: string) => {
-      setError(null);
-      setBusy(true);
+      setFormError(null);
+      setGoogleBusy(true);
       try {
         const res = await httpClient.post(API.auth.linkGoogle(token), { credential });
         finish(res.data.data as AuthSession);
@@ -90,47 +95,31 @@ export default function InvitationPage() {
           setLoadError(getApiErrorMessage(err, "Link ini sudah tidak berlaku."));
           return;
         }
-        setError(getApiErrorMessage(err, "Undangan belum berhasil diterima. Silakan coba lagi."));
+        setFormError(getApiErrorMessage(err, "Undangan belum berhasil diterima. Silakan coba lagi."));
       } finally {
-        setBusy(false);
+        setGoogleBusy(false);
       }
     },
-    [token, finish],
+    [token, finish, setFormError],
   );
 
-  async function savePassword(e: FormEvent) {
-    e.preventDefault();
-    if (password.length < MIN_PASSWORD) {
-      setFieldError(`Kata sandi minimal ${MIN_PASSWORD} karakter`);
-      return;
-    }
-    if (password !== confirm) {
-      setFieldError("Kedua kata sandi belum sama");
-      return;
-    }
-    setFieldError(null);
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await httpClient.post(API.auth.linkPassword(token), { password });
-      finish(res.data.data as AuthSession);
-    } catch (err) {
-      const code = errorCode(err);
-      if (code === "link_used" || code === "link_revoked" || code === "link_expired") {
-        setInfo(null);
-        setLoadError(getApiErrorMessage(err, "Link ini sudah tidak berlaku."));
-        return;
+  const savePassword = form.handleSubmit(
+    async ({ password }) => {
+      try {
+        const res = await httpClient.post(API.auth.linkPassword(token), { password });
+        finish(res.data.data as AuthSession);
+      } catch (err) {
+        const code = errorCode(err);
+        if (code === "link_used" || code === "link_revoked" || code === "link_expired") {
+          setInfo(null);
+          setLoadError(getApiErrorMessage(err, "Link ini sudah tidak berlaku."));
+          return;
+        }
+        throw err; // a 422 is shown on the password field, anything else above the form
       }
-      if (axios.isAxiosError(err) && err.response?.status === 422) {
-        const fields = (err.response.data as { errors?: Record<string, string[]> }).errors ?? {};
-        setFieldError(fields.password?.[0] ?? getApiErrorMessage(err, "Kata sandi belum memenuhi syarat"));
-        return;
-      }
-      setError(getApiErrorMessage(err, "Kata sandi belum tersimpan. Silakan coba lagi."));
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Kata sandi belum tersimpan. Silakan coba lagi.", known: FIELDS },
+  );
 
   const isStaff = info?.purpose === "staff_invite";
   const isReset = info?.purpose === "client_reset";
@@ -189,32 +178,27 @@ export default function InvitationPage() {
             <p className="mt-1 text-[12px] text-text-secondary">Link berlaku sampai {formatLinkExpiry(info.expiresAt)}.</p>
 
             <div className="mt-8 flex flex-col gap-5">
-              {error && (
-                <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-                  {error}
-                </p>
-              )}
+              <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
 
               {isStaff ? (
                 <GoogleSignInButton text="continue_with" context="signin" onCredential={acceptWithGoogle} busy={busy} />
               ) : (
-                <form onSubmit={savePassword} className="flex flex-col gap-5" noValidate>
+                <form ref={formRef} onSubmit={(e) => void savePassword(e)} className="flex flex-col gap-5" noValidate>
                   {/* Lets password managers save the login under the right name. */}
                   <input type="text" name="username" autoComplete="username" value={info.username ?? ""} readOnly hidden />
                   <Field label="Nama pengguna">
                     <Input value={info.username ?? ""} readOnly className="bg-surface-muted" />
                   </Field>
-                  <Field label="Kata sandi baru" htmlFor="new-password" required error={fieldError ?? undefined} hint={`Minimal ${MIN_PASSWORD} karakter`}>
+                  <Field label="Kata sandi baru" htmlFor="new-password" required name="password" error={errors.password} hint={`Minimal ${MIN_PASSWORD} karakter`}>
                     <div className="relative">
                       <Input
                         id="new-password"
                         type={showPassword ? "text" : "password"}
                         autoComplete="new-password"
-                        value={password}
-                        onChange={(e) => {
-                          setPassword(e.target.value);
-                          setFieldError(null);
-                        }}
+                        value={values.password}
+                        onChange={(e) => form.set("password", e.target.value)}
+                        onBlur={() => form.blur("password")}
+                        aria-invalid={errors.password ? true : undefined}
                         className="pr-10"
                         autoFocus
                       />
@@ -228,20 +212,18 @@ export default function InvitationPage() {
                       </button>
                     </div>
                   </Field>
-                  <Field label="Ulangi kata sandi" htmlFor="confirm-password" required>
+                  <Field label="Ulangi kata sandi" htmlFor="confirm-password" required name="confirm" error={errors.confirm}>
                     <Input
                       id="confirm-password"
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
-                      value={confirm}
-                      onChange={(e) => {
-                        setConfirm(e.target.value);
-                        setFieldError(null);
-                      }}
+                      value={values.confirm}
+                      onChange={(e) => form.set("confirm", e.target.value)}
+                      onBlur={() => form.blur("confirm")}
                     />
                   </Field>
-                  <Button type="submit" variant="neutral" className="w-full justify-center" disabled={busy}>
-                    {busy ? "Menyimpan..." : "Simpan kata sandi dan masuk"}
+                  <Button type="submit" variant="neutral" className="w-full justify-center" disabled={form.submitting}>
+                    {form.submitting ? "Menyimpan..." : "Simpan kata sandi dan masuk"}
                   </Button>
                 </form>
               )}

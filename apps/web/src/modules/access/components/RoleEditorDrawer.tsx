@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import axios from "axios";
+import { useMemo, useRef, useState } from "react";
 import { Lock } from "lucide-react";
 import { Drawer } from "@/shared/components/ui/Drawer";
 import { Button } from "@/shared/components/ui/Button";
@@ -7,8 +6,15 @@ import { Field, Input, Textarea } from "@/shared/components/ui/Input";
 import { cn } from "@/shared/lib/cn";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { toast } from "@/shared/stores/useToastStore";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+import { roleSchema } from "@/modules/access/schemas/role.schema";
 import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { useRolesStore, type Permission, type ProjectScope, type Role, type RoleKind } from "@/modules/access/stores/useRolesStore";
+
+const FIELD_LABELS: Record<string, string> = { name: "Nama peran", description: "Deskripsi", permissions: "Izin" };
+// Fields the editor can show a server message on; anything else goes to the summary.
+const KNOWN_FIELDS = new Set(["name", "description", "permissions"]);
 
 interface RoleEditorDrawerProps {
   open: boolean;
@@ -42,13 +48,18 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
   const ownRole = Boolean(role && myGrants && !myGrants.isOwner && myGrants.roleId === role.id);
   const readOnly = Boolean(role?.isSystem) || ownRole;
 
-  const [name, setName] = useState(role?.name ?? (copyFrom ? `${copyFrom.name} (salinan)` : ""));
-  const [description, setDescription] = useState(role?.description ?? copyFrom?.description ?? "");
+  const form = useZodForm({
+    schema: roleSchema,
+    initial: {
+      name: role?.name ?? (copyFrom ? `${copyFrom.name} (salinan)` : ""),
+      description: role?.description ?? copyFrom?.description ?? "",
+    },
+  });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [scope, setScope] = useState<ProjectScope>(source?.projectScope ?? (kind === "staff" ? "assigned" : "all"));
   const [granted, setGranted] = useState<Set<string>>(() => new Set(source?.permissions ?? []));
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const groups = useMemo(() => {
@@ -68,47 +79,38 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
     });
   }
 
-  async function save() {
-    setSaving(true);
-    setErrors({});
-    setFormError(null);
-    const input = { kind, name, description, projectScope: scope, permissions: Array.from(granted) };
-    try {
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      const input = { kind, name: parsed.name, description: parsed.description, projectScope: scope, permissions: Array.from(granted) };
       if (role) {
         await updateRole(role.id, input);
         toast.success(
           role.memberCount > 0
-            ? `Peran "${name}" disimpan. Berlaku langsung untuk ${role.memberCount} orang.`
-            : `Peran "${name}" disimpan`,
+            ? `Peran "${parsed.name}" disimpan. Berlaku langsung untuk ${role.memberCount} orang.`
+            : `Peran "${parsed.name}" disimpan`,
         );
       } else {
         await createRole(input);
-        toast.success(`Peran "${name}" dibuat`);
+        toast.success(`Peran "${parsed.name}" dibuat`);
       }
       onClose();
-    } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 422) {
-        const f = (err.response.data as { errors?: Record<string, string[]> }).errors ?? {};
-        setErrors(Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v[0]])));
-      }
-      setFormError(getApiErrorMessage(err, "Peran belum tersimpan"));
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Peran belum tersimpan. Periksa koneksi lalu coba lagi.", known: (key) => KNOWN_FIELDS.has(key) },
+  );
 
   async function remove() {
     if (!role) return;
-    setSaving(true);
+    setDeleting(true);
+    form.setFormError(null);
     try {
       await deleteRole(role);
       toast.success(`Peran "${role.name}" dihapus`);
       onClose();
     } catch (err) {
-      setFormError(getApiErrorMessage(err, "Peran belum terhapus"));
+      form.setFormError(getApiErrorMessage(err, "Peran belum terhapus"));
       setConfirmDelete(false);
     } finally {
-      setSaving(false);
+      setDeleting(false);
     }
   }
 
@@ -119,6 +121,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
       open={open}
       onClose={onClose}
       size="lg"
+      busy={form.submitting || deleting}
       title={role ? (readOnly ? role.name : `Ubah peran ${role.name}`) : "Buat peran"}
       description={
         role
@@ -139,7 +142,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                 (confirmDelete ? (
                   <span className="flex items-center gap-2 text-[13px] text-danger-text">
                     Hapus peran ini?
-                    <Button variant="danger" size="sm" onClick={() => void remove()} disabled={saving}>
+                    <Button variant="danger" size="sm" onClick={() => void remove()} disabled={deleting || form.submitting}>
                       Ya, hapus
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
@@ -153,18 +156,18 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                 ))}
             </div>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={onClose} disabled={saving}>
+              <Button variant="secondary" onClick={onClose} disabled={form.submitting || deleting}>
                 Batal
               </Button>
-              <Button onClick={() => void save()} disabled={saving}>
-                {saving ? "Menyimpan..." : role ? "Simpan peran" : "Buat peran"}
+              <Button type="submit" form="role-form" disabled={form.submitting || deleting}>
+                {form.submitting ? "Menyimpan..." : role ? "Simpan peran" : "Buat peran"}
               </Button>
             </div>
           </div>
         )
       }
     >
-      <div className="flex flex-col gap-6">
+      <form id="role-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-6">
         {readOnly && (
           <p className="flex items-start gap-2.5 rounded-md border border-border bg-surface-muted px-3.5 py-3 text-[13px] leading-relaxed text-text-secondary">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -173,19 +176,15 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
               : "Owner selalu memiliki semua akses dan tidak bisa diubah, supaya workspace tidak pernah terkunci."}
           </p>
         )}
-        {formError && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-            {formError}
-          </p>
-        )}
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
 
         {!readOnly && (
           <div className="grid grid-cols-1 gap-4">
-            <Field label="Nama peran" htmlFor="role-name" required error={errors.name}>
-              <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="cth. Koordinator Lapangan" />
+            <Field label="Nama peran" htmlFor="role-name" required name="name" error={errors.name}>
+              <Input id="role-name" value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} maxLength={60} placeholder="cth. Koordinator Lapangan" />
             </Field>
-            <Field label="Deskripsi" htmlFor="role-desc" error={errors.description} hint="Satu kalimat tentang tugas peran ini.">
-              <Textarea id="role-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={255} />
+            <Field label="Deskripsi" htmlFor="role-desc" name="description" error={errors.description} hint="Satu kalimat tentang tugas peran ini.">
+              <Textarea id="role-desc" rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} maxLength={255} />
             </Field>
           </div>
         )}
@@ -221,7 +220,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
           </fieldset>
         )}
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5" data-field="permissions">
           <div className="flex items-baseline justify-between gap-2">
             <h3 className="text-[13px] font-semibold text-text-primary">Izin</h3>
             <span className="text-[12.5px] text-text-secondary">{granted.size} dipilih</span>
@@ -253,7 +252,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
             </fieldset>
           ))}
         </div>
-      </div>
+      </form>
     </Drawer>
   );
 }

@@ -77,19 +77,16 @@ export default function VenueListPage() {
     setEditingVenue(undefined);
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleSubmit(values: VenueFormValues | VenueCreateFormValues) {
     setActionError(null);
-    try {
-      if (editingVenue) {
-        await updateVenue(editingVenue.id, values as VenueFormValues);
-      } else {
-        await createVenue(values as VenueCreateFormValues);
-      }
-      closeModal();
-      await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan venue"));
+    if (editingVenue) {
+      await updateVenue(editingVenue.id, values as VenueFormValues);
+    } else {
+      await createVenue(values as VenueCreateFormValues);
     }
+    closeModal();
+    await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
   }
 
   async function handleToggleActive(venue: Venue) {
@@ -290,8 +287,8 @@ export default function VenueListPage() {
         key={editingVenue?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmitCreate={(values) => void handleSubmit(values)}
-        onSubmitEdit={(values) => void handleSubmit(values)}
+        onSubmitCreate={handleSubmit}
+        onSubmitEdit={handleSubmit}
         initialVenue={editingVenue}
       />
 

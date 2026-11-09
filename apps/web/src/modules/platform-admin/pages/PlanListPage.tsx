@@ -138,18 +138,15 @@ export default function PlanListPage() {
     setEditingPlan(undefined);
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleSubmit(values: PlanFormValues) {
     setActionError(null);
-    try {
-      if (editingPlan) {
-        await updatePlan(editingPlan.id, values);
-      } else {
-        await createPlan(values);
-      }
-      closeModal();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan paket"));
+    if (editingPlan) {
+      await updatePlan(editingPlan.id, values);
+    } else {
+      await createPlan(values);
     }
+    closeModal();
   }
 
   async function handleToggleActive(planId: string) {

@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { Drawer } from "@/shared/components/ui/Drawer";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Field } from "@/shared/components/ui/Input";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+import { businessDetailsSchema } from "@/modules/business-profile/schemas/business-details.schema";
 
 export interface BusinessDetails {
   address: string;
@@ -12,6 +14,10 @@ export interface BusinessDetails {
   bankAccountNumber: string;
   bankAccountHolder: string;
 }
+
+const FIELD_LABELS: Record<string, string> = {
+  address: "Alamat usaha", bankName: "Nama bank", bankAccountNumber: "Nomor rekening", bankAccountHolder: "Nama pemilik rekening",
+};
 
 /** Edits the address and the bank account clients pay into (shown in their portal). */
 export function BusinessDetailsDrawer({
@@ -23,77 +29,52 @@ export function BusinessDetailsDrawer({
   onClose: () => void;
   onSaved: (saved: BusinessDetails) => void;
 }) {
-  const [values, setValues] = useState<BusinessDetails>(initial);
-  const [saving, setSaving] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
+  const form = useZodForm({ schema: businessDetailsSchema, initial });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
-  function set<K extends keyof BusinessDetails>(key: K, value: string) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    setFieldErrors({});
-    try {
-      const res = await httpClient.put(API.platform.tenantMeBusinessDetails, values);
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      const res = await httpClient.put(API.platform.tenantMeBusinessDetails, parsed);
       onSaved(res.data.data as BusinessDetails);
-    } catch (err) {
-      const fields = getApiFieldErrors(err);
-      setFieldErrors(fields);
-      setError(Object.keys(fields).length > 0 ? "Lengkapi dulu bagian yang ditandai." : getApiErrorMessage(err, "Belum tersimpan. Periksa koneksi lalu coba lagi."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const invalid = (key: string) => (fieldErrors[key] ? true : undefined);
+    },
+    { root: () => formRef.current, fallback: "Belum tersimpan. Periksa koneksi lalu coba lagi." },
+  );
 
   return (
     <Drawer
       open
       onClose={onClose}
-      busy={saving}
+      busy={form.submitting}
       title="Alamat dan rekening pembayaran"
       description="Klien melihat rekening ini di portal mereka saat ada tagihan. Kosongkan semuanya bila belum ingin dibagikan."
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={saving}>Batal</Button>
-          <Button onClick={() => void save()} disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="business-details-form" disabled={form.submitting}>{form.submitting ? "Menyimpan..." : "Simpan rekening"}</Button>
         </>
       }
     >
-      <form
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-        className="flex flex-col gap-4"
-      >
-        <Field label="Alamat usaha" error={fieldErrors.address}>
-          <Textarea rows={3} value={values.address} onChange={(e) => set("address", e.target.value)} aria-invalid={invalid("address")} />
+      <form id="business-details-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+        <Field label="Alamat usaha" name="address" error={errors.address}>
+          <Textarea rows={3} value={values.address} onChange={(e) => set("address", e.target.value)} onBlur={() => blur("address")} />
         </Field>
-        <Field label="Nama bank" error={fieldErrors.bankName}>
-          <Input value={values.bankName} onChange={(e) => set("bankName", e.target.value)} aria-invalid={invalid("bankName")} placeholder="cth. BCA" />
+        <Field label="Nama bank" name="bankName" error={errors.bankName}>
+          <Input value={values.bankName} onChange={(e) => set("bankName", e.target.value)} onBlur={() => blur("bankName")} placeholder="cth. BCA" />
         </Field>
-        <Field label="Nomor rekening" error={fieldErrors.bankAccountNumber}>
+        <Field label="Nomor rekening" name="bankAccountNumber" error={errors.bankAccountNumber}>
           <Input
             value={values.bankAccountNumber}
             onChange={(e) => set("bankAccountNumber", e.target.value)}
-            aria-invalid={invalid("bankAccountNumber")}
+            onBlur={() => blur("bankAccountNumber")}
             inputMode="numeric"
             autoComplete="off"
           />
         </Field>
-        <Field label="Nama pemilik rekening" error={fieldErrors.bankAccountHolder}>
-          <Input value={values.bankAccountHolder} onChange={(e) => set("bankAccountHolder", e.target.value)} aria-invalid={invalid("bankAccountHolder")} />
+        <Field label="Nama pemilik rekening" name="bankAccountHolder" error={errors.bankAccountHolder}>
+          <Input value={values.bankAccountHolder} onChange={(e) => set("bankAccountHolder", e.target.value)} onBlur={() => blur("bankAccountHolder")} />
         </Field>
-        {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
-        )}
-        <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>
     </Drawer>
   );

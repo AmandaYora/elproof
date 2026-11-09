@@ -1,18 +1,22 @@
-import { useState, type FormEvent } from "react";
+import { useRef } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Info } from "lucide-react";
+import { CircleAlert, Info } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Field, Input } from "@/shared/components/ui/Input";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
-import { workspaceSchema, type WorkspaceFormValues } from "@/modules/auth/schemas/workspace.schema";
+import { workspaceSchema } from "@/modules/auth/schemas/workspace.schema";
 import type { GoogleSignupState } from "@/modules/auth/types";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { businessName: "Nama WO", acceptTerms: "Persetujuan" };
+const FIELDS = (key: string) => key === "businessName" || key === "acceptTerms";
 
 const EXPIRED_NOTICE = "Sesi Google Anda sudah berakhir. Silakan daftar ulang dengan Google.";
 
@@ -30,10 +34,9 @@ export default function WorkspaceSetupPage() {
   usePageMeta({ title: "Siapkan workspace", description: "Lengkapi data WO Anda untuk mulai memakai ElProof.", noindex: true });
   const navigate = useNavigate();
   const signup = useLocation().state as GoogleSignupState | null;
-  const [values, setValues] = useState<WorkspaceFormValues>({ businessName: "", acceptTerms: false, marketingOptIn: false });
-  const [errors, setErrors] = useState<Partial<Record<keyof WorkspaceFormValues, string>>>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const form = useZodForm({ schema: workspaceSchema, initial: { businessName: "", acceptTerms: false, marketingOptIn: false } });
+  const { values, errors } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
   if (!signup?.credential) {
     // Opened directly (or the history entry was replaced): start again from
@@ -43,12 +46,6 @@ export default function WorkspaceSetupPage() {
   }
   const { credential, email, name, invited } = signup;
 
-  function set<K extends keyof WorkspaceFormValues>(key: K, value: WorkspaceFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
-    setFormError(null);
-  }
-
   async function signInAndContinue() {
     const res = await httpClient.post(API.auth.google, { credential });
     const session = res.data.data as AuthSession | { signupRequired: true };
@@ -57,48 +54,32 @@ export default function WorkspaceSetupPage() {
     navigate(ROUTE_PATHS.dashboard, { replace: true, state: { welcome: true } });
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const parsed = workspaceSchema.safeParse(values);
-    if (!parsed.success) {
-      const fieldErrors: Partial<Record<keyof WorkspaceFormValues, string>> = {};
-      for (const issue of parsed.error.issues) fieldErrors[issue.path[0] as keyof WorkspaceFormValues] = issue.message;
-      setErrors(fieldErrors);
-      return;
-    }
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      await httpClient.post(API.public.signupWorkspace, { credential, ...parsed.data });
-      await signInAndContinue();
-    } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-      const code = apiErrorCode(err);
-      if (code === "google_account_exists") {
-        // Registered meanwhile (another tab): sign in instead.
-        try {
-          await signInAndContinue();
-          return;
-        } catch {
-          /* fall through to the message */
+  const handleSubmit = form.handleSubmit(
+    async (parsed) => {
+      try {
+        await httpClient.post(API.public.signupWorkspace, { credential, ...parsed });
+        await signInAndContinue();
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        const code = apiErrorCode(err);
+        if (code === "google_account_exists") {
+          // Registered meanwhile (another tab): sign in instead.
+          try {
+            await signInAndContinue();
+            return;
+          } catch {
+            /* fall through to the message */
+          }
         }
+        if (status === 401) {
+          navigate(ROUTE_PATHS.signup, { replace: true, state: { notice: EXPIRED_NOTICE } });
+          return;
+        }
+        throw err; // a 422 is shown on its fields, anything else above the form
       }
-      if (status === 401) {
-        navigate(ROUTE_PATHS.signup, { replace: true, state: { notice: EXPIRED_NOTICE } });
-        return;
-      }
-      if (status === 422 && axios.isAxiosError(err)) {
-        const fields = (err.response?.data as { errors?: Record<string, string[]> })?.errors ?? {};
-        setErrors({
-          businessName: fields.businessName?.[0],
-          acceptTerms: fields.acceptTerms?.[0],
-        });
-      }
-      setFormError(getApiErrorMessage(err, "Workspace belum berhasil dibuat. Silakan coba lagi."));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Workspace belum berhasil dibuat. Silakan coba lagi.", known: FIELDS },
+  );
 
   return (
     <AuthSplitLayout
@@ -112,7 +93,7 @@ export default function WorkspaceSetupPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} noValidate className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-10">
+      <form ref={formRef} onSubmit={(e) => void handleSubmit(e)} noValidate className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-10">
         <h2 className="text-2xl font-bold text-text-primary">Buat workspace WO</h2>
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-text-secondary">
           <span>
@@ -132,17 +113,14 @@ export default function WorkspaceSetupPage() {
             </p>
           )}
 
-          {formError && (
-            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-              {formError}
-            </p>
-          )}
+          <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
 
-          <Field label="Nama WO" htmlFor="businessName" required error={errors.businessName} hint="Tampil di WO Console dan portal client. Bisa diubah nanti.">
+          <Field label="Nama WO" htmlFor="businessName" required name="businessName" error={errors.businessName} hint="Tampil di WO Console dan portal client. Bisa diubah nanti.">
             <Input
               id="businessName"
               value={values.businessName}
-              onChange={(e) => set("businessName", e.target.value)}
+              onChange={(e) => form.set("businessName", e.target.value)}
+              onBlur={() => form.blur("businessName")}
               placeholder="Contoh: Kirana Wedding Organizer"
               autoComplete="organization"
               maxLength={100}
@@ -150,12 +128,12 @@ export default function WorkspaceSetupPage() {
             />
           </Field>
 
-          <div className="flex flex-col gap-1.5">
+          <div data-field="acceptTerms" className="flex flex-col gap-1.5">
             <label className="flex items-start gap-3 text-[13.5px] leading-relaxed text-text-primary">
               <input
                 type="checkbox"
                 checked={values.acceptTerms}
-                onChange={(e) => set("acceptTerms", e.target.checked)}
+                onChange={(e) => form.set("acceptTerms", e.target.checked)}
                 className="mt-1 h-4 w-4 shrink-0 accent-navy-900"
                 aria-invalid={Boolean(errors.acceptTerms)}
               />
@@ -176,7 +154,8 @@ export default function WorkspaceSetupPage() {
               </span>
             </label>
             {errors.acceptTerms && (
-              <span role="alert" className="pl-7 text-xs font-medium text-danger-text">
+              <span role="alert" className="flex items-start gap-1 pl-7 text-xs font-medium text-danger-text">
+                <CircleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
                 {errors.acceptTerms}
               </span>
             )}
@@ -186,7 +165,7 @@ export default function WorkspaceSetupPage() {
             <input
               type="checkbox"
               checked={values.marketingOptIn}
-              onChange={(e) => set("marketingOptIn", e.target.checked)}
+              onChange={(e) => form.set("marketingOptIn", e.target.checked)}
               className="mt-1 h-4 w-4 shrink-0 accent-navy-900"
             />
             <span>Kirimi saya kabar fitur baru dan promo ElProof (opsional).</span>
@@ -204,8 +183,8 @@ export default function WorkspaceSetupPage() {
             </span>
           </p>
 
-          <Button type="submit" variant="neutral" className="mt-1 w-full justify-center" disabled={submitting}>
-            {submitting ? "Menyiapkan workspace..." : "Buat workspace"}
+          <Button type="submit" variant="neutral" className="mt-1 w-full justify-center" disabled={form.submitting}>
+            {form.submitting ? "Menyiapkan workspace..." : "Buat workspace"}
           </Button>
         </div>
       </form>

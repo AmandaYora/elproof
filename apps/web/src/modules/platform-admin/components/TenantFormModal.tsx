@@ -3,6 +3,8 @@ import { Check } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import {
   tenantSchema,
   tenantCreateSchema,
@@ -23,6 +25,10 @@ import {
 } from "@/theme/brandPresets";
 
 type FormState = TenantFormValues;
+
+const FIELD_LABELS: Record<string, string> = {
+  businessName: "Nama WO", city: "Kota", ownerName: "Nama owner", email: "Email akun Google Owner", phone: "No. HP Owner", brandColorPreset: "Warna brand",
+};
 
 function toFormState(tenant?: Tenant): FormState {
   if (!tenant) {
@@ -45,8 +51,9 @@ interface TenantFormModalProps {
   open: boolean;
   onClose: () => void;
   initialTenant?: Tenant;
-  onSubmitCreate: (values: TenantCreateFormValues) => void;
-  onSubmitEdit: (values: TenantFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSubmitCreate: (values: TenantCreateFormValues) => Promise<void>;
+  onSubmitEdit: (values: TenantFormValues) => Promise<void>;
   onUploadLogo: (id: string, file: CompressedFilePayload) => Promise<void>;
 }
 
@@ -60,8 +67,10 @@ export function TenantFormModal({
 }: TenantFormModalProps) {
   const isEditing = Boolean(initialTenant);
   const canChangeEmail = usePlatformCan("super-admin");
-  const [values, setValues] = useState<FormState>(() => toFormState(initialTenant));
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  // Creating checks only the profile fields; brandColorPreset (edit-only) is ignored there.
+  const form = useZodForm({ schema: (isEditing ? tenantSchema : tenantCreateSchema) as typeof tenantSchema, initial: toFormState(initialTenant) });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -123,50 +132,25 @@ export function TenantFormModal({
     }
   }
 
-  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleSubmit() {
-    if (isEditing) {
-      const result = tenantSchema.safeParse(values);
-      if (!result.success) {
-        const fieldErrors: Partial<Record<keyof FormState, string>> = {};
-        for (const issue of result.error.issues) {
-          fieldErrors[issue.path[0] as keyof FormState] = issue.message;
-        }
-        setErrors(fieldErrors);
-        return;
-      }
-      onSubmitEdit(result.data);
-      setErrors({});
-      return;
-    }
-
-    const result = tenantCreateSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof FormState, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof FormState] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmitCreate(result.data);
-    setErrors({});
-  }
-
-  function handleClose() {
-    setValues(toFormState(initialTenant));
-    setErrors({});
+  // The modal stays mounted while closed: start clean each time it opens.
+  useEffect(() => {
+    form.reset(toFormState(initialTenant));
     setLogoError(null);
-    onClose();
-  }
+  }, [initialTenant, open]);
+
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      if (isEditing) await onSubmitEdit(parsed as TenantFormValues);
+      else await onSubmitCreate(parsed as TenantCreateFormValues);
+    },
+    { root: () => formRef.current, fallback: "Tenant belum tersimpan. Periksa koneksi lalu coba lagi." },
+  );
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
+      busy={form.submitting}
       title={isEditing ? "Ubah Tenant" : "Daftarkan Tenant Baru"}
       description={
         isEditing
@@ -175,36 +159,40 @@ export function TenantFormModal({
       }
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>{isEditing ? "Simpan Perubahan" : "Daftarkan Tenant"}</Button>
+          <Button type="submit" form="tenant-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : isEditing ? "Simpan perubahan" : "Daftarkan tenant"}
+          </Button>
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-4">
-        <Field label="Nama WO" required hint={errors.businessName}>
+      <form id="tenant-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+        <Field label="Nama WO" required name="businessName" error={errors.businessName}>
           <Input
             value={values.businessName}
             onChange={(e) => set("businessName", e.target.value)}
+            onBlur={() => blur("businessName")}
             placeholder="cth. Anisa Wedding Organizer"
           />
         </Field>
-        <Field label="Kota" required hint={errors.city}>
-          <Input value={values.city} onChange={(e) => set("city", e.target.value)} placeholder="cth. Jakarta" />
+        <Field label="Kota" required name="city" error={errors.city}>
+          <Input value={values.city} onChange={(e) => set("city", e.target.value)} onBlur={() => blur("city")} placeholder="cth. Jakarta" />
         </Field>
-        <Field label="Nama Owner" required hint={errors.ownerName}>
-          <Input value={values.ownerName} onChange={(e) => set("ownerName", e.target.value)} placeholder="Nama owner WO" />
+        <Field label="Nama Owner" required name="ownerName" error={errors.ownerName}>
+          <Input value={values.ownerName} onChange={(e) => set("ownerName", e.target.value)} onBlur={() => blur("ownerName")} placeholder="Nama owner WO" />
         </Field>
-        <Field label="Email akun Google Owner" required hint={errors.email ?? (isEditing ? (canChangeEmail ? undefined : "Hanya Super Admin yang dapat mengganti email Owner, karena email ini menentukan siapa yang menjadi Owner.") : "Owner menerima link undangan dan masuk dengan akun Google ini")}>
-          <Input type="email" value={values.email} disabled={isEditing && !canChangeEmail} onChange={(e) => set("email", e.target.value)} placeholder="owner@gmail.com" />
+        <Field label="Email akun Google Owner" required name="email" error={errors.email} hint={isEditing ? (canChangeEmail ? undefined : "Hanya Super Admin yang dapat mengganti email Owner, karena email ini menentukan siapa yang menjadi Owner.") : "Owner menerima link undangan dan masuk dengan akun Google ini"}>
+          <Input type="email" value={values.email} disabled={isEditing && !canChangeEmail} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} placeholder="owner@gmail.com" />
         </Field>
-        <Field label="No. HP Owner" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" />
+        <Field label="No. HP Owner" required name="phone" error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="08xx-xxxx-xxxx" />
         </Field>
         {isEditing && (
           <>
-            <Field label="Warna Brand" required hint={errors.brandColorPreset}>
+            <Field label="Warna Brand" required name="brandColorPreset" error={errors.brandColorPreset}>
               <div className="grid grid-cols-5 gap-2">
                 {BRAND_COLOR_PRESET_KEYS.map((key) => {
                   const selected = values.brandColorPreset === key;
@@ -251,7 +239,7 @@ export function TenantFormModal({
             </Field>
           </>
         )}
-      </div>
+      </form>
     </Modal>
   );
 }

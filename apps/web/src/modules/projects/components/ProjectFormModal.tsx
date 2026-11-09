@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useCan, useAllProjects } from "@/shared/stores/usePermissionStore";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -8,7 +8,14 @@ import { projectSchema, type ProjectFormValues } from "@/modules/projects/schema
 import type { Project } from "@/modules/projects/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nama project", brideName: "Nama mempelai wanita", groomName: "Nama mempelai pria", eventDate: "Tanggal acara",
+  prepStartDate: "Tanggal booking", venue: "Lokasi / venue", packageName: "Paket / layanan", contractValue: "Nilai kontrak",
+  picStaffId: "Penanggung jawab WO", picSalesStaffId: "PIC Sales",
+};
 
 interface ProjectFormModalProps {
   open: boolean;
@@ -71,15 +78,13 @@ export function ProjectFormModal(props: ProjectFormModalProps) {
 function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }: ProjectFormModalProps) {
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const staffList = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const canAssignPIC = useCan("project.assign_pic");
   const assignedOnly = !useAllProjects();
   const currentStaffId = useAuthStore((s) => s.currentStaffId);
-  const [values, setValues] = useState<ProjectFormValues>(() => toFormValues(initialProject, "", mode));
-  const [errors, setErrors] = useState<Partial<Record<keyof ProjectFormValues, string>>>({});
+  const form = useZodForm({ schema: projectSchema, initial: toFormValues(initialProject, "", mode) });
+  const { values, errors, set, blur } = form;
 
   // Wedding Planner never reassigns a project's PIC, even their own project's
   // (only Owner/Admin do — see PLAN.md's RBAC section); the backend already
@@ -104,45 +109,20 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
 
   useEffect(() => {
     if (!initialProject && !values.picStaffId && staffList.length > 0 && !assignedOnly) {
-      setValues((prev) => ({ ...prev, picStaffId: staffList[0].id }));
+      set("picStaffId", staffList[0].id);
     }
-  }, [initialProject, staffList, values.picStaffId, assignedOnly]);
+  }, [initialProject, staffList, values.picStaffId, assignedOnly, set]);
 
   useEffect(() => {
     if (!initialProject && picSalesLocked) {
-      setValues((prev) => (prev.picSalesStaffId === currentStaffId ? prev : { ...prev, picSalesStaffId: currentStaffId }));
+      if (values.picSalesStaffId !== currentStaffId) set("picSalesStaffId", currentStaffId);
     }
-  }, [initialProject, picSalesLocked, currentStaffId]);
+  }, [initialProject, picSalesLocked, currentStaffId, values.picSalesStaffId, set]);
 
-  function set<K extends keyof ProjectFormValues>(key: K, value: ProjectFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleSubmit() {
-    if (submitting) return;
-    setSubmitError(null);
-    const result = projectSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ProjectFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        const key = issue.path[0] as keyof ProjectFormValues;
-        fieldErrors[key] ??= issue.message;
-      }
-      setErrors(fieldErrors);
-      // Take the user to the first field that needs attention.
-      requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
-      return;
-    }
-    setErrors({});
-    setSubmitting(true);
-    try {
-      await onSubmit(result.data);
-    } catch (err) {
-      setSubmitError(getApiErrorMessage(err, "Project belum tersimpan. Periksa koneksi lalu coba lagi."));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const submit = form.handleSubmit(onSubmit, {
+    root: () => formRef.current,
+    fallback: "Project belum tersimpan. Periksa koneksi lalu coba lagi.",
+  });
 
   return (
     <Modal
@@ -155,19 +135,18 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
           : "Informasi dasar project pernikahan yang dikelola WO."
       }
       size="lg"
-      busy={submitting}
-      error={submitError}
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={submitting}>Batal</Button>
-          <Button type="submit" form={formId} disabled={submitting}>
-            {submitting
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form={formId} disabled={form.submitting}>
+            {form.submitting
               ? "Menyimpan..."
               : mode === "duplicate"
-                ? "Buat Duplikat"
+                ? "Buat duplikat"
                 : initialProject
-                  ? "Simpan Perubahan"
-                  : "Simpan Project"}
+                  ? "Simpan perubahan"
+                  : "Simpan project"}
           </Button>
         </>
       }
@@ -176,48 +155,49 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
         id={formId}
         ref={formRef}
         noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleSubmit();
-        }}
+        onSubmit={(e) => void submit(e)}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-        <Field label="Nama Project" required error={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Aurelia & Bagas Wedding" aria-invalid={errors.name ? true : undefined} />
-        </Field>
+        <div className="sm:col-span-2 empty:hidden">
+          <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         </div>
-        <Field label="Nama Mempelai Wanita" required error={errors.brideName}>
-          <Input value={values.brideName} onChange={(e) => set("brideName", e.target.value)} aria-invalid={errors.brideName ? true : undefined} />
+        <div className="sm:col-span-2">
+          <Field label="Nama Project" required name="name" error={errors.name}>
+            <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Aurelia & Bagas Wedding" />
+          </Field>
+        </div>
+        <Field label="Nama Mempelai Wanita" required name="brideName" error={errors.brideName}>
+          <Input value={values.brideName} onChange={(e) => set("brideName", e.target.value)} onBlur={() => blur("brideName")} />
         </Field>
-        <Field label="Nama Mempelai Pria" required error={errors.groomName}>
-          <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} aria-invalid={errors.groomName ? true : undefined} />
+        <Field label="Nama Mempelai Pria" required name="groomName" error={errors.groomName}>
+          <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} onBlur={() => blur("groomName")} />
         </Field>
-        <Field label="Tanggal Acara" required error={errors.eventDate}>
-          <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} aria-invalid={errors.eventDate ? true : undefined} />
+        <Field label="Tanggal Acara" required name="eventDate" error={errors.eventDate}>
+          <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} onBlur={() => blur("eventDate")} />
         </Field>
-        <Field label="Tanggal Booking" required error={errors.prepStartDate}>
-          <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} aria-invalid={errors.prepStartDate ? true : undefined} />
+        <Field label="Tanggal Booking" required name="prepStartDate" error={errors.prepStartDate}>
+          <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} onBlur={() => blur("prepStartDate")} />
         </Field>
         <Field
           label="Lokasi / Venue"
           required
+          name="venue"
           error={errors.venue}
           hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Venue project ini." : undefined}
         >
           <Input
             value={values.venue}
             onChange={(e) => set("venue", e.target.value)}
-            aria-invalid={errors.venue ? true : undefined}
+            onBlur={() => blur("venue")}
             disabled={venueFromDirectory}
           />
         </Field>
-        <Field label="Paket / Layanan" required error={errors.packageName}>
-          <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} aria-invalid={errors.packageName ? true : undefined} />
+        <Field label="Paket / Layanan" required name="packageName" error={errors.packageName}>
+          <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} onBlur={() => blur("packageName")} />
         </Field>
-        <Field label="Nilai Kontrak (Rp)" required error={errors.contractValue}>
+        <Field label="Nilai Kontrak (Rp)" required name="contractValue" error={errors.contractValue}>
           <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} aria-invalid={errors.contractValue ? true : undefined} />
         </Field>
-        <Field label="Penanggung Jawab WO (PIC Wedding Planner)" error={errors.picStaffId}>
+        <Field label="Penanggung Jawab WO (PIC Wedding Planner)" name="picStaffId" error={errors.picStaffId}>
           {picLocked ? (
             <Input value={staffList.find((s) => s.id === values.picStaffId)?.name ?? "..."} disabled />
           ) : (
@@ -229,7 +209,7 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
             </Select>
           )}
         </Field>
-        <Field label="PIC Sales" error={errors.picSalesStaffId}>
+        <Field label="PIC Sales" name="picSalesStaffId" error={errors.picSalesStaffId}>
           {picSalesLocked ? (
             <Input value={staffList.find((s) => s.id === values.picSalesStaffId)?.name ?? "..."} disabled />
           ) : (
@@ -242,8 +222,8 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
           )}
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Deskripsi / Catatan Project">
-            <Textarea rows={3} value={values.description} onChange={(e) => set("description", e.target.value)} />
+          <Field label="Deskripsi / Catatan Project" name="description">
+            <Textarea rows={3} value={values.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
           </Field>
         </div>
       </form>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Check, Copy, ShieldCheck } from "lucide-react";
@@ -11,6 +11,9 @@ import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
+import { mfaCodeSchema } from "@/modules/auth/schemas/login.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 interface MfaSetup {
   secret: string;
@@ -31,8 +34,10 @@ export default function MfaSetupPage() {
   const navigate = useNavigate();
   const session = useAuthStore((s) => s.session);
   const [setup, setSetup] = useState<MfaSetup | null>(null);
-  const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // One message for the whole page (a failed key, a wrong code), shown at the top.
+  const form = useZodForm({ schema: mfaCodeSchema, initial: { code: "" } });
+  const formRef = useRef<HTMLFormElement>(null);
+  const setError = form.setFormError;
   const [alreadyEnabled, setAlreadyEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -59,23 +64,14 @@ export default function MfaSetupPage() {
     }
   }
 
-  async function enable() {
-    if (code.trim().length !== 6) {
-      setError("Masukkan 6 digit kode dari aplikasi authenticator.");
-      return;
-    }
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await httpClient.post(API.auth.mfaEnable, { code: code.trim() });
+  const enable = form.handleSubmit(
+    async ({ code }) => {
+      const res = await httpClient.post(API.auth.mfaEnable, { code });
       useAuthStore.getState().login(res.data.data as AuthSession);
       navigate(ROUTE_PATHS.platformDashboard, { replace: true });
-    } catch (err) {
-      setError(getApiErrorMessage(err, "Kode verifikasi salah atau sudah kedaluwarsa"));
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    { root: () => formRef.current, fallback: "Kode verifikasi salah atau sudah kedaluwarsa", known: (key) => key === "code" },
+  );
 
   async function copyKey() {
     if (!setup) return;
@@ -100,11 +96,9 @@ export default function MfaSetupPage() {
           misalnya Google Authenticator, Microsoft Authenticator, atau 1Password.
         </p>
 
-        {error && (
-          <p role="alert" className="mt-6 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-            {error}
-          </p>
-        )}
+        <div className="mt-6 empty:hidden">
+          <FormErrorSummary errors={form.errorList} formError={form.formError} root={() => formRef.current} />
+        </div>
 
         {alreadyEnabled ? (
           <div className="mt-6 flex flex-col gap-4">
@@ -153,20 +147,24 @@ export default function MfaSetupPage() {
             </li>
             <li className="flex flex-col gap-3">
               <span className="text-[13.5px] font-semibold text-text-primary">2. Masukkan kode yang muncul</span>
-              <Field label="Kode 6 digit">
-                <Input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  placeholder="123456"
-                  className="font-mono tracking-[0.3em]"
-                  onKeyDown={(e) => e.key === "Enter" && void enable()}
-                />
-              </Field>
-              <Button variant="neutral" className="w-full justify-center" onClick={() => void enable()} disabled={busy}>
-                {busy ? "Memeriksa kode..." : "Aktifkan verifikasi"}
-              </Button>
+              <form ref={formRef} noValidate onSubmit={(e) => void enable(e)} className="flex flex-col gap-3">
+                <Field label="Kode 6 digit" required name="code" error={form.errors.code}>
+                  <Input
+                    value={form.values.code}
+                    onChange={(e) => {
+                      form.set("code", e.target.value.replace(/\D/g, "").slice(0, 6));
+                      setError(null);
+                    }}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    className="font-mono tracking-[0.3em]"
+                  />
+                </Field>
+                <Button type="submit" variant="neutral" className="w-full justify-center" disabled={form.submitting}>
+                  {form.submitting ? "Memeriksa kode..." : "Aktifkan verifikasi"}
+                </Button>
+              </form>
             </li>
           </ol>
         )}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ENGAGEMENT_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, Eye } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
@@ -23,12 +23,21 @@ import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = {
+  categoryId: "Kategori vendor", vendorId: "Vendor", pricingTier: "Paket", engagementStatus: "Status keterlibatan",
+  scope: "Layanan / scope pekerjaan", contractValue: "Nilai kerja sama", picStaffId: "PIC internal WO",
+  bookingDate: "Tanggal booking", dueDate: "Jatuh tempo berikutnya", eventStartTime: "Jam mulai", eventEndTime: "Jam selesai", dpAmount: "Jumlah DP",
+};
 
 interface ProjectVendorFormModalProps {
   projectId: string;
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: ProjectVendorFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSubmit: (values: ProjectVendorFormValues) => Promise<void>;
   initialProjectVendor?: ProjectVendor;
 }
 
@@ -88,8 +97,9 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
   const evidence = useProjectStore((s) => s.evidence);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
-  const [values, setValues] = useState<ProjectVendorFormValues>(() => toFormValues(initialProjectVendor));
-  const [errors, setErrors] = useState<Partial<Record<keyof ProjectVendorFormValues, string>>>({});
+  const form = useZodForm({ schema: projectVendorSchema, initial: toFormValues(initialProjectVendor) });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [bookingProofOpen, setBookingProofOpen] = useState(false);
   const [bookingProofError, setBookingProofError] = useState<string | null>(null);
   const [viewingEvidence, setViewingEvidence] = useState<Evidence | null>(null);
@@ -112,17 +122,17 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
   useEffect(() => {
     if (open) {
       setContractValueTouched(Boolean(initialProjectVendor));
-      setValues(toFormValues(initialProjectVendor));
-      setErrors({});
+      form.reset(toFormValues(initialProjectVendor));
     }
   }, [open, initialProjectVendor]);
 
   useEffect(() => {
     if (!initialProjectVendor && !values.vendorId && vendors.length > 0) {
-      setValues((prev) => ({ ...prev, vendorId: vendors[0].id, categoryId: vendors[0].categoryId }));
+      set("vendorId", vendors[0].id);
+      set("categoryId", vendors[0].categoryId);
     }
     if (!initialProjectVendor && !values.picStaffId && staff.length > 0) {
-      setValues((prev) => ({ ...prev, picStaffId: staff[0].id }));
+      set("picStaffId", staff[0].id);
     }
   }, [initialProjectVendor, vendors, staff, values.vendorId, values.picStaffId]);
 
@@ -136,17 +146,15 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
   // revisi-timeline-vendor-role-sales) -- categoryId is never a free-standing
   // choice independent of the selected vendor.
   function handleCategoryChange(categoryId: string) {
-    setValues((prev) => {
-      const stillValid = vendors.some((v) => v.id === prev.vendorId && v.categoryId === categoryId);
-      if (stillValid) return { ...prev, categoryId };
-      const firstInCategory = vendors.find((v) => v.categoryId === categoryId);
-      return { ...prev, categoryId, vendorId: firstInCategory?.id ?? "" };
-    });
+    const stillValid = vendors.some((v) => v.id === values.vendorId && v.categoryId === categoryId);
+    set("categoryId", categoryId);
+    if (!stillValid) set("vendorId", vendors.find((v) => v.categoryId === categoryId)?.id ?? "");
   }
 
   function handleVendorChange(vendorId: string) {
     const vendor = vendors.find((v) => v.id === vendorId);
-    setValues((prev) => ({ ...prev, vendorId, categoryId: vendor?.categoryId ?? prev.categoryId }));
+    set("vendorId", vendorId);
+    if (vendor) set("categoryId", vendor.categoryId);
   }
 
   // Picking a vendor/paket proposes that vendor's own preset price as the
@@ -162,36 +170,17 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
           ? selectedVendor.priceAkadResepsi
           : selectedVendor.priceResepsi;
     if (price == null) return;
-    setValues((prev) => (prev.contractValue === price ? prev : { ...prev, contractValue: price }));
+    if (values.contractValue !== price) set("contractValue", price);
   }, [selectedVendor, values.pricingTier, contractValueTouched]);
 
-  function set<K extends keyof ProjectVendorFormValues>(key: K, value: ProjectVendorFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
   function handleHoursPresetChange(key: string) {
-    if (key === CUSTOM_HOURS) {
-      setValues((prev) => ({ ...prev, eventStartTime: prev.eventStartTime, eventEndTime: prev.eventEndTime }));
-      return;
-    }
+    if (key === CUSTOM_HOURS) return; // keeps the times as they are, for hand entry
     const preset = EVENT_HOURS_PRESETS.find((p) => p.label === key);
-    setValues((prev) => ({ ...prev, eventStartTime: preset?.start ?? "", eventEndTime: preset?.end ?? "" }));
+    set("eventStartTime", preset?.start ?? "");
+    set("eventEndTime", preset?.end ?? "");
   }
 
-  function handleSubmit() {
-    const result = projectVendorSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ProjectVendorFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        const key = issue.path[0] as keyof ProjectVendorFormValues;
-        fieldErrors[key] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-    setErrors({});
-  }
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Vendor belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   const bookingProofs = initialProjectVendor
     ? evidence.filter((e) => e.relatedKind === "projectVendor" && e.relatedId === initialProjectVendor.id)
@@ -226,15 +215,20 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
       title={initialProjectVendor ? "Ubah Vendor Project" : "Tambah Vendor ke Project"}
       description="Keterlibatan vendor pada project ini — nilai kerja sama, status, dan pembayaran khusus untuk project ini."
       size="lg"
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>{initialProjectVendor ? "Simpan Perubahan" : "Tambah Vendor"}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="project-vendor-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : initialProjectVendor ? "Simpan perubahan" : "Tambah vendor"}
+          </Button>
         </>
       }
     >
+      <form id="project-vendor-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Kategori Vendor">
+        <Field label="Kategori Vendor" name="categoryId" error={errors.categoryId}>
           <Select value={values.categoryId} onChange={(e) => handleCategoryChange(e.target.value)} disabled={Boolean(initialProjectVendor)}>
             <option value="">Semua Kategori</option>
             {categories.map((c) => (
@@ -242,7 +236,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
             ))}
           </Select>
         </Field>
-        <Field label="Vendor" required hint={errors.vendorId}>
+        <Field label="Vendor" required name="vendorId" error={errors.vendorId}>
           <Select value={values.vendorId} onChange={(e) => handleVendorChange(e.target.value)} disabled={Boolean(initialProjectVendor)}>
             {vendorsInCategory.map((v) => (
               <option key={v.id} value={v.id}>{v.city ? `${v.name} — ${v.city}` : v.name}</option>
@@ -256,14 +250,14 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
             </p>
           )}
         </Field>
-        <Field label="Paket" required>
+        <Field label="Paket" required name="pricingTier" error={errors.pricingTier}>
           <Select value={values.pricingTier} onChange={(e) => set("pricingTier", e.target.value as ProjectVendorFormValues["pricingTier"])}>
             <option value="Akad">Pemberkatan</option>
             <option value="AkadResepsi">Pemberkatan + Resepsi</option>
             <option value="Resepsi">Resepsi Only</option>
           </Select>
         </Field>
-        <Field label="Status Keterlibatan" required>
+        <Field label="Status Keterlibatan" required name="engagementStatus" error={errors.engagementStatus}>
           <Select value={values.engagementStatus} onChange={(e) => set("engagementStatus", e.target.value as ProjectVendorFormValues["engagementStatus"])}>
             {ENGAGEMENT_STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>{ENGAGEMENT_STATUS_LABELS.staff[s]}</option>
@@ -271,11 +265,11 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
           </Select>
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Layanan / Scope Pekerjaan" required hint={errors.scope}>
-            <Textarea rows={2} value={values.scope} onChange={(e) => set("scope", e.target.value)} placeholder="cth. Sewa ballroom + basic lighting rigging" />
+          <Field label="Layanan / Scope Pekerjaan" required name="scope" error={errors.scope}>
+            <Textarea rows={2} value={values.scope} onChange={(e) => set("scope", e.target.value)} onBlur={() => blur("scope")} placeholder="cth. Sewa ballroom + basic lighting rigging" />
           </Field>
         </div>
-        <Field label="Nilai Kerja Sama (Rp)" required hint={errors.contractValue}>
+        <Field label="Nilai Kerja Sama (Rp)" required name="contractValue" error={errors.contractValue}>
           <CurrencyInput
             value={values.contractValue}
             onChange={(n) => {
@@ -284,18 +278,18 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
             }}
           />
         </Field>
-        <Field label="PIC Internal WO" required hint={errors.picStaffId}>
+        <Field label="PIC Internal WO" required name="picStaffId" error={errors.picStaffId}>
           <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Tanggal Booking">
-          <Input type="date" value={values.bookingDate} onChange={(e) => set("bookingDate", e.target.value)} />
+        <Field label="Tanggal Booking" name="bookingDate" error={errors.bookingDate}>
+          <Input type="date" value={values.bookingDate} onChange={(e) => set("bookingDate", e.target.value)} onBlur={() => blur("bookingDate")} />
         </Field>
-        <Field label="Jatuh Tempo Berikutnya">
-          <Input type="date" value={values.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+        <Field label="Jatuh Tempo Berikutnya" name="dueDate" error={errors.dueDate}>
+          <Input type="date" value={values.dueDate} onChange={(e) => set("dueDate", e.target.value)} onBlur={() => blur("dueDate")} />
         </Field>
         <Field label="Jam Acara">
           <Select value={currentHoursPresetKey} onChange={(e) => handleHoursPresetChange(e.target.value)}>
@@ -306,20 +300,20 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
           </Select>
         </Field>
         {currentHoursPresetKey === CUSTOM_HOURS && (
-          <Field label="Jam Mulai - Selesai (Custom)">
+          <Field label="Jam Mulai - Selesai (Custom)" name="eventStartTime" error={errors.eventStartTime ?? errors.eventEndTime}>
             <div className="flex items-center gap-2">
-              <Input type="time" value={values.eventStartTime} onChange={(e) => set("eventStartTime", e.target.value)} />
+              <Input type="time" value={values.eventStartTime} onChange={(e) => set("eventStartTime", e.target.value)} onBlur={() => blur("eventStartTime")} />
               <span className="text-text-secondary">–</span>
-              <Input type="time" value={values.eventEndTime} onChange={(e) => set("eventEndTime", e.target.value)} />
+              <Input type="time" value={values.eventEndTime} onChange={(e) => set("eventEndTime", e.target.value)} onBlur={() => blur("eventEndTime")} />
             </div>
           </Field>
         )}
-        <Field label="Jumlah DP (Rp)" hint={errors.dpAmount}>
+        <Field label="Jumlah DP (Rp)" name="dpAmount" error={errors.dpAmount}>
           <CurrencyInput value={values.dpAmount} onChange={(n) => set("dpAmount", n)} />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Catatan">
-            <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
+          <Field label="Catatan" name="notes" error={errors.notes}>
+            <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} onBlur={() => blur("notes")} />
           </Field>
         </div>
 
@@ -354,6 +348,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
           </div>
         )}
       </div>
+      </form>
 
       {bookingProofOpen && (
         <EvidenceUploadModal

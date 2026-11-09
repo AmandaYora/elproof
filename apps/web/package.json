@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "e2e": "playwright test -c e2e/playwright.config.ts --project=desktop --project=mobile",
+    "e2e": "playwright test -c e2e/playwright.config.ts --project=desktop --project=mobile --project=behavior --project=mutating",
     "e2e:update": "playwright test -c e2e/playwright.config.ts --update-snapshots --project=desktop --project=mobile",
     "e2e:stack": "tsx e2e/scripts/stack.ts up",
     "e2e:down": "tsx e2e/scripts/stack.ts down",

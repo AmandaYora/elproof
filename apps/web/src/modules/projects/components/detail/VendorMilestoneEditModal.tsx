@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, FileText } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
@@ -7,10 +7,17 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { EVIDENCE_TYPE_OPTIONS } from "@/modules/projects/schemas/evidence.schema";
+import { vendorMilestoneEditSchema } from "@/modules/projects/schemas/vendor-milestone.schema";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import type { Evidence, EvidenceType, MilestoneStatus, VendorMilestone } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { formatDate, formatDateTime } from "@/shared/lib/formatters";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = {
+  status: "Status", picStaffId: "PIC", targetDate: "Target tanggal", completedDate: "Tanggal selesai", description: "Deskripsi", notes: "Catatan",
+};
 
 const STATUS_OPTIONS: MilestoneStatus[] = ["Not Started", "In Progress", "Completed", "Blocked", "Cancelled"];
 
@@ -45,7 +52,8 @@ interface VendorMilestoneEditModalProps {
   totalMilestones: number;
   evidenceList: Evidence[];
   historyEntries: MilestoneHistoryEntry[];
-  onSave: (fields: MilestoneEditFields) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSave: (fields: MilestoneEditFields) => Promise<void>;
   onAddEvidence: (file: File, meta: NewEvidenceMeta) => Promise<void>;
 }
 
@@ -62,14 +70,19 @@ export function VendorMilestoneEditModal({
 }: VendorMilestoneEditModalProps) {
   const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
-  const [fields, setFields] = useState<MilestoneEditFields>({
-    status: milestone.status,
-    targetDate: milestone.targetDate,
-    completedDate: milestone.completedDate ?? "",
-    picStaffId: milestone.picStaffId,
-    description: milestone.description,
-    notes: milestone.notes,
+  const form = useZodForm({
+    schema: vendorMilestoneEditSchema,
+    initial: {
+      status: milestone.status,
+      targetDate: milestone.targetDate,
+      completedDate: milestone.completedDate ?? "",
+      picStaffId: milestone.picStaffId,
+      description: milestone.description,
+      notes: milestone.notes,
+    },
   });
+  const { values: fields, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [showEvidenceForm, setShowEvidenceForm] = useState(false);
   const [evidenceForm, setEvidenceForm] = useState({ name: "", type: "Document" as EvidenceType, documentDate: "", description: "" });
   const [file, setFile] = useState<File | null>(null);
@@ -80,19 +93,12 @@ export function VendorMilestoneEditModal({
     void fetchStaff();
   }, [fetchStaff]);
 
-  function set<K extends keyof MilestoneEditFields>(key: K, value: MilestoneEditFields[K]) {
-    setFields((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === "status" && value === "Completed" && !prev.completedDate) {
-        next.completedDate = todayISO();
-      }
-      return next;
-    });
+  function setStatus(status: MilestoneStatus) {
+    set("status", status);
+    if (status === "Completed" && !fields.completedDate) set("completedDate", todayISO());
   }
 
-  function handleSave() {
-    onSave(fields);
-  }
+  const submit = form.handleSubmit(onSave, { root: () => formRef.current, fallback: "Timeline belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   async function handleAddEvidence() {
     if (!file || !evidenceForm.name || !evidenceForm.documentDate) return;
@@ -117,36 +123,41 @@ export function VendorMilestoneEditModal({
       title={milestone.name}
       description={`${vendorName} · Timeline ${milestone.order} dari ${totalMilestones}`}
       size="lg"
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSave}>Simpan Perubahan</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="vendor-milestone-edit-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Simpan perubahan"}
+          </Button>
         </>
       }
     >
       <div className="flex flex-col gap-6">
+        <form id="vendor-milestone-edit-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-6">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         <section>
           <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Status &amp; Jadwal</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Status">
-              <Select value={fields.status} onChange={(e) => set("status", e.target.value as MilestoneStatus)}>
+            <Field label="Status" name="status" error={errors.status}>
+              <Select value={fields.status} onChange={(e) => setStatus(e.target.value as MilestoneStatus)}>
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>{MILESTONE_STATUS_LABELS.staff[s]}</option>
                 ))}
               </Select>
             </Field>
-            <Field label="PIC">
+            <Field label="PIC" name="picStaffId" error={errors.picStaffId}>
               <Select value={fields.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
                 ))}
               </Select>
             </Field>
-            <Field label="Target Tanggal">
-              <Input type="date" value={fields.targetDate} onChange={(e) => set("targetDate", e.target.value)} />
+            <Field label="Target Tanggal" name="targetDate" error={errors.targetDate}>
+              <Input type="date" value={fields.targetDate} onChange={(e) => set("targetDate", e.target.value)} onBlur={() => blur("targetDate")} />
             </Field>
-            <Field label="Tanggal Selesai">
-              <Input type="date" value={fields.completedDate} onChange={(e) => set("completedDate", e.target.value)} />
+            <Field label="Tanggal Selesai" name="completedDate" error={errors.completedDate}>
+              <Input type="date" value={fields.completedDate} onChange={(e) => set("completedDate", e.target.value)} onBlur={() => blur("completedDate")} />
             </Field>
           </div>
         </section>
@@ -154,14 +165,15 @@ export function VendorMilestoneEditModal({
         <section>
           <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Deskripsi &amp; Catatan</p>
           <div className="flex flex-col gap-4">
-            <Field label="Deskripsi">
-              <Textarea rows={2} value={fields.description} onChange={(e) => set("description", e.target.value)} />
+            <Field label="Deskripsi" name="description" error={errors.description}>
+              <Textarea rows={2} value={fields.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
             </Field>
-            <Field label="Catatan">
-              <Textarea rows={2} value={fields.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Tambahkan catatan perkembangan timeline ini..." />
+            <Field label="Catatan" name="notes" error={errors.notes}>
+              <Textarea rows={2} value={fields.notes} onChange={(e) => set("notes", e.target.value)} onBlur={() => blur("notes")} placeholder="Tambahkan catatan perkembangan timeline ini..." />
             </Field>
           </div>
         </section>
+        </form>
 
         <section>
           <div className="mb-3 flex items-center justify-between">

@@ -17,6 +17,31 @@ export const subscriptionPolicySchema = z.object({
 
 export type SubscriptionPolicyFormValues = z.infer<typeof subscriptionPolicySchema>;
 
+/** The same rules for the policy form, whose inputs hold text; whole numbers come out on submit. */
+const dayText = (label: string, min: number, max: number) => z.string().trim().min(1, `Isi ${label.toLowerCase()}`).pipe(day(label, min, max));
+
+export const subscriptionPolicyFormSchema = z.object({
+  trialDays: dayText("Masa coba", 1, 90),
+  expiringSoonDays: dayText("Pengingat sebelum berakhir", 0, 30),
+  graceDays: dayText("Masa tenggang", 0, 60),
+  readOnlyDays: dayText("Masa baca-saja", 0, 180),
+});
+
+/** Free-trial caps, typed as text in the form and turned into whole numbers on submit. */
+const trialCap = (label: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, `Isi ${label}`)
+    .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 1000, "Isi angka bulat 1–1000")
+    .transform(Number);
+
+export const trialLimitsSchema = z.object({
+  maxStaff: trialCap("batas staf"),
+  maxActiveProjects: trialCap("batas proyek aktif"),
+  maxClients: trialCap("batas akun klien"),
+});
+
 export const ANNOUNCEMENT_KINDS = [
   { value: "info", label: "Informasi" },
   { value: "warning", label: "Peringatan" },

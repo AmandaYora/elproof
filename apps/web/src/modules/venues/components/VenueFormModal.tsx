@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, ExternalLink } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -13,6 +13,13 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nama venue", picName: "Nama PIC", phonePic: "No. telepon PIC", phoneVenue: "No. telepon venue", email: "Email", city: "Kota",
+  capacity: "Kapasitas", rentalPrice: "Harga sewa", charge: "Charge", address: "Alamat", facilities: "Fasilitas", socialMedia: "Sosial media",
+};
 
 function toFormValues(venue?: Venue): VenueFormValues {
   if (!venue) {
@@ -32,15 +39,17 @@ function toFormValues(venue?: Venue): VenueFormValues {
 interface VenueFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmitCreate: (values: VenueCreateFormValues) => void;
-  onSubmitEdit: (values: VenueFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSubmitCreate: (values: VenueCreateFormValues) => Promise<void>;
+  onSubmitEdit: (values: VenueFormValues) => Promise<void>;
   initialVenue?: Venue;
 }
 
 export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, initialVenue }: VenueFormModalProps) {
   const isEditing = Boolean(initialVenue);
-  const [values, setValues] = useState<VenueFormValues>(() => toFormValues(initialVenue));
-  const [errors, setErrors] = useState<Partial<Record<keyof VenueFormValues, string>>>({});
+  const form = useZodForm({ schema: isEditing ? venueSchema : venueCreateSchema, initial: toFormValues(initialVenue) });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
   const uploadVenueAttachment = useVenueStore((s) => s.uploadVenueAttachment);
 
@@ -50,16 +59,11 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
   const [attachmentIsImage, setAttachmentIsImage] = useState(initialVenue?.attachmentIsImage ?? false);
 
   useEffect(() => {
-    setValues(toFormValues(initialVenue));
-    setErrors({});
+    form.reset(toFormValues(initialVenue));
     setHasAttachment(initialVenue?.hasAttachment ?? false);
     setAttachmentIsImage(initialVenue?.attachmentIsImage ?? false);
     setAttachmentError(null);
   }, [initialVenue, open]);
-
-  function set<K extends keyof VenueFormValues>(key: K, value: VenueFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
 
   async function handleAttachmentChange(file: File | undefined) {
     if (!file || !initialVenue) return;
@@ -87,24 +91,13 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
     }
   }
 
-  function handleSubmit() {
-    const schema = isEditing ? venueSchema : venueCreateSchema;
-    const result = schema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof VenueFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof VenueFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    setErrors({});
-    if (isEditing) {
-      onSubmitEdit(result.data);
-    } else {
-      onSubmitCreate(result.data as VenueCreateFormValues);
-    }
-  }
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      if (isEditing) await onSubmitEdit(parsed as VenueFormValues);
+      else await onSubmitCreate(parsed as VenueCreateFormValues);
+    },
+    { root: () => formRef.current, fallback: "Venue belum tersimpan. Periksa koneksi lalu coba lagi." },
+  );
 
   return (
     <Modal
@@ -113,32 +106,37 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
       title={isEditing ? "Ubah Venue" : "Tambah Venue Baru"}
       description="Informasi gedung/lokasi acara yang bekerja sama dengan WO."
       size="lg"
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>{isEditing ? "Simpan Perubahan" : "Simpan Venue"}</Button>
+          <Button type="submit" form="venue-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : isEditing ? "Simpan perubahan" : "Simpan venue"}
+          </Button>
         </>
       }
     >
+      <form id="venue-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Venue" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Grand Ballroom Kemang" />
+        <Field label="Nama Venue" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Grand Ballroom Kemang" />
         </Field>
-        <Field label="Nama PIC" required hint={errors.picName}>
-          <Input value={values.picName} onChange={(e) => set("picName", e.target.value)} />
+        <Field label="Nama PIC" required name="picName" error={errors.picName}>
+          <Input value={values.picName} onChange={(e) => set("picName", e.target.value)} onBlur={() => blur("picName")} />
         </Field>
-        <Field label="No Tlp PIC" required hint={errors.phonePic}>
-          <Input value={values.phonePic} onChange={(e) => set("phonePic", e.target.value)} placeholder="0812-xxxx-xxxx (kontak personal)" />
+        <Field label="No Tlp PIC" required name="phonePic" error={errors.phonePic}>
+          <Input value={values.phonePic} onChange={(e) => set("phonePic", e.target.value)} onBlur={() => blur("phonePic")} placeholder="0812-xxxx-xxxx (kontak personal)" />
         </Field>
-        <Field label="No Tlp Venue" hint={errors.phoneVenue}>
-          <Input value={values.phoneVenue} onChange={(e) => set("phoneVenue", e.target.value)} placeholder="Nomor resmi venue (opsional)" />
+        <Field label="No Tlp Venue" name="phoneVenue" error={errors.phoneVenue}>
+          <Input value={values.phoneVenue} onChange={(e) => set("phoneVenue", e.target.value)} onBlur={() => blur("phoneVenue")} placeholder="Nomor resmi venue (opsional)" />
         </Field>
-        <Field label="Email" hint={errors.email}>
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="Opsional" />
+        <Field label="Email" name="email" error={errors.email}>
+          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} placeholder="Opsional" />
         </Field>
-        <Field label="Kota" required={!isEditing} hint={errors.city}>
+        <Field label="Kota" required={!isEditing} name="city" error={errors.city}>
           <Combobox value={values.city} onChange={(e) => set("city", e.target.value)} placeholder="Cari kota/kabupaten...">
             {CITIES.map((city) => (
               <option key={city} value={city}>
@@ -147,46 +145,46 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
             ))}
           </Combobox>
         </Field>
-        <Field label="Kapasitas (orang)" hint={errors.capacity}>
-          <Input type="number" min={0} value={values.capacity} onChange={(e) => set("capacity", Number(e.target.value))} />
+        <Field label="Kapasitas (orang)" name="capacity" error={errors.capacity}>
+          <Input type="number" min={0} value={values.capacity} onChange={(e) => set("capacity", Number(e.target.value))} onBlur={() => blur("capacity")} />
         </Field>
-        <Field label="Harga Sewa (Rp)" required={!isEditing} hint={errors.rentalPrice}>
+        <Field label="Harga Sewa (Rp)" required={!isEditing} name="rentalPrice" error={errors.rentalPrice}>
           <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} />
         </Field>
-        <Field label="Charge (Rp)" hint={errors.charge}>
+        <Field label="Charge (Rp)" name="charge" error={errors.charge}>
           <CurrencyInput value={values.charge} onChange={(n) => set("charge", n)} />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Alamat" hint={errors.address}>
-            <Textarea rows={2} value={values.address} onChange={(e) => set("address", e.target.value)} placeholder="Opsional" />
+          <Field label="Alamat" name="address" error={errors.address}>
+            <Textarea rows={2} value={values.address} onChange={(e) => set("address", e.target.value)} onBlur={() => blur("address")} placeholder="Opsional" />
           </Field>
         </div>
 
         <div className="sm:col-span-2">
-          <Field label="Fasilitas" hint={errors.facilities}>
+          <Field label="Fasilitas" name="facilities" error={errors.facilities}>
             <Textarea
               rows={2}
               value={values.facilities}
-              onChange={(e) => set("facilities", e.target.value)}
+              onChange={(e) => set("facilities", e.target.value)} onBlur={() => blur("facilities")}
               placeholder="cth. Parkir, AC, Genset, kapasitas 500 kursi"
             />
           </Field>
         </div>
 
         <div className="sm:col-span-2">
-          <Field label="Sosial Media" hint={errors.socialMedia}>
+          <Field label="Sosial Media" name="socialMedia" error={errors.socialMedia}>
             <Textarea
               rows={2}
               value={values.socialMedia}
-              onChange={(e) => set("socialMedia", e.target.value)}
+              onChange={(e) => set("socialMedia", e.target.value)} onBlur={() => blur("socialMedia")}
               placeholder="cth. Instagram @grandballroom, grandballroom.com"
             />
           </Field>
         </div>
 
         <div className="sm:col-span-2">
-          <Field label="Catatan">
-            <Textarea rows={3} value={values.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Catatan tambahan mengenai venue ini" />
+          <Field label="Catatan" name="notes">
+            <Textarea rows={3} value={values.notes} onChange={(e) => set("notes", e.target.value)} onBlur={() => blur("notes")} placeholder="Catatan tambahan mengenai venue ini" />
           </Field>
         </div>
 
@@ -222,6 +220,7 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
           </div>
         )}
       </div>
+      </form>
     </Modal>
   );
 }

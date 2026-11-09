@@ -26,21 +26,21 @@ export const EVENT_HOURS_PRESETS = [
 ] as const;
 
 export const projectVendorSchema = z.object({
-  vendorId: z.string().min(1, "Vendor wajib dipilih"),
+  vendorId: z.string().min(1, "Pilih vendor"),
   // Optional — memilih Vendor tetap menyinkronkan field ini ke kategori
   // vendor tersebut; field ini sendiri hanya memfilter dropdown Vendor.
   categoryId: z.string().optional().default(""),
-  scope: z.string().min(3, "Scope pekerjaan wajib diisi"),
-  contractValue: z.coerce.number().min(0, "Nilai kerja sama tidak valid"),
+  scope: z.string().min(3, "Isi layanan atau scope pekerjaan, minimal 3 karakter"),
+  contractValue: z.coerce.number().min(0, "Nilai kerja sama tidak boleh negatif"),
   pricingTier: z.enum(PRICING_TIER_OPTIONS),
   engagementStatus: z.enum(ENGAGEMENT_STATUS_OPTIONS),
   bookingDate: z.string().optional().default(""),
   // Opsional (keputusan analis, dikonfirmasi pengguna) — "HH:MM" atau "".
   eventStartTime: z.string().optional().default(""),
   eventEndTime: z.string().optional().default(""),
-  dpAmount: z.coerce.number().min(0, "Jumlah DP tidak valid"),
+  dpAmount: z.coerce.number().min(0, "Jumlah DP tidak boleh negatif"),
   dueDate: z.string().optional().default(""),
-  picStaffId: z.string().min(1, "PIC internal WO wajib dipilih"),
+  picStaffId: z.string().min(1, "Pilih PIC internal WO"),
   notes: z.string().optional().default(""),
 });
 

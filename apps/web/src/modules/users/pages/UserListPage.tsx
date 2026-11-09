@@ -73,7 +73,6 @@ export default function UserListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<StaffMember | undefined>(undefined);
   const [linkShare, setLinkShare] = useState<LinkShare | null>(null);
-  const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
@@ -105,19 +104,13 @@ export default function UserListPage() {
     setEditingUser(undefined);
   }
 
+  // handleCreate and handleEdit do not catch: errors propagate to the form, which shows a 422 on its fields.
   async function handleCreate(values: UserFormValues) {
     setActionError(null);
-    setCreating(true);
-    try {
-      const result = await createStaff(values);
-      closeModal();
-      await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
-      setLinkShare({ link: result.invitation, recipient: recipientFor(result.staff), notice: `${result.staff.name} ditambahkan.` });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal membuat undangan"));
-    } finally {
-      setCreating(false);
-    }
+    const result = await createStaff(values);
+    closeModal();
+    await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
+    setLinkShare({ link: result.invitation, recipient: recipientFor(result.staff), notice: `${result.staff.name} ditambahkan.` });
   }
 
   async function handleReinvite(user: StaffMember) {
@@ -141,13 +134,9 @@ export default function UserListPage() {
   async function handleEdit(values: UserFormValues) {
     if (!editingUser) return;
     setActionError(null);
-    try {
-      await updateStaff(editingUser.id, values);
-      closeModal();
-      await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan perubahan pengguna"));
-    }
+    await updateStaff(editingUser.id, values);
+    closeModal();
+    await fetchStaffPage(page, query, roleFilter === "Semua" ? "" : roleFilter);
   }
 
   async function handleToggleActive(user: StaffMember) {
@@ -348,11 +337,9 @@ export default function UserListPage() {
         key={editingUser?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmitCreate={(values) => void handleCreate(values)}
-        onSubmitEdit={(values) => void handleEdit(values)}
+        onSubmitCreate={handleCreate}
+        onSubmitEdit={handleEdit}
         initialUser={editingUser}
-        submitting={creating}
-        error={modalOpen ? actionError : null}
       />
 
       <AccessLinkDialog

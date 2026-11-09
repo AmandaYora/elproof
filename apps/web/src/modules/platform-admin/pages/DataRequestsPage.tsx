@@ -8,7 +8,6 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { toast } from "@/shared/stores/useToastStore";
 import { formatDate } from "@/shared/lib/formatters";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import type { DataRequest } from "@/modules/platform-admin/data/console.types";
 import { DATA_REQUEST_STATUS, dueText } from "@/modules/platform-admin/lib/data-requests";
@@ -26,8 +25,6 @@ export default function DataRequestsPage() {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [closing, setClosing] = useState<DataRequest | undefined>(undefined);
-  const [closeError, setCloseError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     setFailed(false);
@@ -40,20 +37,13 @@ export default function DataRequestsPage() {
     load();
   }, [load]);
 
+  // Errors are not caught here: they propagate to the modal, which shows them inside.
   async function handleClose(status: "done" | "rejected", note: string) {
     if (!closing) return;
-    setCloseError(null);
-    setSaving(true);
-    try {
-      await completeDataRequest(closing.id, status, note);
-      toast.success("Permintaan data ditutup");
-      setClosing(undefined);
-      load();
-    } catch (err) {
-      setCloseError(getApiErrorMessage(err, "Permintaan belum bisa ditutup"));
-    } finally {
-      setSaving(false);
-    }
+    await completeDataRequest(closing.id, status, note);
+    toast.success("Permintaan data ditutup");
+    setClosing(undefined);
+    load();
   }
 
   if (failed && !loaded) return <LoadError onRetry={load} />;
@@ -115,7 +105,7 @@ export default function DataRequestsPage() {
                     )}
                   </div>
                   {r.status === "open" && canClose && (
-                    <Button size="sm" variant="secondary" className="shrink-0" onClick={() => { setCloseError(null); setClosing(r); }}>
+                    <Button size="sm" variant="secondary" className="shrink-0" onClick={() => setClosing(r)}>
                       Tutup permintaan
                     </Button>
                   )}
@@ -126,7 +116,7 @@ export default function DataRequestsPage() {
         )}
       </Card>
 
-      <CompleteDataRequestModal key={closing?.id ?? "none"} request={closing} onClose={() => setClosing(undefined)} onSubmit={handleClose} error={closeError} isSubmitting={saving} />
+      <CompleteDataRequestModal key={closing?.id ?? "none"} request={closing} onClose={() => setClosing(undefined)} onSubmit={handleClose} />
     </div>
   );
 }

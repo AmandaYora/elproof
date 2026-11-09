@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -7,69 +7,67 @@ import {
   resetPlatformAdminPasswordSchema,
   type ResetPlatformAdminPasswordFormValues,
 } from "@/modules/platform-admin/schemas/platform-admin.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 const EMPTY_VALUES: ResetPlatformAdminPasswordFormValues = { password: "", confirmPassword: "" };
+const FIELD_LABELS: Record<string, string> = { password: "Password baru", confirmPassword: "Konfirmasi password baru" };
 
 interface PlatformAdminResetPasswordModalProps {
   open: boolean;
   onClose: () => void;
   adminName?: string;
-  onSubmit: (values: ResetPlatformAdminPasswordFormValues) => void;
+  /** Resets, then closes the modal. Throw to keep it open: the message is shown inside it. */
+  onSubmit: (values: ResetPlatformAdminPasswordFormValues) => Promise<void>;
 }
 
 export function PlatformAdminResetPasswordModal({ open, onClose, adminName, onSubmit }: PlatformAdminResetPasswordModalProps) {
-  const [values, setValues] = useState<ResetPlatformAdminPasswordFormValues>(EMPTY_VALUES);
-  const [errors, setErrors] = useState<Partial<Record<keyof ResetPlatformAdminPasswordFormValues, string>>>({});
+  const form = useZodForm({ schema: resetPlatformAdminPasswordSchema, initial: EMPTY_VALUES });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  function set<K extends keyof ResetPlatformAdminPasswordFormValues>(key: K, value: ResetPlatformAdminPasswordFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
+  // The modal stays mounted while closed: start clean each time it opens.
+  useEffect(() => {
+    form.reset(EMPTY_VALUES);
+    setShowPassword(false);
+  }, [open]);
 
-  function handleSubmit() {
-    const result = resetPlatformAdminPasswordSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ResetPlatformAdminPasswordFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof ResetPlatformAdminPasswordFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-    setValues(EMPTY_VALUES);
-    setErrors({});
-  }
-
-  function handleClose() {
-    setValues(EMPTY_VALUES);
-    setErrors({});
-    onClose();
-  }
+  const submit = form.handleSubmit(onSubmit, {
+    root: () => formRef.current,
+    fallback: "Password belum direset. Periksa koneksi lalu coba lagi.",
+    known: (key) => key in FIELD_LABELS,
+  });
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
+      busy={form.submitting}
       title="Reset Password Pengguna"
       description={adminName ? `Atur password login baru untuk ${adminName}.` : "Atur password login baru untuk pengguna ini."}
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>Reset Password</Button>
+          <Button type="submit" form="reset-password-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Reset password"}
+          </Button>
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-4">
-        <Field label="Password Baru" required hint={errors.password}>
+      <form id="reset-password-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+        <Field label="Password Baru" required name="password" error={errors.password}>
           <div className="relative">
             <Input
               type={showPassword ? "text" : "password"}
               value={values.password}
               onChange={(e) => set("password", e.target.value)}
+              onBlur={() => blur("password")}
+              aria-invalid={errors.password ? true : undefined}
               placeholder="Minimal 8 karakter"
               className="pr-10"
             />
@@ -83,15 +81,16 @@ export function PlatformAdminResetPasswordModal({ open, onClose, adminName, onSu
             </button>
           </div>
         </Field>
-        <Field label="Konfirmasi Password Baru" required hint={errors.confirmPassword}>
+        <Field label="Konfirmasi Password Baru" required name="confirmPassword" error={errors.confirmPassword}>
           <Input
             type={showPassword ? "text" : "password"}
             value={values.confirmPassword}
             onChange={(e) => set("confirmPassword", e.target.value)}
+            onBlur={() => blur("confirmPassword")}
             placeholder="Ulangi password baru"
           />
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }

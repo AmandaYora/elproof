@@ -52,18 +52,15 @@ export default function MilestoneTemplateListPage() {
     setEditingTemplate(undefined);
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleSubmit(values: MilestoneTemplateSubmitValues) {
     setActionError(null);
-    try {
-      if (editingTemplate) {
-        await updateTemplate(editingTemplate.id, values);
-      } else {
-        await createTemplate(values);
-      }
-      closeModal();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan timeline default"));
+    if (editingTemplate) {
+      await updateTemplate(editingTemplate.id, values);
+    } else {
+      await createTemplate(values);
     }
+    closeModal();
   }
 
   async function handleDelete(id: string) {
@@ -220,7 +217,7 @@ export default function MilestoneTemplateListPage() {
         key={editingTemplate?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmit={(values) => void handleSubmit(values)}
+        onSubmit={handleSubmit}
         initialTemplate={editingTemplate}
       />
     </div>

@@ -83,39 +83,29 @@ export default function PlatformUserListPage() {
     setEditingAdmin(undefined);
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleRegister(values: PlatformAdminCreateFormValues) {
     setActionError(null);
-    try {
-      const result = await registerPlatformAdmin(values);
-      closeModal();
-      await refetch();
-      setCredentialReveal({ kind: "create", admin: result.admin, username: result.username, password: result.password });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan pengguna"));
-    }
+    const result = await registerPlatformAdmin(values);
+    closeModal();
+    await refetch();
+    setCredentialReveal({ kind: "create", admin: result.admin, username: result.username, password: result.password });
   }
 
   async function handleEditSubmit(values: PlatformAdminFormValues) {
     if (!editingAdmin) return;
     setActionError(null);
-    try {
-      await updatePlatformAdmin(editingAdmin.id, values);
-      closeModal();
-      await refetch();
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui pengguna"));
-    }
+    await updatePlatformAdmin(editingAdmin.id, values);
+    closeModal();
+    await refetch();
   }
 
   async function handleResetPasswordSubmit(values: ResetPlatformAdminPasswordFormValues) {
     if (!resetPasswordAdmin) return;
     setActionError(null);
-    try {
-      const result = await resetPlatformAdminPassword(resetPasswordAdmin.id, values.password);
-      setCredentialReveal({ kind: "reset", admin: resetPasswordAdmin, username: result.username, password: result.password });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mereset password"));
-    }
+    // A failure keeps the modal open with the message inside it.
+    const result = await resetPlatformAdminPassword(resetPasswordAdmin.id, values.password);
+    setCredentialReveal({ kind: "reset", admin: resetPasswordAdmin, username: result.username, password: result.password });
     setResetPasswordAdmin(undefined);
   }
 

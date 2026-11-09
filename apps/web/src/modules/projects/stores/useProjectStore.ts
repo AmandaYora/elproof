@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
 import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project-vendor.schema";
@@ -11,7 +10,7 @@ import type { ClientPaymentFormValues, ClientPaymentUpdateFormValues } from "@/m
 import type { VenuePaymentFormValues, VenuePaymentUpdateFormValues } from "@/modules/projects/schemas/venue-payment.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
-import { compressFileForUpload } from "@/shared/lib/image-compression";
+import { uploadFile } from "@/shared/lib/direct-upload";
 import type {
   PaymentTerm,
   PaymentTermInput,
@@ -37,18 +36,41 @@ import type {
 } from "@/modules/projects/types";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 
-// Thrown by createClientPayment when the payment itself was saved but its
-// proof upload failed — distinct from a full failure so the caller can close
-// the modal (the payment is real) instead of leaving it open for a retry,
-// which would otherwise risk creating a duplicate payment.
-export class ClientPaymentEvidenceError extends Error {}
+/** What a new project can carry besides its own fields: the venue it takes place at and the client's payment schedule. */
+export interface NewProjectExtras {
+  venueId?: string;
+  venueRentalPrice?: number;
+  venueCharge?: number;
+  terms?: PaymentTermInput[];
+}
 
-// Same purpose as ClientPaymentEvidenceError, for createPayment's two
-// possible evidence slots (Invoice, Bukti Transfer) instead of one.
-export class VendorPaymentEvidenceError extends Error {}
+/** Retrying the same save reuses the key, so the server replays the answer instead of recording the payment twice. */
+export interface SaveOptions {
+  idempotencyKey?: string;
+}
 
-// Same purpose as VendorPaymentEvidenceError, for createVenuePayment.
-export class VenuePaymentEvidenceError extends Error {}
+/**
+ * Records a payment together with its proof files as ONE business call (PLAN.md
+ * E3). Files go to storage first and come back as upload tokens; the payment
+ * request then attaches them and the server saves payment + proof in a single
+ * transaction. If anything fails nothing is saved, so the form can simply stay
+ * open for a retry: there is no "saved, but the proof failed" state.
+ */
+async function savePaymentWithProof(
+  projectId: string,
+  url: string,
+  body: Record<string, unknown>,
+  slots: Array<{ file: File | undefined; type: "Invoice" | "Transfer Proof" }>,
+  idempotencyKey?: string,
+): Promise<void> {
+  const evidence: Array<{ uploadToken: string; type: string }> = [];
+  for (const slot of slots) {
+    if (slot.file) evidence.push({ uploadToken: await uploadFile(projectId, slot.file), type: slot.type });
+  }
+  await httpClient.post(url, evidence.length > 0 ? { ...body, evidence } : body, {
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
+}
 
 // --- Raw wire shapes (see apps/api .../projects/presentation/dto.go) ---
 
@@ -557,7 +579,11 @@ interface ProjectState {
   // showArchived splits active/archived into two disjoint views, never
   // merged (see ADR-0013) — omit or pass false for the normal active view.
   fetchProjectPage: (page: number, search: string, status: string, showArchived?: boolean) => Promise<void>;
-  createProject: (values: ProjectFormValues) => Promise<Project>;
+  /**
+   * One call creates the project together with its venue and payment schedule (PLAN.md E7): all or nothing, every
+   * problem reported at once. Retrying with the same Idempotency-Key returns the project the first try made.
+   */
+  createProject: (values: ProjectFormValues, extra?: NewProjectExtras, options?: SaveOptions) => Promise<Project>;
   updateProject: (id: string, values: ProjectFormValues) => Promise<Project>;
   // Attaches/detaches this project's structured venue (ADR-0016) — pass
   // null to detach. Sends a full-replace PATCH body sourced from the
@@ -621,7 +647,7 @@ interface ProjectState {
   ) => Promise<void>;
 
   fetchPayments: (projectId: string) => Promise<void>;
-  createPayment: (projectId: string, values: PaymentFormValues) => Promise<void>;
+  createPayment: (projectId: string, values: PaymentFormValues, options?: SaveOptions) => Promise<void>;
   // Edit scope is the ledger fields only (Type/Amount/PaymentDate/Method/
   // ReferenceNumber/Notes) — no file re-upload, no re-parenting to a
   // different vendor engagement (PLAN.md §2.5). Both also refetch
@@ -638,7 +664,7 @@ interface ProjectState {
   // store action instead of a separate manual "Tambah Evidence" step (PLAN.md
   // §1.4), closing the "always incomplete in practice" gap vendor_payments
   // has today (createPayment above never attaches evidence at creation time).
-  createClientPayment: (projectId: string, values: ClientPaymentFormValues) => Promise<void>;
+  createClientPayment: (projectId: string, values: ClientPaymentFormValues, options?: SaveOptions) => Promise<void>;
   updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues) => Promise<void>;
   deleteClientPayment: (projectId: string, paymentId: string) => Promise<void>;
   /** The WO confirms the money arrived (E4). Needs a proof file; the client then sees the stamp. */
@@ -647,7 +673,7 @@ interface ProjectState {
   fetchVenuePayments: (projectId: string) => Promise<void>;
   // Same two-slot evidence orchestration as createPayment (vendor's own),
   // just against .../venue-payments and relatedKind "venuePayment".
-  createVenuePayment: (projectId: string, values: VenuePaymentFormValues) => Promise<void>;
+  createVenuePayment: (projectId: string, values: VenuePaymentFormValues, options?: SaveOptions) => Promise<void>;
   updateVenuePayment: (projectId: string, paymentId: string, values: VenuePaymentUpdateFormValues) => Promise<void>;
   deleteVenuePayment: (projectId: string, paymentId: string) => Promise<void>;
 
@@ -700,8 +726,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ projectPage: list, projectPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta) });
   },
 
-  createProject: async (values) => {
-    const res = await httpClient.post(API.projects.base, projectInputBody(values));
+  createProject: async (values, extra, options) => {
+    const body: Record<string, unknown> = projectInputBody(values);
+    if (extra?.venueId) {
+      body.venueId = Number(extra.venueId);
+      body.venueRentalPrice = extra.venueRentalPrice;
+      body.venueCharge = extra.venueCharge;
+    }
+    if (extra?.terms && extra.terms.length > 0) body.terms = extra.terms;
+    const res = await httpClient.post(API.projects.base, body, {
+      headers: options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : undefined,
+    });
     const project = toProject(res.data.data as RawProject);
     // The project exists now. Refreshing the list is a courtesy: if it fails,
     // the caller must still see success, or the user retries and gets a duplicate.
@@ -891,12 +926,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   createVendorEngagement: async (projectId, values) => {
-    const vendor = useVendorStore.getState().vendors.find((v) => v.id === values.vendorId);
-    await httpClient.post(API.projects.vendors(projectId), {
-      ...vendorEngagementInputBody(values),
-      categoryId: vendor ? Number(vendor.categoryId) : 0,
-      eventDate: get().currentProject?.eventDate ?? "",
-    });
+    // The category comes from the vendor and the date from the project: the server derives both (E7), so a stale
+    // page cannot send a date the project no longer has.
+    await httpClient.post(API.projects.vendors(projectId), vendorEngagementInputBody(values));
     await get().fetchVendorSection(projectId);
   },
 
@@ -942,70 +974,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ payments: (res.data.data as RawPayment[]).map(toPayment) });
   },
 
-  createPayment: async (projectId, values) => {
-    const res = await httpClient.post(API.projects.payments(projectId), {
-      projectVendorId: Number(values.projectVendorId),
-      type: values.type,
-      amount: values.amount,
-      paymentDate: values.paymentDate,
-      method: values.method,
-      referenceNumber: values.referenceNumber,
-      notes: values.notes,
-    });
-    const created = toPayment(res.data.data as RawPayment);
-    // The payment itself is already persisted at this point -- each of the
-    // two evidence slots (Invoice, Bukti Transfer) is uploaded independently
-    // so one failing doesn't abort the other; a failure in either must NOT
-    // look like the whole submission failed (the caller would otherwise
-    // invite a resubmit, creating a duplicate payment). Refetch regardless,
-    // then signal any partial failure via a distinct error type naming
-    // which slot(s) didn't make it -- same pattern as createClientPayment.
-    const failedSlots: string[] = [];
-    if (values.invoiceFile) {
-      try {
-        const compressed = await compressFileForUpload(values.invoiceFile);
-        await httpClient.post(API.projects.evidence(projectId), {
-          name: values.referenceNumber ? `Invoice - ${values.referenceNumber}` : "Invoice",
-          type: "Invoice",
-          fileName: compressed.fileName,
-          mimeType: compressed.mimeType,
-          base64Data: compressed.base64Data,
-          documentDate: values.paymentDate,
-          description: "",
-          relatedKind: "payment",
-          relatedId: Number(created.id),
-        });
-      } catch {
-        failedSlots.push("invoice");
-      }
-    }
-    if (values.proofFile) {
-      try {
-        const compressed = await compressFileForUpload(values.proofFile);
-        await httpClient.post(API.projects.evidence(projectId), {
-          name: values.referenceNumber ? `Bukti Transfer - ${values.referenceNumber}` : "Bukti Transfer",
-          type: "Transfer Proof",
-          fileName: compressed.fileName,
-          mimeType: compressed.mimeType,
-          base64Data: compressed.base64Data,
-          documentDate: values.paymentDate,
-          description: "",
-          relatedKind: "payment",
-          relatedId: Number(created.id),
-        });
-      } catch {
-        failedSlots.push("bukti transfer");
-      }
-    }
-    // Also refetches fetchVendorSection, not just fetchPayments -- PLAN.md
-    // §2.7's fix for the pre-existing pv.paidAmount staleness bug (see the
-    // doc comment on updatePayment/deletePayment below for the full story).
+  createPayment: async (projectId, values, options) => {
+    await savePaymentWithProof(
+      projectId,
+      API.projects.payments(projectId),
+      {
+        projectVendorId: Number(values.projectVendorId),
+        type: values.type,
+        amount: values.amount,
+        paymentDate: values.paymentDate,
+        method: values.method,
+        referenceNumber: values.referenceNumber,
+        notes: values.notes,
+      },
+      [
+        { file: values.invoiceFile, type: "Invoice" },
+        { file: values.proofFile, type: "Transfer Proof" },
+      ],
+      options?.idempotencyKey,
+    );
+    // The engagement's paid amount is part of the vendor section.
     await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
-    if (failedSlots.length > 0) {
-      throw new VendorPaymentEvidenceError(
-        `Pembayaran tersimpan, tapi ${failedSlots.join(" dan ")} gagal diunggah. Anda bisa melampirkannya nanti melalui tab Dokumen.`
-      );
-    }
   },
 
   updatePayment: async (projectId, paymentId, values) => {
@@ -1030,43 +1019,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ clientPayments: (res.data.data as RawClientPayment[]).map(toClientPayment) });
   },
 
-  createClientPayment: async (projectId, values) => {
-    const res = await httpClient.post(API.projects.clientPayments(projectId), {
-      type: values.type,
-      amount: values.amount,
-      paymentDate: values.paymentDate,
-      method: values.method,
-      referenceNumber: values.referenceNumber,
-      notes: values.notes,
-    });
-    const created = toClientPayment(res.data.data as RawClientPayment);
-    // The payment itself is already persisted at this point — if the proof
-    // upload fails (network/storage error), that must NOT look like the
-    // whole submission failed (the caller would otherwise invite a resubmit,
-    // creating a duplicate payment). Refetch regardless, then signal the
-    // partial failure via a distinct error type so the caller can close the
-    // modal instead of leaving it open for a retry.
-    if (values.proofFile) {
-      try {
-        const compressed = await compressFileForUpload(values.proofFile);
-        await httpClient.post(API.projects.evidence(projectId), {
-          name: values.referenceNumber ? `Bukti Transfer - ${values.referenceNumber}` : "Bukti Transfer",
-          type: "Transfer Proof",
-          fileName: compressed.fileName,
-          mimeType: compressed.mimeType,
-          base64Data: compressed.base64Data,
-          documentDate: values.paymentDate,
-          description: "",
-          relatedKind: "clientPayment",
-          relatedId: Number(created.id),
-        });
-      } catch {
-        await get().fetchClientPayments(projectId);
-        throw new ClientPaymentEvidenceError(
-          "Pembayaran tersimpan, tapi bukti transfer gagal diunggah. Anda bisa melampirkan buktinya nanti melalui tab Dokumen."
-        );
-      }
-    }
+  createClientPayment: async (projectId, values, options) => {
+    await savePaymentWithProof(
+      projectId,
+      API.projects.clientPayments(projectId),
+      {
+        type: values.type,
+        amount: values.amount,
+        paymentDate: values.paymentDate,
+        method: values.method,
+        referenceNumber: values.referenceNumber,
+        notes: values.notes,
+      },
+      [{ file: values.proofFile, type: "Transfer Proof" }],
+      options?.idempotencyKey,
+    );
     await get().fetchClientPayments(projectId);
   },
 
@@ -1097,62 +1064,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ venuePayments: (res.data.data as RawVenuePayment[]).map(toVenuePayment) });
   },
 
-  createVenuePayment: async (projectId, values) => {
-    const res = await httpClient.post(API.projects.venuePayments(projectId), {
-      type: values.type,
-      amount: values.amount,
-      paymentDate: values.paymentDate,
-      method: values.method,
-      referenceNumber: values.referenceNumber,
-      notes: values.notes,
-    });
-    const created = toVenuePayment(res.data.data as RawVenuePayment);
-    // Same independent-slot orchestration as createPayment (vendor's own) --
-    // see its own comment for why each slot is caught separately and the
-    // failure surfaced via a distinct error type instead of aborting.
-    const failedSlots: string[] = [];
-    if (values.invoiceFile) {
-      try {
-        const compressed = await compressFileForUpload(values.invoiceFile);
-        await httpClient.post(API.projects.evidence(projectId), {
-          name: values.referenceNumber ? `Invoice - ${values.referenceNumber}` : "Invoice",
-          type: "Invoice",
-          fileName: compressed.fileName,
-          mimeType: compressed.mimeType,
-          base64Data: compressed.base64Data,
-          documentDate: values.paymentDate,
-          description: "",
-          relatedKind: "venuePayment",
-          relatedId: Number(created.id),
-        });
-      } catch {
-        failedSlots.push("invoice");
-      }
-    }
-    if (values.proofFile) {
-      try {
-        const compressed = await compressFileForUpload(values.proofFile);
-        await httpClient.post(API.projects.evidence(projectId), {
-          name: values.referenceNumber ? `Bukti Transfer - ${values.referenceNumber}` : "Bukti Transfer",
-          type: "Transfer Proof",
-          fileName: compressed.fileName,
-          mimeType: compressed.mimeType,
-          base64Data: compressed.base64Data,
-          documentDate: values.paymentDate,
-          description: "",
-          relatedKind: "venuePayment",
-          relatedId: Number(created.id),
-        });
-      } catch {
-        failedSlots.push("bukti transfer");
-      }
-    }
+  createVenuePayment: async (projectId, values, options) => {
+    await savePaymentWithProof(
+      projectId,
+      API.projects.venuePayments(projectId),
+      {
+        type: values.type,
+        amount: values.amount,
+        paymentDate: values.paymentDate,
+        method: values.method,
+        referenceNumber: values.referenceNumber,
+        notes: values.notes,
+      },
+      [
+        { file: values.invoiceFile, type: "Invoice" },
+        { file: values.proofFile, type: "Transfer Proof" },
+      ],
+      options?.idempotencyKey,
+    );
     await get().fetchVenuePayments(projectId);
-    if (failedSlots.length > 0) {
-      throw new VenuePaymentEvidenceError(
-        `Pembayaran tersimpan, tapi ${failedSlots.join(" dan ")} gagal diunggah. Anda bisa melampirkannya nanti melalui tab Dokumen.`
-      );
-    }
   },
 
   updateVenuePayment: async (projectId, paymentId, values) => {

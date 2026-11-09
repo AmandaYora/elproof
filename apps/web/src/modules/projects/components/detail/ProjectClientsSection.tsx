@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Pencil, Send, UserCog, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
@@ -23,6 +23,12 @@ import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { ClientLoginStatusBadge, clientLinkActionLabel } from "@/modules/clients/components/ClientLoginStatus";
 import { PortalRoleSelect } from "@/modules/clients/components/PortalRoleSelect";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const CONTACT_LABELS: Record<string, string> = { name: "Nama", phone: "Nomor WhatsApp", email: "Email", accessRoleId: "Akses portal" };
+const REPLACE_LABELS: Record<string, string> = { ...CONTACT_LABELS, name: "Nama representative baru", relationNote: "Hubungan dengan pengantin" };
+const CREATE_LABELS: Record<string, string> = { ...CONTACT_LABELS, relationNote: "Hubungan dengan pengantin", username: "Nama pengguna" };
 
 const ROLE_ORDER: ClientRole[] = ["Bride", "Groom", "Family Representative"];
 
@@ -91,15 +97,13 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
     }
   }
 
+  // The three submit handlers (contact, replace, create) do not catch: errors
+  // propagate to the form, which shows a 422 on its fields and any other failure inside the modal.
   async function handleContactSubmit(values: ClientContactFormValues) {
     if (!modalTarget) return;
     setActionError(null);
-    try {
-      await updateContact(projectId, modalTarget.clientId, values);
-      setModalTarget(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui kontak client"));
-    }
+    await updateContact(projectId, modalTarget.clientId, values);
+    setModalTarget(null);
   }
 
   async function handleDelete(id: string) {
@@ -115,17 +119,13 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   async function handleReplaceSubmit(values: RepresentativeFormValues) {
     if (!modalTarget) return;
     setActionError(null);
-    try {
-      const { client, link } = await replaceRepresentative(projectId, modalTarget.clientId, values);
-      setModalTarget(null);
-      setLinkShare({
-        link,
-        recipient: clientRecipient(client),
-        notice: "Perwakilan diganti. Akses perwakilan lama sudah dicabut.",
-      });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengganti wedding representative"));
-    }
+    const { client, link } = await replaceRepresentative(projectId, modalTarget.clientId, values);
+    setModalTarget(null);
+    setLinkShare({
+      link,
+      recipient: clientRecipient(client),
+      notice: "Perwakilan diganti. Akses perwakilan lama sudah dicabut.",
+    });
   }
 
   async function handleSendLink(client: Client) {
@@ -141,13 +141,9 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   async function handleCreateSubmit(values: ClientCreateFormValues) {
     if (!createRole) return;
     setActionError(null);
-    try {
-      const { client, link } = await createClient(projectId, createRole, values);
-      setCreateRole(null);
-      setLinkShare({ link, recipient: clientRecipient(client), notice: `${client.name} ditambahkan dengan nama pengguna ${client.username}.` });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan client"));
-    }
+    const { client, link } = await createClient(projectId, createRole, values);
+    setCreateRole(null);
+    setLinkShare({ link, recipient: clientRecipient(client), notice: `${client.name} ditambahkan dengan nama pengguna ${client.username}.` });
   }
 
   return (
@@ -280,7 +276,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
           key={activeTarget.id}
           client={activeTarget}
           onClose={() => setModalTarget(null)}
-          onSubmit={(values) => void handleContactSubmit(values)}
+          onSubmit={handleContactSubmit}
         />
       )}
 
@@ -289,7 +285,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
           key={activeTarget.id}
           client={activeTarget}
           onClose={() => setModalTarget(null)}
-          onSubmit={(values) => void handleReplaceSubmit(values)}
+          onSubmit={handleReplaceSubmit}
         />
       )}
 
@@ -305,12 +301,8 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
       {createRole && (
         <CreateClientModal
           role={createRole}
-          error={actionError}
-          onClose={() => {
-            setCreateRole(null);
-            setActionError(null);
-          }}
-          onSubmit={(values) => void handleCreateSubmit(values)}
+          onClose={() => setCreateRole(null)}
+          onSubmit={handleCreateSubmit}
         />
       )}
     </div>
@@ -324,32 +316,15 @@ function EditContactModal({
 }: {
   client: Client;
   onClose: () => void;
-  onSubmit: (values: ClientContactFormValues) => void;
+  onSubmit: (values: ClientContactFormValues) => Promise<void>;
 }) {
-  const [values, setValues] = useState<ClientContactFormValues>({
-    name: client.name,
-    phone: client.phone,
-    email: client.email,
-    accessRoleId: client.accessRoleId,
+  const form = useZodForm({
+    schema: clientContactSchema,
+    initial: { name: client.name, phone: client.phone, email: client.email, accessRoleId: client.accessRoleId ?? 0 },
   });
-  const [errors, setErrors] = useState<Partial<Record<keyof ClientContactFormValues, string>>>({});
-
-  function set<K extends keyof ClientContactFormValues>(key: K, value: ClientContactFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleSubmit() {
-    const result = clientContactSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ClientContactFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof ClientContactFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-  }
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kontak belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   return (
     <Modal
@@ -357,28 +332,34 @@ function EditContactModal({
       onClose={onClose}
       title="Ubah Kontak"
       description={`Perbarui informasi kontak untuk ${client.name}.`}
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan Perubahan</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="edit-contact-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Simpan perubahan"}
+          </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <Field label="Nama" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} />
+      <form id="edit-contact-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={CONTACT_LABELS} root={() => formRef.current} />
+        <Field label="Nama" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} />
         </Field>
-        <Field label="Nomor WhatsApp" required error={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" />
+        <Field label="Nomor WhatsApp" required name="phone" error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} inputMode="tel" />
         </Field>
-        <Field label="Email" error={errors.email} hint="Opsional">
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
+        <Field label="Email" name="email" error={errors.email} hint="Opsional">
+          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} />
         </Field>
-        <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} />
+        <div data-field="accessRoleId">
+          <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} />
+        </div>
         <Field label="Username">
           <Input value={client.username} disabled />
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }
@@ -390,27 +371,16 @@ function ReplaceRepresentativeModal({
 }: {
   client: Client;
   onClose: () => void;
-  onSubmit: (values: RepresentativeFormValues) => void;
+  onSubmit: (values: RepresentativeFormValues) => Promise<void>;
 }) {
-  const [values, setValues] = useState<RepresentativeFormValues>({ name: "", phone: "", email: "", relationNote: "" });
-  const [errors, setErrors] = useState<Partial<Record<keyof RepresentativeFormValues, string>>>({});
-
-  function set<K extends keyof RepresentativeFormValues>(key: K, value: RepresentativeFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleSubmit() {
-    const result = representativeSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof RepresentativeFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof RepresentativeFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-  }
+  const form = useZodForm({
+    schema: representativeSchema,
+    // No portal role here (the replacement gets the default): accessRoleId stays absent, as before.
+    initial: { name: "", phone: "", email: "", relationNote: "" } as Required<RepresentativeFormValues>,
+  });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Perwakilan belum diganti. Periksa koneksi lalu coba lagi." });
 
   return (
     <Modal
@@ -418,69 +388,56 @@ function ReplaceRepresentativeModal({
       onClose={onClose}
       title="Ganti Wedding Representative"
       description={`${client.name} akan digantikan. Akses login ${client.name} langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru.`}
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Ganti dan buat undangan</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="replace-representative-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Ganti dan buat undangan"}
+          </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <Field label="Nama Representative Baru" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap" />
+      <form id="replace-representative-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={REPLACE_LABELS} root={() => formRef.current} />
+        <Field label="Nama Representative Baru" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="Nama lengkap" />
         </Field>
-        <Field label="Hubungan dengan Pengantin" required hint={errors.relationNote}>
+        <Field label="Hubungan dengan Pengantin" required name="relationNote" error={errors.relationNote}>
           <Input
             value={values.relationNote}
             onChange={(e) => set("relationNote", e.target.value)}
+            onBlur={() => blur("relationNote")}
             placeholder="cth. Ayah kandung mempelai wanita"
           />
         </Field>
-        <Field label="Nomor WhatsApp" required error={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} inputMode="tel" />
+        <Field label="Nomor WhatsApp" required name="phone" error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} inputMode="tel" />
         </Field>
-        <Field label="Email" error={errors.email} hint="Opsional">
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
+        <Field label="Email" name="email" error={errors.email} hint="Opsional">
+          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} />
         </Field>
         <Field label="Username">
           <Input value={client.username} disabled />
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }
 
 function CreateClientModal({
   role,
-  error,
   onClose,
   onSubmit,
 }: {
   role: ClientRole;
-  /** Server refusal (e.g. trial limit), shown inside the form. */
-  error: string | null;
   onClose: () => void;
-  onSubmit: (values: ClientCreateFormValues) => void;
+  onSubmit: (values: ClientCreateFormValues) => Promise<void>;
 }) {
-  const [values, setValues] = useState<ClientCreateFormValues>({ name: "", phone: "", email: "", relationNote: "", username: "", accessRoleId: 0 });
-  const [errors, setErrors] = useState<Partial<Record<keyof ClientCreateFormValues, string>>>({});
-
-  function set<K extends keyof ClientCreateFormValues>(key: K, value: ClientCreateFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleSubmit() {
-    const result = clientCreateSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof ClientCreateFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof ClientCreateFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-  }
+  const form = useZodForm({ schema: clientCreateSchema, initial: { name: "", phone: "", email: "", relationNote: "", username: "", accessRoleId: 0 } });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Client belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   return (
     <Modal
@@ -488,42 +445,44 @@ function CreateClientModal({
       onClose={onClose}
       title={`Tambah ${ROLE_LABEL[role]}`}
       description="Client menerima link undangan dan membuat kata sandinya sendiri untuk Client Portal."
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>Simpan dan buat undangan</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="create-client-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Simpan dan buat undangan"}
+          </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-            {error}
-          </p>
-        )}
-        <Field label="Nama" required error={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap" />
+      <form id="create-client-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={CREATE_LABELS} root={() => formRef.current} />
+        <Field label="Nama" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="Nama lengkap" />
         </Field>
         {role === "Family Representative" && (
-          <Field label="Hubungan dengan Pengantin" hint={errors.relationNote}>
+          <Field label="Hubungan dengan Pengantin" name="relationNote" error={errors.relationNote}>
             <Input
               value={values.relationNote}
               onChange={(e) => set("relationNote", e.target.value)}
+              onBlur={() => blur("relationNote")}
               placeholder="cth. Ayah kandung mempelai wanita"
             />
           </Field>
         )}
-        <Field label="Nomor WhatsApp" required error={errors.phone} hint="Link undangan dikirim ke nomor ini">
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0812 3456 7890" inputMode="tel" />
+        <Field label="Nomor WhatsApp" required name="phone" error={errors.phone} hint="Link undangan dikirim ke nomor ini">
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="0812 3456 7890" inputMode="tel" />
         </Field>
-        <Field label="Email" error={errors.email} hint="Opsional. Client juga bisa masuk memakai email ini.">
-          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} />
+        <Field label="Email" name="email" error={errors.email} hint="Opsional. Client juga bisa masuk memakai email ini.">
+          <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} />
         </Field>
-        <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} allowDefault />
-        <Field label="Nama pengguna" error={errors.username} hint="Opsional. Kosongkan agar dibuat otomatis dari nama.">
-          <Input value={values.username} onChange={(e) => set("username", e.target.value.toLowerCase())} placeholder="cth. budi.rahman" />
+        <div data-field="accessRoleId">
+          <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} allowDefault />
+        </div>
+        <Field label="Nama pengguna" name="username" error={errors.username} hint="Opsional. Kosongkan agar dibuat otomatis dari nama.">
+          <Input value={values.username} onChange={(e) => set("username", e.target.value.toLowerCase())} onBlur={() => blur("username")} placeholder="cth. budi.rahman" />
         </Field>
-      </div>
+      </form>
     </Modal>
   );
 }

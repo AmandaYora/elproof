@@ -51,15 +51,12 @@ export default function AppListPage() {
     void fetchApps();
   }, [fetchApps]);
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleCreate(values: CreateAppFormValues) {
     setActionError(null);
-    try {
-      const result = await createApp(values);
-      setModalOpen(false);
-      setSecretReveal({ kind: "create", appId: result.appId, secret: result.secret });
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mendaftarkan aplikasi"));
-    }
+    const result = await createApp(values);
+    setModalOpen(false);
+    setSecretReveal({ kind: "create", appId: result.appId, secret: result.secret });
   }
 
   async function handleConfirmReset() {
@@ -200,7 +197,7 @@ export default function AppListPage() {
         )}
       </Card>
 
-      <AppFormModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={(values) => void handleCreate(values)} />
+      <AppFormModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleCreate} />
 
       <AppDetailModal open={detailApp !== undefined} onClose={() => setDetailApp(undefined)} app={detailApp} />
 

@@ -77,25 +77,18 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
     }
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleAddMilestone(values: ProjectMilestoneFormValues) {
     setActionError(null);
-    try {
-      await createMilestone(projectId, values);
-      setAddOpen(false);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan timeline"));
-    }
+    await createMilestone(projectId, values);
+    setAddOpen(false);
   }
 
   async function handleEditSave(fields: ProjectMilestoneEditFields) {
     if (!editingMilestone) return;
     setActionError(null);
-    try {
-      await updateMilestone(projectId, editingMilestone.id, fields);
-      setEditingMilestone(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui timeline"));
-    }
+    await updateMilestone(projectId, editingMilestone.id, fields);
+    setEditingMilestone(null);
   }
 
   async function handleAddEvidence(file: File, values: EvidenceUploadFormValues) {
@@ -361,7 +354,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <ProjectMilestoneFormModal open={addOpen} onClose={() => setAddOpen(false)} onSubmit={(values) => void handleAddMilestone(values)} />
+      <ProjectMilestoneFormModal open={addOpen} onClose={() => setAddOpen(false)} onSubmit={handleAddMilestone} />
 
       {editingMilestone && (
         <ProjectMilestoneEditModal
@@ -369,7 +362,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
           open
           onClose={() => setEditingMilestone(null)}
           milestone={editingMilestone}
-          onSave={(fields) => void handleEditSave(fields)}
+          onSave={handleEditSave}
         />
       )}
 

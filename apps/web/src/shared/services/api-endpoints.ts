@@ -197,6 +197,7 @@ export const API = {
     payment: (id: string, paymentId: string) => `/api/v1/projects/${id}/payments/${paymentId}`,
     clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
     clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
+    uploads: (id: string) => `/api/v1/projects/${id}/uploads`,
     clientPaymentVerify: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/verify`,
     venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,
     venuePayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}`,

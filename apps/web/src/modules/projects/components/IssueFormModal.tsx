@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { ISSUE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { issueSchema, ISSUE_IMPACT_OPTIONS, ISSUE_STATUS_OPTIONS, type IssueFormValues } from "@/modules/projects/schemas/issue.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import type { IssueImpact, IssueStatus, ProjectVendor, VendorMilestone } from "@/modules/projects/types";
+
+const FIELD_LABELS: Record<string, string> = {
+  title: "Judul kendala", description: "Deskripsi", projectVendorId: "Vendor", vendorMilestoneId: "Timeline", impact: "Dampak", status: "Status",
+  foundDate: "Tanggal ditemukan", targetResolutionDate: "Target penyelesaian", picStaffId: "PIC", resolutionPlan: "Rencana penanganan",
+};
 
 interface VendorLookup {
   id: string;
@@ -21,7 +28,8 @@ interface StaffLookup {
 interface IssueFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: IssueFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
+  onSubmit: (values: IssueFormValues) => Promise<void>;
   initialValues: IssueFormValues;
   // Edit mode allows reassigning the vendor entirely; create mode always
   // opens from a specific vendor's context, so the vendor field is locked.
@@ -58,31 +66,18 @@ export function IssueFormModal({
   vendorMilestones,
   staff,
 }: IssueFormModalProps) {
-  const [values, setValues] = useState<IssueFormValues>(initialValues);
-  const [errors, setErrors] = useState<Partial<Record<keyof IssueFormValues, string>>>({});
-
-  function set<K extends keyof IssueFormValues>(key: K, value: IssueFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
+  const form = useZodForm({ schema: issueSchema, initial: initialValues });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
   function handleVendorChange(projectVendorId: string) {
     // Changing the vendor invalidates whatever milestone was picked --
     // milestones belong to exactly one vendor engagement.
-    setValues((prev) => ({ ...prev, projectVendorId, vendorMilestoneId: "" }));
+    set("projectVendorId", projectVendorId);
+    set("vendorMilestoneId", "");
   }
 
-  function handleSubmit() {
-    const result = issueSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof IssueFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof IssueFormValues] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-  }
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kendala belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   const selectedVendor = vendorEngagements.find((pv) => pv.id === values.projectVendorId);
   const milestoneOptions = vendorMilestones.filter((m) => m.projectVendorId === values.projectVendorId);
@@ -95,27 +90,32 @@ export function IssueFormModal({
       title={mode === "create" ? "Tambah Kendala" : "Ubah Kendala"}
       description="Catat kendala terkait vendor pada project ini."
       size="lg"
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit}>{mode === "create" ? "Simpan Kendala" : "Simpan Perubahan"}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
+          <Button type="submit" form="issue-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : mode === "create" ? "Simpan kendala" : "Simpan perubahan"}
+          </Button>
         </>
       }
     >
+      <form id="issue-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Field label="Judul Kendala" required hint={errors.title}>
-            <Input value={values.title} onChange={(e) => set("title", e.target.value)} />
+          <Field label="Judul Kendala" required name="title" error={errors.title}>
+            <Input value={values.title} onChange={(e) => set("title", e.target.value)} onBlur={() => blur("title")} />
           </Field>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Deskripsi" required hint={errors.description}>
-            <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} />
+          <Field label="Deskripsi" required name="description" error={errors.description}>
+            <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
           </Field>
         </div>
 
         {mode === "edit" ? (
-          <Field label="Vendor" required hint={errors.projectVendorId}>
+          <Field label="Vendor" required name="projectVendorId" error={errors.projectVendorId}>
             <Select value={values.projectVendorId} onChange={(e) => handleVendorChange(e.target.value)}>
               {vendorEngagements.map((pv) => (
                 <option key={pv.id} value={pv.id}>{vendorLabel(pv, vendors)}</option>
@@ -135,7 +135,7 @@ export function IssueFormModal({
             <p className="flex h-9 items-center text-[13px] font-medium text-text-primary">{lockedMilestoneName}</p>
           </Field>
         ) : (
-          <Field label="Timeline" hint={errors.vendorMilestoneId}>
+          <Field label="Timeline" name="vendorMilestoneId" error={errors.vendorMilestoneId}>
             <Select value={values.vendorMilestoneId} onChange={(e) => set("vendorMilestoneId", e.target.value)}>
               <option value="">Umum (tidak terikat ke timeline)</option>
               {milestoneOptions.map((m) => (
@@ -145,7 +145,7 @@ export function IssueFormModal({
           </Field>
         )}
 
-        <Field label="Dampak" required>
+        <Field label="Dampak" required name="impact" error={errors.impact}>
           <Select value={values.impact} onChange={(e) => set("impact", e.target.value as IssueImpact)}>
             {ISSUE_IMPACT_OPTIONS.map((i) => (
               <option key={i} value={i}>{i}</option>
@@ -153,7 +153,7 @@ export function IssueFormModal({
           </Select>
         </Field>
         {mode === "edit" && (
-          <Field label="Status" required>
+          <Field label="Status" required name="status" error={errors.status}>
             <Select value={values.status} onChange={(e) => set("status", e.target.value as IssueStatus)}>
               {ISSUE_STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>{ISSUE_STATUS_LABELS.staff[s]}</option>
@@ -161,17 +161,18 @@ export function IssueFormModal({
             </Select>
           </Field>
         )}
-        <Field label="Tanggal Ditemukan" required hint={errors.foundDate}>
-          <Input type="date" value={values.foundDate} onChange={(e) => set("foundDate", e.target.value)} />
+        <Field label="Tanggal Ditemukan" required name="foundDate" error={errors.foundDate}>
+          <Input type="date" value={values.foundDate} onChange={(e) => set("foundDate", e.target.value)} onBlur={() => blur("foundDate")} />
         </Field>
-        <Field label="Target Penyelesaian">
+        <Field label="Target Penyelesaian" name="targetResolutionDate" error={errors.targetResolutionDate}>
           <Input
             type="date"
             value={values.targetResolutionDate}
             onChange={(e) => set("targetResolutionDate", e.target.value)}
+            onBlur={() => blur("targetResolutionDate")}
           />
         </Field>
-        <Field label="PIC" required hint={errors.picStaffId}>
+        <Field label="PIC" required name="picStaffId" error={errors.picStaffId}>
           <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>{s.name} — {s.title}</option>
@@ -179,11 +180,12 @@ export function IssueFormModal({
           </Select>
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Rencana Penanganan">
-            <Textarea rows={2} value={values.resolutionPlan} onChange={(e) => set("resolutionPlan", e.target.value)} />
+          <Field label="Rencana Penanganan" name="resolutionPlan" error={errors.resolutionPlan}>
+            <Textarea rows={2} value={values.resolutionPlan} onChange={(e) => set("resolutionPlan", e.target.value)} onBlur={() => blur("resolutionPlan")} />
           </Field>
         </div>
       </div>
+      </form>
     </Modal>
   );
 }

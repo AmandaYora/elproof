@@ -121,25 +121,19 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
     });
   }
 
+  // The four form submit handlers below do not catch: errors propagate to the
+  // form, which shows a 422 on its fields and any other failure inside the modal.
   async function handleAdd(values: ProjectVendorFormValues) {
     setActionError(null);
-    try {
-      await createVendorEngagement(projectId, values);
-      setAddOpen(false);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan vendor"));
-    }
+    await createVendorEngagement(projectId, values);
+    setAddOpen(false);
   }
 
   async function handleEdit(values: ProjectVendorFormValues) {
     if (!editing) return;
     setActionError(null);
-    try {
-      await updateVendorEngagement(projectId, editing.id, values);
-      setEditing(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan perubahan vendor"));
-    }
+    await updateVendorEngagement(projectId, editing.id, values);
+    setEditing(null);
   }
 
   async function handleCancelVendor(pvId: string) {
@@ -154,12 +148,8 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function handleAddVendorMilestone(values: VendorMilestoneFormValues) {
     if (!addMilestoneFor) return;
     setActionError(null);
-    try {
-      await createVendorMilestone(projectId, addMilestoneFor.projectVendorId, values);
-      setAddMilestoneFor(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menambahkan timeline vendor"));
-    }
+    await createVendorMilestone(projectId, addMilestoneFor.projectVendorId, values);
+    setAddMilestoneFor(null);
   }
 
   function toMilestoneUpdateFields(m: VendorMilestone): VendorMilestoneUpdateFields {
@@ -201,12 +191,8 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function handleSaveMilestone(fields: MilestoneEditFields) {
     if (!editingMilestone) return;
     setActionError(null);
-    try {
-      await updateVendorMilestone(projectId, editingMilestone.milestone.projectVendorId, editingMilestone.milestone.id, fields);
-      setEditingMilestone(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan timeline"));
-    }
+    await updateVendorMilestone(projectId, editingMilestone.milestone.projectVendorId, editingMilestone.milestone.id, fields);
+    setEditingMilestone(null);
   }
 
   async function handleAddMilestoneEvidence(file: File, meta: NewEvidenceMeta) {
@@ -253,16 +239,12 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function handleIssueSubmit(values: IssueFormValues) {
     if (!issueModal) return;
     setActionError(null);
-    try {
-      if (issueModal.mode === "edit" && issueModal.issueId) {
-        await updateIssue(projectId, issueModal.issueId, values);
-      } else {
-        await createIssue(projectId, values);
-      }
-      setIssueModal(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan kendala"));
+    if (issueModal.mode === "edit" && issueModal.issueId) {
+      await updateIssue(projectId, issueModal.issueId, values);
+    } else {
+      await createIssue(projectId, values);
     }
+    setIssueModal(null);
   }
 
   async function quickIssueStatusChange(issue: VendorIssue, status: IssueStatus) {
@@ -350,13 +332,13 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <ProjectVendorFormModal projectId={projectId} open={addOpen} onClose={() => setAddOpen(false)} onSubmit={(values) => void handleAdd(values)} />
+      <ProjectVendorFormModal projectId={projectId} open={addOpen} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
       {editing && (
         <ProjectVendorFormModal
           projectId={projectId}
           open={Boolean(editing)}
           onClose={() => setEditing(null)}
-          onSubmit={(values) => void handleEdit(values)}
+          onSubmit={handleEdit}
           initialProjectVendor={editing}
         />
       )}
@@ -369,7 +351,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
           totalMilestones={editingMilestone.total}
           evidenceList={evidenceFor(editingMilestone.milestone)}
           historyEntries={historyFor(editingMilestone.milestone.id)}
-          onSave={(fields) => void handleSaveMilestone(fields)}
+          onSave={handleSaveMilestone}
           onAddEvidence={handleAddMilestoneEvidence}
         />
       )}
@@ -377,7 +359,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         <VendorMilestoneFormModal
           open={Boolean(addMilestoneFor)}
           onClose={() => setAddMilestoneFor(null)}
-          onSubmit={(values) => void handleAddVendorMilestone(values)}
+          onSubmit={handleAddVendorMilestone}
           vendorName={addMilestoneFor.vendorName}
         />
       )}
@@ -385,7 +367,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         <IssueFormModal
           open={Boolean(issueModal)}
           onClose={() => setIssueModal(null)}
-          onSubmit={(values) => void handleIssueSubmit(values)}
+          onSubmit={handleIssueSubmit}
           initialValues={issueModal.initialValues}
           mode={issueModal.mode}
           milestoneLocked={issueModal.milestoneLocked}

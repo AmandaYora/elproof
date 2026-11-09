@@ -109,19 +109,16 @@ export default function VendorListPage() {
     setEditingVendor(undefined);
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleSubmit(values: VendorFormValues | VendorCreateFormValues) {
     setActionError(null);
-    try {
-      if (editingVendor) {
-        await updateVendor(editingVendor.id, values as VendorFormValues);
-      } else {
-        await createVendor(values as VendorCreateFormValues);
-      }
-      closeModal();
-      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan vendor"));
+    if (editingVendor) {
+      await updateVendor(editingVendor.id, values as VendorFormValues);
+    } else {
+      await createVendor(values as VendorCreateFormValues);
     }
+    closeModal();
+    await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
   }
 
   async function handleToggleActive(vendor: Vendor) {
@@ -344,8 +341,8 @@ export default function VendorListPage() {
         key={editingVendor?.id ?? "new"}
         open={modalOpen}
         onClose={closeModal}
-        onSubmitCreate={(values) => void handleSubmit(values)}
-        onSubmitEdit={(values) => void handleSubmit(values)}
+        onSubmitCreate={handleSubmit}
+        onSubmitEdit={handleSubmit}
         initialVendor={editingVendor}
         categories={categories}
       />

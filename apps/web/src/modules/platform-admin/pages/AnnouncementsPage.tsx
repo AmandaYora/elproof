@@ -36,8 +36,6 @@ export default function AnnouncementsPage() {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<Announcement | null | undefined>(undefined); // undefined: closed, null: new
-  const [formError, setFormError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<Announcement | undefined>(undefined);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -59,18 +57,11 @@ export default function AnnouncementsPage() {
     return "Semua tenant";
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleSubmit(input: AnnouncementInput) {
-    setFormError(null);
-    setSaving(true);
-    try {
-      await saveAnnouncement(editing?.id ?? null, input);
-      toast.success(editing ? "Pengumuman diperbarui" : "Pengumuman diterbitkan");
-      setEditing(undefined);
-    } catch (err) {
-      setFormError(getApiErrorMessage(err, "Pengumuman belum bisa disimpan"));
-    } finally {
-      setSaving(false);
-    }
+    await saveAnnouncement(editing?.id ?? null, input);
+    toast.success(editing ? "Pengumuman diperbarui" : "Pengumuman diterbitkan");
+    setEditing(undefined);
   }
 
   async function handleDelete() {
@@ -95,7 +86,7 @@ export default function AnnouncementsPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kabar untuk tenant: pemeliharaan, perubahan harga, atau informasi penting lainnya.</p>
         </div>
         {canEdit && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => { setFormError(null); setEditing(null); }}>
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setEditing(null)}>
             Buat pengumuman
           </Button>
         )}
@@ -130,7 +121,7 @@ export default function AnnouncementsPage() {
                   </div>
                   {canEdit && (
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <IconActionButton icon={Pencil} label="Ubah pengumuman" tone="neutral" onClick={() => { setFormError(null); setEditing(a); }} />
+                      <IconActionButton icon={Pencil} label="Ubah pengumuman" tone="neutral" onClick={() => setEditing(a)} />
                       <IconActionButton icon={Trash2} label="Hapus pengumuman" tone="danger" onClick={() => { setDeleteError(null); setDeleting(a); }} />
                     </div>
                   )}
@@ -148,8 +139,6 @@ export default function AnnouncementsPage() {
         initial={editing ?? undefined}
         plans={plans}
         onSubmit={handleSubmit}
-        error={formError}
-        isSubmitting={saving}
       />
 
       <ConfirmDialog

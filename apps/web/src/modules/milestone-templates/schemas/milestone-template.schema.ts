@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Internal form state only (MilestoneTemplateFormModal's own useState) --
+// Internal form state only (MilestoneTemplateFormModal's own form state) --
 // never sent to onSubmit/store/API directly. daysOffset is always
 // non-negative; daysDirection ("before"/"after") carries the sign instead
 // of asking the user to type a negative number under a field labeled "H-"
@@ -8,8 +8,8 @@ import { z } from "zod";
 // fromDaysBeforeEvent below for the conversion to/from the API's signed
 // daysBeforeEvent.
 export const milestoneTemplateSchema = z.object({
-  name: z.string().min(3, "Nama timeline minimal 3 karakter"),
-  daysOffset: z.number().int("Harus berupa angka bulat").min(0, "Tidak boleh negatif"),
+  name: z.string().min(3, "Isi nama timeline, minimal 3 karakter"),
+  daysOffset: z.number().int("Isi jumlah hari dengan angka bulat").min(0, "Jumlah hari tidak boleh negatif. Pilih Setelah Acara untuk H+"),
   daysDirection: z.enum(["before", "after"]),
 });
 

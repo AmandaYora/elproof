@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -11,19 +11,19 @@ import {
 import type { Tenant } from "@/modules/platform-admin/data/types";
 import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
 import { formatCurrency } from "@/shared/lib/formatters";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = { planId: "Paket langganan", reason: "Alasan aktivasi", proofReference: "Bukti", note: "Catatan" };
 
 interface ActivateSubscriptionModalProps {
   open: boolean;
   onClose: () => void;
   tenant?: Tenant;
   plans: SubscriptionPlan[];
-  isSubmitting?: boolean;
-  /** Server-side failure, shown inside the dialog so nothing is lost. */
-  error?: string | null;
-  onSubmit: (values: ActivateSubscriptionFormValues) => void;
+  /** Activates, then closes the dialog. Throw to keep it open: the message is shown inside it, a 422 on its fields. */
+  onSubmit: (values: ActivateSubscriptionFormValues) => Promise<void>;
 }
-
-type Errors = Partial<Record<keyof ActivateSubscriptionFormValues, string>>;
 
 function initialValues(tenant: Tenant | undefined, plans: SubscriptionPlan[]): ActivateSubscriptionFormValues {
   return { planId: tenant?.planId ?? plans[0]?.id ?? "", reason: "", proofReference: "", note: "" };
@@ -34,8 +34,6 @@ export function ActivateSubscriptionModal({
   onClose,
   tenant,
   plans,
-  isSubmitting = false,
-  error,
   onSubmit,
 }: ActivateSubscriptionModalProps) {
   // appIds.length === 0 is what closes T16: without it, a plan private to
@@ -44,51 +42,30 @@ export function ActivateSubscriptionModal({
   // — who would then be silently filtered out of their own plan by
   // ListPublic on the very next page load.
   const activePlans = plans.filter((p) => p.isActive && p.appIds.length === 0);
-  const [values, setValues] = useState<ActivateSubscriptionFormValues>(() => initialValues(tenant, activePlans));
-  const [errors, setErrors] = useState<Errors>({});
+  const form = useZodForm({ schema: activateSubscriptionSchema, initial: initialValues(tenant, activePlans) });
+  const { values, errors, set } = form;
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Reset whenever the dialog opens for a (possibly different) tenant, and
   // backfill the plan once plans have loaded.
   useEffect(() => {
-    if (open) {
-      setValues(initialValues(tenant, activePlans));
-      setErrors({});
-    }
+    if (open) form.reset(initialValues(tenant, activePlans));
   }, [open, tenant?.id]);
   useEffect(() => {
     if (!values.planId && activePlans.length > 0) {
-      setValues((v) => ({ ...v, planId: tenant?.planId ?? activePlans[0].id }));
+      set("planId", tenant?.planId ?? activePlans[0].id);
     }
   }, [activePlans.length, tenant?.planId]);
 
-  function set<K extends keyof ActivateSubscriptionFormValues>(key: K, value: ActivateSubscriptionFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
-  }
-
-  function handleSubmit() {
-    if (activePlans.length === 0 || isSubmitting) return;
-    const result = activateSubscriptionSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Errors = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof ActivateSubscriptionFormValues] ??= issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmit(result.data);
-  }
-
-  function handleClose() {
-    if (isSubmitting) return;
-    onClose();
-  }
+  const submit = form.handleSubmit(onSubmit, {
+    root: () => formRef.current,
+    fallback: "Langganan belum aktif. Periksa koneksi lalu coba lagi.",
+  });
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
       title="Aktifkan Langganan Manual"
       description={
         tenant
@@ -96,29 +73,26 @@ export function ActivateSubscriptionModal({
           : undefined
       }
       size="sm"
+      busy={form.submitting}
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose} disabled={isSubmitting}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || activePlans.length === 0}>
-            {isSubmitting ? "Mengaktifkan..." : "Aktifkan Langganan"}
+          <Button type="submit" form="activate-subscription-form" disabled={form.submitting || activePlans.length === 0}>
+            {form.submitting ? "Mengaktifkan..." : "Aktifkan langganan"}
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-            {error}
-          </p>
-        )}
+      <form id="activate-subscription-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+        <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         {activePlans.length === 0 ? (
           <p className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] font-medium text-warning-text">
             Belum ada paket publik yang aktif. Tambahkan dulu di menu Paket.
           </p>
         ) : (
-          <Field label="Paket Langganan" required error={errors.planId}>
+          <Field label="Paket Langganan" required name="planId" error={errors.planId}>
             <Select value={values.planId} onChange={(e) => set("planId", e.target.value)}>
               {activePlans.map((plan) => (
                 <option key={plan.id} value={plan.id}>
@@ -128,7 +102,7 @@ export function ActivateSubscriptionModal({
             </Select>
           </Field>
         )}
-        <Field label="Alasan Aktivasi" required error={errors.reason}>
+        <Field label="Alasan Aktivasi" required name="reason" error={errors.reason}>
           <Select value={values.reason} onChange={(e) => set("reason", e.target.value)}>
             <option value="">Pilih alasan</option>
             {ACTIVATION_REASON_OPTIONS.map((r) => (
@@ -141,20 +115,23 @@ export function ActivateSubscriptionModal({
         <Field
           label="Bukti"
           required
+          name="proofReference"
           error={errors.proofReference}
           hint="No. transfer, no. invoice, atau tautan dokumen kesepakatan."
         >
           <Input
             value={values.proofReference}
             onChange={(e) => set("proofReference", e.target.value)}
+            onBlur={() => form.blur("proofReference")}
             placeholder="cth. TRF-BCA-20261106-001"
             maxLength={255}
           />
         </Field>
-        <Field label="Catatan" required={values.reason === "other"} error={errors.note}>
+        <Field label="Catatan" required={values.reason === "other"} name="note" error={errors.note}>
           <Textarea
             value={values.note}
             onChange={(e) => set("note", e.target.value)}
+            onBlur={() => form.blur("note")}
             rows={3}
             maxLength={500}
             placeholder="Keterangan tambahan untuk tim"
@@ -164,7 +141,7 @@ export function ActivateSubscriptionModal({
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Dicatat sebagai transaksi &quot;Diaktifkan Admin&quot;, tidak dihitung sebagai pendapatan, dan masuk audit log.
         </p>
-      </div>
+      </form>
     </Modal>
   );
 }

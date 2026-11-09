@@ -10,7 +10,7 @@ import { SkeletonRows } from "@/shared/components/ui/Skeleton";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { toast } from "@/shared/stores/useToastStore";
 import { TERM_STATUS_LABELS } from "@/shared/lib/labels";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
@@ -162,7 +162,15 @@ function PaymentTermsDrawer({
       toast.success("Jadwal termin disimpan");
       onClose();
     } catch (err) {
-      setError(getApiErrorMessage(err, "Jadwal belum tersimpan. Periksa koneksi lalu coba lagi."));
+      // The server reports every bad row at once ("terms[2].amount"): mark each row, keep what was typed.
+      const fields = getApiFieldErrors(err);
+      const marked: Record<number, string> = {};
+      for (const [key, message] of Object.entries(fields)) {
+        const row = /^terms\[(\d+)\]/.exec(key);
+        if (row) marked[Number(row[1])] ??= message;
+      }
+      setRowErrors(marked);
+      setError(Object.keys(marked).length > 0 ? "Lengkapi dulu bagian yang ditandai." : getApiErrorMessage(err, "Jadwal belum tersimpan. Periksa koneksi lalu coba lagi."));
     } finally {
       setSaving(false);
     }

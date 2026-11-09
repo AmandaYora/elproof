@@ -2,11 +2,11 @@ import { z } from "zod";
 import { isBrandColorPresetKey, type BrandColorPresetKey } from "@/theme/brandPresets";
 
 const tenantBaseSchema = z.object({
-  businessName: z.string().min(2, "Nama WO wajib diisi"),
-  ownerName: z.string().min(2, "Nama owner wajib diisi"),
-  email: z.string().email("Email tidak valid"),
-  phone: z.string().min(6, "Nomor telepon tidak valid"),
-  city: z.string().min(2, "Kota wajib diisi"),
+  businessName: z.string().min(2, "Isi nama WO, minimal 2 karakter"),
+  ownerName: z.string().min(2, "Isi nama owner, minimal 2 karakter"),
+  email: z.string().trim().email("Isi email akun Google Owner, misalnya owner@gmail.com"),
+  phone: z.string().min(6, "Isi nomor HP Owner, minimal 6 digit"),
+  city: z.string().min(2, "Isi kota, minimal 2 karakter"),
 });
 
 // brandColorPreset is edit-only (a new tenant starts on the "navy" default),

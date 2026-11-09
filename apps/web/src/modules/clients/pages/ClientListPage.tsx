@@ -113,24 +113,21 @@ export default function ClientListPage() {
     }
   }
 
+  // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleContactSubmit(values: ClientContactFormValues) {
     if (!modalTarget || !activeTarget) return;
     setActionError(null);
-    try {
-      if (modalTarget.mode === "replace") {
-        const { client, link } = await replaceRepresentative(modalTarget.projectId, modalTarget.clientId, {
-          ...values,
-          relationNote: activeTarget.relationNote,
-        });
-        setLinkShare({ link, recipient: clientRecipient(client), notice: "Perwakilan diganti. Akses perwakilan lama sudah dicabut." });
-      } else {
-        await updateContact(modalTarget.projectId, modalTarget.clientId, values);
-      }
-      await fetchAllClients();
-      setModalTarget(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan perubahan client"));
+    if (modalTarget.mode === "replace") {
+      const { client, link } = await replaceRepresentative(modalTarget.projectId, modalTarget.clientId, {
+        ...values,
+        relationNote: activeTarget.relationNote,
+      });
+      setLinkShare({ link, recipient: clientRecipient(client), notice: "Perwakilan diganti. Akses perwakilan lama sudah dicabut." });
+    } else {
+      await updateContact(modalTarget.projectId, modalTarget.clientId, values);
     }
+    await fetchAllClients();
+    setModalTarget(null);
   }
 
   async function handleSendLink(projectId: string, client: Client) {
@@ -205,7 +202,7 @@ export default function ClientListPage() {
           key={activeTarget.id}
           open
           onClose={() => setModalTarget(null)}
-          onSubmit={(values) => void handleContactSubmit(values)}
+          onSubmit={handleContactSubmit}
           initialValues={
             modalTarget.mode === "replace"
               ? { name: "", phone: "", email: "" }
@@ -213,6 +210,7 @@ export default function ClientListPage() {
           }
           username={activeTarget.username}
           title={modalTarget.mode === "replace" ? "Ganti Wedding Representative" : "Ubah Kontak Client"}
+          submitLabel={modalTarget.mode === "replace" ? "Ganti dan buat undangan" : undefined}
           description={
             modalTarget.mode === "replace"
               ? "Akses login perwakilan lama langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru."

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Field, Input } from "@/shared/components/ui/Input";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { toast } from "@/shared/stores/useToastStore";
-import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
+import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
-import { subscriptionPolicySchema } from "@/modules/platform-admin/schemas/console.schema";
+import { subscriptionPolicyFormSchema } from "@/modules/platform-admin/schemas/console.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 type Draft = Record<"trialDays" | "expiringSoonDays" | "graceDays" | "readOnlyDays", string>;
 
@@ -18,15 +20,25 @@ const FIELDS: { key: keyof Draft; label: string; hint: string }[] = [
   { key: "readOnlyDays", label: "Masa baca-saja (hari)", hint: "Setelah masa tenggang, data hanya bisa dilihat. Lewat ini, akses ditangguhkan sampai membayar." },
 ];
 
+function toDraft(policy: Record<keyof Draft, number>): Draft {
+  return {
+    trialDays: String(policy.trialDays),
+    expiringSoonDays: String(policy.expiringSoonDays),
+    graceDays: String(policy.graceDays),
+    readOnlyDays: String(policy.readOnlyDays),
+  };
+}
+
 export default function SubscriptionPolicyPage() {
   const policy = useConsoleStore((s) => s.policy);
   const fetchPolicy = useConsoleStore((s) => s.fetchPolicy);
   const savePolicy = useConsoleStore((s) => s.savePolicy);
   const canEdit = usePlatformCan("super-admin");
   const [failed, setFailed] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
+  const form = useZodForm({ schema: subscriptionPolicyFormSchema, initial: { trialDays: "", expiringSoonDays: "", graceDays: "", readOnlyDays: "" } });
+  const { values: draft, errors, reset } = form;
+  const formRef = useRef<HTMLFormElement>(null);
+  const [synced, setSynced] = useState(false);
 
   const load = useCallback(() => {
     setFailed(false);
@@ -39,46 +51,34 @@ export default function SubscriptionPolicyPage() {
 
   useEffect(() => {
     if (policy) {
-      setDraft({
-        trialDays: String(policy.trialDays),
-        expiringSoonDays: String(policy.expiringSoonDays),
-        graceDays: String(policy.graceDays),
-        readOnlyDays: String(policy.readOnlyDays),
-      });
+      reset(toDraft(policy));
+      setSynced(true);
     }
-  }, [policy]);
+  }, [policy, reset]);
+
+  // A failure (a 422 on a field, or anything else) is shown by the form; the toast is for when the save button is off-screen.
+  const handleSave = form.handleSubmit(
+    async (parsed) => {
+      try {
+        await savePolicy(parsed);
+        toast.success("Kebijakan langganan disimpan");
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, "Kebijakan belum bisa disimpan"));
+        throw err;
+      }
+    },
+    { root: () => formRef.current, fallback: "Kebijakan belum bisa disimpan", known: (key) => FIELDS.some((f) => f.key === key) },
+  );
 
   if (failed && !policy) return <LoadError onRetry={load} />;
-  if (!policy || !draft) return <div className="py-20 text-center text-sm text-text-secondary">Memuat kebijakan...</div>;
+  if (!policy || !synced) return <div className="py-20 text-center text-sm text-text-secondary">Memuat kebijakan...</div>;
 
   const dirty = FIELDS.some((f) => draft[f.key] !== String(policy[f.key]));
   const graceEnd = Number(draft.graceDays) || 0;
   const readOnlyEnd = graceEnd + (Number(draft.readOnlyDays) || 0);
 
-  async function handleSave() {
-    if (!draft) return;
-    const parsed = subscriptionPolicySchema.safeParse(draft);
-    if (!parsed.success) {
-      const next: Record<string, string> = {};
-      for (const issue of parsed.error.issues) next[String(issue.path[0])] = issue.message;
-      setErrors(next);
-      return;
-    }
-    setErrors({});
-    setSaving(true);
-    try {
-      await savePolicy(parsed.data);
-      toast.success("Kebijakan langganan disimpan");
-    } catch (err) {
-      setErrors(getApiFieldErrors(err));
-      toast.error(getApiErrorMessage(err, "Kebijakan belum bisa disimpan"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
-    <div className="flex max-w-3xl flex-col gap-5">
+    <form ref={formRef} noValidate onSubmit={(e) => void handleSave(e)} className="flex max-w-3xl flex-col gap-5">
       <div>
         <h1 className="text-xl font-bold text-text-primary">Kebijakan Langganan</h1>
         <p className="mt-1 text-[13px] text-text-secondary">
@@ -86,20 +86,22 @@ export default function SubscriptionPolicyPage() {
         </p>
       </div>
 
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={Object.fromEntries(FIELDS.map((f) => [f.key, f.label]))} root={() => formRef.current} />
+
       <Card>
         <CardHeader title="Durasi" subtitle={canEdit ? "Perubahan langsung berlaku untuk semua tenant." : "Hanya Super Admin yang dapat mengubah kebijakan ini."} />
         <CardContent className="flex flex-col gap-5">
           {FIELDS.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.hint} error={errors[f.key]} htmlFor={`policy-${f.key}`}>
+            <Field key={f.key} label={f.label} hint={f.hint} name={f.key} error={errors[f.key]} htmlFor={`policy-${f.key}`}>
               <Input
                 id={`policy-${f.key}`}
                 type="number"
                 inputMode="numeric"
                 className="max-w-40"
                 value={draft[f.key]}
-                disabled={!canEdit || saving}
-                aria-invalid={errors[f.key] ? true : undefined}
-                onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                disabled={!canEdit || form.submitting}
+                onChange={(e) => form.set(f.key, e.target.value)}
+                onBlur={() => form.blur(f.key)}
               />
             </Field>
           ))}
@@ -120,16 +122,16 @@ export default function SubscriptionPolicyPage() {
 
       {canEdit && (
         <div className="flex gap-3">
-          <Button onClick={() => void handleSave()} disabled={!dirty || saving}>
-            {saving ? "Menyimpan..." : "Simpan kebijakan"}
+          <Button type="submit" disabled={!dirty || form.submitting}>
+            {form.submitting ? "Menyimpan..." : "Simpan kebijakan"}
           </Button>
           {dirty && (
-            <Button variant="secondary" disabled={saving} onClick={() => { setDraft(null); setErrors({}); void fetchPolicy(); }}>
+            <Button type="button" variant="secondary" disabled={form.submitting} onClick={() => reset(toDraft(policy))}>
               Batalkan perubahan
             </Button>
           )}
         </div>
       )}
-    </div>
+    </form>
   );
 }

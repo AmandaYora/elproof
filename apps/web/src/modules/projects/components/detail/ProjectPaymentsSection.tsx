@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
+import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
@@ -13,18 +14,16 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
-import { useProjectStore, VendorPaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
+import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import {
-  paymentSchema,
   paymentUpdateSchema,
   PAYMENT_TYPE_OPTIONS,
   PAYMENT_METHOD_OPTIONS,
   type PaymentFormValues,
   type PaymentUpdateFormValues,
 } from "@/modules/projects/schemas/payment.schema";
-import type { ProjectVendor, VendorPayment } from "@/modules/projects/types";
-import { todayISO } from "@/modules/projects/lib/dates";
+import type { VendorPayment } from "@/modules/projects/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { overpaymentMessage } from "@/modules/projects/lib/payments";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
@@ -47,7 +46,6 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
   const canRecord = useCan("finance.record");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [editingPayment, setEditingPayment] = useState<VendorPayment | null>(null);
   const [deletingPayment, setDeletingPayment] = useState<VendorPayment | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -73,23 +71,10 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
   const totalRemaining = totalContractValue - totalPaid;
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(payments);
 
-  async function handleAddPayment(values: PaymentFormValues) {
-    setActionError(null);
-    try {
-      await createPayment(projectId, values);
-      setModalOpen(false);
-    } catch (err) {
-      if (err instanceof VendorPaymentEvidenceError) {
-        // The payment itself was saved — close the modal so the user isn't
-        // invited to resubmit (which would create a duplicate payment), just
-        // surface that one or both evidence slots didn't make it.
-        setActionError(err.message);
-        setModalOpen(false);
-        return;
-      }
-      setActionError(getApiErrorMessage(err, "Gagal mencatat pembayaran"));
-      throw err;
-    }
+  // Payment and proof are one request: if it fails nothing was saved and the drawer stays open (errors show inside it).
+  async function handleAddPayment(values: PaymentFormValues, options: SaveOptions) {
+    await createPayment(projectId, values, options);
+    setModalOpen(false);
   }
 
   async function handleEditPayment(values: PaymentUpdateFormValues) {
@@ -125,9 +110,6 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           }
         />
         <CardContent className="flex flex-col gap-5">
-          {actionError && (
-            <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
-          )}
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <SummaryStat label="Total Nilai Kerja Sama" value={formatCurrency(totalContractValue)} />
             <SummaryStat label="Total Sudah Dibayar" value={formatCurrency(totalPaid)} />
@@ -228,17 +210,23 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      {modalOpen && (
-        <AddPaymentModal
-          open={modalOpen}
-          onClose={() => { setModalOpen(false); setActionError(null); }}
-          onSubmit={handleAddPayment}
-          error={actionError}
-          vendorEngagements={vendorEngagements}
-          vendors={vendors}
-          payments={payments}
-        />
-      )}
+      <RecordPaymentDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Catat pembayaran vendor"
+        description="Catat pembayaran baru ke vendor untuk proyek ini, beserta invoice dan bukti transfernya."
+        slots={{ invoice: true }}
+        vendorOptions={vendorEngagements.map((pv) => {
+          const vendor = vendors.find((v) => v.id === pv.vendorId);
+          return { value: pv.id, label: vendor ? (vendor.city ? `${vendor.name} — ${vendor.city}` : vendor.name) : pv.vendorName || "Vendor" };
+        })}
+        owed={(projectVendorId) => ({
+          contractValue: vendorEngagements.find((e) => e.id === projectVendorId)?.contractValue ?? 0,
+          existing: payments.filter((p) => p.projectVendorId === projectVendorId),
+          owedLabel: "sisa pembayaran vendor",
+        })}
+        onSubmit={handleAddPayment}
+      />
 
       {editingPayment && (
         <EditPaymentModal
@@ -309,164 +297,7 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function toFormValues(defaultProjectVendorId: string): PaymentFormValues {
-  return {
-    projectVendorId: defaultProjectVendorId,
-    type: "DP",
-    amount: 0,
-    paymentDate: todayISO(),
-    method: "Transfer Bank",
-    referenceNumber: "",
-    notes: "",
-    invoiceFile: undefined,
-    proofFile: undefined,
-  };
-}
 
-function AddPaymentModal({
-  open,
-  onClose,
-  onSubmit,
-  error,
-  vendorEngagements,
-  vendors,
-  payments,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (values: PaymentFormValues) => Promise<void>;
-  error: string | null;
-  vendorEngagements: ProjectVendor[];
-  vendors: { id: string; name: string; city: string | null }[];
-  payments: VendorPayment[];
-}) {
-  const defaultVendorId = vendorEngagements[0]?.id ?? "";
-  const [values, setValues] = useState<PaymentFormValues>(() => toFormValues(defaultVendorId));
-  const [errors, setErrors] = useState<Partial<Record<keyof PaymentFormValues, string>>>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  function set<K extends keyof PaymentFormValues>(key: K, value: PaymentFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleSubmit() {
-    const result = paymentSchema.safeParse(values);
-    const fieldErrors: Partial<Record<keyof PaymentFormValues, string>> = {};
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof PaymentFormValues] ??= issue.message;
-      }
-    } else {
-      const engagement = vendorEngagements.find((e) => e.id === result.data.projectVendorId);
-      const over = overpaymentMessage(
-        engagement?.contractValue ?? 0,
-        payments.filter((p) => p.projectVendorId === result.data.projectVendorId),
-        result.data,
-        formatCurrency,
-        "sisa pembayaran vendor",
-      );
-      if (over) fieldErrors.amount = over;
-    }
-    if (!result.success || fieldErrors.amount) {
-      setErrors(fieldErrors);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await onSubmit(result.data);
-      // Only reset on a resolved submit — on failure the modal stays open
-      // (parent doesn't close it), so the form must keep the user's input
-      // rather than silently wiping it out from under them.
-      setValues(toFormValues(defaultVendorId));
-      setErrors({});
-    } catch {
-      // The `error` prop (parent's actionError, passed back down) surfaces
-      // this inside the modal itself -- the modal stays open here, and its
-      // own fixed-overlay backdrop would otherwise hide a banner rendered
-      // only in the parent's now-obscured page content.
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Tambah Pembayaran"
-      description="Catat pembayaran baru ke vendor untuk project ini."
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? "Menyimpan..." : "Simpan Pembayaran"}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
-        )}
-        <Field label="Vendor" required hint={errors.projectVendorId}>
-          <Select value={values.projectVendorId} onChange={(e) => set("projectVendorId", e.target.value)}>
-            {vendorEngagements.map((pv) => {
-              const vendor = vendors.find((v) => v.id === pv.vendorId);
-              const label = vendor ? (vendor.city ? `${vendor.name} — ${vendor.city}` : vendor.name) : "Vendor tidak diketahui";
-              return (
-                <option key={pv.id} value={pv.id}>{label}</option>
-              );
-            })}
-          </Select>
-        </Field>
-        <Field label="Jenis Pembayaran" required>
-          <Select value={values.type} onChange={(e) => set("type", e.target.value as PaymentFormValues["type"])}>
-            {PAYMENT_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Nominal (Rp)" required error={errors.amount}>
-          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
-        </Field>
-        <Field label="Tanggal" required hint={errors.paymentDate}>
-          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
-        </Field>
-        <Field label="Metode" required hint={errors.method}>
-          <Select value={values.method} onChange={(e) => set("method", e.target.value as PaymentFormValues["method"])}>
-            {PAYMENT_METHOD_OPTIONS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="No. Referensi" hint={errors.referenceNumber}>
-          <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
-        </Field>
-        <Field label="Invoice">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            onChange={(e) => set("invoiceFile", e.target.files?.[0] ?? undefined)}
-            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
-          />
-        </Field>
-        <Field label="Bukti Transfer">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            onChange={(e) => set("proofFile", e.target.files?.[0] ?? undefined)}
-            className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
-          />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Catatan">
-            <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
-          </Field>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // Edit scope is the ledger fields only -- no vendor picker (re-parenting a
 // payment isn't supported, PLAN.md §2.5) and no file inputs (already

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ShieldCheck, KeyRound } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
@@ -7,6 +7,13 @@ import { Field, Input, Select } from "@/shared/components/ui/Input";
 import { usePaymentGatewayStore } from "@/modules/platform-admin/stores/usePaymentGatewayStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
+import { gatewayConfigSchema } from "@/modules/platform-admin/schemas/gateway.schema";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+
+const FIELD_LABELS: Record<string, string> = {
+  activeProvider: "Provider", isSandbox: "Mode", tripayMerchantCode: "Merchant Code (Tripay)", tripayApiKey: "API Key (Tripay)", tripayPrivateKey: "Private Key (Tripay)",
+};
 
 const PROVIDER_OPTIONS = [
   { value: "", label: "Tidak ada (mode simulasi — charge akan ditolak)" },
@@ -19,13 +26,13 @@ export default function GatewayConfigPage() {
   const fetchConfig = usePaymentGatewayStore((s) => s.fetchConfig);
   const updateConfig = usePaymentGatewayStore((s) => s.updateConfig);
 
-  const [activeProvider, setActiveProvider] = useState("");
-  const [isSandbox, setIsSandbox] = useState(true);
-  const [merchantCode, setMerchantCode] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [privateKey, setPrivateKey] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const form = useZodForm({
+    schema: gatewayConfigSchema,
+    initial: { activeProvider: "", isSandbox: true, tripayMerchantCode: "", tripayApiKey: "", tripayPrivateKey: "" },
+  });
+  const { values, errors, set } = form;
+  const { activeProvider, isSandbox } = values;
+  const formRef = useRef<HTMLFormElement>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -41,43 +48,42 @@ export default function GatewayConfigPage() {
 
   useEffect(() => {
     if (!config) return;
-    setActiveProvider(config.activeProvider);
-    setIsSandbox(config.isSandbox);
-    setMerchantCode(config.tripayMerchantCode);
-  }, [config]);
+    // Only the stored settings: a key being typed is not touched.
+    set("activeProvider", config.activeProvider);
+    set("isSandbox", config.isSandbox);
+    set("tripayMerchantCode", config.tripayMerchantCode);
+  }, [config, set]);
 
   // Switching provider or mode changes where real payments go: always ask.
   const providerChanged = config !== null && activeProvider !== config.activeProvider;
   const modeChanged = config !== null && isSandbox !== config.isSandbox;
   const needsConfirmation = providerChanged || modeChanged;
 
-  function requestSave() {
+  // Errors are not caught here: the form shows a 422 on its fields and any other failure above them
+  // (the confirm dialog shows the same message while it is open).
+  const save = form.handleSubmit(
+    async (v) => {
+      setSuccessMessage(null);
+      await updateConfig({
+        activeProvider: v.activeProvider, isSandbox: v.isSandbox, tripayMerchantCode: v.tripayMerchantCode,
+        tripayApiKey: v.tripayApiKey, tripayPrivateKey: v.tripayPrivateKey,
+      });
+      set("tripayApiKey", "");
+      set("tripayPrivateKey", "");
+      setConfirmOpen(false);
+      setSuccessMessage("Konfigurasi gateway berhasil disimpan.");
+    },
+    { root: () => formRef.current, fallback: "Gagal menyimpan konfigurasi gateway", known: (key) => key in FIELD_LABELS },
+  );
+
+  function requestSave(e: FormEvent) {
     if (needsConfirmation) {
-      setActionError(null);
+      e.preventDefault();
+      form.setFormError(null);
       setConfirmOpen(true);
       return;
     }
-    void handleSubmit();
-  }
-
-  async function handleSubmit() {
-    setActionError(null);
-    setSuccessMessage(null);
-    setIsSubmitting(true);
-    try {
-      await updateConfig({
-        activeProvider, isSandbox, tripayMerchantCode: merchantCode,
-        tripayApiKey: apiKey, tripayPrivateKey: privateKey,
-      });
-      setApiKey("");
-      setPrivateKey("");
-      setConfirmOpen(false);
-      setSuccessMessage("Konfigurasi gateway berhasil disimpan.");
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menyimpan konfigurasi gateway"));
-    } finally {
-      setIsSubmitting(false);
-    }
+    void save(e);
   }
 
   if (isLoading && !config) {
@@ -112,11 +118,6 @@ export default function GatewayConfigPage() {
         </p>
       </div>
 
-      {actionError && (
-        <p className="max-w-xl rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-          {actionError}
-        </p>
-      )}
       {successMessage && (
         <p className="max-w-xl rounded-md border border-success/30 bg-success-soft px-3.5 py-2.5 text-[13px] font-medium text-success-text">
           {successMessage}
@@ -144,48 +145,49 @@ export default function GatewayConfigPage() {
 
       <Card className="max-w-xl">
         <CardHeader title="Ubah Konfigurasi" subtitle="Kredensial disimpan terenkripsi — tidak pernah ditampilkan ulang setelah disimpan." />
-        <CardContent className="flex flex-col gap-4 py-4">
-          <Field label="Provider">
-            <Select value={activeProvider} onChange={(e) => setActiveProvider(e.target.value)}>
+        <form ref={formRef} noValidate onSubmit={requestSave} className="flex flex-col gap-4 px-5 py-4">
+          <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+          <Field label="Provider" name="activeProvider" error={errors.activeProvider}>
+            <Select value={activeProvider} onChange={(e) => set("activeProvider", e.target.value)}>
               {PROVIDER_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </Select>
           </Field>
 
-          <Field label="Mode">
-            <Select value={isSandbox ? "sandbox" : "production"} onChange={(e) => setIsSandbox(e.target.value === "sandbox")}>
+          <Field label="Mode" name="isSandbox" error={errors.isSandbox}>
+            <Select value={isSandbox ? "sandbox" : "production"} onChange={(e) => set("isSandbox", e.target.value === "sandbox")}>
               <option value="sandbox">Sandbox (uji coba)</option>
               <option value="production">Production (transaksi nyata)</option>
             </Select>
           </Field>
 
-          <Field label="Merchant Code (Tripay)">
-            <Input value={merchantCode} onChange={(e) => setMerchantCode(e.target.value)} placeholder="Contoh: T12345" />
+          <Field label="Merchant Code (Tripay)" name="tripayMerchantCode" error={errors.tripayMerchantCode}>
+            <Input value={values.tripayMerchantCode} onChange={(e) => set("tripayMerchantCode", e.target.value)} onBlur={() => form.blur("tripayMerchantCode")} placeholder="Contoh: T12345" />
           </Field>
 
-          <Field label="API Key (Tripay)" hint="Kosongkan untuk mempertahankan nilai yang sudah tersimpan">
+          <Field label="API Key (Tripay)" name="tripayApiKey" error={errors.tripayApiKey} hint="Kosongkan untuk mempertahankan nilai yang sudah tersimpan">
             <Input
               type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={values.tripayApiKey}
+              onChange={(e) => set("tripayApiKey", e.target.value)}
               placeholder={config?.hasTripayApiKey ? "•••••••• (sudah diatur)" : "Masukkan API key"}
             />
           </Field>
 
-          <Field label="Private Key (Tripay)" hint="Kosongkan untuk mempertahankan nilai yang sudah tersimpan">
+          <Field label="Private Key (Tripay)" name="tripayPrivateKey" error={errors.tripayPrivateKey} hint="Kosongkan untuk mempertahankan nilai yang sudah tersimpan">
             <Input
               type="password"
-              value={privateKey}
-              onChange={(e) => setPrivateKey(e.target.value)}
+              value={values.tripayPrivateKey}
+              onChange={(e) => set("tripayPrivateKey", e.target.value)}
               placeholder={config?.hasTripayPrivateKey ? "•••••••• (sudah diatur)" : "Masukkan private key"}
             />
           </Field>
 
-          <Button className="w-full justify-center" onClick={requestSave} disabled={isSubmitting} icon={<ShieldCheck className="h-4 w-4" />}>
-            {isSubmitting ? "Menyimpan..." : "Simpan Konfigurasi"}
+          <Button type="submit" className="w-full justify-center" disabled={form.submitting} icon={<ShieldCheck className="h-4 w-4" />}>
+            {form.submitting ? "Menyimpan..." : "Simpan konfigurasi"}
           </Button>
-        </CardContent>
+        </form>
       </Card>
 
       <ConfirmDialog
@@ -193,9 +195,9 @@ export default function GatewayConfigPage() {
         title="Ubah gateway pembayaran?"
         confirmLabel="Simpan perubahan gateway"
         confirmText={!isSandbox || !activeProvider ? "UBAH GATEWAY" : undefined}
-        isSubmitting={isSubmitting}
-        error={actionError}
-        onConfirm={() => void handleSubmit()}
+        isSubmitting={form.submitting}
+        error={form.formError}
+        onConfirm={() => void save()}
         onClose={() => setConfirmOpen(false)}
       >
         <ul className="flex list-disc flex-col gap-1.5 pl-5">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -12,6 +12,8 @@ import {
   type PlatformAdminCreateFormValues,
 } from "@/modules/platform-admin/schemas/platform-admin.schema";
 import type { PlatformAdmin } from "@/modules/platform-admin/data/types";
+import { useZodForm } from "@/shared/forms/useZodForm";
+import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 interface FormState extends PlatformAdminFormValues {
   username: string;
@@ -35,79 +37,69 @@ function toFormState(admin?: PlatformAdmin): FormState {
   };
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nama lengkap", role: "Peran", title: "Jabatan", phone: "Nomor telepon", email: "Email", username: "Username", password: "Password", confirmPassword: "Konfirmasi password",
+};
+
 interface PlatformAdminFormModalProps {
   open: boolean;
   onClose: () => void;
   initialAdmin?: PlatformAdmin;
-  onSubmitCreate: (values: PlatformAdminCreateFormValues) => void;
-  onSubmitEdit: (values: PlatformAdminFormValues) => void;
+  /** Saves, then closes the modal. Throw to keep it open: the message is shown inside it, a 422 on its fields. */
+  onSubmitCreate: (values: PlatformAdminCreateFormValues) => Promise<void>;
+  onSubmitEdit: (values: PlatformAdminFormValues) => Promise<void>;
 }
 
 export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCreate, onSubmitEdit }: PlatformAdminFormModalProps) {
   const isEditing = Boolean(initialAdmin);
-  const [values, setValues] = useState<FormState>(() => toFormState(initialAdmin));
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  // Editing checks only the profile fields; the extra keys of the create schema are ignored there.
+  const form = useZodForm({
+    schema: (isEditing ? platformAdminSchema : platformAdminCreateSchema) as typeof platformAdminCreateSchema,
+    initial: toFormState(initialAdmin),
+  });
+  const { values, errors, set, blur } = form;
+  const formRef = useRef<HTMLFormElement>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
+  // The modal stays mounted while closed: start clean each time it opens.
+  useEffect(() => {
+    form.reset(toFormState(initialAdmin));
+    setShowPassword(false);
+  }, [initialAdmin, open]);
 
-  function handleSubmit() {
-    if (isEditing) {
-      const result = platformAdminSchema.safeParse(values);
-      if (!result.success) {
-        const fieldErrors: Partial<Record<keyof FormState, string>> = {};
-        for (const issue of result.error.issues) {
-          fieldErrors[issue.path[0] as keyof FormState] = issue.message;
-        }
-        setErrors(fieldErrors);
-        return;
-      }
-      onSubmitEdit(result.data);
-      setErrors({});
-      return;
-    }
-
-    const result = platformAdminCreateSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof FormState, string>> = {};
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof FormState] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-    onSubmitCreate(result.data);
-    setErrors({});
-  }
-
-  function handleClose() {
-    setValues(toFormState(initialAdmin));
-    setErrors({});
-    onClose();
-  }
+  const submit = form.handleSubmit(
+    async (parsed) => {
+      if (isEditing) await onSubmitEdit(parsed as PlatformAdminFormValues);
+      else await onSubmitCreate(parsed as PlatformAdminCreateFormValues);
+    },
+    { root: () => formRef.current, fallback: "Pengguna belum tersimpan. Periksa koneksi lalu coba lagi.", known: (key) => key in FIELD_LABELS },
+  );
 
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
+      busy={form.submitting}
       title={isEditing ? "Ubah Pengguna" : "Tambah Pengguna Baru"}
       description="Kelola akun tim internal ElProof yang dapat mengakses Platform Console."
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
+          <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
             Batal
           </Button>
-          <Button onClick={handleSubmit}>{isEditing ? "Simpan Perubahan" : "Simpan Pengguna"}</Button>
+          <Button type="submit" form="platform-admin-form" disabled={form.submitting}>
+            {form.submitting ? "Menyimpan..." : isEditing ? "Simpan perubahan" : "Simpan pengguna"}
+          </Button>
         </>
       }
     >
+      <form id="platform-admin-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+      <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Lengkap" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Reza Hakim" />
+        <Field label="Nama Lengkap" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Reza Hakim" />
         </Field>
-        <Field label="Peran" required hint={PLATFORM_ADMIN_ROLE_DESCRIPTIONS[values.role]}>
+        <Field label="Peran" required name="role" error={errors.role} hint={PLATFORM_ADMIN_ROLE_DESCRIPTIONS[values.role]}>
           <Select value={values.role} onChange={(e) => set("role", e.target.value as FormState["role"])}>
             {PLATFORM_ADMIN_ROLE_OPTIONS.map((r) => (
               <option key={r} value={r}>
@@ -116,23 +108,24 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
             ))}
           </Select>
         </Field>
-        <Field label="Jabatan" required hint={errors.title}>
-          <Input value={values.title} onChange={(e) => set("title", e.target.value)} placeholder="cth. Super Admin ElProof" />
+        <Field label="Jabatan" required name="title" error={errors.title}>
+          <Input value={values.title} onChange={(e) => set("title", e.target.value)} onBlur={() => blur("title")} placeholder="cth. Super Admin ElProof" />
         </Field>
-        <Field label="Nomor Telepon" required hint={errors.phone}>
-          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xx-xxxx-xxxx" />
+        <Field label="Nomor Telepon" required name="phone" error={errors.phone}>
+          <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="08xx-xxxx-xxxx" />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Email" required hint={errors.email}>
-            <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@elproof.id" />
+          <Field label="Email" required name="email" error={errors.email}>
+            <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} placeholder="nama@elproof.id" />
           </Field>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Username" required={!isEditing} hint={errors.username}>
+          <Field label="Username" required={!isEditing} name="username" error={errors.username}>
             <Input
               value={values.username}
               disabled={isEditing}
               onChange={(e) => set("username", e.target.value)}
+              onBlur={() => blur("username")}
               placeholder="cth. reza.hakim"
             />
           </Field>
@@ -140,12 +133,14 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
 
         {!isEditing && (
           <>
-            <Field label="Password" required hint={errors.password}>
+            <Field label="Password" required name="password" error={errors.password}>
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
                   value={values.password}
                   onChange={(e) => set("password", e.target.value)}
+                  onBlur={() => blur("password")}
+                  aria-invalid={errors.password ? true : undefined}
                   placeholder="Minimal 8 karakter"
                   className="pr-10"
                 />
@@ -159,17 +154,19 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
                 </button>
               </div>
             </Field>
-            <Field label="Konfirmasi Password" required hint={errors.confirmPassword}>
+            <Field label="Konfirmasi Password" required name="confirmPassword" error={errors.confirmPassword}>
               <Input
                 type={showPassword ? "text" : "password"}
                 value={values.confirmPassword}
                 onChange={(e) => set("confirmPassword", e.target.value)}
+                onBlur={() => blur("confirmPassword")}
                 placeholder="Ulangi password"
               />
             </Field>
           </>
         )}
       </div>
+      </form>
     </Modal>
   );
 }

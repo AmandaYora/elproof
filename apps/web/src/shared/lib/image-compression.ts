@@ -27,8 +27,14 @@ export interface CompressedFilePayload {
  * unchanged — this is a deliberate scope boundary (see ADR-0010), not a bug.
  */
 export async function compressFileForUpload(file: File): Promise<CompressedFilePayload> {
+  const { blob, fileName, mimeType } = await compressFileToBlob(file);
+  return { fileName, mimeType, base64Data: await blobToBase64(blob) };
+}
+
+/** Same compression, but the result stays a Blob: for a direct PUT to object storage (no base64 inflation). */
+export async function compressFileToBlob(file: File): Promise<{ blob: Blob; fileName: string; mimeType: string }> {
   if (!COMPRESSIBLE_TYPES.has(file.type)) {
-    return { fileName: file.name, mimeType: file.type, base64Data: await blobToBase64(file) };
+    return { blob: file, fileName: file.name, mimeType: file.type };
   }
 
   try {
@@ -47,12 +53,12 @@ export async function compressFileForUpload(file: File): Promise<CompressedFileP
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, file.type, quality));
     if (!blob) throw new Error("Gagal mengompres gambar");
 
-    return { fileName: file.name, mimeType: file.type, base64Data: await blobToBase64(blob) };
+    return { blob, fileName: file.name, mimeType: file.type };
   } catch {
     // Compression is a size optimization, not a correctness requirement — if
     // it fails for any reason, fall back to the original file rather than
-    // blocking the upload. The backend's own re-compression pass still runs.
-    return { fileName: file.name, mimeType: file.type, base64Data: await blobToBase64(file) };
+    // blocking the upload.
+    return { blob: file, fileName: file.name, mimeType: file.type };
   }
 }
 
