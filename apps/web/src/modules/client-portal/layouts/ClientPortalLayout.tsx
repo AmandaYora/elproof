@@ -192,7 +192,7 @@ export default function ClientPortalLayout() {
 
   return (
     <div className="min-h-screen bg-background" data-density="comfortable">
-      <Toaster />
+      <Toaster mobileOffset={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }} />
 
       <header className="sticky top-0 z-30 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">

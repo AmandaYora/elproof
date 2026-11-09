@@ -171,6 +171,16 @@
    variant must exist for the copied component classes to compile. */
 @custom-variant dark (&:is(.dark *));
 
+/* Tailwind 4 draws a bare `border` in currentColor; shadcn components rely on
+   the old default of the theme's border color. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+}
+
 #root {
   /* Base UI popups and our own portals stack against this root. */
   isolation: isolate;

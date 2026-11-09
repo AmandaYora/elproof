@@ -1,36 +1,30 @@
-import { create } from "zustand";
+import { toast as sonner } from "sonner";
 
-export type ToastTone = "success" | "error" | "info";
+// Errors stay a little longer than confirmations; a toast that offers "Urungkan"
+// stays longest so the undo can actually be reached.
+const LIFETIME_MS = { success: 4000, info: 5000, error: 7000, undo: 8000 } as const;
 
-export interface ToastItem {
-  id: number;
-  tone: ToastTone;
-  message: string;
+export interface ToastOptions {
+  /**
+   * Offers "Urungkan" on the toast. Call it only for actions that can really be
+   * taken back (soft delete, status change), never for ones that cannot.
+   */
+  undo?: () => void;
 }
 
-interface ToastState {
-  toasts: ToastItem[];
-  show: (tone: ToastTone, message: string) => void;
-  dismiss: (id: number) => void;
+function show(tone: "success" | "error" | "info", message: string, options?: ToastOptions) {
+  const base = options?.undo
+    ? {
+        duration: LIFETIME_MS.undo,
+        action: { label: "Urungkan", onClick: options.undo },
+      }
+    : { duration: LIFETIME_MS[tone] };
+  sonner[tone](message, base);
 }
-
-let nextId = 1;
-const LIFETIME_MS = { success: 4000, info: 5000, error: 7000 } as const;
-
-export const useToastStore = create<ToastState>((set, get) => ({
-  toasts: [],
-  show: (tone, message) => {
-    const id = nextId++;
-    // At most three at once; the oldest goes first.
-    set((s) => ({ toasts: [...s.toasts.slice(-2), { id, tone, message }] }));
-    window.setTimeout(() => get().dismiss(id), LIFETIME_MS[tone]);
-  },
-  dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-}));
 
 /** Short confirmation of a finished action ("Peran disimpan"). */
 export const toast = {
-  success: (message: string) => useToastStore.getState().show("success", message),
-  error: (message: string) => useToastStore.getState().show("error", message),
-  info: (message: string) => useToastStore.getState().show("info", message),
+  success: (message: string, options?: ToastOptions) => show("success", message, options),
+  error: (message: string) => show("error", message),
+  info: (message: string) => show("info", message),
 };

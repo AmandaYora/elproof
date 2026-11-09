@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { Download, X, FileWarning } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
+import { Button } from "@/shared/components/kit/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/shared/components/kit/dialog";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { getEvidenceFileKind } from "@/shared/lib/evidence-file";
@@ -89,67 +91,40 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
     }
   }
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const kind = getEvidenceFileKind(evidence.fileName);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/60 p-0 sm:p-4 md:p-8">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={evidence.name}
-        className="flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl sm:h-[88vh] sm:max-w-3xl sm:rounded-xl"
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[88vh] sm:max-h-[88vh] sm:max-w-3xl sm:rounded-xl"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border-light px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4">
           <div className="min-w-0">
-            <p className="truncate text-[14.5px] font-semibold text-text-primary sm:text-[15px]">{evidence.name}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-text-secondary">
+            <DialogTitle className="truncate text-[14.5px] leading-snug font-semibold sm:text-[15px]">{evidence.name}</DialogTitle>
+            <DialogDescription render={<div />} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
               <Badge tone="neutral">{evidence.type}</Badge>
               <span>{formatDate(evidence.documentDate)}</span>
               {contextLabel && <span className="hidden sm:inline">· {contextLabel}</span>}
-            </div>
+            </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {fileUrl && direct && (
-              <button
-                type="button"
-                onClick={() => void downloadDirect()}
-                disabled={downloading}
-                className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12.5px] font-semibold text-navy-900 transition-colors hover:bg-surface-muted disabled:opacity-60"
-                aria-label="Unduh dokumen"
-              >
-                <Download className="h-3.5 w-3.5" />
+              <Button variant="outline" size="sm" onClick={() => void downloadDirect()} disabled={downloading} aria-label="Unduh dokumen">
+                <Download />
                 <span className="hidden sm:inline">Unduh</span>
-              </button>
+              </Button>
             )}
             {fileUrl && !direct && (
-              <a
-                href={fileUrl}
-                download={evidence.fileName}
-                className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12.5px] font-semibold text-navy-900 transition-colors hover:bg-surface-muted"
-                aria-label="Unduh dokumen"
-              >
-                <Download className="h-3.5 w-3.5" />
+              <Button variant="outline" size="sm" nativeButton={false} render={<a href={fileUrl} download={evidence.fileName} />} aria-label="Unduh dokumen">
+                <Download />
                 <span className="hidden sm:inline">Unduh</span>
-              </a>
+              </Button>
             )}
-            <button
-              onClick={onClose}
-              aria-label="Tutup"
-              className="rounded-md p-1.5 text-text-secondary hover:bg-surface-muted"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <DialogClose render={<Button variant="ghost" size="icon-sm" />}>
+              <X />
+              <span className="sr-only">Tutup</span>
+            </DialogClose>
           </div>
         </div>
 
@@ -178,7 +153,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

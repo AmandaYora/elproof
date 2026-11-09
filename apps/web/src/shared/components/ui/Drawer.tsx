@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { cn } from "@/shared/lib/cn";
-import { useDialogBehavior } from "@/shared/hooks/useDialogBehavior";
+import { Button } from "@/shared/components/kit/button";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/shared/components/kit/sheet";
 
 interface DrawerProps {
   open: boolean;
@@ -11,57 +11,56 @@ interface DrawerProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: "md" | "lg";
-  /** A save is running: Escape does nothing. */
+  /** A save is running: Escape, outside clicks and the close button do nothing. */
   busy?: boolean;
 }
 
 const SIZE: Record<NonNullable<DrawerProps["size"]>, string> = {
-  md: "sm:max-w-md",
-  lg: "sm:max-w-2xl",
+  md: "data-[side=right]:sm:max-w-md",
+  lg: "data-[side=right]:sm:max-w-2xl",
 };
+
+const FIRST_FIELD = "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled])";
 
 /**
  * A panel sliding in from the right for editing something without leaving
- * the page (PLAN.md Fase 3b). Full width on phones. Focus moves into the
- * panel, Tab stays inside it, Escape closes it, and focus returns to the
- * element that opened it (shared with Modal via useDialogBehavior).
+ * the page (PLAN.md Fase 3b). Full width on phones. Built on the kit Sheet
+ * (Base UI), so focus handling and Escape match Modal.
  */
 export function Drawer({ open, onClose, title, description, children, footer, size = "md", busy = false }: DrawerProps) {
-  const panelRef = useDialogBehavior<HTMLDivElement>({ open, onClose, busy });
-
-  if (!open) return null;
+  const popupRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-navy-950/40 motion-safe:animate-[fade-in_150ms_ease-out]" onClick={busy ? undefined : onClose} aria-hidden />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className={cn(
-          "relative flex h-full w-full flex-col border-l border-border bg-surface shadow-2xl motion-safe:animate-[drawer-in_200ms_ease-out]",
-          SIZE[size],
-        )}
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !busy) onClose();
+      }}
+    >
+      <SheetContent
+        ref={popupRef}
+        side="right"
+        showCloseButton={false}
+        aria-busy={busy || undefined}
+        initialFocus={() => popupRef.current?.querySelector<HTMLElement>(FIRST_FIELD) ?? true}
+        className={`gap-0 ${SIZE[size]}`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-border-light px-[var(--density-pad-x)] py-4">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b px-[var(--density-pad-x)] py-4">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-text-primary">{title}</h2>
-            {description && <p className="mt-1 text-[13px] leading-relaxed text-text-secondary">{description}</p>}
+            <SheetTitle className="text-base leading-snug font-semibold">{title}</SheetTitle>
+            {description && <SheetDescription className="mt-1 text-[13px] leading-relaxed">{description}</SheetDescription>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
+          <SheetClose
             disabled={busy}
-            aria-label="Tutup"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 disabled:opacity-40 sm:h-8 sm:w-8"
+            render={<Button variant="ghost" size="icon-sm" className="-mt-1 -mr-2 shrink-0 pointer-coarse:size-11" />}
           >
-            <X className="h-4 w-4" />
-          </button>
+            <X />
+            <span className="sr-only">Tutup</span>
+          </SheetClose>
         </header>
-        <div className="flex-1 overflow-y-auto px-[var(--density-pad-x)] py-5">{children}</div>
-        {footer && <footer className="flex justify-end gap-2 border-t border-border-light px-[var(--density-pad-x)] py-4">{footer}</footer>}
-      </div>
-    </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-[var(--density-pad-x)] py-5">{children}</div>
+        {footer && <footer className="flex shrink-0 justify-end gap-2 border-t px-[var(--density-pad-x)] py-4">{footer}</footer>}
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Field, Input } from "@/shared/components/ui/Input";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/shared/components/kit/alert-dialog";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -23,6 +30,11 @@ interface ConfirmDialogProps {
   onClose: () => void;
 }
 
+/**
+ * Asks before something that is hard to take back. An alert dialog: it does
+ * not close on an outside click, and focus starts on "Batal", never on the
+ * destructive button.
+ */
 export function ConfirmDialog({
   open,
   title,
@@ -39,11 +51,7 @@ export function ConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    setTyped("");
-    // Safe default: focus lands on "Batal", never on the destructive action.
-    const id = requestAnimationFrame(() => cancelRef.current?.focus());
-    return () => cancelAnimationFrame(id);
+    if (open) setTyped("");
   }, [open]);
 
   const matches = !confirmText || typed.trim() === confirmText.trim();
@@ -53,29 +61,24 @@ export function ConfirmDialog({
   }
 
   return (
-    <Modal
+    <AlertDialog
       open={open}
-      onClose={handleClose}
-      title={title}
-      size="sm"
-      footer={
-        <>
-          <Button ref={cancelRef} variant="secondary" onClick={handleClose} disabled={isSubmitting}>
-            Batal
-          </Button>
-          <Button variant={tone} onClick={onConfirm} disabled={!matches || isSubmitting}>
-            {isSubmitting ? "Memproses..." : confirmLabel}
-          </Button>
-        </>
-      }
+      onOpenChange={(next) => {
+        if (!next) handleClose();
+      }}
     >
-      <div className="flex flex-col gap-4 text-[13.5px] leading-relaxed text-text-secondary">
-        {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-            {error}
-          </p>
-        )}
-        <div>{children}</div>
+      <AlertDialogContent initialFocus={cancelRef}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription render={<div />} className="flex flex-col gap-4 text-left text-[13.5px] leading-relaxed">
+            {error && (
+              <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
+                {error}
+              </p>
+            )}
+            <div>{children}</div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
         {confirmText && (
           <Field label={`Ketik "${confirmText}" untuk melanjutkan`}>
             <Input
@@ -87,7 +90,15 @@ export function ConfirmDialog({
             />
           </Field>
         )}
-      </div>
-    </Modal>
+        <AlertDialogFooter>
+          <Button ref={cancelRef} variant="secondary" onClick={handleClose} disabled={isSubmitting}>
+            Batal
+          </Button>
+          <Button variant={tone} onClick={onConfirm} disabled={!matches || isSubmitting}>
+            {isSubmitting ? "Memproses..." : confirmLabel}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
