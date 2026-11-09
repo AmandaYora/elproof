@@ -161,7 +161,7 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
         {tab === "paket" && (
           <div className="flex flex-col gap-2.5">
             {saveError && (
-              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{saveError}</p>
+              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{saveError}</p>
             )}
             {isLoadingPlans ? (
               <p className="py-8 text-center text-sm text-text-secondary">Memuat...</p>

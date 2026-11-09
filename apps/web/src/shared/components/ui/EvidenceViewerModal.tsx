@@ -156,7 +156,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
         <div className="relative flex-1 overflow-hidden bg-surface-muted/50">
           {error ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-              <FileWarning className="h-8 w-8 text-danger" />
+              <FileWarning className="h-8 w-8 text-danger-text" />
               <p className="text-[13px] text-text-secondary">{error}</p>
             </div>
           ) : !fileUrl ? (

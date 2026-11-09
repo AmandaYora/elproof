@@ -52,9 +52,9 @@ export function ProjectMilestoneGanttView({ milestones }: { milestones: ProjectM
               <span
                 className={
                   row.overdue
-                    ? "font-semibold text-danger"
+                    ? "font-semibold text-danger-text"
                     : row.status === "Completed"
-                      ? "font-medium text-success"
+                      ? "font-medium text-success-text"
                       : "text-text-secondary"
                 }
               >

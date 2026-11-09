@@ -76,7 +76,7 @@ export function AccessLinkDialog({ open, onClose, link, recipient, woName, notic
     >
       <div className="flex flex-col gap-4">
         {notice && (
-          <p role="status" className="rounded-md border border-success/30 bg-success-soft px-3.5 py-2.5 text-[13px] font-medium text-success">
+          <p role="status" className="rounded-md border border-success/30 bg-success-soft px-3.5 py-2.5 text-[13px] font-medium text-success-text">
             {notice}
           </p>
         )}

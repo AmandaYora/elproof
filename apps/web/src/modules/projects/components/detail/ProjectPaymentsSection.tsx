@@ -126,7 +126,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
         />
         <CardContent className="flex flex-col gap-5">
           {actionError && (
-            <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+            <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
           )}
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <SummaryStat label="Total Nilai Kerja Sama" value={formatCurrency(totalContractValue)} />
@@ -268,10 +268,10 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
         >
           <div className="flex flex-col gap-3">
             {deleteError && (
-              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{deleteError}</p>
+              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{deleteError}</p>
             )}
             <p className="flex items-start gap-2 text-[13.5px] text-text-primary">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
               <span>
                 Yakin ingin menghapus pembayaran <strong>{formatCurrency(deletingPayment.amount)}</strong> ({deletingPayment.type}) ini
                 secara permanen?
@@ -406,7 +406,7 @@ function AddPaymentModal({
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
+          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
         )}
         <Field label="Vendor" required hint={errors.projectVendorId}>
           <Select value={values.projectVendorId} onChange={(e) => set("projectVendorId", e.target.value)}>
@@ -546,7 +546,7 @@ function EditPaymentModal({
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
+          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
         )}
         <Field label="Jenis Pembayaran" required>
           <Select value={values.type} onChange={(e) => set("type", e.target.value as PaymentUpdateFormValues["type"])}>

@@ -314,7 +314,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         />
         <CardContent className="p-0">
           {actionError && (
-            <p className="mx-5 mt-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+            <p className="mx-5 mt-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
           )}
           {vendorEngagements.length === 0 ? (
             <EmptyState title="Belum ada vendor" description="Tambahkan vendor yang terlibat pada project ini." />
@@ -478,7 +478,7 @@ function VendorAccordionRow({
           role="button"
           tabIndex={0}
           title="Batalkan vendor"
-          className="shrink-0 rounded-md p-1.5 text-danger hover:bg-danger-soft"
+          className="shrink-0 rounded-md p-1.5 text-danger-text hover:bg-danger-soft"
         >
           <Ban className="h-4 w-4" />
         </span>
@@ -538,7 +538,7 @@ function VendorAccordionRow({
 
       {confirmingCancel && (
         <div className="mx-5 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-          <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             Yakin ingin membatalkan kerja sama dengan vendor ini? Timeline, pembayaran, dan kendala yang sudah tercatat tidak akan dihapus.
           </span>
@@ -603,7 +603,7 @@ function VendorAccordionRow({
                         <td className={cn("px-3 py-2 font-medium text-text-primary", milestoneCancelled && "line-through")}>
                           {m.order}. {m.name}
                           {openIssueCount > 0 && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-danger">
+                            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-danger-text">
                               <AlertTriangle className="h-3 w-3" /> {openIssueCount}
                             </span>
                           )}
@@ -683,7 +683,7 @@ function VendorAccordionRow({
                       <span>{p.type} · {formatDate(p.paymentDate)}</span>
                       <span className="flex items-center gap-2 tabular-nums">
                         {formatCurrency(p.amount)}
-                        {!p.evidenceComplete && <FileWarning className="h-3.5 w-3.5 text-warning" />}
+                        {!p.evidenceComplete && <FileWarning className="h-3.5 w-3.5 text-warning-text" />}
                       </span>
                     </li>
                   ))}

@@ -60,7 +60,7 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
         <span className="text-text-secondary">{label}</span>
-        <span className={cn("font-semibold tabular-nums", full ? "text-warning" : "text-text-primary")}>
+        <span className={cn("font-semibold tabular-nums", full ? "text-warning-text" : "text-text-primary")}>
           {used} / {limit}
         </span>
       </div>

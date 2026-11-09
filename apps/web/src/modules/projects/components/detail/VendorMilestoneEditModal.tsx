@@ -173,7 +173,7 @@ export function VendorMilestoneEditModal({
 
           {showEvidenceForm && (
             <div className="mb-3 flex flex-col gap-3 rounded-md border border-border bg-surface-muted/60 p-3">
-              {uploadError && <p className="text-[12.5px] font-medium text-danger">{uploadError}</p>}
+              {uploadError && <p className="text-[12.5px] font-medium text-danger-text">{uploadError}</p>}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Berkas" required>
                   <input

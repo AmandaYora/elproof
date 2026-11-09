@@ -219,7 +219,7 @@ export default function VendorListPage() {
       </div>
 
       {actionError && (
-        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
       )}
 
       <div className="flex flex-wrap gap-3">
@@ -396,7 +396,7 @@ export default function VendorListPage() {
         ) : (
           <div className="flex flex-col gap-4">
             <p className="flex items-start gap-2 text-[13px] text-text-secondary">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
               {deleteImpact && deleteImpact.length > 0 ? (
                 <span>
                   Vendor ini masih digunakan oleh project berikut:{" "}

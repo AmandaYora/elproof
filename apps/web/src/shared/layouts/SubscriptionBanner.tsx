@@ -58,9 +58,9 @@ export function bannerCopy(lc: SubscriptionLifecycle): BannerCopy | null {
 }
 
 const TONE_CLASSES: Record<Tone, string> = {
-  info: "border-info/25 bg-info-soft text-info",
-  warning: "border-warning/30 bg-warning-soft text-warning",
-  danger: "border-danger/30 bg-danger-soft text-danger",
+  info: "border-info/25 bg-info-soft text-info-text",
+  warning: "border-warning/30 bg-warning-soft text-warning-text",
+  danger: "border-danger/30 bg-danger-soft text-danger-text",
 };
 
 export function SubscriptionBanner({ lifecycle, canManage }: { lifecycle: SubscriptionLifecycle; canManage: boolean }) {
@@ -92,7 +92,7 @@ export function SubscriptionBanner({ lifecycle, canManage }: { lifecycle: Subscr
 export function SubscriptionLockedScreen({ canManage }: { canManage: boolean }) {
   return (
     <div className="mx-auto mt-10 flex max-w-lg flex-col items-center rounded-xl border border-border bg-surface px-6 py-10 text-center shadow-sm">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-danger-soft text-danger">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-danger-soft text-danger-text">
         <Lock className="h-5 w-5" />
       </div>
       <h1 className="text-lg font-bold text-text-primary">Langganan ditangguhkan</h1>

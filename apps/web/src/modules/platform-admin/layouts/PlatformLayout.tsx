@@ -124,7 +124,7 @@ function PlatformShell() {
             if (items.length === 0) return null;
             return (
               <div key={group.label ?? "main"} className="flex flex-col gap-1">
-                {group.label && <p className="px-3 pb-1 text-[11.5px] font-medium text-white/45">{group.label}</p>}
+                {group.label && <p className="px-3 pb-1 text-[11.5px] font-medium text-white/70">{group.label}</p>}
                 {items.map(({ to, label, icon: Icon }) => (
                   <NavLink
                     key={to}

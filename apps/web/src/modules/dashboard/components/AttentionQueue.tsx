@@ -12,9 +12,9 @@ const TONE_ICON: Record<AttentionTone, typeof AlertTriangle> = {
 };
 
 const TONE_ICON_CLASS: Record<AttentionTone, string> = {
-  danger: "text-danger",
-  warning: "text-warning",
-  info: "text-info",
+  danger: "text-danger-text",
+  warning: "text-warning-text",
+  info: "text-info-text",
 };
 
 export function AttentionQueue({ items, counts }: { items: AttentionItem[]; counts: Record<string, number> }) {
@@ -36,7 +36,7 @@ export function AttentionQueue({ items, counts }: { items: AttentionItem[]; coun
       <CardContent className="p-0">
         {items.length === 0 ? (
           <EmptyState
-            icon={<CheckCircle2 className="h-8 w-8 text-success" />}
+            icon={<CheckCircle2 className="h-8 w-8 text-success-text" />}
             title="Tidak ada yang perlu ditindaklanjuti"
             description="Seluruh project berjalan sesuai rencana tanpa kendala terbuka."
           />

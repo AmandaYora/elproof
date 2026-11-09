@@ -87,7 +87,7 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger sm:col-span-2">
+          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text sm:col-span-2">
             {error}
           </p>
         )}

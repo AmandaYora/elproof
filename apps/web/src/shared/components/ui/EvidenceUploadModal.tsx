@@ -136,7 +136,7 @@ export function EvidenceUploadModal({
       }
     >
       <div className="flex flex-col gap-4">
-        {error && <p className="text-[12.5px] font-medium text-danger">{error}</p>}
+        {error && <p className="text-[12.5px] font-medium text-danger-text">{error}</p>}
         <Field label="Berkas" required hint={fileError ?? undefined}>
           <input
             type="file"

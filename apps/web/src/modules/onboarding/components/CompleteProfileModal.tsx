@@ -134,7 +134,7 @@ export function CompleteProfileModal({ open, onClose, onSaved }: { open: boolean
       ) : (
         <div className="flex flex-col gap-4">
           {formError && (
-            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
               {formError}
             </p>
           )}
@@ -182,7 +182,7 @@ export function CompleteProfileModal({ open, onClose, onSaved }: { open: boolean
               }}
             />
             {errors.logo && (
-              <span role="alert" className="text-xs font-medium text-danger">
+              <span role="alert" className="text-xs font-medium text-danger-text">
                 {errors.logo}
               </span>
             )}

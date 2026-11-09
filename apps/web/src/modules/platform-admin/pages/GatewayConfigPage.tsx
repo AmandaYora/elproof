@@ -90,7 +90,7 @@ export default function GatewayConfigPage() {
     return (
       <div className="flex max-w-xl flex-col gap-4">
         <h1 className="text-xl font-bold text-text-primary">Konfigurasi Gateway</h1>
-        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
           {loadError ?? "Konfigurasi gateway gagal dimuat"}. Form dikunci supaya pengaturan yang sedang berjalan tidak tertimpa.
         </p>
         <div>
@@ -113,12 +113,12 @@ export default function GatewayConfigPage() {
       </div>
 
       {actionError && (
-        <p className="max-w-xl rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+        <p className="max-w-xl rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
           {actionError}
         </p>
       )}
       {successMessage && (
-        <p className="max-w-xl rounded-md border border-success/30 bg-success-soft px-3.5 py-2.5 text-[13px] font-medium text-success">
+        <p className="max-w-xl rounded-md border border-success/30 bg-success-soft px-3.5 py-2.5 text-[13px] font-medium text-success-text">
           {successMessage}
         </p>
       )}

@@ -3,9 +3,9 @@ import { cn } from "@/shared/lib/cn";
 import { useToastStore, type ToastTone } from "@/shared/stores/useToastStore";
 
 const TONE: Record<ToastTone, { icon: typeof Info; className: string }> = {
-  success: { icon: CheckCircle2, className: "text-success" },
-  error: { icon: XCircle, className: "text-danger" },
-  info: { icon: Info, className: "text-info" },
+  success: { icon: CheckCircle2, className: "text-success-text" },
+  error: { icon: XCircle, className: "text-danger-text" },
+  info: { icon: Info, className: "text-info-text" },
 };
 
 /**

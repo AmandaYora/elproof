@@ -26,7 +26,7 @@ export function ActionCard({ terms }: { terms: PaymentTerm[] }) {
                   overdue ? "border-danger/30 bg-danger-soft" : "border-warning/30 bg-warning-soft"
                 }`}
               >
-                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-danger" : "text-warning-strong"}`} aria-hidden />
+                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-danger-text" : "text-warning-strong"}`} aria-hidden />
                 <span className="min-w-0">
                   <span className="block text-[14px] font-semibold text-text-primary">
                     {overdue ? `Pembayaran ${t.label} sudah lewat jatuh tempo` : `Pembayaran ${t.label} jatuh tempo ${formatDate(t.dueDate)}`}

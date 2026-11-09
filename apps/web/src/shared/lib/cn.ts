@@ -1,15 +1,5 @@
-export type ClassValue = string | number | null | undefined | false | ClassValue[];
-
-export function cn(...inputs: ClassValue[]): string {
-  const out: string[] = [];
-  for (const input of inputs) {
-    if (!input) continue;
-    if (Array.isArray(input)) {
-      const nested = cn(...input);
-      if (nested) out.push(nested);
-    } else {
-      out.push(String(input));
-    }
-  }
-  return out.join(" ");
-}
+// Class-name joining plus Tailwind conflict resolution ("px-2 px-4" keeps the
+// last). `cn` is shadcn's drop-in replacement for clsx + tailwind-merge, the
+// same one the shadcn components import.
+export { cn } from "cn";
+export type { ClassValue } from "cn";

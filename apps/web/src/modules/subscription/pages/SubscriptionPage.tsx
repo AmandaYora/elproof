@@ -61,7 +61,7 @@ function ChargeCountdown({ expiresAt, onElapsed }: { expiresAt: string; onElapse
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
   const ss = String(secondsLeft % 60).padStart(2, "0");
   return (
-    <p className={`text-[13px] ${secondsLeft <= 60 ? "font-semibold text-danger" : "text-text-secondary"}`}>
+    <p className={`text-[13px] ${secondsLeft <= 60 ? "font-semibold text-danger-text" : "text-text-secondary"}`}>
       Kode QRIS berlaku <span className="font-mono tabular-nums">{mm}:{ss}</span> lagi
     </p>
   );
@@ -279,7 +279,7 @@ export default function SubscriptionPage() {
         </div>
         {confirmingCancel && (
           <div className="max-w-[240px] rounded-md border border-danger/30 bg-danger-soft px-3 py-2">
-            <p className="flex items-start gap-1.5 text-[12px] font-medium text-danger">
+            <p className="flex items-start gap-1.5 text-[12px] font-medium text-danger-text">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               Yakin ingin membatalkan tagihan ini?
             </p>
@@ -315,7 +315,7 @@ export default function SubscriptionPage() {
       </div>
 
       {actionError && (
-        <p className="max-w-md rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+        <p className="max-w-md rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
           {actionError}
         </p>
       )}
@@ -331,7 +331,7 @@ export default function SubscriptionPage() {
             <Clock className="h-3.5 w-3.5 shrink-0" />
             {periodLabel} {formatDate(periodEnd)}
             {(isExpiringSoon || lifecycle?.status === "trialing") && daysLeft !== null && daysLeft >= 0 && daysLeft <= RENEWAL_WARNING_DAYS && (
-              <span className="font-semibold text-warning">, tersisa {daysLeft} hari</span>
+              <span className="font-semibold text-warning-text">, tersisa {daysLeft} hari</span>
             )}
           </p>
         )}
@@ -367,7 +367,7 @@ export default function SubscriptionPage() {
                     <ul className="flex flex-col gap-2 border-t border-border-light pt-4">
                       {p.features.map((feature) => (
                         <li key={feature} className="flex items-start gap-2 text-[13px] text-text-primary">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-text" />
                           {feature}
                         </li>
                       ))}
@@ -534,9 +534,9 @@ export default function SubscriptionPage() {
         {activeCharge && (
           <div className="flex flex-col items-center gap-4 text-center">
             {chargeOutcome === "paid" ? (
-              <CheckCircle2 className="h-16 w-16 text-success" />
+              <CheckCircle2 className="h-16 w-16 text-success-text" />
             ) : chargeOutcome === "expired" ? (
-              <Clock className="h-16 w-16 text-danger" />
+              <Clock className="h-16 w-16 text-danger-text" />
             ) : chargeOutcome === "cancelled" ? (
               <XCircle className="h-16 w-16 text-text-secondary" />
             ) : (

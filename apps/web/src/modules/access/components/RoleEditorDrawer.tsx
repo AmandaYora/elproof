@@ -137,7 +137,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
             <div>
               {canDelete &&
                 (confirmDelete ? (
-                  <span className="flex items-center gap-2 text-[13px] text-danger">
+                  <span className="flex items-center gap-2 text-[13px] text-danger-text">
                     Hapus peran ini?
                     <Button variant="danger" size="sm" onClick={() => void remove()} disabled={saving}>
                       Ya, hapus
@@ -147,7 +147,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                     </Button>
                   </span>
                 ) : (
-                  <Button variant="ghost" size="sm" className="text-danger" onClick={() => setConfirmDelete(true)}>
+                  <Button variant="ghost" size="sm" className="text-danger-text" onClick={() => setConfirmDelete(true)}>
                     Hapus peran
                   </Button>
                 ))}
@@ -174,7 +174,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
           </p>
         )}
         {formError && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
             {formError}
           </p>
         )}
@@ -227,7 +227,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
             <span className="text-[12.5px] text-text-secondary">{granted.size} dipilih</span>
           </div>
           {errors.permissions && (
-            <p role="alert" className="text-xs font-medium text-danger">
+            <p role="alert" className="text-xs font-medium text-danger-text">
               {errors.permissions}
             </p>
           )}

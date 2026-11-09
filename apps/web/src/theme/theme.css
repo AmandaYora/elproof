@@ -1,82 +1,165 @@
+/*
+ * ElProof design tokens (DESIGN.md §4).
+ *
+ * The shadcn/ui semantic names (--background, --primary, --ring, ...) are the
+ * source of truth. The names this app has always used (--color-surface,
+ * --color-text-primary, ...) are kept as aliases so existing Tailwind classes
+ * (bg-surface, text-text-secondary, ...) keep working while components move
+ * over. Tenant branding only ever overrides --brand-navy-* (and --color-primary-
+ * soft) at runtime (theme/brandPresets.ts); everything below derives from them.
+ */
 :root {
+  /* Brand: default "navy" preset, replaced at runtime per tenant. */
   --brand-navy-950: #172741;
   --brand-navy-900: #1e3a5f;
   --brand-navy-800: #24476f;
-
-  --color-background: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-muted: #f1f5f9;
-
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #64748b;
-  --color-text-on-dark: #ffffff;
-
-  --color-border: #d6e0ea;
-  --color-border-light: #e2e8f0;
-
-  --color-success: #16a34a;
-  --color-success-soft: #dcfce7;
-  --color-warning: #d97706;
-  --color-warning-soft: #fef3c7;
-  --color-danger: #dc2626;
-  --color-danger-soft: #fee2e2;
-  --color-info: #2563eb;
-  --color-info-soft: #dbeafe;
-  --color-neutral-soft: #eef2f6;
-
-  /* legacy aliases kept for scaffold compatibility */
-  --color-primary: var(--brand-navy-900);
-  --color-primary-hover: var(--brand-navy-800);
   --color-primary-soft: #e3ebf3;
-  --color-secondary: var(--color-text-secondary);
-  --color-text: var(--color-text-primary);
-  --color-muted: var(--color-text-secondary);
 
+  /* Warm neutrals (D13). Not cream: the page stays near white so any of the 21
+     tenant colors reads clean. Contrast ratios are in DESIGN.md §4.1. */
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --muted: #f5f5f4;
+  --muted-foreground: #57534e; /* 7.6:1 on white, 7.0:1 on --muted */
+  --subtle-foreground: #78716c; /* placeholder / helper text, only on white (4.8:1) */
+  --border: #e7e5e4; /* decorative separators and card outlines */
+  --border-light: #f0eeed;
+  --input: #8a847e; /* the boundary of a control must reach 3:1 (WCAG 1.4.11): 3.7:1 on white */
+
+  --primary: var(--brand-navy-900);
+  --primary-foreground: #ffffff;
+  --primary-hover: var(--brand-navy-800);
+  --secondary: #f5f5f4;
+  --secondary-foreground: var(--foreground);
+  --accent: var(--color-primary-soft);
+  --accent-foreground: var(--brand-navy-950);
+  --destructive: var(--color-danger-text);
+  --ring: var(--brand-navy-900);
+
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* Status (DESIGN.md §4.2). The bare colors are for icons, dots, bars and
+     borders (3:1); -text is for any text in a status color (4.5:1); -soft is
+     the badge/banner background. Brand color is never used for status. */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #2563eb;
+  --color-success-text: #15803d;
+  --color-warning-text: #b45309;
+  --color-danger-text: #b91c1c;
+  --color-info-text: #1d4ed8;
+  --color-success-soft: #f0fdf4;
+  --color-warning-soft: #fffbeb;
+  --color-danger-soft: #fef2f2;
+  --color-info-soft: #eff6ff;
+  --color-neutral-soft: #f0efed;
+
+  /* Legacy names, same values (read by inline styles and old classes). */
+  --color-background: var(--background);
+  --color-surface: var(--card);
+  --color-surface-muted: var(--muted);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-text-on-dark: #ffffff;
+  --color-border: var(--border);
+  --color-border-light: var(--border-light);
+
+  /* Radius follows hierarchy: controls 8px, cards 12px, badges are pills. */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
-  /* Density (PLAN.md Fase 3b): the WO Console is compact (lots of data),
-     the Client Portal comfortable (read on phones). Set data-density on
-     a layout root; components read these instead of fixed spacing. */
+  /* Type */
+  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Display face: marketing and the Client Portal home title only. */
+  --font-display: "Fraunces Variable", "Fraunces", "Iowan Old Style", Georgia, serif;
+
+  /* One z-index scale (DESIGN.md §4.4). */
+  --z-sticky: 10;
+  --z-sidebar: 30;
+  --z-popover: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+  --z-banner: 70;
+
+  /* Density, set per layout root via data-density (console compact, portal comfortable). */
   --density-pad-x: 1.25rem;
   --density-gap: 1rem;
   --density-row-y: 0.625rem;
-  --density-text: 13.5px;
-
-  --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, sans-serif;
-  /* Display face for marketing/homepage headings only — see modules/homepage.
-     Body copy and every app UI element stay on --font-sans (Inter). */
-  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --density-text: 14px;
+  --control-h: 2.25rem;
+  --row-h: 2.5rem;
 }
 
 @theme inline {
   --color-navy-950: var(--brand-navy-950);
   --color-navy-900: var(--brand-navy-900);
   --color-navy-800: var(--brand-navy-800);
+  --color-primary-soft: var(--color-primary-soft);
 
-  --color-background: var(--color-background);
-  --color-surface: var(--color-surface);
-  --color-surface-muted: var(--color-surface-muted);
+  /* shadcn semantic colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 
-  --color-text-primary: var(--color-text-primary);
-  --color-text-secondary: var(--color-text-secondary);
+  /* names this app already uses in ~300 class strings */
+  --color-surface: var(--card);
+  --color-surface-muted: var(--muted);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
   --color-text-on-dark: var(--color-text-on-dark);
-
-  --color-border: var(--color-border);
-  --color-border-light: var(--color-border-light);
+  --color-border-light: var(--border-light);
 
   --color-success: var(--color-success);
-  --color-success-soft: var(--color-success-soft);
   --color-warning: var(--color-warning);
-  --color-warning-soft: var(--color-warning-soft);
   --color-danger: var(--color-danger);
-  --color-danger-soft: var(--color-danger-soft);
   --color-info: var(--color-info);
+  --color-success-text: var(--color-success-text);
+  --color-warning-text: var(--color-warning-text);
+  --color-danger-text: var(--color-danger-text);
+  --color-info-text: var(--color-info-text);
+  --color-success-soft: var(--color-success-soft);
+  --color-warning-soft: var(--color-warning-soft);
+  --color-danger-soft: var(--color-danger-soft);
   --color-info-soft: var(--color-info-soft);
   --color-neutral-soft: var(--color-neutral-soft);
 
-  --font-family-sans: var(--font-sans);
   --font-display: var(--font-display);
 
   --radius-sm: var(--radius-sm);
@@ -84,10 +167,21 @@
   --radius-lg: var(--radius-lg);
 }
 
+/* Variants the shadcn components expect; mode gelap ditunda (D6) but the
+   variant must exist for the copied component classes to compile. */
+@custom-variant dark (&:is(.dark *));
+
+#root {
+  /* Base UI popups and our own portals stack against this root. */
+  isolation: isolate;
+}
+
 body {
   font-family: var(--font-sans);
-  color: var(--color-text-primary);
-  background: var(--color-background);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--foreground);
+  background: var(--background);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -95,18 +189,39 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Every amount of money and every count is set in tabular figures. */
+[data-money],
+.money {
+  font-variant-numeric: tabular-nums;
+}
+
 [data-density="compact"] {
   --density-pad-x: 1.25rem;
   --density-gap: 1rem;
   --density-row-y: 0.625rem;
-  --density-text: 13.5px;
+  --density-text: 14px;
+  --control-h: 2.25rem;
+  --row-h: 2.5rem;
 }
 
 [data-density="comfortable"] {
   --density-pad-x: 1.5rem;
   --density-gap: 1.5rem;
   --density-row-y: 0.875rem;
-  --density-text: 15px;
+  --density-text: 16px;
+  --control-h: 2.75rem;
+  --row-h: 3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes drawer-in {

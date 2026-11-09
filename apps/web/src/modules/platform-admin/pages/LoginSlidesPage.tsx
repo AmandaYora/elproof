@@ -86,7 +86,7 @@ function SlideSlot({ index, canEdit }: { index: number; canEdit: boolean }) {
           )}
         </div>
         {error && (
-          <p role="alert" className="text-[12.5px] font-medium text-danger">
+          <p role="alert" className="text-[12.5px] font-medium text-danger-text">
             {error}
           </p>
         )}

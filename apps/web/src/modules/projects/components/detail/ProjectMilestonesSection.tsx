@@ -173,14 +173,14 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
         />
         <CardContent>
           {actionError && (
-            <p className="mb-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+            <p className="mb-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
           )}
           <div className="flex flex-col gap-2 border-b border-border-light pb-4">
             <MilestoneRail milestones={milestones} size="md" />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <MilestoneRailLegend />
               {stats.overdue > 0 && (
-                <span className="text-[12.5px] font-semibold text-danger">{stats.overdue} timeline terlambat dari target</span>
+                <span className="text-[12.5px] font-semibold text-danger-text">{stats.overdue} timeline terlambat dari target</span>
               )}
             </div>
           </div>
@@ -245,7 +245,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                     <CardListField
                       label="Target Tanggal"
                       value={
-                        <span className={overdue ? "font-semibold text-danger" : undefined}>
+                        <span className={overdue ? "font-semibold text-danger-text" : undefined}>
                           {formatDate(m.targetDate)}
                           {overdue && " · terlambat"}
                         </span>
@@ -298,7 +298,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                         ))}
                       </Select>
                     </TD>
-                    <TD className={overdue ? "font-semibold text-danger" : undefined}>
+                    <TD className={overdue ? "font-semibold text-danger-text" : undefined}>
                       {formatDate(m.targetDate)}
                       {overdue && " · terlambat"}
                     </TD>

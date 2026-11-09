@@ -139,7 +139,7 @@ export function ActionMenu({ items, label = "Aksi lainnya", disabled }: ActionMe
                 }}
                 className={cn(
                   "flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-medium hover:bg-surface-muted focus:bg-surface-muted focus:outline-none",
-                  item.tone === "danger" ? "text-danger" : "text-text-primary",
+                  item.tone === "danger" ? "text-danger-text" : "text-text-primary",
                 )}
               >
                 {item.icon}

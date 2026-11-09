@@ -86,7 +86,7 @@ export default function BusinessProfilePage() {
   }
 
   if (loadError) {
-    return <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{loadError}</p>;
+    return <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{loadError}</p>;
   }
   if (!tenant) return <div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>;
 
@@ -180,7 +180,7 @@ export default function BusinessProfilePage() {
             })}
           </div>
           {colorError && (
-            <p role="alert" className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{colorError}</p>
+            <p role="alert" className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{colorError}</p>
           )}
         </CardContent>
       </Card>

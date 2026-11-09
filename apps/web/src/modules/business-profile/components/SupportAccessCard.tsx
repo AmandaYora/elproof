@@ -82,7 +82,7 @@ export function SupportAccessCard() {
             {status.grant ? (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="flex items-start gap-2 text-[13.5px] text-text-primary">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success-text" />
                   <span>
                     Tim ElProof boleh melihat workspace ini sampai <span className="font-semibold">{formatDateTime(status.grant.expiresAt)}</span>.
                   </span>

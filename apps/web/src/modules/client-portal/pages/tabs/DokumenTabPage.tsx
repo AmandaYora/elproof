@@ -30,7 +30,7 @@ export default function DokumenTabPage() {
     <div className="flex flex-col gap-6 sm:gap-8">
       <section>
         <div className="mb-4 flex items-center gap-3 border-b border-border pb-4 sm:mb-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-info-soft text-info">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-info-soft text-info-text">
             <FileText className="h-5 w-5 shrink-0" />
           </div>
           <div>
@@ -43,7 +43,7 @@ export default function DokumenTabPage() {
 
         {sortedDocuments.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-3xl border border-border bg-white p-10 text-center shadow-sm sm:p-16">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-info-soft text-info mb-2">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-info-soft text-info-text mb-2">
               <FolderOpen className="h-10 w-10" />
             </div>
             <p className="max-w-md text-[15px] font-bold text-navy-950 sm:text-[16px]">Belum Ada Dokumen</p>
@@ -59,7 +59,7 @@ export default function DokumenTabPage() {
                 onClick={() => setViewingEvidence(doc)}
                 className="flex items-start gap-3 rounded-2xl border border-border bg-white p-4 text-left shadow-sm transition-colors hover:border-navy-200 hover:bg-surface-muted/50"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info-text">
                   <FileText className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">

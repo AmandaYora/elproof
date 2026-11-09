@@ -103,7 +103,7 @@ export function TrialLimitsCard() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           {message ? (
-            <p role="status" className={message.tone === "ok" ? "text-[13px] text-success" : "text-[13px] font-medium text-danger"}>
+            <p role="status" className={message.tone === "ok" ? "text-[13px] text-success-text" : "text-[13px] font-medium text-danger-text"}>
               {message.text}
             </p>
           ) : (

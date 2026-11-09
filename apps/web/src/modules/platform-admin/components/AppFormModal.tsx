@@ -57,7 +57,7 @@ export function AppFormModal({ open, onClose, onSubmit }: AppFormModalProps) {
       <div className="flex flex-col gap-4">
         <Field label="Nama Aplikasi" required>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Contoh: Kasir Elkasir" />
-          {errors.name && <p className="text-xs text-danger">{errors.name}</p>}
+          {errors.name && <p className="text-xs text-danger-text">{errors.name}</p>}
         </Field>
         <Field label="URL Callback" required hint="Menerima relay webhook HMAC-signed saat charge lunas">
           <Input
@@ -65,7 +65,7 @@ export function AppFormModal({ open, onClose, onSubmit }: AppFormModalProps) {
             onChange={(e) => set("callbackUrl", e.target.value)}
             placeholder="https://aplikasi-lain.example.com/webhooks/elproof-payment"
           />
-          {errors.callbackUrl && <p className="text-xs text-danger">{errors.callbackUrl}</p>}
+          {errors.callbackUrl && <p className="text-xs text-danger-text">{errors.callbackUrl}</p>}
         </Field>
       </div>
     </Modal>

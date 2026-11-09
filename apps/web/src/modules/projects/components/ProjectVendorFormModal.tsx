@@ -327,7 +327,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
           <div className="sm:col-span-2">
             <Field label="Bukti Booked">
               <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-                {bookingProofError && <p className="text-[12.5px] font-medium text-danger">{bookingProofError}</p>}
+                {bookingProofError && <p className="text-[12.5px] font-medium text-danger-text">{bookingProofError}</p>}
                 {bookingProofs.length === 0 ? (
                   <p className="text-[13px] text-text-secondary">Belum ada bukti booked yang diunggah.</p>
                 ) : (

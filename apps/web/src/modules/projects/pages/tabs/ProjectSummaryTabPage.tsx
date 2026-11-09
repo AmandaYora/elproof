@@ -114,7 +114,7 @@ export default function ProjectSummaryTabPage() {
         <CardContent>
           {actions.length === 0 ? (
             <EmptyState
-              icon={<CircleCheck className="h-6 w-6 text-success" />}
+              icon={<CircleCheck className="h-6 w-6 text-success-text" />}
               title="Tidak ada yang perlu ditindak"
               description="Termin, kendala, vendor, dan timeline proyek ini sejauh ini berjalan sesuai rencana."
             />

@@ -1,11 +1,12 @@
 import { cn } from "@/shared/lib/cn";
+import { Skeleton as KitSkeleton } from "@/shared/components/kit/skeleton";
 
 /**
  * Placeholder shape while data loads (PLAN.md Fase 3b): keeps the layout
  * steady instead of a "Memuat..." line that jumps when content arrives.
  */
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cn("rounded-md bg-surface-muted motion-safe:animate-pulse", className)} />;
+  return <KitSkeleton className={cn(className)} />;
 }
 
 /** A stack of list rows; announces loading once for assistive tech. */

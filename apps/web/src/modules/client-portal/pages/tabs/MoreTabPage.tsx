@@ -77,7 +77,7 @@ export default function MoreTabPage() {
       <button
         type="button"
         onClick={() => void logoutAndRedirect(navigate)}
-        className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-[14px] font-semibold text-text-secondary hover:bg-danger-soft hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
+        className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-[14px] font-semibold text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
       >
         <LogOut className="h-4 w-4" aria-hidden /> Keluar
       </button>

@@ -15,7 +15,7 @@ export function RecentUpdates({ milestones }: { milestones: ProjectMilestone[] }
       <ul className="mt-3 flex flex-col gap-3">
         {done.map((m) => (
           <li key={m.id} className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-text" aria-hidden />
             <span className="text-[14px] text-text-primary">
               {m.name}
               <span className="block text-[12.5px] text-text-secondary">Selesai {formatDate(m.completedDate)}</span>

@@ -22,7 +22,7 @@ function Tick({ status, size }: { status: RailMilestoneStatus; size: "sm" | "md"
   if (status === "In Progress") {
     return (
       <span
-        className={cn(dims, "rounded-[2px] border border-info text-info/70 bg-info/10")}
+        className={cn(dims, "rounded-[2px] border border-info text-info-text/70 bg-info/10")}
         style={STRIPE_STYLE}
         title="Sedang berjalan"
       />
@@ -31,7 +31,7 @@ function Tick({ status, size }: { status: RailMilestoneStatus; size: "sm" | "md"
   if (status === "Blocked") {
     return (
       <span
-        className={cn(dims, "rounded-[2px] border border-danger text-danger/70 bg-danger-soft")}
+        className={cn(dims, "rounded-[2px] border border-danger text-danger-text/70 bg-danger-soft")}
         style={STRIPE_STYLE}
         title="Terhambat"
       />

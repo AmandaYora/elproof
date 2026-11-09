@@ -115,7 +115,7 @@ export function PlanFormModal({ open, onClose, onSubmit, initialPlan }: PlanForm
                   onClick={() => removeFeature(index)}
                   disabled={values.features.length <= 1}
                   aria-label="Hapus fitur"
-                  className="shrink-0 rounded-md p-2 text-text-secondary hover:bg-surface-muted hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+                  className="shrink-0 rounded-md p-2 text-text-secondary hover:bg-surface-muted hover:text-danger-text disabled:pointer-events-none disabled:opacity-40"
                 >
                   <X className="h-4 w-4" />
                 </button>

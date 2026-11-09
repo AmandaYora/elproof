@@ -65,7 +65,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         </div>
         <div className="max-h-[65vh] overflow-y-auto px-6 py-5">{children}</div>
         {error && (
-          <p role="alert" className="mx-6 mb-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+          <p role="alert" className="mx-6 mb-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
             {error}
           </p>
         )}

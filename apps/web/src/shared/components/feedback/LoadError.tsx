@@ -7,7 +7,7 @@ import { Button } from "@/shared/components/ui/Button";
 export function LoadError({ message = "Data belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi.", onRetry }: { message?: string; onRetry: () => void }) {
   return (
     <div role="alert" className="flex flex-col items-center gap-3 rounded-lg border border-danger/30 bg-danger-soft px-6 py-10 text-center">
-      <p className="max-w-sm text-[13.5px] font-medium text-danger">{message}</p>
+      <p className="max-w-sm text-[13.5px] font-medium text-danger-text">{message}</p>
       <Button size="sm" variant="secondary" onClick={onRetry}>Coba lagi</Button>
     </div>
   );

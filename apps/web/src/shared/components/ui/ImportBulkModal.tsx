@@ -226,7 +226,7 @@ export function ImportBulkModal({
             />
           </div>
         )}
-        {fileError && <p className="text-[12.5px] font-medium text-danger">{fileError}</p>}
+        {fileError && <p className="text-[12.5px] font-medium text-danger-text">{fileError}</p>}
 
         {(stage === "selected" || stage === "importing") && file && (
           <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted/40 px-4 py-3">
@@ -237,7 +237,7 @@ export function ImportBulkModal({
                 type="button"
                 onClick={handleChangeFile}
                 aria-label="Hapus berkas"
-                className="text-text-secondary hover:text-danger"
+                className="text-text-secondary hover:text-danger-text"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -245,7 +245,7 @@ export function ImportBulkModal({
             {stage === "importing" && <span className="text-[12.5px] text-text-secondary">Mengimpor...</span>}
           </div>
         )}
-        {importError && <p className="text-[12.5px] font-medium text-danger">{importError}</p>}
+        {importError && <p className="text-[12.5px] font-medium text-danger-text">{importError}</p>}
 
         {stage === "result" && result && (
           <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted/40 px-4 py-3">
@@ -255,7 +255,7 @@ export function ImportBulkModal({
             </p>
             {result.errors.length > 0 && (
               <div className="mt-1 flex flex-col gap-1">
-                <p className="text-[12.5px] font-semibold text-danger">{result.errors.length} baris gagal diproses:</p>
+                <p className="text-[12.5px] font-semibold text-danger-text">{result.errors.length} baris gagal diproses:</p>
                 <ul className="flex flex-col gap-0.5 text-[12.5px] text-text-secondary">
                   {result.errors.map((e, idx) => (
                     <li key={idx}>

@@ -212,7 +212,7 @@ export default function MarketingLayout() {
             © {new Date().getFullYear()} {APP_NAME}. Seluruh hak cipta dilindungi.
           </p>
           <div className="mt-4 flex items-center justify-center gap-4 md:mt-0">
-            <span className="text-[12px] text-text-secondary/60">Didesain dengan indah untuk Anda.</span>
+            <span className="text-[12px] text-muted-foreground">Didesain dengan indah untuk Anda.</span>
           </div>
         </div>
       </footer>

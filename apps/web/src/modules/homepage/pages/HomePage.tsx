@@ -176,7 +176,7 @@ export default function HomePage() {
       <section className="px-6 py-24 bg-white">
         <div className="mx-auto max-w-6xl">
           <Reveal className="text-center max-w-2xl mx-auto">
-            <p className="text-[13px] font-bold uppercase tracking-widest text-navy-900/60">Satu Platform, Tiga Pihak</p>
+            <p className="text-[13px] font-semibold text-navy-900">Satu Platform, Tiga Pihak</p>
             <h2 className="mt-4 font-display text-[32px] font-semibold tracking-tight text-navy-950 md:text-[40px]">
               Menjembatani semua yang terlibat.
             </h2>
@@ -204,7 +204,7 @@ export default function HomePage() {
           <Reveal>
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="max-w-2xl">
-                <p className="text-[13px] font-bold uppercase tracking-widest text-navy-900/60">Fitur Utama</p>
+                <p className="text-[13px] font-semibold text-navy-900">Fitur Utama</p>
                 <h2 className="mt-4 font-display text-[32px] font-semibold tracking-tight text-navy-950 md:text-[40px]">
                   Bekerja rapi, client tenang.
                 </h2>
@@ -241,7 +241,7 @@ export default function HomePage() {
             "Kepercayaan pasangan client dibangun dari apa yang bisa mereka lihat sendiri —
             bukan sekadar yang mereka dengar dari tim WO."
           </h2>
-          <div className="mt-8 flex items-center gap-3 text-[14px] font-semibold uppercase tracking-widest text-navy-900/60">
+          <div className="mt-8 flex items-center gap-3 text-[14px] font-semibold text-navy-900">
             <span className="h-px w-8 bg-navy-200"></span>
             Prinsip ElProof
             <span className="h-px w-8 bg-navy-200"></span>

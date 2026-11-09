@@ -91,7 +91,7 @@ export function BusinessDetailsDrawer({
           <Input value={values.bankAccountHolder} onChange={(e) => set("bankAccountHolder", e.target.value)} aria-invalid={invalid("bankAccountHolder")} />
         </Field>
         {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{error}</p>
+          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
         )}
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>

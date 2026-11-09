@@ -81,7 +81,7 @@ export default function SignupPage() {
         <ul className="mt-6 flex flex-col gap-2.5">
           {INCLUDED.map((item) => (
             <li key={item} className="flex items-start gap-2.5 text-[14px] text-text-primary">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success-text" aria-hidden />
               {item}
             </li>
           ))}
@@ -89,7 +89,7 @@ export default function SignupPage() {
 
         <div className="mt-8 flex flex-col gap-4">
           {error && (
-            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
               {error}
             </p>
           )}

@@ -135,7 +135,7 @@ export function TenantDataRequestsTab({ tenantId, ownerEmail, onChanged }: { ten
                       Oleh {r.requestedBy}, dicatat {formatDate(r.createdAt)}
                       {r.note ? `. ${r.note}` : ""}
                     </p>
-                    <p className={`mt-0.5 text-[12.5px] ${r.status === "open" && due.late ? "font-semibold text-danger" : "text-text-secondary"}`}>
+                    <p className={`mt-0.5 text-[12.5px] ${r.status === "open" && due.late ? "font-semibold text-danger-text" : "text-text-secondary"}`}>
                       {r.status === "open" ? `Batas jawab ${formatDate(r.dueAt)}, ${due.text}` : `Ditutup ${formatDate(r.completedAt)} oleh ${r.completedBy}: ${r.completionNote}`}
                     </p>
                   </div>

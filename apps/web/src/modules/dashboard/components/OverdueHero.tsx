@@ -18,13 +18,13 @@ export function OverdueHero({ total, terms }: { total: number; terms: DashboardT
       <h2 id="overdue-heading" className="text-[13px] font-medium text-text-secondary">
         Tagihan klien yang terlambat
       </h2>
-      <p className={`mt-1 text-[2.25rem] font-bold leading-tight tabular-nums ${overdue ? "text-danger" : "text-success"}`}>
+      <p className={`mt-1 text-[2.25rem] font-bold leading-tight tabular-nums ${overdue ? "text-danger-text" : "text-success-text"}`}>
         {formatCurrency(total)}
       </p>
       {overdue ? (
         <p className="mt-1 text-[13.5px] text-text-primary">
           {terms.length} termin di {projectCount} project melewati jatuh tempo.{" "}
-          <Link to={ROUTE_PATHS.projectDetail(terms[0].projectId, "pembayaran/client")} className="font-semibold text-danger underline underline-offset-2">
+          <Link to={ROUTE_PATHS.projectDetail(terms[0].projectId, "pembayaran/client")} className="font-semibold text-danger-text underline underline-offset-2">
             Lihat project yang terlambat
           </Link>
         </p>

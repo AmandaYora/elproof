@@ -126,14 +126,14 @@ export default function WorkspaceSetupPage() {
 
         <div className="mt-8 flex flex-col gap-5">
           {invited && (
-            <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning">
+            <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-text">
               Ada undangan staf untuk {email}. Jika Anda staf di sebuah WO, jangan buat workspace baru: buka link undangan yang
               dikirim WO Anda (lewat WhatsApp), lalu masuk dengan Google dari sana.
             </p>
           )}
 
           {formError && (
-            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+            <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
               {formError}
             </p>
           )}
@@ -176,7 +176,7 @@ export default function WorkspaceSetupPage() {
               </span>
             </label>
             {errors.acceptTerms && (
-              <span role="alert" className="pl-7 text-xs font-medium text-danger">
+              <span role="alert" className="pl-7 text-xs font-medium text-danger-text">
                 {errors.acceptTerms}
               </span>
             )}

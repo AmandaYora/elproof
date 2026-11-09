@@ -29,7 +29,7 @@ function change(now: number, before: number): string | null {
 function row(a: AttentionTenant, tone: "warning" | "danger", describe: (a: AttentionTenant) => string) {
   return (
     <>
-      {tone === "danger" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" /> : <Clock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />}
+      {tone === "danger" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" /> : <Clock className="mt-0.5 h-4 w-4 shrink-0 text-warning-text" />}
       <span className="min-w-0 flex-1">
         <span className="block text-[13.5px] font-semibold text-text-primary">{a.name}</span>
         <span className="block truncate text-[12.5px] text-text-secondary">{describe(a)}</span>
@@ -40,7 +40,7 @@ function row(a: AttentionTenant, tone: "warning" | "danger", describe: (a: Atten
 
 function AttentionList({ items, empty, tone, describe, canOpen }: { items: AttentionTenant[]; empty: { title: string; description: string }; tone: "warning" | "danger"; describe: (a: AttentionTenant) => string; canOpen: boolean }) {
   if (items.length === 0) {
-    return <EmptyState icon={<CheckCircle2 className="h-8 w-8 text-success" />} title={empty.title} description={empty.description} />;
+    return <EmptyState icon={<CheckCircle2 className="h-8 w-8 text-success-text" />} title={empty.title} description={empty.description} />;
   }
   return (
     <ul className="divide-y divide-border-light">

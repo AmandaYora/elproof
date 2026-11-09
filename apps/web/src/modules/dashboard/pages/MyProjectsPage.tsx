@@ -102,7 +102,7 @@ export default function MyProjectsPage() {
                     <ProgressMeter percent={p.progressPercent} segments={[]} caption={`${p.progressPercent}% timeline selesai`} />
 
                     {p.overdueTerms > 0 && (
-                      <p className="rounded-md bg-danger-soft px-3 py-2 text-[13px] font-medium text-danger">
+                      <p className="rounded-md bg-danger-soft px-3 py-2 text-[13px] font-medium text-danger-text">
                         {p.overdueTerms} termin klien terlambat · {formatCurrency(p.overdueTotal)}
                       </p>
                     )}

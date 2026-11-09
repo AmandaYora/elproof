@@ -1,14 +1,20 @@
+/**
+ * Rupiah as PUEBI writes it (Permendikbud 50/2015): "Rp1.500.000", no space after
+ * "Rp" and no ",00" for whole rupiah. The one place money is turned into text.
+ */
 export function formatCurrency(amount: number): string {
   const sign = amount < 0 ? "-" : "";
   const abs = Math.abs(amount);
-  return `${sign}Rp ${abs.toLocaleString("id-ID")}`;
+  return `${sign}Rp${abs.toLocaleString("id-ID")}`;
 }
 
+/** Short form for tight spaces: "Rp1,5 jt", "Rp2 M". Indonesian decimal comma. */
 export function formatCurrencyCompact(amount: number): string {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? "-" : "";
-  if (abs >= 1_000_000_000) return `${sign}Rp ${(abs / 1_000_000_000).toFixed(1).replace(/\.0$/, "")} M`;
-  if (abs >= 1_000_000) return `${sign}Rp ${(abs / 1_000_000).toFixed(1).replace(/\.0$/, "")} Jt`;
+  const short = (value: number) => value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
+  if (abs >= 1_000_000_000) return `${sign}Rp${short(abs / 1_000_000_000)} M`;
+  if (abs >= 1_000_000) return `${sign}Rp${short(abs / 1_000_000)} jt`;
   return formatCurrency(amount);
 }
 

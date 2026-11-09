@@ -227,7 +227,7 @@ export default function ClientPortalLayout() {
           <button
             type="button"
             onClick={() => void logoutAndRedirect(navigate)}
-            className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 md:flex"
+            className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 md:flex"
           >
             <LogOut className="h-3.5 w-3.5" aria-hidden /> Keluar
           </button>

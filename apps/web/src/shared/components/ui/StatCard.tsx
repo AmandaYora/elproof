@@ -7,10 +7,10 @@ type StatTone = "neutral" | "success" | "warning" | "danger" | "info";
 
 const ACCENT_CLASSES: Record<StatTone, string> = {
   neutral: "text-text-primary",
-  success: "text-success",
-  warning: "text-warning",
-  danger: "text-danger",
-  info: "text-info",
+  success: "text-success-text",
+  warning: "text-warning-text",
+  danger: "text-danger-text",
+  info: "text-info-text",
 };
 
 interface StatCardProps {

@@ -45,7 +45,7 @@ export function GoogleSignInButton({ text, context, onCredential, busy = false }
         </div>
       )}
       {state === "error" && (
-        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
           Tombol Google tidak dapat dimuat. Periksa koneksi internet atau nonaktifkan pemblokir iklan, lalu muat ulang halaman.
         </p>
       )}

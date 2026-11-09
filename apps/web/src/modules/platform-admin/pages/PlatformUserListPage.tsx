@@ -176,7 +176,7 @@ export default function PlatformUserListPage() {
       </div>
 
       {actionError && (
-        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
       )}
 
       <div className="flex flex-wrap gap-3">

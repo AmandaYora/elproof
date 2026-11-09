@@ -160,7 +160,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
           open && "border-navy-900 ring-2 ring-navy-900/20"
         )}
       >
-        <span className={cn("truncate", !selected && "text-text-secondary/70")}>{selected ? selected.label : placeholder}</span>
+        <span className={cn("truncate", !selected && "text-subtle-foreground")}>{selected ? selected.label : placeholder}</span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-text-secondary transition-transform", open && "rotate-180")} />
       </button>
 

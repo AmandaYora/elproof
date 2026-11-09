@@ -9,7 +9,7 @@ function UsageBar({ label, item }: { label: string; item: UsageItem }) {
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[13.5px] font-medium text-text-primary">{label}</span>
-        <span className={`text-[13px] tabular-nums ${full ? "font-semibold text-danger" : "text-text-secondary"}`}>
+        <span className={`text-[13px] tabular-nums ${full ? "font-semibold text-danger-text" : "text-text-secondary"}`}>
           {item.used}
           {limited ? ` dari ${item.max}` : ", tanpa batas"}
         </span>

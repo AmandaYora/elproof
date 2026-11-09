@@ -78,3 +78,38 @@ export const TERM_STATUS_LABELS: Labels<PaymentTermStatus> = {
 export function labelFor<T extends string>(labels: Labels<T>, value: T, audience: Audience = "staff"): string | null {
   return audience === "client" ? labels.client[value] : labels.staff[value];
 }
+
+// ---- Glosarium UI (DESIGN.md §7, D15) --------------------------------------
+// One word per concept in everything a person reads. The database enums stay
+// English; this is only the vocabulary of screens, buttons and messages.
+export const GLOSARIUM = {
+  proyek: "Proyek",
+  klien: "Klien",
+  tim: "Tim",
+  termin: "Termin",
+  tagihan: "Tagihan",
+  bukti: "Bukti",
+  dokumen: "Dokumen",
+  kendala: "Kendala",
+  jadwal: "Jadwal",
+  tahapan: "Tahapan",
+  vendor: "Vendor",
+  venue: "Venue",
+  tenant: "Tenant",
+} as const;
+
+/**
+ * Wording that must not appear in UI text, with what to write instead. Used by
+ * the language sweep (PLAN.md Tahap 7) to find strays; `Project` and `Client`
+ * stay legal inside identifiers, so it is meant for string literals and JSX text.
+ */
+export const DISALLOWED_UI_TERMS: { pattern: RegExp; use: string }[] = [
+  { pattern: /\bProject(s)?\b/, use: "Proyek" },
+  { pattern: /\bClient(s)?\b/, use: "Klien" },
+  { pattern: /\bInvoice\b/, use: "Tagihan" },
+  { pattern: /\bEvidence\b/, use: "Bukti / Dokumen" },
+  { pattern: /\bIssue(s)?\b/, use: "Kendala" },
+  { pattern: /\bTimeline\b/, use: "Jadwal" },
+  { pattern: /\bMilestone(s)?\b/, use: "Tahapan" },
+  { pattern: /\bSubmit\b/, use: "kata kerja + objek, mis. \"Simpan pembayaran\"" },
+];

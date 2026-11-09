@@ -174,7 +174,7 @@ export default function TenantListPage() {
       </div>
 
       {actions.actionError && (
-        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actions.actionError}</p>
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actions.actionError}</p>
       )}
 
       <div className="flex flex-wrap gap-3">
@@ -245,7 +245,7 @@ export default function TenantListPage() {
                               {formatDate(periodEndsAt(tenant))}
                               {tenant.lifecycle?.isTrial && <span className="ml-1 text-text-secondary">(masa coba)</span>}
                               {d !== null && (
-                                <span className={`ml-1 ${d < 0 ? "text-danger" : "text-text-secondary"}`}>
+                                <span className={`ml-1 ${d < 0 ? "text-danger-text" : "text-text-secondary"}`}>
                                   ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
                                 </span>
                               )}
@@ -308,7 +308,7 @@ export default function TenantListPage() {
                             {formatDate(periodEndsAt(tenant))}
                             {tenant.lifecycle?.isTrial && <span className="ml-1 text-[12px] text-text-secondary">(masa coba)</span>}
                             {d !== null && (
-                              <span className={`ml-1.5 text-[12px] font-semibold ${d < 0 ? "text-danger" : "text-text-secondary"}`}>
+                              <span className={`ml-1.5 text-[12px] font-semibold ${d < 0 ? "text-danger-text" : "text-text-secondary"}`}>
                                 ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
                               </span>
                             )}

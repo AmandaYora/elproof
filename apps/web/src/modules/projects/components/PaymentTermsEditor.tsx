@@ -37,7 +37,7 @@ export function PaymentTermsEditor({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={`text-[13px] font-medium tabular-nums ${over ? "text-danger" : "text-text-secondary"}`}>
+        <p className={`text-[13px] font-medium tabular-nums ${over ? "text-danger-text" : "text-text-secondary"}`}>
           Total {formatCurrency(total)} dari {formatCurrency(contractValue)}
           {!over && contractValue > 0 && ` · sisa ${formatCurrency(contractValue - total)}`}
         </p>
@@ -62,7 +62,7 @@ export function PaymentTermsEditor({
             type="button"
             aria-label={`Hapus termin ${i + 1}`}
             onClick={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
-            className="mt-6 flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 sm:h-9 sm:w-9"
+            className="mt-6 flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 sm:h-9 sm:w-9"
           >
             <Trash2 className="h-4 w-4" />
           </button>

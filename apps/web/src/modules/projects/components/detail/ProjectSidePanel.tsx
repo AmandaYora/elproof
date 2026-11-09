@@ -58,7 +58,7 @@ export function ProjectSidePanel({ projectId }: { projectId: string }) {
           <PanelItem label="Kendala terbuka">
             <Link
               to={ROUTE_PATHS.projectDetail(projectId, "kendala")}
-              className={`text-[13.5px] font-semibold underline-offset-2 hover:underline ${openIssues > 0 ? "text-danger" : "text-text-primary"}`}
+              className={`text-[13.5px] font-semibold underline-offset-2 hover:underline ${openIssues > 0 ? "text-danger-text" : "text-text-primary"}`}
             >
               {openIssues > 0 ? `${openIssues} kendala` : "Tidak ada"}
             </Link>

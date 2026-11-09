@@ -156,7 +156,7 @@ export default function ClientListPage() {
       </div>
 
       {actionError && (
-        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger">{actionError}</p>
+        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
       )}
 
       <div className="flex flex-wrap gap-3">
@@ -335,7 +335,7 @@ function ClientRow({
 
       {confirmingDelete && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-          <span className="flex items-center gap-2 text-[13px] font-medium text-danger">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             Yakin ingin menghapus {c.name}? Tindakan ini permanen — akun login yang terkait (jika ada) ikut dinonaktifkan.
           </span>

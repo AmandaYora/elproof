@@ -49,7 +49,7 @@ export default function TimelineTabPage() {
                     isCompleted
                       ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-900 text-white shadow-md shadow-navy-900/20 z-10 transition-transform group-hover:scale-110"
                       : isBlocked
-                      ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-danger bg-white text-danger z-10 transition-transform group-hover:scale-110"
+                      ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-danger bg-white text-danger-text z-10 transition-transform group-hover:scale-110"
                       : isInProgress
                       ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-navy-900 bg-white text-navy-900 z-10 transition-transform group-hover:scale-110"
                       : "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-border bg-surface-muted text-border z-10"

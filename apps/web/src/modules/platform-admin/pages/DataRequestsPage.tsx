@@ -105,7 +105,7 @@ export default function DataRequestsPage() {
                       {r.note ? `. ${r.note}` : ""}
                     </p>
                     {r.status === "open" ? (
-                      <p className={`mt-1 text-[12.5px] font-semibold ${due.late ? "text-danger" : "text-text-secondary"}`}>
+                      <p className={`mt-1 text-[12.5px] font-semibold ${due.late ? "text-danger-text" : "text-text-secondary"}`}>
                         Batas jawab {formatDate(r.dueAt)}, {due.text}
                       </p>
                     ) : (

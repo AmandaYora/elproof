@@ -1,44 +1,26 @@
-import { forwardRef, type InputHTMLAttributes, type LabelHTMLAttributes, type ReactNode } from "react";
+import { cloneElement, isValidElement, useId, type LabelHTMLAttributes, type ReactElement, type ReactNode } from "react";
+import { CircleAlert } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import { Input } from "@/shared/components/kit/input";
+import { Textarea } from "@/shared/components/kit/textarea";
 
 export { Combobox as Select } from "@/shared/components/ui/Combobox";
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
-  { className, ...props },
-  ref
-) {
-  return (
-    <input
-      ref={ref}
-      className={cn(
-        "h-9 pointer-coarse:h-11 w-full rounded-md border border-border bg-white px-3 text-sm text-text-primary placeholder:text-text-secondary/70",
-        "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
-        "disabled:bg-surface-muted disabled:text-text-secondary",
-        "aria-invalid:border-danger aria-invalid:focus:ring-danger/20",
-        className
-      )}
-      {...props}
-    />
-  );
-});
+export { Input } from "@/shared/components/kit/input";
+export { Textarea } from "@/shared/components/kit/textarea";
 
-export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function Textarea({ className, ...props }, ref) {
-    return (
-      <textarea
-        ref={ref}
-        className={cn(
-          "w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/70",
-          "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
-          "aria-invalid:border-danger aria-invalid:focus:ring-danger/20",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
+/** Controls that take id and aria-* straight onto the element Field wraps. */
+function acceptsAria(child: ReactElement): boolean {
+  const type = child.type;
+  return type === "input" || type === "textarea" || type === "select" || type === Input || type === Textarea;
+}
 
+/**
+ * Label + control + help or error. The label wraps the control (so clicking it
+ * focuses the field even where no htmlFor is given); the message is tied to the
+ * control with aria-describedby and a failed field gets aria-invalid, so a screen
+ * reader hears what is wrong. The error also carries an icon: never color alone.
+ */
 export function Field({
   label,
   htmlFor,
@@ -50,28 +32,47 @@ export function Field({
   label: string;
   htmlFor?: string;
   hint?: string;
-  /** Validation message — shown in the danger color, replacing the hint. */
+  /** Validation message: shown in the danger color with an icon, replacing the hint. */
   error?: string;
   required?: boolean;
 } & { children: ReactNode }) {
+  const messageId = `${useId()}-message`;
+  const message = error ?? hint;
+  const control =
+    isValidElement(children) && acceptsAria(children as ReactElement)
+      ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+          "aria-describedby": message ? messageId : undefined,
+          "aria-invalid": error ? true : (children.props as Record<string, unknown>)["aria-invalid"],
+        })
+      : children;
   return (
     <label htmlFor={htmlFor} className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-medium text-text-primary">
+      <span className="text-[13px] font-medium text-foreground">
         {label}
-        {required && <span className="text-danger"> *</span>}
+        {required && (
+          <>
+            <span aria-hidden className="text-danger-text"> *</span>
+            <span className="sr-only"> (wajib diisi)</span>
+          </>
+        )}
       </span>
-      {children}
+      {control}
       {error ? (
-        <span role="alert" className="text-xs font-medium text-danger">
+        <span id={messageId} role="alert" className="flex items-start gap-1 text-xs font-medium text-danger-text">
+          <CircleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
           {error}
         </span>
       ) : (
-        hint && <span className="text-xs text-text-secondary">{hint}</span>
+        hint && (
+          <span id={messageId} className="text-xs text-muted-foreground">
+            {hint}
+          </span>
+        )
       )}
     </label>
   );
 }
 
 export function FieldLabel({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn("text-[13px] font-medium text-text-primary", className)} {...props} />;
+  return <label className={cn("text-[13px] font-medium text-foreground", className)} {...props} />;
 }
