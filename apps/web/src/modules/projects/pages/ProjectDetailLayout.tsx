@@ -28,7 +28,7 @@ const TABS = [
 export default function ProjectDetailLayout() {
   const { projectId } = useParams<{ projectId: string }>();
   const currentProject = useProjectStore((s) => s.currentProject);
-  const fetchProjectDetail = useProjectStore((s) => s.fetchProjectDetail);
+  const fetchOverview = useProjectStore((s) => s.fetchOverview);
   const [status, setStatus] = useState<"loading" | "ready" | "not-found" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
 
@@ -36,7 +36,7 @@ export default function ProjectDetailLayout() {
     if (!projectId) return;
     let cancelled = false;
     setStatus("loading");
-    fetchProjectDetail(projectId)
+    fetchOverview(projectId)
       .then(() => {
         if (!cancelled) setStatus("ready");
       })
@@ -50,7 +50,7 @@ export default function ProjectDetailLayout() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, fetchProjectDetail, attempt]);
+  }, [projectId, fetchOverview, attempt]);
 
   if (!projectId || status === "not-found") {
     return <Navigate to={ROUTE_PATHS.projects} replace />;

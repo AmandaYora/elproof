@@ -38,6 +38,8 @@ interface IssueFormModalProps {
   // read-only text instead of a picker -- zero extra picking for the common
   // case (PLAN.md "Retire the standalone Kendala tab").
   milestoneLocked: boolean;
+  /** Opened from the Kendala tab: the vendor is a choice, including "Tidak terkait vendor" (an issue about the event itself). */
+  vendorChoice?: boolean;
   vendorEngagements: ProjectVendor[];
   vendors: VendorLookup[];
   vendorMilestones: VendorMilestone[];
@@ -61,6 +63,7 @@ export function IssueFormModal({
   initialValues,
   mode,
   milestoneLocked,
+  vendorChoice = false,
   vendorEngagements,
   vendors,
   vendorMilestones,
@@ -114,9 +117,10 @@ export function IssueFormModal({
           </Field>
         </div>
 
-        {mode === "edit" ? (
-          <Field label="Vendor" required name="projectVendorId" error={errors.projectVendorId}>
+        {mode === "edit" || vendorChoice ? (
+          <Field label="Vendor" name="projectVendorId" error={errors.projectVendorId}>
             <Select value={values.projectVendorId} onChange={(e) => handleVendorChange(e.target.value)}>
+              <option value="">Tidak terkait vendor</option>
               {vendorEngagements.map((pv) => (
                 <option key={pv.id} value={pv.id}>{vendorLabel(pv, vendors)}</option>
               ))}
@@ -125,12 +129,12 @@ export function IssueFormModal({
         ) : (
           <Field label="Vendor">
             <p className="flex h-9 items-center text-[13px] font-medium text-text-primary">
-              {selectedVendor ? vendorLabel(selectedVendor, vendors) : "Vendor tidak diketahui"}
+              {selectedVendor ? vendorLabel(selectedVendor, vendors) : "Tidak terkait vendor"}
             </p>
           </Field>
         )}
 
-        {milestoneLocked ? (
+        {!values.projectVendorId ? null : milestoneLocked ? (
           <Field label="Timeline">
             <p className="flex h-9 items-center text-[13px] font-medium text-text-primary">{lockedMilestoneName}</p>
           </Field>
@@ -179,6 +183,20 @@ export function IssueFormModal({
             ))}
           </Select>
         </Field>
+        <div className="sm:col-span-2">
+          <label className="flex items-start gap-2.5 text-[13px] text-text-primary">
+            <input
+              type="checkbox"
+              checked={values.isClientVisible}
+              onChange={(e) => set("isClientVisible", e.target.checked)}
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>
+              <span className="font-medium">Tampilkan ke klien</span>
+              <span className="block text-[12.5px] text-text-secondary">Klien melihat kendala ini dan penanganannya di portal. Matikan untuk catatan internal.</span>
+            </span>
+          </label>
+        </div>
         <div className="sm:col-span-2">
           <Field label="Rencana Penanganan" name="resolutionPlan" error={errors.resolutionPlan}>
             <Textarea rows={2} value={values.resolutionPlan} onChange={(e) => set("resolutionPlan", e.target.value)} onBlur={() => blur("resolutionPlan")} />

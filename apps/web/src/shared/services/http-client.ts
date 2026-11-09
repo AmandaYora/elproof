@@ -132,8 +132,30 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshInFlight;
 }
 
+// A write under /projects/{id}/... that the server accepted. Stores that show a project listen, so a header or a
+// side panel is never left showing numbers from before the change (PLAN.md E8).
+type ProjectWriteListener = (projectId: string, data: unknown) => void;
+const projectWriteListeners = new Set<ProjectWriteListener>();
+
+/** Registers a listener for accepted writes under a project; call once at module load. */
+export function onProjectWrite(listener: ProjectWriteListener): void {
+  projectWriteListeners.add(listener);
+}
+
+const PROJECT_PATH = /^\/api\/v1\/projects\/(\d+)(?:\/|$)/;
+
 httpClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config.method?.toLowerCase();
+    if (method && method !== "get") {
+      const match = PROJECT_PATH.exec((response.config.url ?? "").split("?")[0]);
+      if (match) {
+        const data = (response.data as { data?: unknown } | undefined)?.data;
+        projectWriteListeners.forEach((listen) => listen(match[1], data));
+      }
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
     const isAuthEndpoint =

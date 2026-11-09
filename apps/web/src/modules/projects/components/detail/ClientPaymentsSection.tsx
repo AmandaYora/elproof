@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
@@ -13,6 +13,7 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
 import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
+import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { ProofStamp } from "@/shared/components/ui/ProofStamp";
 import { Pagination } from "@/shared/components/ui/Pagination";
@@ -55,7 +56,6 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<ClientPayment | null>(null);
   const [deletingPayment, setDeletingPayment] = useState<ClientPayment | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewingEvidencePayment, setViewingEvidencePayment] = useState<ClientPayment | null>(null);
   const [verifying, setVerifying] = useState<ClientPayment | null>(null);
@@ -106,19 +106,18 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     toast.success("Pembayaran diperbarui");
   }
 
-  async function handleDeletePayment() {
+  // Routine payments disappear at once with "Urungkan"; a VERIFIED one is something the client has seen as proven, so it asks first.
+  function requestDelete(payment: ClientPayment) {
+    if (payment.verifiedAt) setDeletingPayment(payment);
+    else void deleteWithUndo("Pembayaran", () => deleteClientPayment(projectId, payment.id));
+  }
+
+  async function handleDeleteVerified() {
     if (!deletingPayment) return;
-    setDeleteError(null);
     setDeleting(true);
-    try {
-      await deleteClientPayment(projectId, deletingPayment.id);
-      setDeletingPayment(null);
-      toast.success("Pembayaran dihapus");
-    } catch (err) {
-      setDeleteError(getApiErrorMessage(err, "Gagal menghapus pembayaran client"));
-    } finally {
-      setDeleting(false);
-    }
+    const done = await deleteWithUndo("Pembayaran terverifikasi", () => deleteClientPayment(projectId, deletingPayment.id));
+    setDeleting(false);
+    if (done) setDeletingPayment(null);
   }
 
   return (
@@ -170,7 +169,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                     {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                     {canDelete && (
-                      <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
+                      <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
                     )}
                   </div>
                 </>
@@ -203,7 +202,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                         <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                         {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                         {canDelete && (
-                          <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
+                          <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
                         )}
                       </div>
                     </TD>
@@ -246,41 +245,19 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
         />
       )}
 
-      {deletingPayment && (
-        <Modal
-          open={Boolean(deletingPayment)}
-          onClose={() => setDeletingPayment(null)}
-          title="Hapus Pembayaran Client"
-          description="Tindakan ini permanen dan tidak dapat dibatalkan."
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setDeletingPayment(null)} disabled={deleting}>Batal</Button>
-              <Button variant="danger" onClick={() => void handleDeletePayment()} disabled={deleting}>
-                {deleting ? "Menghapus..." : "Ya, Hapus Permanen"}
-              </Button>
-            </>
-          }
-        >
-          <div className="flex flex-col gap-3">
-            {deleteError && (
-              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{deleteError}</p>
-            )}
-            <p className="flex items-start gap-2 text-[13.5px] text-text-primary">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
-              <span>
-                Yakin ingin menghapus pembayaran client <strong>{formatCurrency(deletingPayment.amount)}</strong> ({deletingPayment.type})
-                ini secara permanen?
-                {(() => {
-                  const count = evidence.filter((e) => e.relatedKind === "clientPayment" && e.relatedId === deletingPayment.id).length;
-                  return count > 0
-                    ? ` ${count} berkas bukti yang terlampir pada pembayaran ini akan ikut terhapus.`
-                    : "";
-                })()}
-              </span>
-            </p>
-          </div>
-        </Modal>
-      )}
+      <ConfirmDialog
+        open={deletingPayment !== null}
+        title="Hapus pembayaran terverifikasi?"
+        confirmLabel="Hapus pembayaran"
+        isSubmitting={deleting}
+        onConfirm={() => void handleDeleteVerified()}
+        onClose={() => setDeletingPayment(null)}
+      >
+        <p>
+          Pembayaran {deletingPayment ? `${formatCurrency(deletingPayment.amount)} (${deletingPayment.type})` : ""} sudah ditandai terverifikasi dan klien melihat tandanya. Tanda dan bukti
+          transfernya ikut hilang. Anda masih bisa mengurungkannya beberapa detik setelah ini, dan server menyimpannya 24 jam.
+        </p>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={verifying !== null}

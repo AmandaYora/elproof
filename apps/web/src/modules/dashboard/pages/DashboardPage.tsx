@@ -7,10 +7,10 @@ import { OverdueHero } from "@/modules/dashboard/components/OverdueHero";
 import { DueList, type DueListRow } from "@/modules/dashboard/components/DueList";
 import { RecentActivity } from "@/modules/dashboard/components/RecentActivity";
 import { ProjectTrendChart } from "@/modules/dashboard/components/ProjectTrendChart";
+import { CashFlowCard } from "@/modules/dashboard/components/CashFlowCard";
 import { RevenueTrendChart } from "@/modules/dashboard/components/RevenueTrendChart";
 import { buildAttentionItems, type AttentionItem } from "@/modules/dashboard/lib/attention";
 import { useDashboardStore } from "@/modules/dashboard/stores/useDashboardStore";
-import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -33,8 +33,6 @@ const TODAY_LABEL = () =>
 function FullDashboard() {
   const stats = useDashboardStore((s) => s.stats);
   const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
   const displayName = useAuthStore((s) => s.session?.displayName ?? "");
   // The "Mulai di sini" checklist belongs to whoever runs the workspace.
   const isOwner = usePermissionStore((s) => Boolean(s.grants?.isOwner));
@@ -46,12 +44,11 @@ function FullDashboard() {
   useEffect(() => {
     setLoadFailed(false);
     fetchDashboard().catch(() => setLoadFailed(true));
-    void fetchVendors();
-  }, [fetchDashboard, fetchVendors, attempt]);
+  }, [fetchDashboard, attempt]);
 
   const { items, counts } = useMemo(
-    () => (stats ? buildAttentionItems(stats, vendors) : { items: [] as AttentionItem[], counts: {} as Record<string, number> }),
-    [stats, vendors],
+    () => (stats ? buildAttentionItems(stats) : { items: [] as AttentionItem[], counts: {} as Record<string, number> }),
+    [stats],
   );
 
   const events = useMemo<DueListRow[]>(
@@ -86,6 +83,18 @@ function FullDashboard() {
         title: `${t.projectName} · ${t.label}`,
         subtitle: `Jatuh tempo ${formatDate(t.dueDate)}`,
         trailing: formatCurrency(t.remaining),
+      })),
+    [stats],
+  );
+
+  const vendorDue = useMemo<DueListRow[]>(
+    () =>
+      (stats?.vendorPaymentsDue ?? []).slice(0, 6).map((v, i) => ({
+        id: `${v.projectId}-${i}`,
+        to: ROUTE_PATHS.projectDetail(v.projectId, "pembayaran/vendor"),
+        title: `${v.projectName} · ${v.vendorName}`,
+        subtitle: daysUntil(v.dueDate) < 0 ? `Terlambat ${Math.abs(daysUntil(v.dueDate))} hari` : `Jatuh tempo ${formatDate(v.dueDate)}`,
+        trailing: formatCurrency(v.remaining),
       })),
     [stats],
   );
@@ -149,6 +158,15 @@ function FullDashboard() {
           </Link>
         </section>
       </div>
+
+      {stats.cashFlow && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <CashFlowCard weeks={stats.cashFlow} />
+          </div>
+          <DueList title="Tagihan vendor 30 hari ke depan" subtitle="Termasuk yang sudah lewat." rows={vendorDue} empty="Tidak ada tagihan vendor yang jatuh tempo dalam 30 hari." />
+        </div>
+      )}
 
       <RevenueTrendChart points={stats.revenueTrend} />
       <ProjectTrendChart points={stats.projectTrend} />

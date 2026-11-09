@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { Pencil, Send, UserCog, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Pencil, Send, UserCog, Plus, Trash2 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
+import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { useClientStore } from "@/modules/clients/stores/useClientStore";
@@ -108,12 +110,8 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
 
   async function handleDelete(id: string) {
     setActionError(null);
-    try {
-      await deleteClient(projectId, id);
-      setDeletingClientId(null);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menghapus client"));
-    }
+    // Confirmed first (it switches the family's portal login off), then "Urungkan" stays available for a few seconds.
+    if (await deleteWithUndo("Klien", () => deleteClient(projectId, id))) setDeletingClientId(null);
   }
 
   async function handleReplaceSubmit(values: RepresentativeFormValues) {
@@ -252,24 +250,24 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                   </div>
                 )}
 
-                {deletingClientId === client.id && (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-                    <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      Yakin ingin menghapus {ROLE_LABEL[role]} ini? Tindakan ini permanen — akun login yang terkait
-                      (jika ada) ikut dinonaktifkan, dan slot {ROLE_LABEL[role]} untuk project ini akan kosong kembali.
-                    </span>
-                    <span className="flex shrink-0 gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => setDeletingClientId(null)}>Batal</Button>
-                      <Button variant="danger" size="sm" onClick={() => void handleDelete(client.id)}>Ya, Hapus</Button>
-                    </span>
-                  </div>
-                )}
               </div>
             );
           })}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deletingClientId !== null}
+        title="Hapus klien ini?"
+        confirmLabel="Hapus klien"
+        onConfirm={() => deletingClientId && void handleDelete(deletingClientId)}
+        onClose={() => setDeletingClientId(null)}
+      >
+        <p>
+          Akun masuk klien ini (jika ada) dinonaktifkan dan slotnya di proyek ini kosong kembali. Anda masih bisa mengurungkannya beberapa detik setelah ini,
+          dan server menyimpannya 24 jam.
+        </p>
+      </ConfirmDialog>
 
       {activeTarget && modalTarget?.mode === "contact" && (
         <EditContactModal

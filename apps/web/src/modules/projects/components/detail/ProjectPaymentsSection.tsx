@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { Plus, Pencil, Trash2, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
+import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
@@ -47,9 +48,6 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<VendorPayment | null>(null);
-  const [deletingPayment, setDeletingPayment] = useState<VendorPayment | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [viewingEvidencePayment, setViewingEvidencePayment] = useState<VendorPayment | null>(null);
 
   useEffect(() => {
@@ -83,18 +81,9 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
     setEditingPayment(null);
   }
 
-  async function handleDeletePayment() {
-    if (!deletingPayment) return;
-    setDeleteError(null);
-    setDeleting(true);
-    try {
-      await deletePayment(projectId, deletingPayment.id);
-      setDeletingPayment(null);
-    } catch (err) {
-      setDeleteError(getApiErrorMessage(err, "Gagal menghapus pembayaran"));
-    } finally {
-      setDeleting(false);
-    }
+  // No "Yakin?" step: it disappears at once and the toast offers "Urungkan" (the server keeps it 24 hours).
+  function handleDeletePayment(payment: { id: string }) {
+    void deleteWithUndo("Pembayaran vendor", () => deletePayment(projectId, payment.id));
   }
 
   return (
@@ -146,7 +135,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                       {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                       {canDelete && (
-                        <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
+                        <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
                       )}
                     </div>
                   </>
@@ -187,7 +176,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                           <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
                           {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                           {canDelete && (
-                            <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => { setDeletingPayment(payment); setDeleteError(null); }} />
+                            <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
                           )}
                         </div>
                       </TD>
@@ -237,42 +226,6 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
           contractValue={vendorEngagements.find((e) => e.id === editingPayment.projectVendorId)?.contractValue ?? 0}
           others={payments.filter((p) => p.projectVendorId === editingPayment.projectVendorId && p.id !== editingPayment.id)}
         />
-      )}
-
-      {deletingPayment && (
-        <Modal
-          open={Boolean(deletingPayment)}
-          onClose={() => setDeletingPayment(null)}
-          title="Hapus Pembayaran"
-          description="Tindakan ini permanen dan tidak dapat dibatalkan."
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setDeletingPayment(null)} disabled={deleting}>Batal</Button>
-              <Button variant="danger" onClick={() => void handleDeletePayment()} disabled={deleting}>
-                {deleting ? "Menghapus..." : "Ya, Hapus Permanen"}
-              </Button>
-            </>
-          }
-        >
-          <div className="flex flex-col gap-3">
-            {deleteError && (
-              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{deleteError}</p>
-            )}
-            <p className="flex items-start gap-2 text-[13.5px] text-text-primary">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
-              <span>
-                Yakin ingin menghapus pembayaran <strong>{formatCurrency(deletingPayment.amount)}</strong> ({deletingPayment.type}) ini
-                secara permanen?
-                {(() => {
-                  const count = evidence.filter((e) => e.relatedKind === "payment" && e.relatedId === deletingPayment.id).length;
-                  return count > 0
-                    ? ` ${count} berkas bukti yang terlampir pada pembayaran ini akan ikut terhapus.`
-                    : "";
-                })()}
-              </span>
-            </p>
-          </div>
-        </Modal>
       )}
 
       {viewingEvidencePayment && (

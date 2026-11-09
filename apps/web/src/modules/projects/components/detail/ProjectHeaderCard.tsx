@@ -1,19 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { useNavigate } from "react-router-dom";
-import { Pencil, AlertTriangle, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban } from "lucide-react";
+import { Pencil, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban } from "lucide-react";
 import { Card, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { ActionMenu } from "@/shared/components/ui/ActionMenu";
 import { Modal } from "@/shared/components/ui/Modal";
-import { ProgressMeter } from "@/shared/components/ui/ProgressMeter";
+import { ProgressMeter, type ProgressMeterStatus } from "@/shared/components/ui/ProgressMeter";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { ProjectStatusBadge, ConditionBadge } from "@/modules/projects/components/StatusBadges";
 import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -33,12 +33,7 @@ const LIFECYCLE_ACTION: Record<ProjectStatus, { action: ProjectStatusAction; lab
 export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const project = useProjectStore((s) => s.currentProject);
-  const milestones = useProjectStore((s) => s.milestones);
-  const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
-  const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
-  const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
-  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
+  const overview = useProjectStore((s) => s.overview);
   const updateProject = useProjectStore((s) => s.updateProject);
   const cancelProject = useProjectStore((s) => s.cancelProject);
   const transitionProject = useProjectStore((s) => s.transitionProject);
@@ -46,7 +41,6 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
-  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   // Actions follow the workspace role's permissions (ADR-0026).
   const canDelete = useCan("project.delete");
   const canEdit = useCan("project.edit");
@@ -56,13 +50,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   // PLAN.md's RBAC section); the backend already rejects both roles' POST
   // .../duplicate.
   const canDuplicate = useCan("project.duplicate");
-  // Margin/Keuntungan reveals vendor-cost/venue-cost business data — Wedding
-  // Planner is not supposed to see this specific computed figure (confirmed
-  // RBAC rule), even though the underlying vendor engagements and venue cost
-  // snapshot it's derived from are already visible to every role via the
-  // Vendor/Venue tabs themselves (no separate fetch to gate here anymore —
-  // both now come from data already loaded for this project).
-  const canSeeMargin = useCan("finance.margin.view");
+  // The server sends `margin` only to roles allowed to see it (finance.margin.view), so its presence is the permission.
 
   const [editOpen, setEditOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -76,32 +64,18 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [completing, setCompleting] = useState(false);
   const closingToken = useRef(0);
 
-  useEffect(() => {
-    void fetchMilestones(projectId);
-    void fetchVendorSection(projectId);
-    void fetchClientPayments(projectId);
-    void fetchStaff();
-  }, [projectId, fetchMilestones, fetchVendorSection, fetchClientPayments, fetchStaff]);
-
   if (!project) {
     return <div className="text-sm text-text-secondary">Project tidak ditemukan.</div>;
   }
 
-  // Margin/Keuntungan = Nilai Kontrak − biaya vendor aktif − biaya venue
-  // (PLAN.md). Cancelled engagements are excluded, same as milestone stats
-  // already exclude Cancelled from every "relevant" computation.
-  const vendorCost = vendorEngagements
-    .filter((v) => v.engagementStatus !== "Cancelled")
-    .reduce((sum, v) => sum + v.contractValue, 0);
-  // Read directly off the project's own cost snapshot — never a live venue
-  // fetch (see PLAN.md "Financial Calculation Correctness"): a completed
-  // project's recorded Margin must never drift just because venue master
-  // data changed later.
-  const venueCost = (project.venueRentalPrice ?? 0) + (project.venueCharge ?? 0);
-  const margin = project.contractValue - vendorCost - venueCost;
-
   const progress = project.progress;
-  const segments = [...milestones, ...vendorMilestones];
+  // One notch per timeline item, in the order done > in progress > blocked > not started: the counts come with the project.
+  const segments: Array<{ status: ProgressMeterStatus }> = progress
+    ? (["Completed", "In Progress", "Blocked", "Not Started"] as const).flatMap((status) => {
+        const key = { Completed: "completed", "In Progress": "inProgress", Blocked: "blocked", "Not Started": "notStarted" }[status] as "completed" | "inProgress" | "blocked" | "notStarted";
+        return Array.from({ length: progress.projectMilestoneStats[key] + progress.vendorMilestoneStats[key] }, () => ({ status }));
+      })
+    : [];
   const totalMilestones = (progress?.projectMilestoneStats.total ?? 0) + (progress?.vendorMilestoneStats.total ?? 0);
   const completedMilestones = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
   const d = daysUntil(project.eventDate);
@@ -257,33 +231,6 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
         )}
 
-        {confirmingCancel && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-            <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
-              <AlertTriangle className="h-4 w-4" /> Yakin ingin membatalkan project ini? Data yang sudah ada tidak akan dihapus.
-            </span>
-            <span className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmingCancel(false)}>Batal</Button>
-              <Button variant="danger" size="sm" onClick={() => void handleCancelProject()}>Ya, Batalkan</Button>
-            </span>
-          </div>
-        )}
-
-        {confirmingDelete && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-            <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
-              <AlertTriangle className="h-4 w-4" /> Yakin ingin menghapus project ini secara permanen? Tindakan ini permanen — seluruh
-              timeline, vendor, pembayaran, kendala, dan evidence akan ikut terhapus dan tidak dapat dipulihkan.
-            </span>
-            <span className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)} disabled={isDeleting}>Batal</Button>
-              <Button variant="danger" size="sm" onClick={() => void handleDeleteProject()} disabled={isDeleting}>
-                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
-              </Button>
-            </span>
-          </div>
-        )}
-
         <div className="grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-5">
           <InfoField label="Tanggal Acara" value={formatDate(project.eventDate)} />
           <InfoField
@@ -294,7 +241,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <InfoField label="Tanggal Booking" value={formatDate(project.prepStartDate)} />
           <InfoField label="Paket / Layanan" value={project.packageName} />
           <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
-          {canSeeMargin && <InfoField label="Margin" value={formatCurrency(margin)} />}
+          {overview?.finance.margin !== undefined && <InfoField label="Margin" value={formatCurrency(overview.finance.margin)} />}
         </div>
 
         {project.description && (
@@ -370,6 +317,36 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           )}
         </Modal>
       )}
+      <ConfirmDialog
+        open={confirmingCancel}
+        title="Batalkan proyek ini?"
+        confirmLabel="Batalkan proyek"
+        error={actionError}
+        onConfirm={() => void handleCancelProject()}
+        onClose={() => {
+          setConfirmingCancel(false);
+          setActionError(null);
+        }}
+      >
+        <p>Proyek ditandai dibatalkan dan klien melihatnya. Data yang sudah ada tidak dihapus, dan proyek bisa dibuka kembali.</p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Hapus proyek ini secara permanen?"
+        confirmLabel="Hapus permanen"
+        confirmText={project.name}
+        isSubmitting={isDeleting}
+        error={actionError}
+        onConfirm={() => void handleDeleteProject()}
+        onClose={() => {
+          setConfirmingDelete(false);
+          setActionError(null);
+        }}
+      >
+        <p>
+          Seluruh jadwal, vendor, pembayaran, kendala, dan bukti proyek ini ikut terhapus dan tidak bisa dipulihkan.
+        </p>
+      </ConfirmDialog>
       <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
       <ProjectFormModal
         open={duplicateOpen}

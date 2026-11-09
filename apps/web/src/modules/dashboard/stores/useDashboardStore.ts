@@ -13,6 +13,9 @@ import type {
   StageCounts,
   ProjectTrendPoint,
   RevenueTrendPoint,
+  CashFlowWeek,
+  VendorDueRow,
+  UnconfirmedVendorRow,
 } from "@/modules/dashboard/types";
 
 interface RawDashboardIssue {
@@ -20,6 +23,7 @@ interface RawDashboardIssue {
   projectId: number;
   projectName: string;
   vendorId: number;
+  vendorName?: string;
   title: string;
   impact: DashboardIssueRow["impact"];
   foundDate: string;
@@ -31,6 +35,7 @@ interface RawDashboardMilestone {
   projectId: number;
   projectName: string;
   vendorId: number;
+  vendorName?: string;
   name: string;
   targetDate: string;
 }
@@ -40,6 +45,7 @@ interface RawDashboardPayment {
   projectId: number;
   projectName: string;
   vendorId: number;
+  vendorName?: string;
   type: DashboardPaymentRow["type"];
   amount: number;
   paymentDate: string;
@@ -79,6 +85,9 @@ interface RawDashboard {
   revenue: { total: number; previousTotal: number; deltaPercent: number | null };
   projectTrend: ProjectTrendPoint[];
   revenueTrend: RevenueTrendPoint[];
+  cashFlow?: CashFlowWeek[] | null;
+  vendorPaymentsDue?: Array<Omit<VendorDueRow, "projectId"> & { projectId: number }> | null;
+  unconfirmedVendors?: Array<Omit<UnconfirmedVendorRow, "projectId"> & { projectId: number }> | null;
 }
 
 function toDashboardStats(raw: RawDashboard): DashboardStats {
@@ -87,15 +96,15 @@ function toDashboardStats(raw: RawDashboard): DashboardStats {
     activeProjects: raw.activeProjects,
     activeVendorCount: raw.activeVendorCount,
     openIssues: raw.openIssues.map((i) => ({
-      id: String(i.id), projectId: String(i.projectId), projectName: i.projectName, vendorId: String(i.vendorId),
+      id: String(i.id), projectId: String(i.projectId), projectName: i.projectName, vendorId: String(i.vendorId), vendorName: i.vendorName ?? "",
       title: i.title, impact: i.impact, foundDate: i.foundDate, status: i.status,
     })),
     overdueVendorMilestones: raw.overdueVendorMilestones.map((m) => ({
-      id: String(m.id), projectId: String(m.projectId), projectName: m.projectName, vendorId: String(m.vendorId),
+      id: String(m.id), projectId: String(m.projectId), projectName: m.projectName, vendorId: String(m.vendorId), vendorName: m.vendorName ?? "",
       name: m.name, targetDate: m.targetDate,
     })),
     incompletePayments: raw.incompletePayments.map((p) => ({
-      id: String(p.id), projectId: String(p.projectId), projectName: p.projectName, vendorId: String(p.vendorId),
+      id: String(p.id), projectId: String(p.projectId), projectName: p.projectName, vendorId: String(p.vendorId), vendorName: p.vendorName ?? "",
       type: p.type, amount: p.amount, paymentDate: p.paymentDate,
     })),
     incompleteVenuePayments: raw.incompleteVenuePayments.map((p) => ({
@@ -114,6 +123,9 @@ function toDashboardStats(raw: RawDashboard): DashboardStats {
     revenue: raw.revenue,
     projectTrend: raw.projectTrend,
     revenueTrend: raw.revenueTrend,
+    cashFlow: raw.cashFlow ?? undefined,
+    vendorPaymentsDue: raw.vendorPaymentsDue?.map((v) => ({ ...v, projectId: String(v.projectId) })),
+    unconfirmedVendors: (raw.unconfirmedVendors ?? []).map((v) => ({ ...v, projectId: String(v.projectId) })),
   };
 }
 

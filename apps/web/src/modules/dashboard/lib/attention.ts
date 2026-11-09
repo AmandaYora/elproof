@@ -14,16 +14,10 @@ export interface AttentionItem {
   to: string;
 }
 
-interface VendorLookup {
-  id: string;
-  name: string;
-}
-
 const TONE_RANK: Record<AttentionTone, number> = { danger: 0, warning: 1, info: 2 };
 
-export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup[]): { items: AttentionItem[]; counts: Record<string, number> } {
+export function buildAttentionItems(stats: DashboardStats): { items: AttentionItem[]; counts: Record<string, number> } {
   const items: AttentionItem[] = [];
-  const vendorName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "";
 
   for (const t of stats.overdueTerms) {
     items.push({
@@ -42,7 +36,7 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
       tone: issue.impact === "Critical" || issue.impact === "High" ? "danger" : "warning",
       category: "Kendala Aktif",
       title: `Kendala ${issue.impact}: ${issue.title}`,
-      description: `${issue.projectName}${vendorName(issue.vendorId) ? ` — ${vendorName(issue.vendorId)}` : ""}`,
+      description: `${issue.projectName}${issue.vendorName ? ` — ${issue.vendorName}` : ""}`,
       to: ROUTE_PATHS.projectDetail(issue.projectId, "vendor"),
     });
   }
@@ -53,7 +47,7 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
       tone: "warning",
       category: "Timeline Terlambat",
       title: `Timeline "${m.name}" terlambat`,
-      description: `${m.projectName} — ${vendorName(m.vendorId)} · target ${formatDate(m.targetDate)}`,
+      description: `${m.projectName} — ${m.vendorName} · target ${formatDate(m.targetDate)}`,
       to: ROUTE_PATHS.projectDetail(m.projectId, "vendor"),
     });
   }
@@ -64,7 +58,7 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
       tone: "warning",
       category: "Evidence Pembayaran",
       title: `Pembayaran ${p.type} belum memiliki evidence lengkap`,
-      description: `${p.projectName} — ${vendorName(p.vendorId)} · ${formatCurrency(p.amount)}`,
+      description: `${p.projectName} — ${p.vendorName} · ${formatCurrency(p.amount)}`,
       to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/vendor"),
     });
   }
@@ -109,6 +103,17 @@ export function buildAttentionItems(stats: DashboardStats, vendors: VendorLookup
   }
 
   items.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
+
+  for (const v of stats.unconfirmedVendors) {
+    items.push({
+      id: `unconfirmed-${v.projectId}-${v.vendorName}`,
+      tone: "warning",
+      category: "Vendor Belum Pasti",
+      title: `${v.vendorName} belum terkonfirmasi`,
+      description: `${v.projectName} · acara ${formatDate(v.eventDate)} (H-${Math.max(daysUntil(v.eventDate), 0)})`,
+      to: ROUTE_PATHS.projectDetail(v.projectId, "vendor"),
+    });
+  }
 
   const counts: Record<string, number> = {};
   for (const item of items) counts[item.category] = (counts[item.category] ?? 0) + 1;

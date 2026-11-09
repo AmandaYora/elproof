@@ -66,12 +66,12 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   const payments = useProjectStore((s) => s.payments);
   const issues = useProjectStore((s) => s.issues);
   const evidence = useProjectStore((s) => s.evidence);
-  const activity = useProjectStore((s) => s.activity);
+  const milestoneHistory = useProjectStore((s) => s.milestoneHistory);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const fetchPayments = useProjectStore((s) => s.fetchPayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
-  const fetchActivity = useProjectStore((s) => s.fetchActivity);
+  const fetchVendorMilestoneHistory = useProjectStore((s) => s.fetchVendorMilestoneHistory);
   const createVendorEngagement = useProjectStore((s) => s.createVendorEngagement);
   const updateVendorEngagement = useProjectStore((s) => s.updateVendorEngagement);
   const cancelVendorEngagement = useProjectStore((s) => s.cancelVendorEngagement);
@@ -101,16 +101,23 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // First paint needs only the engagements (names, PIC and the steps' proof come with them) and the issues: two calls.
   useEffect(() => {
     void fetchVendorSection(projectId);
-    void fetchPayments(projectId);
     void fetchIssues(projectId);
+  }, [projectId, fetchVendorSection, fetchIssues]);
+
+  // Payments, proof files, step history and the pickers are needed only once someone expands an engagement or opens a form.
+  const needsDetails = expanded.size > 0 || addOpen || editing !== null || editingMilestone !== null || addMilestoneFor !== null || issueModal !== null;
+  useEffect(() => {
+    if (!needsDetails) return;
+    void fetchPayments(projectId);
     void fetchEvidence(projectId);
-    void fetchActivity(projectId);
+    void fetchVendorMilestoneHistory(projectId);
     void fetchVendors();
     void fetchCategories();
     void fetchStaff();
-  }, [projectId, fetchVendorSection, fetchPayments, fetchIssues, fetchEvidence, fetchActivity, fetchVendors, fetchCategories, fetchStaff]);
+  }, [needsDetails, projectId, fetchPayments, fetchEvidence, fetchVendorMilestoneHistory, fetchVendors, fetchCategories, fetchStaff]);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -221,6 +228,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
       picStaffId: staff[0]?.id ?? "",
       targetResolutionDate: "",
       status: "Open",
+      isClientVisible: true,
     };
   }
 
@@ -260,9 +268,9 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
     () =>
       sortVendorsForDisplay(vendorEngagements).map((pv) => ({
         pv,
-        vendorName: vendors.find((v) => v.id === pv.vendorId)?.name ?? "Vendor tidak dikenal",
-        categoryName: categories.find((c) => c.id === pv.categoryId)?.name ?? "-",
-        picName: staff.find((s) => s.id === pv.picStaffId)?.name ?? "-",
+        vendorName: pv.vendorName || vendors.find((v) => v.id === pv.vendorId)?.name || "Vendor tidak dikenal",
+        categoryName: pv.categoryName || categories.find((c) => c.id === pv.categoryId)?.name || "-",
+        picName: pv.picName || staff.find((s) => s.id === pv.picStaffId)?.name || "-",
         milestones: vendorMilestones.filter((m) => m.projectVendorId === pv.id),
         payments: payments.filter((p) => p.projectVendorId === pv.id),
         issues: issues.filter((i) => i.projectVendorId === pv.id),
@@ -271,9 +279,9 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   );
 
   function historyFor(milestoneId: string): MilestoneHistoryEntry[] {
-    return activity
-      .filter((a) => a.entityType === "vendor_milestone" && a.entityId === milestoneId)
-      .map((a) => ({ id: a.id, actorName: staff.find((s) => s.id === a.actorStaffId)?.name ?? "Sistem", timestamp: a.timestamp, text: a.description }));
+    return milestoneHistory
+      .filter((a) => a.entityId === milestoneId)
+      .map((a) => ({ id: a.id, actorName: a.actorName || "Sistem", timestamp: a.timestamp, text: a.description }));
   }
 
   function evidenceFor(milestone: VendorMilestone) {
@@ -332,7 +340,8 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <ProjectVendorFormModal projectId={projectId} open={addOpen} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
+      {/* Mounted only while open: the form loads the vendor list, categories and staff when it mounts. */}
+      {addOpen && <ProjectVendorFormModal projectId={projectId} open onClose={() => setAddOpen(false)} onSubmit={handleAdd} />}
       {editing && (
         <ProjectVendorFormModal
           projectId={projectId}

@@ -189,6 +189,10 @@ export interface ProjectVendor {
   /** Resolved by the server (E6); "" when it could not be. */
   vendorName: string;
   categoryName: string;
+  /** Staff name of the engagement's PIC, resolved by the server (E2); "" when unresolved. */
+  picName: string;
+  /** How many files back this engagement, its steps and its payments (what the caller may see). */
+  evidenceCount: number;
 }
 
 export interface VendorMilestone {
@@ -256,6 +260,7 @@ export interface VenuePayment {
 
 export interface VendorIssue {
   id: string;
+  /** "" = a kendala about the event in general, not tied to a vendor. */
   projectVendorId: string;
   // Null when the kendala is general to the vendor engagement, not tied to
   // one specific deliverable.
@@ -273,6 +278,10 @@ export interface VendorIssue {
   /** Names resolved by the server so the Portal needs no vendor lists (E6). */
   vendorName: string;
   vendorMilestoneName: string;
+  /** The WO's PIC for this kendala (never sent to the Portal). */
+  picName: string;
+  /** Whether the client sees it in the Portal. */
+  isClientVisible: boolean;
   evidence: EvidenceRef[];
 }
 
@@ -310,6 +319,8 @@ export interface ActivityLogEntry {
   id: string;
   type: ActivityType;
   actorStaffId: string;
+  /** Resolved by the server; "" for the system (no actor). */
+  actorName: string;
   projectId: string | null;
   entityType: string;
   entityId: string;
@@ -336,4 +347,40 @@ export interface PaymentTermInput {
   label: string;
   amount: number;
   dueDate: string;
+}
+
+/**
+ * GET /projects/{id}/overview (PLAN.md E1): everything the project header, side panel and Ringkasan tab show, in one
+ * call and computed by the server (finance numbers, what needs doing, who is on the team).
+ */
+export interface ProjectOverview {
+  finance: {
+    contractValue: number;
+    /** Applied to the contract: DP + Termin + Pelunasan - Refund. */
+    paid: number;
+    /** Never negative. */
+    remaining: number;
+    overdueTotal: number;
+    nextTerm: { id: string; label: string; amount: number; dueDate: string; status: PaymentTermStatus; remaining: number } | null;
+    terms: PaymentTerm[];
+    vendorCost: number;
+    venueCost: number;
+    /** Only present for roles with finance.margin.view. */
+    margin?: number;
+  };
+  actions: OverviewAction[];
+  nextMilestones: Array<{ id: string; name: string; status: MilestoneStatus; targetDate: string }>;
+  unconfirmedVendors: Array<{ id: string; vendorName: string; engagementStatus: string }>;
+  openIssueCount: number;
+  team: { picStaffId: string; picName: string; picSalesStaffId: string; picSalesName: string };
+  clients: Array<{ id: string; name: string; role: string; hasLogin: boolean }>;
+}
+
+export interface OverviewAction {
+  kind: "term_overdue" | "issue_open" | "vendor_unconfirmed" | "milestone_late";
+  id: string;
+  tone: "danger" | "warning";
+  title: string;
+  detail: string;
+  tab: "pembayaran/client" | "kendala" | "vendor" | "milestone";
 }

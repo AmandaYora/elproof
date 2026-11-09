@@ -54,7 +54,8 @@ interface ClientState {
   createClient: (projectId: string, role: ClientRole, values: ClientCreateFormValues) => Promise<{ client: Client; link: AccessLink }>;
   updateContact: (projectId: string, clientId: string, values: ClientContactFormValues) => Promise<void>;
   toggleActive: (projectId: string, clientId: string) => Promise<void>;
-  deleteClient: (projectId: string, clientId: string) => Promise<void>;
+  /** Returns the function that undoes the delete (the server keeps the client 24 h). */
+  deleteClient: (projectId: string, clientId: string) => Promise<() => Promise<void>>;
   /** New invitation (no password yet) or 24-hour password-reset link. */
   issueAccessLink: (projectId: string, clientId: string) => Promise<AccessLink>;
   /** Replaces the person; the old one loses access, the new one gets an invitation. */
@@ -115,6 +116,11 @@ export const useClientStore = create<ClientState>((set, get) => ({
   deleteClient: async (projectId, clientId) => {
     await httpClient.delete(API.clients.item(clientId));
     await get().fetchClients(projectId);
+    // The server keeps the client (login switched off) for 24 hours, so this really restores it.
+    return async () => {
+      await httpClient.post(API.clients.restore(clientId));
+      await get().fetchClients(projectId);
+    };
   },
 
   issueAccessLink: async (projectId, clientId) => {

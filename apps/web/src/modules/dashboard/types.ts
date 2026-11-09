@@ -5,6 +5,8 @@ export interface DashboardIssueRow {
   projectId: string;
   projectName: string;
   vendorId: string;
+  /** Resolved by the server; "" for a kendala about the event itself. */
+  vendorName: string;
   title: string;
   impact: IssueImpact;
   foundDate: string;
@@ -16,6 +18,7 @@ export interface DashboardMilestoneRow {
   projectId: string;
   projectName: string;
   vendorId: string;
+  vendorName: string;
   name: string;
   targetDate: string;
 }
@@ -25,6 +28,7 @@ export interface DashboardPaymentRow {
   projectId: string;
   projectName: string;
   vendorId: string;
+  vendorName: string;
   type: PaymentType;
   amount: number;
   paymentDate: string;
@@ -82,6 +86,32 @@ export interface DashboardTaskRow {
   targetDate: string;
 }
 
+/** One week of expected money: what clients still owe (in) and what vendors are still owed (out). */
+export interface CashFlowWeek {
+  /** Monday of the week, YYYY-MM-DD. */
+  weekStart: string;
+  expectedIn: number;
+  expectedOut: number;
+}
+
+/** A vendor payment that is due within 30 days or already late. */
+export interface VendorDueRow {
+  projectId: string;
+  projectName: string;
+  vendorName: string;
+  dueDate: string;
+  remaining: number;
+}
+
+/** A vendor still only planned or negotiated although the event is within 30 days. */
+export interface UnconfirmedVendorRow {
+  projectId: string;
+  projectName: string;
+  vendorName: string;
+  engagementStatus: string;
+  eventDate: string;
+}
+
 export interface StageCounts {
   draft: number;
   preparation: number;
@@ -108,4 +138,8 @@ export interface DashboardStats {
   revenue: RevenueSummary;
   projectTrend: ProjectTrendPoint[];
   revenueTrend: RevenueTrendPoint[];
+  /** Only for roles that may see money (dashboard.revenue.view). */
+  cashFlow?: CashFlowWeek[];
+  vendorPaymentsDue?: VendorDueRow[];
+  unconfirmedVendors: UnconfirmedVendorRow[];
 }

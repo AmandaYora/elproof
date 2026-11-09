@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { httpClient } from "@/shared/services/http-client";
+import { httpClient, onProjectWrite } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
@@ -12,8 +12,10 @@ import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { uploadFile } from "@/shared/lib/direct-upload";
 import type {
+  OverviewAction,
   PaymentTerm,
   PaymentTermInput,
+  ProjectOverview,
   ClosingChecklist,
   ProjectStatusAction,
   ActivityLogEntry,
@@ -251,6 +253,8 @@ interface RawProjectVendor {
   notes: string;
   vendorName?: string;
   categoryName?: string;
+  picName?: string;
+  evidenceCount?: number;
   // Only populated by GET .../vendors (listVendorEngagements) — see
   // fetchVendorSection, which reads this instead of issuing its own
   // per-engagement GET .../milestones request.
@@ -277,6 +281,8 @@ function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
     notes: raw.notes,
     vendorName: raw.vendorName ?? "",
     categoryName: raw.categoryName ?? "",
+    picName: raw.picName ?? "",
+    evidenceCount: raw.evidenceCount ?? 0,
   };
 }
 
@@ -423,7 +429,7 @@ function toVenuePayment(raw: RawVenuePayment): VenuePayment {
 
 interface RawIssue {
   id: number;
-  projectVendorId: number;
+  projectVendorId: number | null;
   vendorMilestoneId: number | null;
   title: string;
   description: string;
@@ -437,7 +443,23 @@ interface RawIssue {
   resolutionNotes: string;
   vendorName?: string;
   vendorMilestoneName?: string;
+  picName?: string;
+  isClientVisible?: boolean;
   evidence?: RawEvidenceRef[] | null;
+}
+
+interface RawOverview {
+  project: RawProject;
+  finance: Omit<ProjectOverview["finance"], "terms" | "nextTerm"> & {
+    nextTerm: (Omit<NonNullable<ProjectOverview["finance"]["nextTerm"]>, "id"> & { id: number }) | null;
+    terms: Array<Omit<PaymentTerm, "id"> & { id: number }> | null;
+  };
+  actions: OverviewAction[] | null;
+  nextMilestones: Array<Omit<ProjectOverview["nextMilestones"][number], "id"> & { id: number }> | null;
+  unconfirmedVendors: Array<Omit<ProjectOverview["unconfirmedVendors"][number], "id"> & { id: number }> | null;
+  openIssueCount: number;
+  team: { picStaffId: number; picName: string; picSalesStaffId: number; picSalesName: string };
+  clients: Array<Omit<ProjectOverview["clients"][number], "id"> & { id: number }> | null;
 }
 
 function toPaymentTerms(raw: Array<Omit<PaymentTerm, "id"> & { id: number }>): PaymentTerm[] {
@@ -447,7 +469,7 @@ function toPaymentTerms(raw: Array<Omit<PaymentTerm, "id"> & { id: number }>): P
 function toIssue(raw: RawIssue): VendorIssue {
   return {
     id: String(raw.id),
-    projectVendorId: String(raw.projectVendorId),
+    projectVendorId: raw.projectVendorId ? String(raw.projectVendorId) : "",
     vendorMilestoneId: raw.vendorMilestoneId !== null ? String(raw.vendorMilestoneId) : null,
     title: raw.title,
     description: raw.description,
@@ -461,6 +483,8 @@ function toIssue(raw: RawIssue): VendorIssue {
     resolutionNotes: raw.resolutionNotes,
     vendorName: raw.vendorName ?? "",
     vendorMilestoneName: raw.vendorMilestoneName ?? "",
+    picName: raw.picName ?? "",
+    isClientVisible: raw.isClientVisible ?? true,
     evidence: toEvidenceRefs(raw.evidence),
   };
 }
@@ -481,6 +505,7 @@ export function toIssueUpdateFields(issue: VendorIssue): IssueFormValues {
     picStaffId: issue.picStaffId,
     targetResolutionDate: issue.targetResolutionDate ?? "",
     status: issue.status,
+    isClientVisible: issue.isClientVisible,
   };
 }
 
@@ -528,6 +553,7 @@ export interface RawActivity {
   id: number;
   type: ActivityLogEntry["type"];
   actorStaffId: number;
+  actorName?: string;
   projectId: number | null;
   entityType: string;
   entityId: string;
@@ -541,6 +567,7 @@ export function toActivity(raw: RawActivity): ActivityLogEntry {
     id: String(raw.id),
     type: raw.type,
     actorStaffId: String(raw.actorStaffId),
+    actorName: raw.actorName ?? "",
     projectId: raw.projectId !== null ? String(raw.projectId) : null,
     entityType: raw.entityType,
     entityId: raw.entityId,
@@ -553,6 +580,7 @@ export function toActivity(raw: RawActivity): ActivityLogEntry {
 interface ProjectState {
   projects: Project[];
   currentProject: Project | null;
+  overview: ProjectOverview | null;
   milestones: ProjectMilestone[];
   vendorEngagements: ProjectVendor[];
   vendorMilestones: VendorMilestone[];
@@ -568,6 +596,8 @@ interface ProjectState {
   // unfiltered endpoint).
   documents: Evidence[];
   activity: ActivityLogEntry[];
+  activityMeta: PaginationMeta;
+  milestoneHistory: ActivityLogEntry[];
 
   projectPage: Project[];
   projectPageMeta: PaginationMeta;
@@ -626,6 +656,15 @@ interface ProjectState {
   duplicateProject: (sourceId: string, values: ProjectFormValues) => Promise<Project>;
 
   fetchProjectDetail: (projectId: string) => Promise<void>;
+  /**
+   * Loads the project page's header, side panel and Ringkasan in ONE call (E1) and sets currentProject and the
+   * payment schedule from it; everything else on the page loads when its tab opens.
+   */
+  fetchOverview: (projectId: string) => Promise<void>;
+  /** The server returns fresh progress with every mutation (E8): putting it here keeps the header from going stale. */
+  applyProgress: (projectId: string, progress: unknown) => void;
+  /** Reloads the overview without clearing what is on screen. */
+  refreshOverview: (projectId: string) => Promise<void>;
   fetchMyProject: () => Promise<string>;
 
   fetchMilestones: (projectId: string) => Promise<void>;
@@ -656,7 +695,8 @@ interface ProjectState {
   // on a sibling array populated only by fetchVendorSection, not derived
   // from `payments` itself).
   updatePayment: (projectId: string, paymentId: string, values: PaymentUpdateFormValues) => Promise<void>;
-  deletePayment: (projectId: string, paymentId: string) => Promise<void>;
+  /** Removes it at once and returns the function that restores it (the server keeps it 24 h). */
+  deletePayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
 
   fetchClientPayments: (projectId: string) => Promise<void>;
   // Orchestrates POST .../client-payments then, only if values.proofFile is
@@ -666,7 +706,7 @@ interface ProjectState {
   // has today (createPayment above never attaches evidence at creation time).
   createClientPayment: (projectId: string, values: ClientPaymentFormValues, options?: SaveOptions) => Promise<void>;
   updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues) => Promise<void>;
-  deleteClientPayment: (projectId: string, paymentId: string) => Promise<void>;
+  deleteClientPayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
   /** The WO confirms the money arrived (E4). Needs a proof file; the client then sees the stamp. */
   verifyClientPayment: (projectId: string, paymentId: string) => Promise<void>;
 
@@ -675,7 +715,7 @@ interface ProjectState {
   // just against .../venue-payments and relatedKind "venuePayment".
   createVenuePayment: (projectId: string, values: VenuePaymentFormValues, options?: SaveOptions) => Promise<void>;
   updateVenuePayment: (projectId: string, paymentId: string, values: VenuePaymentUpdateFormValues) => Promise<void>;
-  deleteVenuePayment: (projectId: string, paymentId: string) => Promise<void>;
+  deleteVenuePayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
 
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
@@ -686,16 +726,49 @@ interface ProjectState {
   toggleEvidenceClientVisible: (projectId: string, evidenceId: string) => Promise<void>;
   fetchDocuments: (projectId: string) => Promise<void>;
 
-  fetchActivity: (projectId: string) => Promise<void>;
+  fetchActivity: (projectId: string, page?: number) => Promise<void>;
+  /** What happened to the vendor steps (one filtered call, newest first), for the history inside each engagement. */
+  fetchVendorMilestoneHistory: (projectId: string) => Promise<void>;
 }
 
 // Backed by the real `projects` module (Fase 4) — tenant-scoped, fetch-then-set
 // (ADR-0009). Every fetch* function replaces its slice wholesale; there is no
 // per-project namespacing in the store itself, so callers always re-fetch
 // when the viewed project changes (matches how the tab pages remount).
+async function loadOverview(projectId: string): Promise<Pick<ProjectState, "currentProject" | "overview" | "paymentTerms" | "paymentTermsFor">> {
+  const res = await httpClient.get(API.projects.overview(projectId));
+  const raw = res.data.data as RawOverview;
+  const finance = raw.finance;
+  const terms = toPaymentTerms(finance.terms ?? []);
+  return {
+    currentProject: toProject(raw.project),
+    overview: {
+      finance: { ...finance, nextTerm: finance.nextTerm ? { ...finance.nextTerm, id: String(finance.nextTerm.id) } : null, terms },
+      actions: raw.actions ?? [],
+      nextMilestones: (raw.nextMilestones ?? []).map((m) => ({ ...m, id: String(m.id) })),
+      unconfirmedVendors: (raw.unconfirmedVendors ?? []).map((v) => ({ ...v, id: String(v.id) })),
+      openIssueCount: raw.openIssueCount,
+      team: {
+        picStaffId: raw.team.picStaffId ? String(raw.team.picStaffId) : "",
+        picName: raw.team.picName,
+        picSalesStaffId: raw.team.picSalesStaffId ? String(raw.team.picSalesStaffId) : "",
+        picSalesName: raw.team.picSalesName,
+      },
+      clients: (raw.clients ?? []).map((c) => ({ ...c, id: String(c.id) })),
+    },
+    paymentTerms: terms,
+    paymentTermsFor: projectId,
+  };
+}
+
+// The overview (finance numbers, what needs doing) changes with almost any write on the project, so it is reloaded
+// after the last write of a burst; the progress that came back with the write is applied at once.
+let overviewTimer: ReturnType<typeof setTimeout> | undefined;
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   currentProject: null,
+  overview: null,
   milestones: [],
   vendorEngagements: [],
   vendorMilestones: [],
@@ -708,6 +781,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   evidence: [],
   documents: [],
   activity: [],
+  activityMeta: EMPTY_PAGINATION_META,
+  milestoneHistory: [],
 
   projectPage: [],
   projectPageMeta: EMPTY_PAGINATION_META,
@@ -869,6 +944,28 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ currentProject: toProject(res.data.data as RawProject) });
   },
 
+  fetchOverview: async (projectId) => {
+    // Everything scoped to a project is cleared with it, so nothing of the previous project can show or be edited.
+    set({
+      vendorEngagements: [], vendorMilestones: [], milestones: [], payments: [], clientPayments: [], venuePayments: [],
+      evidence: [], issues: [], paymentTerms: [], paymentTermsFor: null, overview: null,
+    });
+    set(await loadOverview(projectId));
+  },
+
+  refreshOverview: async (projectId) => {
+    const loaded = await loadOverview(projectId);
+    if (get().currentProject?.id === projectId) set(loaded);
+  },
+
+  applyProgress: (projectId, progress) => {
+    if (!progress) return;
+    const next = toProgress(progress as RawProgress);
+    set((state) => ({
+      currentProject: state.currentProject?.id === projectId ? { ...state.currentProject, progress: next } : state.currentProject,
+    }));
+  },
+
   // Client Portal's entry point (Fase 6) — a client principal has no other
   // way to learn its own project id, so this resolves + returns it in one
   // call (mirrors GET /projects/me on the backend).
@@ -1010,8 +1107,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   deletePayment: async (projectId, paymentId) => {
-    await httpClient.delete(API.projects.payment(projectId, paymentId));
-    await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
+    const before = get().payments;
+    set({ payments: before.filter((p) => p.id !== paymentId) });
+    try {
+      await httpClient.delete(API.projects.payment(projectId, paymentId));
+    } catch (err) {
+      set({ payments: before });
+      throw err;
+    }
+    void get().fetchVendorSection(projectId);
+    return async () => {
+      await httpClient.post(API.projects.paymentRestore(projectId, paymentId));
+      await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
+    };
   },
 
   fetchClientPayments: async (projectId) => {
@@ -1050,8 +1158,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   deleteClientPayment: async (projectId, paymentId) => {
-    await httpClient.delete(API.projects.clientPayment(projectId, paymentId));
-    await get().fetchClientPayments(projectId);
+    const before = get().clientPayments;
+    set({ clientPayments: before.filter((p) => p.id !== paymentId) });
+    try {
+      await httpClient.delete(API.projects.clientPayment(projectId, paymentId));
+    } catch (err) {
+      set({ clientPayments: before });
+      throw err;
+    }
+    return async () => {
+      await httpClient.post(API.projects.clientPaymentRestore(projectId, paymentId));
+      await get().fetchClientPayments(projectId);
+    };
   },
 
   verifyClientPayment: async (projectId, paymentId) => {
@@ -1098,8 +1216,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   deleteVenuePayment: async (projectId, paymentId) => {
-    await httpClient.delete(API.projects.venuePayment(projectId, paymentId));
-    await get().fetchVenuePayments(projectId);
+    const before = get().venuePayments;
+    set({ venuePayments: before.filter((p) => p.id !== paymentId) });
+    try {
+      await httpClient.delete(API.projects.venuePayment(projectId, paymentId));
+    } catch (err) {
+      set({ venuePayments: before });
+      throw err;
+    }
+    return async () => {
+      await httpClient.post(API.projects.venuePaymentRestore(projectId, paymentId));
+      await get().fetchVenuePayments(projectId);
+    };
   },
 
   fetchIssues: async (projectId) => {
@@ -1110,8 +1238,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   createIssue: async (projectId, values) => {
     await httpClient.post(API.projects.issues(projectId), {
       ...values,
-      projectVendorId: Number(values.projectVendorId),
-      vendorMilestoneId: values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
+      projectVendorId: values.projectVendorId ? Number(values.projectVendorId) : null,
+      vendorMilestoneId: values.projectVendorId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
       picStaffId: Number(values.picStaffId),
     });
     await get().fetchIssues(projectId);
@@ -1120,8 +1248,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   updateIssue: async (projectId, issueId, values) => {
     await httpClient.patch(API.projects.issue(projectId, issueId), {
       ...values,
-      projectVendorId: Number(values.projectVendorId),
-      vendorMilestoneId: values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
+      projectVendorId: values.projectVendorId ? Number(values.projectVendorId) : null,
+      vendorMilestoneId: values.projectVendorId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
       picStaffId: Number(values.picStaffId),
     });
     await get().fetchIssues(projectId);
@@ -1158,8 +1286,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ documents: (res.data.data as RawEvidence[]).map(toEvidence) });
   },
 
-  fetchActivity: async (projectId) => {
-    const res = await httpClient.get(API.projects.activity(projectId));
-    set({ activity: (res.data.data as RawActivity[]).map(toActivity) });
+  fetchVendorMilestoneHistory: async (projectId) => {
+    const res = await httpClient.get(API.projects.activity(projectId), { params: { entityType: "vendor_milestone", limit: 100 } });
+    set({ milestoneHistory: (res.data.data as RawActivity[]).map(toActivity) });
+  },
+
+  fetchActivity: async (projectId, page = 1) => {
+    const res = await httpClient.get(API.projects.activity(projectId), { params: { page, limit: 20 } });
+    set({ activity: (res.data.data as RawActivity[]).map(toActivity), activityMeta: toPaginationMeta(res.data.meta as RawPaginationMeta) });
   },
 }));
+
+onProjectWrite((projectId, data) => {
+  const store = useProjectStore.getState();
+  if (store.currentProject?.id !== projectId) return;
+  store.applyProgress(projectId, (data as { projectProgress?: unknown } | null | undefined)?.projectProgress);
+  clearTimeout(overviewTimer);
+  overviewTimer = setTimeout(() => void store.refreshOverview(projectId).catch(() => undefined), 300);
+});
