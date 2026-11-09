@@ -102,3 +102,9 @@ Bila `minio` ada di PATH (atau `E2E_MINIO_BIN`), tumpukan menyalakan MinIO semen
 `E2E_MINIO=0` mematikannya) sehingga benih bisa melampirkan bukti: DP terverifikasi dan satu tahapan selesai dengan berkas
 yang dibagikan. Tanpa MinIO benih tidak punya bukti dan tes yang membutuhkannya dilewati (`state().storage`).
 Potret sekarang mengandaikan MinIO ada; CI harus menyediakannya.
+
+## Tes yang menulis data (`--project=mutating`)
+
+`tests/payment-flow.spec.ts` membuat proyek dan mencatat pembayaran sungguhan. Project ini `dependencies: [desktop, mobile]`, jadi baru
+jalan setelah semua potret selesai dan datanya tidak bocor ke potret. Jalankan sendiri dengan `--project=mutating --no-deps`.
+`npm run e2e` kini menjalankan desktop, mobile, behavior, dan mutating.

@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (9 Nov 2026): **Tahap 0–2 dikerjakan dan dikomit; Tahap 3 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (9 Nov 2026): **Tahap 0–3 dikerjakan dan dikomit; Tahap 4 dikerjakan, belum dikomit** (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -234,6 +234,22 @@ per field, tombol kirim tidak dinonaktifkan karena validitas, nilai bawaan cerda
 pindah ke drawer dengan sisa dan isi otomatis pelunasan. Buat Proyek dicoba dengan react-hook-form.
 **Selesai bila:** tidak ada lagi pesan "tersimpan, tetapi … gagal" di kode; buat proyek dan catat pembayaran masing-masing
 satu panggilan bisnis; uji papan ketik penuh pada Buat Proyek, Catat Pembayaran, Peran & Akses, Daftar/Masuk.
+
+*Tahap 4 (9 Nov 2026).* API (ADR-0033): `POST /projects/{id}/uploads` (token bertanda tangan; PUT langsung ke penyimpanan atau lewat API),
+pembayaran klien/vendor/venue menerima `evidence:[{uploadToken,type}]` dan menyimpan pembayaran + bukti dalam **satu transaksi**,
+`Idempotency-Key` pada tiga POST pembayaran dan `POST /projects`, `ledgerSummary` di respons, `POST /projects` menerima venue + termin
+(semua-atau-tidak-sama-sekali, semua galat sekaligus dengan kunci `terms[i].amount`), vendor proyek menurunkan kategori/tanggal di server.
+UI: kit formulir (`shared/forms`: `useZodForm`, `FormErrorSummary`, `Field name`): validasi saat kirim lalu per field saat blur,
+ringkasan galat dari 3 galat, 422 dipetakan ke field/baris, tombol kirim hanya nonaktif saat memproses, galat yang tidak punya field
+tidak pernah diam. 17 formulir WO + 19 formulir auth/Platform dipindah (laporan agen, diverifikasi tsc/build/e2e), Catat Pembayaran
+menjadi drawer (`RecordPaymentDrawer`: sisa tagihan, Pelunasan mengisi sisa, bukti ikut satu permintaan, aman diulang), Buat Proyek
+satu panggilan atomik. Tes: `forms.spec.ts`, `payment-flow.spec.ts` (project "mutating", berjalan setelah semua potret selesai),
+204 tes e2e hijau, tes Go dan 268 permintaan isolasi hijau.
+**Belum / berbeda dari rencana:** (1) react-hook-form **tidak dicoba**: `useZodForm` memberi perilaku yang sama tanpa dependensi baru;
+keputusan perlu dikonfirmasi. (2) Modal *ubah* pembayaran (tiga seksi), `EvidenceUploadModal`, `PaymentTermsEditor` (baris), `PortalRoleSelect`
+belum memakai kit baru. (3) Daftar/Masuk: Masuk teruji dengan papan ketik, Daftar (alur Google) tidak otomatis. (4) Unggah langsung
+**melewati kompresi ulang server** (ADR-0010; kompresi sisi browser tetap jalan) dan butuh **CORS** pada bucket produksi: belum diverifikasi
+di S3/R2 nyata. (5) Objek unggahan yatim tidak dibersihkan terjadwal. (6) Pesan 'tersimpan, tetapi … gagal' sudah hilang dari kode.
 
 ### Tahap 5 — Detail Proyek dan Beranda WO
 API: **E1** (`/projects/{id}/overview`), **E2** (nama + bukti di vendor proyek, aktivitas terpaginasi), **E8** (mutasi
