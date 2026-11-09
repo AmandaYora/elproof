@@ -118,16 +118,37 @@ type projectInputBody struct {
 	// sentinel 0.
 	VenueRentalPrice *int64 `json:"venueRentalPrice"`
 	VenueCharge      *int64 `json:"venueCharge"`
+	// Terms is read by create only: the client's payment schedule, saved in the
+	// same transaction as the project (and, with venueId, its venue).
+	Terms []projectTermBody `json:"terms"`
 }
 
-func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
+// projectTermBody is one installment of the payment schedule sent with a new project.
+type projectTermBody struct {
+	Label   string `json:"label"`
+	Amount  int64  `json:"amount"`
+	DueDate string `json:"dueDate"`
+}
+
+// toProjectInput reads the two dates of a project body. A date that is not
+// YYYY-MM-DD is reported under its own key ("eventDate", "prepStartDate"), both
+// at once when both are wrong; the input still comes back (with the zero time
+// for a bad date) so the caller can add the other problems it finds.
+func toProjectInput(body projectInputBody) (application.ProjectInput, map[string][]string) {
+	var bad map[string][]string
+	fail := func(key string) {
+		if bad == nil {
+			bad = map[string][]string{}
+		}
+		bad[key] = []string{"Gunakan format YYYY-MM-DD"}
+	}
 	eventDate, err := parseDate(body.EventDate)
 	if err != nil {
-		return application.ProjectInput{}, err
+		fail("eventDate")
 	}
 	prepStartDate, err := parseDate(body.PrepStartDate)
 	if err != nil {
-		return application.ProjectInput{}, err
+		fail("prepStartDate")
 	}
 	return application.ProjectInput{
 		Name: body.Name, BrideName: body.BrideName, GroomName: body.GroomName, EventDate: eventDate,
@@ -135,7 +156,18 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
 		ContractValue: body.ContractValue, Status: domain.ProjectStatus(body.Status),
 		PICStaffID: body.PICStaffID, PICSalesStaffID: body.PICSalesStaffID, Description: body.Description, VenueID: body.VenueID,
 		VenueRentalPrice: body.VenueRentalPrice, VenueCharge: body.VenueCharge,
-	}, nil
+	}, bad
+}
+
+// projectCreatedResponse is the new project (as before, `venue` stays the
+// venue's name as text) plus what was saved with it: the payment schedule as
+// GET /payment-terms would list it (`[]` when none was sent) and the attached
+// venue's summary as `venueSummary` (`null` when none; a different key because
+// `venue` is already the project's venue text).
+type projectCreatedResponse struct {
+	projectResponse
+	Terms        []paymentTermResponse `json:"terms"`
+	VenueSummary *venueSummaryResponse `json:"venueSummary"`
 }
 
 // createProject is Owner/Admin/Sales (confirmed role rule) — a Wedding
@@ -143,28 +175,66 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, error) {
 // someone else, never creates one themselves; Sales creates a project of
 // their own (see ProjectService.Create's callerRole handling for how their
 // PICSalesStaffID gets forced to themselves).
+//
+// One call creates everything (E7): the project and its default milestones, its
+// venue (venueId, venueRentalPrice, venueCharge) and its payment schedule
+// (terms), in one transaction, under the optional Idempotency-Key header.
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims staffClaims) {
 	if !claims.can("project.create") {
 		forbiddenPermission(w, "Peran Anda tidak dapat membuat project baru")
 		return
 	}
+	h.idempotent(w, r, claims, func(w http.ResponseWriter, r *http.Request) {
+		h.createProjectNow(w, r, claims)
+	})
+}
+
+func (h *Handler) createProjectNow(w http.ResponseWriter, r *http.Request, claims staffClaims) {
 	var body projectInputBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	input, err := toProjectInput(body)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
-		return
+	input, badDates := toProjectInput(body)
+	setup := application.ProjectSetup{FieldErrors: badDates}
+	for i, t := range body.Terms {
+		due, err := parseDate(t.DueDate)
+		if err != nil && t.DueDate != "" {
+			if setup.FieldErrors == nil {
+				setup.FieldErrors = map[string][]string{}
+			}
+			setup.FieldErrors["terms["+strconv.Itoa(i)+"].dueDate"] = []string{"Gunakan format YYYY-MM-DD"}
+			// A placeholder, so the schedule check does not also say "isi tanggal".
+			due = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		}
+		setup.Terms = append(setup.Terms, application.PaymentTermInput{Label: t.Label, Amount: t.Amount, DueDate: due})
 	}
-	p, err := h.projects.Create(r.Context(), claims.tenantID, claims.actor(), input)
+	p, err := h.projects.CreateAtomic(r.Context(), claims.tenantID, claims.actor(), input, setup)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	resp := toProjectResponse(*p)
+	resp := projectCreatedResponse{projectResponse: toProjectResponse(*p), Terms: []paymentTermResponse{}}
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
+	if len(setup.Terms) > 0 {
+		list, err := h.terms.List(r.Context(), claims.tenantID, p.ID, nowWIB())
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		resp.Terms = toPaymentTermResponses(list)
+	}
+	if p.VenueID != nil {
+		summary, err := h.projects.GetVenue(r.Context(), claims.tenantID, p.ID)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		if summary != nil {
+			v := toVenueSummaryResponse(*summary)
+			resp.VenueSummary = &v
+		}
+	}
 	response.Created(w, "Project berhasil dibuat", resp)
 }
 
@@ -243,9 +313,9 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	input, err := toProjectInput(body)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
+	input, badDates := toProjectInput(body)
+	if badDates != nil {
+		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", badDates)
 		return
 	}
 	p, err := h.projects.Update(r.Context(), claims.tenantID, projectID, claims.actor(), input)
@@ -347,9 +417,9 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	input, err := toProjectInput(body)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
+	input, badDates := toProjectInput(body)
+	if badDates != nil {
+		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", badDates)
 		return
 	}
 	p, err := h.projects.Duplicate(r.Context(), claims.tenantID, claims.staffID, projectID, input)

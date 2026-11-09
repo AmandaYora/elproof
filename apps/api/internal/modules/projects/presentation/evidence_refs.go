@@ -1,6 +1,26 @@
 package presentation
 
-import "elproof/internal/modules/projects/domain"
+import (
+	"elproof/internal/modules/projects/application"
+	"elproof/internal/modules/projects/domain"
+)
+
+// proofBody is one file a payment request attaches: the token POST
+// /projects/{id}/uploads returned, what kind of document it is, and an optional
+// display name (default "Bukti Transfer - <reference>" / "Invoice - <reference>").
+type proofBody struct {
+	UploadToken string `json:"uploadToken"`
+	Type        string `json:"type"`
+	Name        string `json:"name"`
+}
+
+func toProofItems(list []proofBody) []application.ProofItem {
+	out := make([]application.ProofItem, 0, len(list))
+	for _, p := range list {
+		out = append(out, application.ProofItem{UploadToken: p.UploadToken, Type: domain.EvidenceType(p.Type), Name: p.Name})
+	}
+	return out
+}
 
 // evidenceKey identifies the item a proof file hangs off.
 type evidenceKey struct {

@@ -66,7 +66,7 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 }
 
 func (r *MySQLVendorEngagementRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectVendor, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? ORDER BY id`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? ORDER BY id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (r *MySQLVendorEngagementRepository) ListByProjects(ctx context.Context, pr
 		return nil, nil
 	}
 	query := `SELECT ` + projectVendorColumns + ` FROM project_vendors WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, id`
-	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,12 +109,12 @@ func (r *MySQLVendorEngagementRepository) ListByProjects(ctx context.Context, pr
 }
 
 func (r *MySQLVendorEngagementRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectVendor, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectVendorColumns+` FROM project_vendors WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
 	return scanProjectVendor(row.Scan)
 }
 
 func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain.ProjectVendor) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO project_vendors (project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
 		 booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -133,7 +133,7 @@ func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain
 }
 
 func (r *MySQLVendorEngagementRepository) Update(ctx context.Context, pv *domain.ProjectVendor) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE project_vendors SET vendor_id = ?, category_id = ?, scope = ?, contract_value = ?, pricing_tier = ?, engagement_status = ?,
 		 booking_date = ?, event_date = ?, event_start_time = ?, event_end_time = ?, dp_amount = ?, due_date = ?, pic_staff_id = ?, notes = ?
 		 WHERE id = ?`,
@@ -144,7 +144,7 @@ func (r *MySQLVendorEngagementRepository) Update(ctx context.Context, pv *domain
 }
 
 func (r *MySQLVendorEngagementRepository) SetStatus(ctx context.Context, projectID, id int64, status domain.EngagementStatus) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE project_vendors SET engagement_status = ? WHERE project_id = ? AND id = ?`, string(status), projectID, id)
+	_, err := conn(ctx, r.db).ExecContext(ctx, `UPDATE project_vendors SET engagement_status = ? WHERE project_id = ? AND id = ?`, string(status), projectID, id)
 	return err
 }
 
@@ -153,7 +153,7 @@ func (r *MySQLVendorEngagementRepository) SetStatus(ctx context.Context, project
 // never exposed as a cross-module join; `vendors` only ever sees the
 // resulting rows through `contracts.Contracts.ListVendorEngagementHistory`.
 func (r *MySQLVendorEngagementRepository) ListByVendor(ctx context.Context, tenantID, vendorID int64) ([]domain.VendorEngagementHistoryRow, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT pv.project_id, p.name, p.event_date, p.venue, pv.engagement_status
 		 FROM project_vendors pv
 		 JOIN projects p ON p.id = pv.project_id
@@ -213,7 +213,7 @@ func scanVendorMilestone(scan func(dest ...interface{}) error) (*domain.VendorMi
 }
 
 func (r *MySQLVendorMilestoneRepository) ListByProjectVendor(ctx context.Context, projectVendorID int64) ([]domain.VendorMilestone, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+vendorMilestoneColumns+` FROM vendor_milestones WHERE project_vendor_id = ? ORDER BY sort_order`, projectVendorID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+vendorMilestoneColumns+` FROM vendor_milestones WHERE project_vendor_id = ? ORDER BY sort_order`, projectVendorID)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +238,7 @@ func (r *MySQLVendorMilestoneRepository) ListByProjectVendors(ctx context.Contex
 		return nil, nil
 	}
 	query := `SELECT ` + vendorMilestoneColumns + ` FROM vendor_milestones WHERE project_vendor_id IN (` + utils.Placeholders(len(projectVendorIDs)) + `) ORDER BY project_vendor_id, sort_order`
-	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectVendorIDs)...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectVendorIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -256,12 +256,12 @@ func (r *MySQLVendorMilestoneRepository) ListByProjectVendors(ctx context.Contex
 }
 
 func (r *MySQLVendorMilestoneRepository) FindByID(ctx context.Context, projectVendorID, id int64) (*domain.VendorMilestone, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+vendorMilestoneColumns+` FROM vendor_milestones WHERE project_vendor_id = ? AND id = ? LIMIT 1`, projectVendorID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+vendorMilestoneColumns+` FROM vendor_milestones WHERE project_vendor_id = ? AND id = ? LIMIT 1`, projectVendorID, id)
 	return scanVendorMilestone(row.Scan)
 }
 
 func (r *MySQLVendorMilestoneRepository) Create(ctx context.Context, m *domain.VendorMilestone) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO vendor_milestones (project_vendor_id, sort_order, name, description, status, target_date, pic_staff_id, notes)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.ProjectVendorID, m.SortOrder, m.Name, m.Description, string(m.Status), m.TargetDate, m.PICStaffID, m.Notes,
@@ -278,7 +278,7 @@ func (r *MySQLVendorMilestoneRepository) Create(ctx context.Context, m *domain.V
 }
 
 func (r *MySQLVendorMilestoneRepository) Update(ctx context.Context, m *domain.VendorMilestone) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE vendor_milestones SET name = ?, description = ?, status = ?, target_date = ?, completed_date = ?,
 		 pic_staff_id = ?, notes = ? WHERE id = ?`,
 		m.Name, m.Description, string(m.Status), m.TargetDate, m.CompletedDate, m.PICStaffID, m.Notes, m.ID,
@@ -288,7 +288,7 @@ func (r *MySQLVendorMilestoneRepository) Update(ctx context.Context, m *domain.V
 
 func (r *MySQLVendorMilestoneRepository) NextSortOrder(ctx context.Context, projectVendorID int64) (int, error) {
 	var maxOrder sql.NullInt64
-	row := r.db.QueryRowContext(ctx, `SELECT MAX(sort_order) FROM vendor_milestones WHERE project_vendor_id = ?`, projectVendorID)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT MAX(sort_order) FROM vendor_milestones WHERE project_vendor_id = ?`, projectVendorID)
 	if err := row.Scan(&maxOrder); err != nil {
 		return 0, err
 	}

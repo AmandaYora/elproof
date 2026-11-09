@@ -107,6 +107,36 @@ func (c *Client) PresignGet(ctx context.Context, key, fileName string, attachmen
 	return u.String(), nil
 }
 
+// PresignPut returns a signed PUT link for key that works for ttl. The browser
+// uploads the file straight to object storage with it, so the bytes never pass
+// through this server. The link names exactly one object, so it can be handed
+// out only after the caller was authorised to add a file to that place. The
+// content type is not part of the signature: callers verify it afterwards with
+// Stat, and refuse an object that is not what was declared.
+func (c *Client) PresignPut(ctx context.Context, key, contentType string, ttl time.Duration) (string, error) {
+	if !c.presign {
+		return "", fmt.Errorf("presigned links are disabled")
+	}
+	u, err := c.client.PresignedPutObject(ctx, c.bucket, key, ttl)
+	if err != nil {
+		return "", fmt.Errorf("presign upload %q: %w", key, err)
+	}
+	return u.String(), nil
+}
+
+// Stat reports the size and content type of a stored object without reading
+// it. found is false (and err nil) when there is no such object.
+func (c *Client) Stat(ctx context.Context, key string) (size int64, contentType string, found bool, err error) {
+	info, err := c.client.StatObject(ctx, c.bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return 0, "", false, nil
+		}
+		return 0, "", false, fmt.Errorf("stat object %q: %w", key, err)
+	}
+	return info.Size, info.ContentType, true, nil
+}
+
 // BuildKey constructs the object key per ADR-0006's convention:
 // elproof/upload/{tenantId}/{projectId}/{category}/{filename}
 func BuildKey(tenantID, projectID, category, filename string) string {

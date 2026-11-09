@@ -8,6 +8,7 @@ import (
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/response"
 )
 
@@ -136,10 +137,68 @@ func parseOptionalDate(s string) *time.Time {
 	return &t
 }
 
+// createVendorEngagement attaches a vendor to the project. The category comes
+// from the vendor and the date from the project (E7): both may be left out and
+// are filled in here; if they are sent they must equal what the server knows
+// (a 422 on that field otherwise). Every problem is reported together.
 func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
 	var body vendorEngagementInputBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	ctx := r.Context()
+	fields := map[string][]string{}
+	add := func(key, msg string) { fields[key] = append(fields[key], msg) }
+
+	project, err := h.projects.Get(ctx, claims.tenantID, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	// The event date: the project's. A date that is sent has to be the same day.
+	if body.EventDate == "" {
+		body.EventDate = project.EventDate.Format(dateLayout)
+	} else if d, err := parseDate(body.EventDate); err != nil {
+		add("eventDate", "Gunakan format YYYY-MM-DD")
+	} else if d.Format(dateLayout) != project.EventDate.Format(dateLayout) {
+		add("eventDate", "Tanggal vendor mengikuti tanggal acara project ("+project.EventDate.Format(dateLayout)+"). Kosongkan atau samakan.")
+	}
+	// The category: the vendor's own.
+	if body.VendorID == 0 {
+		add("vendorId", "Pilih vendor")
+	} else {
+		categoryID, ok, err := h.refs.VendorCategoryID(ctx, claims.tenantID, body.VendorID)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		switch {
+		case !ok:
+			add("vendorId", "Vendor tidak ditemukan")
+		case body.CategoryID == 0:
+			body.CategoryID = categoryID
+		case body.CategoryID != categoryID:
+			add("categoryId", "Kategori mengikuti vendor yang dipilih. Kosongkan atau samakan.")
+		}
+	}
+	if err := h.refs.Category(ctx, claims.tenantID, "categoryId", body.CategoryID); err != nil && !collectValidation(fields, err) {
+		writeAppError(w, err)
+		return
+	}
+	if err := h.refs.Staff(ctx, claims.tenantID, "picStaffId", body.PICStaffID); err != nil && !collectValidation(fields, err) {
+		writeAppError(w, err)
+		return
+	}
+	if len(fields) > 0 {
+		msg := "Data vendor belum lengkap atau tidak sesuai"
+		for _, k := range []string{"vendorId", "categoryId", "eventDate", "picStaffId"} {
+			if m := fields[k]; len(m) > 0 {
+				msg = m[0]
+				break
+			}
+		}
+		response.Error(w, http.StatusUnprocessableEntity, msg, fields)
 		return
 	}
 	input, err := toVendorEngagementInput(body)
@@ -147,11 +206,7 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	if err := h.checkEngagementReferences(r.Context(), claims.tenantID, body); err != nil {
-		writeAppError(w, err)
-		return
-	}
-	pv, err := h.vendors.Create(r.Context(), projectID, claims.staffID, input)
+	pv, err := h.vendors.Create(ctx, projectID, claims.staffID, input)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -159,6 +214,19 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 	// A freshly created engagement has no vendor_payments rows yet — 0 paid,
 	// no ledger lookup needed.
 	response.Created(w, "Vendor berhasil ditambahkan ke project", toProjectVendorResponse(*pv, 0))
+}
+
+// collectValidation folds a validation error's fields into fields and reports
+// true; for any other error it changes nothing and reports false.
+func collectValidation(fields map[string][]string, err error) bool {
+	ae, ok := apperror.As(err)
+	if !ok || ae.Kind != apperror.KindValidation {
+		return false
+	}
+	for k, v := range ae.Fields {
+		fields[k] = append(fields[k], v...)
+	}
+	return true
 }
 
 // checkEngagementReferences: the vendor, its category and the PIC named in the

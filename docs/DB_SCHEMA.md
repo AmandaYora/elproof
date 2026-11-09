@@ -510,7 +510,7 @@ Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR
 | project_id | BIGINT UNSIGNED `FK` → projects.id | denormalized for direct project-scoped queries |
 | name | VARCHAR(255) | |
 | type | ENUM(...) | `EvidenceType` |
-| storage_path | VARCHAR(500) | see ADR-0006 — path returned by `shared/storage`, never a public URL |
+| storage_path | VARCHAR(500) **UNIQUE** (`uq_evidence_storage_path`, migration `000067`) | see ADR-0006 — path returned by `shared/storage`, never a public URL. Unique so one stored object belongs to at most one evidence row: a signed upload (ADR-0033) names its object before the payment exists, and a second payment trying to use the same upload token fails on this index (its transaction is rolled back) |
 | file_name | VARCHAR(255) | original filename |
 | document_date | DATE NULL | |
 | uploaded_at | TIMESTAMP | |
@@ -519,6 +519,23 @@ Edit/hard-delete + evidence cascade — same as `vendor_payments` above, see ADR
 | related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment','venuePayment','general') | `'general'` (migration `000035`, ADR-0020) is a project-level document with no specific vendor/payment/vendor-engagement/issue to attach to (rundown, buku acara, teks juru bicara, banquet order, rekap dekor, etc.) — powers Client Portal's own "Dokumen" tab |
 | related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind`. For `related_kind = 'general'`, this is always the sentinel `0` (`AUTO_INCREMENT` never starts at 0), mirroring `projects.venue_id`'s own "0 = none" convention — there's nothing to point at |
 | is_client_visible | BOOLEAN NOT NULL DEFAULT FALSE | migration `000035`, ADR-0020. Only ever meaningful for `related_kind = 'general'` — every other kind stays unconditionally visible to a `client` principal the moment it's attached to something inside their own project (unchanged); toggled via `POST .../evidence/{id}/toggle-client-visible` (rejected 422 for any other `related_kind`). Defaults `FALSE` (safe-by-default): a staff member must explicitly opt a general document in before `GET /projects/{id}/documents` (Client Portal's "Dokumen" tab) will ever return it |
+
+### `idempotency_keys` — migration `000066`, ADR-0033
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED | `FK*` → `platform.tenants.id` (primitive reference, no SQL foreign key) |
+| staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id`; a key replays only for the person who made it |
+| route | VARCHAR(255) `utf8mb4_bin` | `METHOD /api/v1/path` (so the project and which of the four calls are part of the key's scope) |
+| idempotency_key | VARCHAR(128) `utf8mb4_bin` | the `Idempotency-Key` header, 8–128 of `[A-Za-z0-9_-]`, compared byte for byte |
+| request_hash | CHAR(64) | SHA-256 of the canonicalised JSON body (key order and whitespace do not matter) |
+| status_code | SMALLINT UNSIGNED NULL | `NULL` = the first request is still running; set when it succeeded (only 2xx answers are stored — a failed request releases its key) |
+| response_body | MEDIUMTEXT NULL | the exact body replayed with `Idempotent-Replay: true` |
+| created_at | DATETIME DEFAULT CURRENT_TIMESTAMP | retention is 24 hours: expired rows are deleted opportunistically by each reservation (this key's own expired row first, then a bounded batch); a row still "running" after 5 minutes is considered dead and can be re-claimed |
+
+Keys / indexes: `UNIQUE uq_idempotency_tenant_key_route (tenant_id, idempotency_key, route)` — the arbiter between
+two simultaneous requests with one key; `idx_idempotency_created (created_at)` for the cleanup. Owned by `projects`;
+written only by the idempotency repository.
 
 ### `activity_log`
 | Column | Type | Notes |
@@ -700,6 +717,8 @@ vendor_milestones.pic_staff_id --*--> staff_members.id      (staff)
 vendor_issues.pic_staff_id     --*--> staff_members.id      (staff)
 evidence.uploaded_by_staff_id  --*--> staff_members.id      (staff)
 activity_log.actor_staff_id    --*--> staff_members.id      (staff)
+idempotency_keys.tenant_id     --*--> tenants.id            (platform)
+idempotency_keys.staff_id      --*--> staff_members.id      (staff)
 tenants.plan_id                --*--> subscription_plans.id (billing)
 subscription_transactions.tenant_id --*--> tenants.id       (platform)
 credentials.principal_id       --*--> (varies by principal_type)

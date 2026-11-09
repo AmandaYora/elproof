@@ -42,6 +42,9 @@ type EvidenceRepository interface {
 	DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error
 	// DeleteByID hard-deletes one evidence row of a project.
 	DeleteByID(ctx context.Context, projectID, id int64) error
+	// ExistsByStoragePath: has an evidence row already claimed this stored
+	// object? (a signed upload is single-use)
+	ExistsByStoragePath(ctx context.Context, storagePath string) (bool, error)
 	// RelatedBelongsToProject: the item a document attaches to must be a row of the same project.
 	RelatedBelongsToProject(ctx context.Context, projectID int64, kind domain.EvidenceRelatedKind, relatedID int64) (bool, error)
 }

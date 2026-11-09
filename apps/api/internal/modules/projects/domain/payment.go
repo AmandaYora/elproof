@@ -15,6 +15,45 @@ const (
 	PaymentRefund    PaymentType = "Refund"
 )
 
+// ValidPaymentTypes lists every accepted payment type (the column is an enum).
+var ValidPaymentTypes = []PaymentType{PaymentDP, PaymentTermin, PaymentPelunasan, PaymentTambahan, PaymentRefund}
+
+// IsValidPaymentType reports whether t is a known payment type.
+func IsValidPaymentType(t PaymentType) bool {
+	for _, v := range ValidPaymentTypes {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
+// Ledger is where one owed amount stands: what is owed, how much of it the
+// payments cover and what is left.
+type Ledger struct {
+	ContractValue int64
+	Paid          int64
+	Remaining     int64
+}
+
+// ComputeLedger summarises the payments of one owed amount (a client, one
+// vendor engagement, the venue) against what is owed. Paid is what counts
+// toward the contract (AppliedToContract: DP + Termin + Pelunasan - Refund; a
+// Tambahan is outside the contract) and is never negative; Remaining is never
+// negative either: an overpaid account (possible only by data that predates the
+// overpayment rule) simply has nothing left.
+func ComputeLedger(lines []PaymentLine, contractValue int64) Ledger {
+	paid := AppliedToContract(lines)
+	if paid < 0 {
+		paid = 0
+	}
+	remaining := contractValue - paid
+	if remaining < 0 {
+		remaining = 0
+	}
+	return Ledger{ContractValue: contractValue, Paid: paid, Remaining: remaining}
+}
+
 // VendorPayment deliberately has no stored evidence-completeness field --
 // unlike the direct invoice_evidence_id/proof_evidence_id columns this
 // struct originally carried (dropped, migration 000029: confirmed no code

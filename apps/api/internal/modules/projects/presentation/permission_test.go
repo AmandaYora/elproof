@@ -24,6 +24,8 @@ func TestStaffWritePermission(t *testing.T) {
 		{http.MethodPatch, []string{"venue-payments", "4"}, "finance.record", ""},
 		{http.MethodPost, []string{"evidence"}, "project.edit", "finance.record"},
 		{http.MethodPost, []string{"evidence", "9", "toggle-client-visible"}, "project.edit", ""},
+		{http.MethodPost, []string{"uploads"}, "project.edit", "finance.record"},
+		{http.MethodPut, []string{"uploads", "tok.sig"}, "project.edit", "finance.record"},
 		{http.MethodPost, []string{"milestones"}, "project.edit", ""},
 		{http.MethodPost, []string{"vendors", "2", "cancel"}, "project.edit", ""},
 		{http.MethodPatch, []string{"issues", "9"}, "project.edit", ""},

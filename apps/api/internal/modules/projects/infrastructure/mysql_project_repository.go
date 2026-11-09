@@ -64,7 +64,7 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picSt
 		args = append(args, condArgs...)
 	}
 	query += ` ORDER BY event_date DESC, id DESC`
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picSt
 // SQL FK, cross-module by design, so this is the one place that can answer
 // "what still points at this venue").
 func (r *MySQLProjectRepository) ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name FROM projects WHERE tenant_id = ? AND venue_id = ?`, tenantID, venueID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT id, name FROM projects WHERE tenant_id = ? AND venue_id = ?`, tenantID, venueID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (r *MySQLProjectRepository) ListByVenueID(ctx context.Context, tenantID, ve
 // own deletion (see PLAN.md's reasoning). UNION already de-duplicates a
 // project referenced through more than one of the four columns.
 func (r *MySQLProjectRepository) ListByStaffPIC(ctx context.Context, tenantID, staffID int64) ([]domain.ProjectRef, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT p.id, p.name FROM projects p WHERE p.tenant_id = ? AND p.pic_staff_id = ?
 		 UNION
 		 SELECT p.id, p.name FROM project_vendors pv JOIN projects p ON p.id = pv.project_id
@@ -150,7 +150,7 @@ func (r *MySQLProjectRepository) ListByStaffPIC(ctx context.Context, tenantID, s
 // remediation").
 func (r *MySQLProjectRepository) CountAll(ctx context.Context, tenantID int64) (int64, error) {
 	var total int64
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE tenant_id = ?`, tenantID).Scan(&total)
+	err := conn(ctx, r.db).QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE tenant_id = ?`, tenantID).Scan(&total)
 	return total, err
 }
 
@@ -164,7 +164,7 @@ func (r *MySQLProjectRepository) CountAll(ctx context.Context, tenantID int64) (
 // `since` on both dates can't affect any of the four computations, so it's
 // excluded at the query level rather than fetched and then ignored in Go.
 func (r *MySQLProjectRepository) ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT `+projectColumns+` FROM projects
 		 WHERE tenant_id = ? AND (status NOT IN ('Completed', 'Cancelled') OR created_at >= ? OR event_date >= ?)
 		 ORDER BY event_date DESC, id DESC`,
@@ -216,12 +216,12 @@ func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int
 	}
 
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := conn(ctx, r.db).QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	listQuery += ` ORDER BY event_date DESC, id DESC LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -239,17 +239,17 @@ func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int
 }
 
 func (r *MySQLProjectRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE tenant_id = ? AND id = ? LIMIT 1`, tenantID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE tenant_id = ? AND id = ? LIMIT 1`, tenantID, id)
 	return scanProject(row.Scan)
 }
 
 func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) error {
-	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO projects (tenant_id, name, bride_name, groom_name, event_date, venue, prep_start_date,
-		 package_name, contract_value, status, pic_staff_id, pic_sales_staff_id, description)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.TenantID, p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.PrepStartDate,
-		p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.PICSalesStaffID, p.Description,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
+		`INSERT INTO projects (tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, venue_rental_price, venue_charge,
+		 prep_start_date, package_name, contract_value, status, pic_staff_id, pic_sales_staff_id, description)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.TenantID, p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.VenueRentalPrice, p.VenueCharge,
+		p.PrepStartDate, p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.PICSalesStaffID, p.Description,
 	)
 	if err != nil {
 		return err
@@ -263,7 +263,7 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 }
 
 func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, venue_id = ?, venue_rental_price = ?,
 		 venue_charge = ?, prep_start_date = ?, package_name = ?, contract_value = ?, pic_staff_id = ?, pic_sales_staff_id = ?, description = ?
 		 WHERE tenant_id = ? AND id = ?`,
@@ -277,7 +277,7 @@ func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) 
 // in `from`, and says whether it did. Two people acting on a stale page can
 // therefore not skip or undo each other's step: the loser gets false.
 func (r *MySQLProjectRepository) ChangeStatus(ctx context.Context, tenantID, id int64, from, to domain.ProjectStatus) (bool, error) {
-	res, err := r.db.ExecContext(ctx,
+	res, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE projects SET status = ? WHERE tenant_id = ? AND id = ? AND status = ?`, string(to), tenantID, id, string(from))
 	if err != nil {
 		return false, err
@@ -287,7 +287,7 @@ func (r *MySQLProjectRepository) ChangeStatus(ctx context.Context, tenantID, id 
 }
 
 func (r *MySQLProjectRepository) SetArchived(ctx context.Context, tenantID, id int64, archived bool) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE projects SET is_archived = ? WHERE tenant_id = ? AND id = ?`, archived, tenantID, id)
+	_, err := conn(ctx, r.db).ExecContext(ctx, `UPDATE projects SET is_archived = ? WHERE tenant_id = ? AND id = ?`, archived, tenantID, id)
 	return err
 }
 
@@ -378,7 +378,7 @@ func scanMilestone(scan func(dest ...interface{}) error) (*domain.ProjectMilesto
 }
 
 func (r *MySQLMilestoneRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.ProjectMilestone, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+milestoneColumns+` FROM project_milestones WHERE project_id = ? ORDER BY sort_order`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+milestoneColumns+` FROM project_milestones WHERE project_id = ? ORDER BY sort_order`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +403,7 @@ func (r *MySQLMilestoneRepository) ListByProjects(ctx context.Context, projectID
 		return nil, nil
 	}
 	query := `SELECT ` + milestoneColumns + ` FROM project_milestones WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, sort_order`
-	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -421,12 +421,12 @@ func (r *MySQLMilestoneRepository) ListByProjects(ctx context.Context, projectID
 }
 
 func (r *MySQLMilestoneRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectMilestone, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+milestoneColumns+` FROM project_milestones WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+milestoneColumns+` FROM project_milestones WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
 	return scanMilestone(row.Scan)
 }
 
 func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.ProjectMilestone) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO project_milestones (project_id, sort_order, name, status, target_date) VALUES (?, ?, ?, ?, ?)`,
 		m.ProjectID, m.SortOrder, m.Name, string(m.Status), m.TargetDate,
 	)
@@ -442,7 +442,7 @@ func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.Project
 }
 
 func (r *MySQLMilestoneRepository) Update(ctx context.Context, m *domain.ProjectMilestone) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE project_milestones SET name = ?, status = ?, target_date = ?, completed_date = ? WHERE id = ?`,
 		m.Name, string(m.Status), m.TargetDate, m.CompletedDate, m.ID,
 	)
@@ -451,7 +451,7 @@ func (r *MySQLMilestoneRepository) Update(ctx context.Context, m *domain.Project
 
 func (r *MySQLMilestoneRepository) NextSortOrder(ctx context.Context, projectID int64) (int, error) {
 	var maxOrder sql.NullInt64
-	row := r.db.QueryRowContext(ctx, `SELECT MAX(sort_order) FROM project_milestones WHERE project_id = ?`, projectID)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT MAX(sort_order) FROM project_milestones WHERE project_id = ?`, projectID)
 	if err := row.Scan(&maxOrder); err != nil {
 		return 0, err
 	}
@@ -483,7 +483,7 @@ func (r *MySQLMilestoneRepository) Reorder(ctx context.Context, projectID int64,
 // archived (trial cap, PLAN.md decision K6).
 func (r *MySQLProjectRepository) CountActive(ctx context.Context, tenantID int64) (int, error) {
 	var n int
-	err := r.db.QueryRowContext(ctx,
+	err := conn(ctx, r.db).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = FALSE AND status NOT IN ('Completed', 'Cancelled')`,
 		tenantID).Scan(&n)
 	return n, err

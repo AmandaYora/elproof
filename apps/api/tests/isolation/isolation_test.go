@@ -91,6 +91,7 @@ func TestTenantIsolation(t *testing.T) {
 	t.Run("attack matrix", func(t *testing.T) { w.attackMatrix(t, s) })
 	t.Run("mixed ids", func(t *testing.T) { w.mixedIDs(t, s) })
 	t.Run("foreign references", func(t *testing.T) { w.foreignReferences(t, s) })
+	t.Run("signed uploads, atomic payments and projects (E3/E7)", func(t *testing.T) { w.tahap4Scenarios(t, s) })
 	t.Run("workspace B is intact", func(t *testing.T) { w.intact(t, s) })
 	t.Logf("routes and requests covered: %d", routesCovered)
 }
@@ -168,6 +169,8 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "evidence link", method: "GET", path: proj(P, fmt.Sprintf("/evidence/%d/link", w.EvidenceInternal)), control: true},
 		{name: "evidence link (download)", method: "GET", path: proj(P, fmt.Sprintf("/evidence/%d/link?disposition=attachment", w.EvidenceInternal)), control: true},
 		{name: "evidence toggle-client-visible", method: "POST", path: proj(P, fmt.Sprintf("/evidence/%d/toggle-client-visible", w.EvidenceInternal))},
+		{name: "upload create", method: "POST", path: proj(P, "/uploads"), body: map[string]any{"fileName": "a.pdf", "mimeType": "application/pdf", "size": 10}, control: true},
+		{name: "upload put", method: "PUT", path: proj(P, "/uploads/abc.def"), control: true},
 		{name: "documents", method: "GET", path: proj(P, "/documents"), control: true},
 		{name: "activity", method: "GET", path: proj(P, "/activity"), control: true},
 		{name: "venue", method: "GET", path: proj(P, "/venue"), control: true},

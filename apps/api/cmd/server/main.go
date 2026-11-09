@@ -331,7 +331,7 @@ func serve(cfg config.Config) {
 	// projects is built before vendors — vendors' "Lihat Project" resolves a
 	// vendor's cross-project engagement history through projects.Contracts()
 	// (project_vendors is owned by projects, not vendors).
-	projectsModule := projects.NewModule(db, storageClient, staffNameResolver{contracts: staffModule.Contracts()})
+	projectsModule := projects.NewModule(db, storageClient, staffNameResolver{contracts: staffModule.Contracts()}, cfg.JWTSecret)
 	// Two-phase wiring: platform needs projects' contract (seed a newly
 	// registered tenant's Timeline Default template, PLAN.md) but
 	// platformModule is built above, before projectsModule exists — same

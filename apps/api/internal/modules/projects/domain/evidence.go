@@ -1,6 +1,15 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrStoragePathTaken: an evidence row already owns this stored object. A
+// signed upload names its object up front, so using the same token twice would
+// attach one file to two payments; the unique index on evidence.storage_path
+// (migration 66) refuses it and the repository reports it with this error.
+var ErrStoragePathTaken = errors.New("an evidence row already points at this stored object")
 
 type EvidenceType string
 

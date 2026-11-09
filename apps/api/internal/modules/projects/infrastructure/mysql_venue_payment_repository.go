@@ -35,7 +35,7 @@ func scanVenuePayment(scan func(dest ...interface{}) error) (*domain.VenuePaymen
 }
 
 func (r *MySQLVenuePaymentRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.VenuePayment, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? ORDER BY payment_date DESC, id DESC`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? ORDER BY payment_date DESC, id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (r *MySQLVenuePaymentRepository) ListByProjects(ctx context.Context, projec
 		return nil, nil
 	}
 	query := `SELECT ` + venuePaymentColumns + ` FROM venue_payments WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, payment_date DESC, id DESC`
-	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,12 +78,12 @@ func (r *MySQLVenuePaymentRepository) ListByProjects(ctx context.Context, projec
 }
 
 func (r *MySQLVenuePaymentRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.VenuePayment, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+venuePaymentColumns+` FROM venue_payments WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
 	return scanVenuePayment(row.Scan)
 }
 
 func (r *MySQLVenuePaymentRepository) Create(ctx context.Context, p *domain.VenuePayment) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO venue_payments (project_id, type, amount, payment_date, method, reference_number, notes)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		p.ProjectID, string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes,
@@ -100,7 +100,7 @@ func (r *MySQLVenuePaymentRepository) Create(ctx context.Context, p *domain.Venu
 }
 
 func (r *MySQLVenuePaymentRepository) Update(ctx context.Context, projectID, id int64, p domain.VenuePayment) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE venue_payments SET type = ?, amount = ?, payment_date = ?, method = ?, reference_number = ?, notes = ?
 		 WHERE project_id = ? AND id = ?`,
 		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, projectID, id,
@@ -109,6 +109,6 @@ func (r *MySQLVenuePaymentRepository) Update(ctx context.Context, projectID, id 
 }
 
 func (r *MySQLVenuePaymentRepository) Delete(ctx context.Context, projectID, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM venue_payments WHERE project_id = ? AND id = ?`, projectID, id)
+	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM venue_payments WHERE project_id = ? AND id = ?`, projectID, id)
 	return err
 }

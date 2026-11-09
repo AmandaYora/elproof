@@ -12,6 +12,9 @@ import (
 type VendorDirectory interface {
 	VendorExists(ctx context.Context, tenantID, vendorID int64) (bool, error)
 	CategoryExists(ctx context.Context, tenantID, categoryID int64) (bool, error)
+	// VendorCategoryID is the category the vendor belongs to (NotFound when the
+	// vendor is not this workspace's).
+	VendorCategoryID(ctx context.Context, tenantID, vendorID int64) (int64, error)
 	// VendorNames/CategoryNames resolve display names in one query, scoped to
 	// the workspace (an id that is not this workspace's is absent).
 	VendorNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
@@ -109,4 +112,20 @@ func (r *References) CategoryNames(ctx context.Context, tenantID int64, ids []in
 		return map[int64]string{}
 	}
 	return names
+}
+
+// VendorCategoryID is the category of a vendor of this workspace; ok is false
+// when the vendor is not found here. With no directory wired it reports ok=false.
+func (r *References) VendorCategoryID(ctx context.Context, tenantID, vendorID int64) (categoryID int64, ok bool, err error) {
+	if vendorID == 0 || r.vendors == nil {
+		return 0, false, nil
+	}
+	id, err := r.vendors.VendorCategoryID(ctx, tenantID, vendorID)
+	if err != nil {
+		if ae, isApp := apperror.As(err); isApp && ae.Kind == apperror.KindNotFound {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return id, true, nil
 }

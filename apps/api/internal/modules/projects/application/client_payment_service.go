@@ -26,6 +26,15 @@ type ClientPaymentService struct {
 	evidence  *EvidenceService
 	activity  *ActivityService
 	contracts ContractReader
+	// proof/terms are wired by SetAtomicSupport (CreateWithProof needs them).
+	proof *ProofSupport
+	terms PaymentTermRepository
+}
+
+// SetAtomicSupport wires what CreateWithProof needs: the transaction, the
+// upload checks and the payment schedule (read for the ledger summary).
+func (s *ClientPaymentService) SetAtomicSupport(proof *ProofSupport, terms PaymentTermRepository) {
+	s.proof, s.terms = proof, terms
 }
 
 func NewClientPaymentService(repo ClientPaymentRepository, evidence *EvidenceService, activity *ActivityService, contracts ContractReader) *ClientPaymentService {
@@ -220,4 +229,112 @@ func (s *ClientPaymentService) Delete(ctx context.Context, tenantID, projectID, 
 	s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
 		"Pembayaran client dihapus")
 	return nil
+}
+
+// ClientPaymentCreated is the outcome of recording a client payment: the
+// payment, the proof files recorded with it, where the contract stands and how
+// each installment of the schedule now stands.
+type ClientPaymentCreated struct {
+	Payment  *domain.ClientPayment
+	Evidence []domain.Evidence
+	Ledger   domain.Ledger
+	Terms    []domain.TermProgress
+}
+
+// validatePaymentFields collects what is wrong with the type and amount.
+func validatePaymentFields(fe *fieldErrors, t domain.PaymentType, amount int64) {
+	if !domain.IsValidPaymentType(t) {
+		fe.add("Pilih jenis pembayaran: DP, Termin, Pelunasan, Tambahan, atau Refund.", "type")
+	}
+	if err := checkAmount(amount); err != nil {
+		fe.mergeErr(err)
+	}
+}
+
+// CreateWithProof records a client payment and its proof files as ONE business
+// action. The uploads are verified first (nothing written); then, in a single
+// database transaction, the project row is locked, the overpayment rule is
+// checked, the payment and every evidence row are inserted, activity is logged
+// and the ledger summary is computed from the very rows just written. Any
+// failure rolls the whole transaction back: there is never a payment without
+// the proof it was recorded with. Every field problem (type, amount, each
+// evidence item) is reported together.
+func (s *ClientPaymentService) CreateWithProof(ctx context.Context, tenantID, projectID, actorStaffID int64, input ClientPaymentInput, items []ProofItem, today time.Time) (*ClientPaymentCreated, error) {
+	proof := s.proof
+	if proof == nil {
+		proof = NewProofSupport(nil, nil, s.evidence)
+	}
+	fe := newFieldErrors()
+	validatePaymentFields(fe, input.Type, input.Amount)
+	resolved, err := proof.resolve(ctx, tenantID, projectID, items, clientProofTypes)
+	if err != nil && !fe.mergeErr(err) {
+		return nil, err
+	}
+	if !fe.empty() {
+		return nil, fe.err()
+	}
+
+	var out ClientPaymentCreated
+	err = proof.tx.InTx(ctx, func(ctx context.Context) error {
+		if err := proof.tx.LockProject(ctx, projectID); err != nil {
+			return err
+		}
+		if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+			return err
+		}
+		p := &domain.ClientPayment{
+			ProjectID: projectID, Type: input.Type, Amount: input.Amount,
+			PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
+			RecordedByStaffID: actorStaffID,
+		}
+		if err := s.repo.Create(ctx, p); err != nil {
+			return err
+		}
+		evidence, err := proof.attach(ctx, proofTarget{
+			ProjectID: projectID, ActorStaffID: actorStaffID, Kind: domain.RelatedClientPayment, RelatedID: p.ID,
+			Date: input.PaymentDate, Reference: input.ReferenceNumber,
+		}, resolved)
+		if err != nil {
+			return err
+		}
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran client dicatat")
+		ledger, terms, err := s.ledgerAndTerms(ctx, tenantID, projectID, today)
+		if err != nil {
+			return err
+		}
+		out = ClientPaymentCreated{Payment: p, Evidence: evidence, Ledger: ledger, Terms: terms}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ledgerAndTerms is where the client's contract stands, and each installment of
+// the schedule, as of `today`, read on whatever transaction ctx carries.
+func (s *ClientPaymentService) ledgerAndTerms(ctx context.Context, tenantID, projectID int64, today time.Time) (domain.Ledger, []domain.TermProgress, error) {
+	contract, err := s.contracts.ProjectContractValue(ctx, tenantID, projectID)
+	if err != nil {
+		return domain.Ledger{}, nil, err
+	}
+	all, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return domain.Ledger{}, nil, err
+	}
+	lines := make([]domain.PaymentLine, 0, len(all))
+	for _, p := range all {
+		lines = append(lines, lineOf(p.Type, p.Amount))
+	}
+	ledger := domain.ComputeLedger(lines, contract)
+	terms := []domain.TermProgress{}
+	if s.terms != nil {
+		schedule, err := s.terms.ListByProject(ctx, projectID)
+		if err != nil {
+			return domain.Ledger{}, nil, err
+		}
+		terms = domain.AllocateTerms(schedule, domain.AppliedToContract(lines), today)
+	}
+	return ledger, terms, nil
 }

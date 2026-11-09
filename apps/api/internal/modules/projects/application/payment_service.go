@@ -24,7 +24,11 @@ type PaymentService struct {
 	evidence  *EvidenceService
 	activity  *ActivityService
 	contracts ContractReader
+	proof     *ProofSupport
 }
+
+// SetProofSupport wires what CreateWithProof needs (transaction, upload checks).
+func (s *PaymentService) SetProofSupport(p *ProofSupport) { s.proof = p }
 
 func NewPaymentService(repo PaymentRepository, evidence *EvidenceService, activity *ActivityService, contracts ContractReader) *PaymentService {
 	return &PaymentService{repo: repo, evidence: evidence, activity: activity, contracts: contracts}
@@ -148,4 +152,77 @@ func (s *PaymentService) Delete(ctx context.Context, projectID, id int64, actorS
 	s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "vendor_payment", formatID(p.ID), string(p.Type),
 		"Pembayaran vendor dihapus")
 	return nil
+}
+
+// VendorPaymentCreated is the outcome of recording a vendor payment: the
+// payment, its proof files and where that engagement's price stands.
+type VendorPaymentCreated struct {
+	Payment  *domain.VendorPayment
+	Evidence []domain.Evidence
+	Ledger   domain.Ledger
+}
+
+// CreateWithProof is Create plus the proof files, as one atomic action: see
+// ClientPaymentService.CreateWithProof for the contract (uploads verified first,
+// then one transaction for payment + evidence + activity + ledger, all or nothing).
+func (s *PaymentService) CreateWithProof(ctx context.Context, tenantID, projectID, actorStaffID int64, input PaymentInput, items []ProofItem) (*VendorPaymentCreated, error) {
+	proof := s.proof
+	if proof == nil {
+		proof = NewProofSupport(nil, nil, s.evidence)
+	}
+	fe := newFieldErrors()
+	validatePaymentFields(fe, input.Type, input.Amount)
+	resolved, err := proof.resolve(ctx, tenantID, projectID, items, outgoingProofTypes)
+	if err != nil && !fe.mergeErr(err) {
+		return nil, err
+	}
+	if !fe.empty() {
+		return nil, fe.err()
+	}
+
+	var out VendorPaymentCreated
+	err = proof.tx.InTx(ctx, func(ctx context.Context) error {
+		if err := proof.tx.LockProject(ctx, projectID); err != nil {
+			return err
+		}
+		if err := s.checkChange(ctx, projectID, input.ProjectVendorID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+			return err
+		}
+		p := &domain.VendorPayment{
+			ProjectID: projectID, ProjectVendorID: input.ProjectVendorID, Type: input.Type, Amount: input.Amount,
+			PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
+		}
+		if err := s.repo.Create(ctx, p); err != nil {
+			return err
+		}
+		evidence, err := proof.attach(ctx, proofTarget{
+			ProjectID: projectID, ActorStaffID: actorStaffID, Kind: domain.RelatedPayment, RelatedID: p.ID,
+			Date: input.PaymentDate, Reference: input.ReferenceNumber,
+		}, resolved)
+		if err != nil {
+			return err
+		}
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "vendor_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran vendor dicatat")
+		contract, err := s.contracts.EngagementContractValue(ctx, projectID, input.ProjectVendorID)
+		if err != nil {
+			return err
+		}
+		all, err := s.repo.ListByProject(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		var lines []domain.PaymentLine
+		for _, q := range all {
+			if q.ProjectVendorID == input.ProjectVendorID {
+				lines = append(lines, lineOf(q.Type, q.Amount))
+			}
+		}
+		out = VendorPaymentCreated{Payment: p, Evidence: evidence, Ledger: domain.ComputeLedger(lines, contract)}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

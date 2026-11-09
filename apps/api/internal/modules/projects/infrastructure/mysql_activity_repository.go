@@ -16,7 +16,7 @@ func NewMySQLActivityRepository(db *sql.DB) *MySQLActivityRepository {
 }
 
 func (r *MySQLActivityRepository) Create(ctx context.Context, entry *domain.ActivityLogEntry) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO activity_log (project_id, type, actor_staff_id, entity_type, entity_id, entity_label, description)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		entry.ProjectID, string(entry.Type), entry.ActorStaffID, entry.EntityType, entry.EntityID, entry.EntityLabel, entry.Description,
@@ -41,7 +41,7 @@ func (r *MySQLActivityRepository) ListByProject(ctx context.Context, projectID i
 		args = append(args, limit)
 	}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

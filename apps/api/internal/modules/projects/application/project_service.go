@@ -64,6 +64,10 @@ type ClientCleaner interface {
 // take this as a constructor argument.
 type VenueResolver interface {
 	GetVenueSummary(ctx context.Context, tenantID, venueID int64) (vendorscontracts.VenueSummary, error)
+	// GetVenueForAttach is the venue's name and current prices (staff-only
+	// data, so not part of the public-safe summary); used when a project is
+	// created with its venue.
+	GetVenueForAttach(ctx context.Context, tenantID, venueID int64) (vendorscontracts.VenueAttachInfo, error)
 }
 
 // StaffNameResolver is the narrow shape ProjectService needs from `staff` to
@@ -118,6 +122,15 @@ type ProjectService struct {
 	venues             VenueResolver
 	staff              StaffNameResolver
 	quota              TrialQuota
+	// tx/terms back CreateAtomic (wired by SetAtomicSupport).
+	tx    Transactor
+	terms PaymentTermRepository
+}
+
+// SetAtomicSupport wires what creating a project with its venue and payment
+// schedule in one transaction needs.
+func (s *ProjectService) SetAtomicSupport(tx Transactor, terms PaymentTermRepository) {
+	s.tx, s.terms = tx, terms
 }
 
 func NewProjectService(
@@ -342,10 +355,35 @@ type ProjectActor struct {
 	CanAssignPIC bool
 }
 
+// ProjectSetup is what can be saved together with a new project, in the same
+// transaction: the client's payment schedule. (The venue travels in
+// ProjectInput.VenueID / VenueRentalPrice / VenueCharge.)
+type ProjectSetup struct {
+	// Terms is the payment schedule (nil or empty: none).
+	Terms []PaymentTermInput
+	// FieldErrors are problems the caller already found while reading the
+	// request (a date that is not YYYY-MM-DD, keyed "eventDate",
+	// "terms[1].dueDate", ...). They are reported together with everything the
+	// service finds, as one validation error.
+	FieldErrors map[string][]string
+}
+
 // Create: a person limited to their own projects must stay able to reach
 // the project they create, so unless they made themselves PIC they become
 // its PIC Sales (the former Sales rule, now for any such role).
 func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor ProjectActor, input ProjectInput) (*domain.Project, error) {
+	return s.CreateAtomic(ctx, tenantID, actor, input, ProjectSetup{})
+}
+
+// CreateAtomic creates a project and, in the same database transaction, its
+// default milestones, its venue (when input.VenueID is positive) and its client
+// payment schedule (setup.Terms). Everything is validated first and every
+// problem of every part is returned together as ONE validation error (keys
+// "picStaffId", "venueId", "venueRentalPrice", "venueCharge", "terms",
+// "terms[2].amount", ...); nothing is written when anything is wrong, and if a
+// write fails the transaction rolls back, so no half-made project is ever left.
+// The trial quota and PIC rules are unchanged.
+func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor ProjectActor, input ProjectInput, setup ProjectSetup) (*domain.Project, error) {
 	actorStaffID := actor.StaffID
 	picSalesStaffID := input.PICSalesStaffID
 	if actor.AssignedOnly && input.PICStaffID != actorStaffID {
@@ -354,27 +392,148 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor Proje
 	// A new project always starts as Draft: later steps are explicit
 	// transitions, so creating cannot skip them (ADR-0027).
 	input.Status = domain.StatusDraft
-	if err := s.checkPICs(ctx, tenantID, input.PICStaffID, picSalesStaffID); err != nil {
+
+	fe := newFieldErrors()
+	fe.mergeFields(setup.FieldErrors)
+	if err := s.checkPICs(ctx, tenantID, input.PICStaffID, picSalesStaffID); err != nil && !fe.mergeErr(err) {
+		return nil, err
+	}
+	venue, err := s.resolveVenueForCreate(ctx, tenantID, input, fe)
+	if err != nil {
+		return nil, err
+	}
+	terms, err := s.checkSetupTerms(input.ContractValue, setup.Terms, fe)
+	if err != nil {
+		return nil, err
+	}
+	if err := fe.err(); err != nil {
 		return nil, err
 	}
 	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
 		return nil, err
 	}
+
 	p := &domain.Project{
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
 		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
 		PackageName: input.PackageName, ContractValue: input.ContractValue, Status: input.Status,
 		PICStaffID: input.PICStaffID, PICSalesStaffID: picSalesStaffID, Description: input.Description,
 	}
-	if err := s.repo.Create(ctx, p); err != nil {
+	if venue != nil {
+		// One place for the venue: while one is attached from the directory,
+		// the project's venue text IS its name (same rule as Update).
+		id := venue.ID
+		p.VenueID, p.VenueRentalPrice, p.VenueCharge = &id, &venue.rental, &venue.charge
+		if venue.name != "" {
+			p.Venue = venue.name
+		}
+	}
+	tx := s.tx
+	if tx == nil {
+		tx = noTransactor{}
+	}
+	err = tx.InTx(ctx, func(ctx context.Context) error {
+		if err := s.repo.Create(ctx, p); err != nil {
+			return err
+		}
+		if err := s.seedDefaultMilestones(ctx, tenantID, p.ID, p.EventDate, p.PrepStartDate); err != nil {
+			return err
+		}
+		if len(terms) > 0 {
+			for i := range terms {
+				terms[i].ProjectID = p.ID
+			}
+			if err := s.terms.ReplaceAll(ctx, p.ID, terms); err != nil {
+				return err
+			}
+		}
+		s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
+			"Project baru dibuat: "+p.Name)
+		if len(terms) > 0 {
+			s.activity.Record(ctx, &p.ID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(p.ID), p.Name,
+				"Jadwal pembayaran client diperbarui")
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	if err := s.seedDefaultMilestones(ctx, tenantID, p.ID, p.EventDate, p.PrepStartDate); err != nil {
-		return nil, err
-	}
-	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Project baru dibuat: "+p.Name)
 	return p, nil
+}
+
+// venueForCreate is a venue verified for attaching, with the prices the project
+// will snapshot.
+type venueForCreate struct {
+	ID             int64
+	name           string
+	rental, charge int64
+}
+
+// resolveVenueForCreate validates the venue part of a create request. It
+// returns nil (and no error) when no venue is asked for. A venue that is not
+// this workspace's is reported on "venueId"; prices left out default to the
+// venue's current ones (the project's own snapshot, freely different later).
+func (s *ProjectService) resolveVenueForCreate(ctx context.Context, tenantID int64, input ProjectInput, fe *fieldErrors) (*venueForCreate, error) {
+	if input.VenueID == nil || *input.VenueID == 0 {
+		return nil, nil
+	}
+	if *input.VenueID < 0 {
+		fe.add("Venue tidak ditemukan", "venueId")
+		return nil, nil
+	}
+	if s.venues == nil {
+		return nil, apperror.Internal("Direktori venue belum tersedia")
+	}
+	info, err := s.venues.GetVenueForAttach(ctx, tenantID, *input.VenueID)
+	if err != nil {
+		if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
+			fe.add("Venue tidak ditemukan", "venueId")
+			return nil, nil
+		}
+		return nil, err
+	}
+	v := &venueForCreate{ID: info.ID, name: info.Name, rental: info.RentalPrice, charge: info.Charge}
+	if input.VenueRentalPrice != nil {
+		if *input.VenueRentalPrice < 0 || *input.VenueRentalPrice > domain.MaxMoney {
+			fe.add("Harga sewa venue harus 0 atau lebih dan wajar", "venueRentalPrice")
+		}
+		v.rental = *input.VenueRentalPrice
+	}
+	if input.VenueCharge != nil {
+		if *input.VenueCharge < 0 || *input.VenueCharge > domain.MaxMoney {
+			fe.add("Biaya tambahan venue harus 0 atau lebih dan wajar", "venueCharge")
+		}
+		v.charge = *input.VenueCharge
+	}
+	return v, nil
+}
+
+// checkSetupTerms validates a payment schedule sent with a new project exactly
+// as PUT /payment-terms does (buildTerms: every row's problems at once, keyed
+// "terms[i].label|amount|dueDate"; at most 20; together not above the contract
+// value), adding to fe.
+func (s *ProjectService) checkSetupTerms(contractValue int64, inputs []PaymentTermInput, fe *fieldErrors) ([]domain.PaymentTerm, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+	if s.terms == nil {
+		return nil, apperror.Internal("Jadwal pembayaran belum tersedia")
+	}
+	if len(inputs) > maxPaymentTerms {
+		fe.add("Maksimal 20 termin per project", "terms")
+		return nil, nil
+	}
+	terms, total, err := buildTerms(0, inputs)
+	if err != nil {
+		if !fe.mergeErr(err) {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if contractValue > 0 && total > contractValue {
+		fe.add("Jumlah termin "+formatRupiah(total)+" melebihi nilai kontrak "+formatRupiah(contractValue)+". Kurangi nominal salah satu termin.", "terms")
+	}
+	return terms, nil
 }
 
 // checkPICs confirms every named PIC is a staff member of this workspace (0 =

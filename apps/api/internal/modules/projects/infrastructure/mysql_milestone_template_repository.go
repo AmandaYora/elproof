@@ -30,7 +30,7 @@ func scanMilestoneTemplate(scan func(dest ...interface{}) error) (*domain.Projec
 }
 
 func (r *MySQLMilestoneTemplateRepository) List(ctx context.Context, tenantID int64) ([]domain.ProjectMilestoneTemplate, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT `+milestoneTemplateColumns+` FROM project_milestone_templates WHERE tenant_id = ? ORDER BY sort_order`, tenantID)
 	if err != nil {
 		return nil, err
@@ -49,13 +49,13 @@ func (r *MySQLMilestoneTemplateRepository) List(ctx context.Context, tenantID in
 }
 
 func (r *MySQLMilestoneTemplateRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.ProjectMilestoneTemplate, error) {
-	row := r.db.QueryRowContext(ctx,
+	row := conn(ctx, r.db).QueryRowContext(ctx,
 		`SELECT `+milestoneTemplateColumns+` FROM project_milestone_templates WHERE tenant_id = ? AND id = ? LIMIT 1`, tenantID, id)
 	return scanMilestoneTemplate(row.Scan)
 }
 
 func (r *MySQLMilestoneTemplateRepository) Create(ctx context.Context, t *domain.ProjectMilestoneTemplate) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO project_milestone_templates (tenant_id, sort_order, name, days_before_event) VALUES (?, ?, ?, ?)`,
 		t.TenantID, t.SortOrder, t.Name, t.DaysBeforeEvent,
 	)
@@ -71,7 +71,7 @@ func (r *MySQLMilestoneTemplateRepository) Create(ctx context.Context, t *domain
 }
 
 func (r *MySQLMilestoneTemplateRepository) Update(ctx context.Context, t *domain.ProjectMilestoneTemplate) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE project_milestone_templates SET name = ?, days_before_event = ? WHERE tenant_id = ? AND id = ?`,
 		t.Name, t.DaysBeforeEvent, t.TenantID, t.ID,
 	)
@@ -79,13 +79,13 @@ func (r *MySQLMilestoneTemplateRepository) Update(ctx context.Context, t *domain
 }
 
 func (r *MySQLMilestoneTemplateRepository) Delete(ctx context.Context, tenantID, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM project_milestone_templates WHERE tenant_id = ? AND id = ?`, tenantID, id)
+	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM project_milestone_templates WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
 }
 
 func (r *MySQLMilestoneTemplateRepository) NextSortOrder(ctx context.Context, tenantID int64) (int, error) {
 	var maxOrder sql.NullInt64
-	row := r.db.QueryRowContext(ctx, `SELECT MAX(sort_order) FROM project_milestone_templates WHERE tenant_id = ?`, tenantID)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT MAX(sort_order) FROM project_milestone_templates WHERE tenant_id = ?`, tenantID)
 	if err := row.Scan(&maxOrder); err != nil {
 		return 0, err
 	}

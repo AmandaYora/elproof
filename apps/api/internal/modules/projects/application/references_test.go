@@ -38,6 +38,13 @@ func (v vendorsByTenant) CategoryExists(_ context.Context, t, id int64) (bool, e
 	return v.categories[t][id], nil
 }
 
+func (v vendorsByTenant) VendorCategoryID(_ context.Context, t, id int64) (int64, error) {
+	if !v.vendors[t][id] {
+		return 0, apperror.NotFound("Vendor tidak ditemukan")
+	}
+	return 0, nil
+}
+
 func (v vendorsByTenant) VendorNames(context.Context, int64, []int64) (map[int64]string, error) {
 	return map[int64]string{}, nil
 }

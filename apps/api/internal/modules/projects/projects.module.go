@@ -23,7 +23,10 @@ type Module struct {
 	clientHome               *application.ClientHomeService
 }
 
-func NewModule(db *sql.DB, storageClient *storage.Client, staff application.StaffNameResolver) *Module {
+// NewModule builds the module. signingSecret is the application's one secret
+// (the JWT secret); the signed-upload tokens derive their own purpose-bound key
+// from it, so there is no second secret to configure.
+func NewModule(db *sql.DB, storageClient *storage.Client, staff application.StaffNameResolver, signingSecret string) *Module {
 	projectRepo := infrastructure.NewMySQLProjectRepository(db)
 	milestoneRepo := infrastructure.NewMySQLMilestoneRepository(db)
 	milestoneTemplateRepo := infrastructure.NewMySQLMilestoneTemplateRepository(db)
@@ -37,6 +40,8 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	evidenceRepo := infrastructure.NewMySQLEvidenceRepository(db)
 	activityRepo := infrastructure.NewMySQLActivityRepository(db)
 	dashboardRepo := infrastructure.NewMySQLDashboardRepository(db)
+	idempotencyRepo := infrastructure.NewMySQLIdempotencyRepository(db)
+	txManager := infrastructure.NewTxManager(db)
 
 	activityService := application.NewActivityService(activityRepo)
 	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
@@ -55,11 +60,21 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 
 	clientHomeService := application.NewClientHomeService(projectService, clientPaymentRepo, paymentTermService, evidenceService, issueRepo)
 
+	// Signed uploads, atomic payment + proof, atomic project creation (Tahap 4).
+	uploadService := application.NewUploadService(application.NewUploadSigner(signingSecret), storageClient, evidenceRepo, storage.BuildKey)
+	proofSupport := application.NewProofSupport(txManager, uploadService, evidenceService)
+	paymentService.SetProofSupport(proofSupport)
+	venuePaymentService.SetProofSupport(proofSupport)
+	clientPaymentService.SetAtomicSupport(proofSupport, paymentTermRepo)
+	projectService.SetAtomicSupport(txManager, paymentTermRepo)
+
 	references := application.NewReferences(staff)
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
 
 	handler.SetReferences(references)
 	handler.SetClientHome(clientHomeService)
+	handler.SetUploads(uploadService)
+	handler.SetIdempotency(application.NewIdempotencyService(idempotencyRepo))
 
 	return &Module{
 		references:               references,

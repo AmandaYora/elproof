@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,6 +42,7 @@ type stack struct {
 	google  *fakeGoogle
 	client  *http.Client
 	ipCount int
+	mu      sync.Mutex // guards ipCount (some scenarios send requests concurrently)
 }
 
 type fakeGoogle struct {
@@ -98,7 +100,11 @@ func freePort(t *testing.T) string {
 
 // startStack builds and starts the server against a fresh database. It skips
 // the test when TEST_MYSQL_ADMIN_DSN is not set.
-func startStack(t *testing.T) *stack {
+func startStack(t *testing.T) *stack { return startStackWith(t) }
+
+// startStackWith is startStack with extra environment for the server (for
+// example "S3_PRESIGN=false" to make uploads go through the API).
+func startStackWith(t *testing.T, extraEnv ...string) *stack {
 	t.Helper()
 	adminDSN := os.Getenv("TEST_MYSQL_ADMIN_DSN")
 	if adminDSN == "" {
@@ -145,6 +151,7 @@ func startStack(t *testing.T) *stack {
 		"S3_ACCESS_KEY="+envOr("TEST_S3_ACCESS_KEY", "x"), "S3_SECRET_KEY="+envOr("TEST_S3_SECRET_KEY", "x"),
 		"PAYMENT_ENCRYPTION_KEY=isolation-payment-encryption-key-long-random-0123456789",
 	)
+	env = append(env, extraEnv...)
 	if os.Getenv("TEST_S3_ENDPOINT") != "" {
 		ensureBucket(t, "isolation")
 	}
@@ -224,6 +231,7 @@ func tail(s string, n int) string {
 type reply struct {
 	status int
 	body   []byte
+	header http.Header
 }
 
 func (r reply) String() string { return fmt.Sprintf("%d %s", r.status, tail(string(r.body), 300)) }
@@ -258,6 +266,12 @@ func (r reply) id(keys ...string) int64 {
 // do sends one request. An empty token sends no Authorization header.
 func (s *stack) do(token, method, path string, body any) reply {
 	s.t.Helper()
+	return s.doWith(token, method, path, body, nil)
+}
+
+// doWith is do plus extra request headers (for example Idempotency-Key).
+func (s *stack) doWith(token, method, path string, body any, headers map[string]string) reply {
+	s.t.Helper()
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -266,27 +280,44 @@ func (s *stack) do(token, method, path string, body any) reply {
 		}
 		rd = bytes.NewReader(b)
 	}
+	return s.send(token, method, path, rd, body != nil, "application/json", headers)
+}
+
+// putRaw sends raw bytes (an upload) with the given Content-Type.
+func (s *stack) putRaw(token, path, contentType string, data []byte) reply {
+	s.t.Helper()
+	return s.send(token, "PUT", path, bytes.NewReader(data), true, contentType, nil)
+}
+
+func (s *stack) send(token, method, path string, rd io.Reader, hasBody bool, contentType string, headers map[string]string) reply {
+	s.t.Helper()
 	req, err := http.NewRequest(method, s.base+path, rd)
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if hasBody {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	// Each call comes "from" a different address so the per-IP limiters on
 	// sign-in and sign-up do not turn the suite into a rate-limit test.
+	s.mu.Lock()
 	s.ipCount++
-	req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.20.%d.%d", s.ipCount/250, s.ipCount%250+1))
+	n := s.ipCount
+	s.mu.Unlock()
+	req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.20.%d.%d", n/250, n%250+1))
 	resp, err := s.client.Do(req)
 	if err != nil {
 		s.t.Fatalf("%s %s: %v", method, path, err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	return reply{status: resp.StatusCode, body: b}
+	return reply{status: resp.StatusCode, body: b, header: resp.Header}
 }
 
 // mustOK fails the test unless the reply is a 2xx; it is for fixture setup.

@@ -3,6 +3,9 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"errors"
+
+	"github.com/go-sql-driver/mysql"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/utils"
@@ -42,7 +45,7 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 }
 
 func (r *MySQLEvidenceRepository) ListByProject(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? ORDER BY uploaded_at DESC, id DESC`, projectID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? ORDER BY uploaded_at DESC, id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +71,7 @@ func (r *MySQLEvidenceRepository) ListByProjects(ctx context.Context, projectIDs
 		return nil, nil
 	}
 	query := `SELECT ` + evidenceColumns + ` FROM evidence WHERE project_id IN (` + utils.Placeholders(len(projectIDs)) + `) ORDER BY project_id, uploaded_at DESC, id DESC`
-	rows, err := r.db.QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, query, utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +89,7 @@ func (r *MySQLEvidenceRepository) ListByProjects(ctx context.Context, projectIDs
 }
 
 func (r *MySQLEvidenceRepository) ListByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) ([]domain.Evidence, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE related_kind = ? AND related_id = ? ORDER BY uploaded_at DESC`, string(kind), relatedID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE related_kind = ? AND related_id = ? ORDER BY uploaded_at DESC`, string(kind), relatedID)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +109,7 @@ func (r *MySQLEvidenceRepository) ListByRelated(ctx context.Context, kind domain
 // ListClientVisibleGeneral backs Client Portal's own "Dokumen" tab — see
 // EvidenceRepository.ListClientVisibleGeneral's doc comment.
 func (r *MySQLEvidenceRepository) ListClientVisibleGeneral(ctx context.Context, projectID int64) ([]domain.Evidence, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND related_kind = ? AND is_client_visible = TRUE ORDER BY uploaded_at DESC, id DESC`,
 		projectID, string(domain.RelatedGeneral),
 	)
@@ -127,12 +130,12 @@ func (r *MySQLEvidenceRepository) ListClientVisibleGeneral(ctx context.Context, 
 }
 
 func (r *MySQLEvidenceRepository) FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+evidenceColumns+` FROM evidence WHERE project_id = ? AND id = ? LIMIT 1`, projectID, id)
 	return scanEvidence(row.Scan)
 }
 
 func (r *MySQLEvidenceRepository) Create(ctx context.Context, e *domain.Evidence) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO evidence (project_id, name, type, storage_path, file_name, document_date, uploaded_at,
 		 description, uploaded_by_staff_id, related_kind, related_id, is_client_visible)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -140,6 +143,10 @@ func (r *MySQLEvidenceRepository) Create(ctx context.Context, e *domain.Evidence
 		e.Description, e.UploadedByStaffID, string(e.RelatedKind), e.RelatedID, e.IsClientVisible,
 	)
 	if err != nil {
+		var me *mysql.MySQLError
+		if errors.As(err, &me) && me.Number == 1062 {
+			return domain.ErrStoragePathTaken
+		}
 		return err
 	}
 	id, err := result.LastInsertId()
@@ -150,8 +157,20 @@ func (r *MySQLEvidenceRepository) Create(ctx context.Context, e *domain.Evidence
 	return nil
 }
 
+// ExistsByStoragePath reports whether an evidence row already points at the
+// stored object (a signed upload is single-use: once a row owns the object, the
+// token that named it is spent).
+func (r *MySQLEvidenceRepository) ExistsByStoragePath(ctx context.Context, storagePath string) (bool, error) {
+	var one int
+	err := conn(ctx, r.db).QueryRowContext(ctx, `SELECT 1 FROM evidence WHERE storage_path = ? LIMIT 1`, storagePath).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (r *MySQLEvidenceRepository) SetClientVisible(ctx context.Context, projectID, id int64, visible bool) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := conn(ctx, r.db).ExecContext(ctx,
 		`UPDATE evidence SET is_client_visible = ? WHERE project_id = ? AND id = ?`,
 		visible, projectID, id,
 	)
@@ -159,13 +178,13 @@ func (r *MySQLEvidenceRepository) SetClientVisible(ctx context.Context, projectI
 }
 
 func (r *MySQLEvidenceRepository) DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM evidence WHERE related_kind = ? AND related_id = ?`, string(kind), relatedID)
+	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM evidence WHERE related_kind = ? AND related_id = ?`, string(kind), relatedID)
 	return err
 }
 
 // DeleteByID hard-deletes one evidence row of a project.
 func (r *MySQLEvidenceRepository) DeleteByID(ctx context.Context, projectID, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM evidence WHERE project_id = ? AND id = ?`, projectID, id)
+	_, err := conn(ctx, r.db).ExecContext(ctx, `DELETE FROM evidence WHERE project_id = ? AND id = ?`, projectID, id)
 	return err
 }
 
@@ -193,7 +212,7 @@ func (r *MySQLEvidenceRepository) RelatedBelongsToProject(ctx context.Context, p
 		return false, nil
 	}
 	var one int
-	err := r.db.QueryRowContext(ctx, query, relatedID, projectID).Scan(&one)
+	err := conn(ctx, r.db).QueryRowContext(ctx, query, relatedID, projectID).Scan(&one)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}

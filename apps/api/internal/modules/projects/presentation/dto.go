@@ -219,6 +219,8 @@ type paymentResponse struct {
 	ReferenceNumber  string `json:"referenceNumber"`
 	Notes            string `json:"notes"`
 	EvidenceComplete bool   `json:"evidenceComplete"`
+	// Evidence: the payment's proof files (invoice and/or transfer proof).
+	Evidence []evidenceRefResponse `json:"evidence"`
 }
 
 // toPaymentResponse takes evidenceComplete explicitly rather than reading
@@ -232,7 +234,7 @@ func toPaymentResponse(p domain.VendorPayment, evidenceComplete bool) paymentRes
 	return paymentResponse{
 		ID: p.ID, ProjectVendorID: p.ProjectVendorID, Type: string(p.Type), Amount: p.Amount,
 		PaymentDate: p.PaymentDate.Format(dateLayout), Method: p.Method, ReferenceNumber: p.ReferenceNumber,
-		Notes: p.Notes, EvidenceComplete: evidenceComplete,
+		Notes: p.Notes, EvidenceComplete: evidenceComplete, Evidence: []evidenceRefResponse{},
 	}
 }
 
@@ -278,6 +280,8 @@ type venuePaymentResponse struct {
 	ReferenceNumber  string `json:"referenceNumber"`
 	Notes            string `json:"notes"`
 	EvidenceComplete bool   `json:"evidenceComplete"`
+	// Evidence: the payment's proof files (invoice and/or transfer proof).
+	Evidence []evidenceRefResponse `json:"evidence"`
 }
 
 // toVenuePaymentResponse takes evidenceComplete explicitly for the same
@@ -287,7 +291,37 @@ func toVenuePaymentResponse(p domain.VenuePayment, evidenceComplete bool) venueP
 	return venuePaymentResponse{
 		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
 		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
+		Evidence: []evidenceRefResponse{},
 	}
+}
+
+// ledgerSummaryResponse is where one owed amount stands after a payment was
+// recorded: what is owed, what the payments cover (DP + Termin + Pelunasan -
+// Refund; Tambahan is outside the contract) and what is left (never negative).
+type ledgerSummaryResponse struct {
+	ContractValue int64 `json:"contractValue"`
+	Paid          int64 `json:"paid"`
+	Remaining     int64 `json:"remaining"`
+}
+
+func toLedgerSummary(l domain.Ledger) ledgerSummaryResponse {
+	return ledgerSummaryResponse{ContractValue: l.ContractValue, Paid: l.Paid, Remaining: l.Remaining}
+}
+
+// clientLedgerSummaryResponse adds the schedule: the same objects as
+// GET /payment-terms, allocated by the server.
+type clientLedgerSummaryResponse struct {
+	ledgerSummaryResponse
+	Terms []paymentTermResponse `json:"terms"`
+}
+
+// evidenceRefs maps proof files to their short response form (never nil).
+func evidenceRefs(list []domain.Evidence) []evidenceRefResponse {
+	out := make([]evidenceRefResponse, 0, len(list))
+	for _, e := range list {
+		out = append(out, toEvidenceRef(e))
+	}
+	return out
 }
 
 type issueResponse struct {

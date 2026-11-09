@@ -24,7 +24,11 @@ type VenuePaymentService struct {
 	evidence  *EvidenceService
 	activity  *ActivityService
 	contracts ContractReader
+	proof     *ProofSupport
 }
+
+// SetProofSupport wires what CreateWithProof needs (transaction, upload checks).
+func (s *VenuePaymentService) SetProofSupport(p *ProofSupport) { s.proof = p }
 
 func NewVenuePaymentService(repo VenuePaymentRepository, evidence *EvidenceService, activity *ActivityService, contracts ContractReader) *VenuePaymentService {
 	return &VenuePaymentService{repo: repo, evidence: evidence, activity: activity, contracts: contracts}
@@ -137,4 +141,74 @@ func (s *VenuePaymentService) Delete(ctx context.Context, tenantID, projectID, i
 	s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "venue_payment", formatID(p.ID), string(p.Type),
 		"Pembayaran venue dihapus")
 	return nil
+}
+
+// VenuePaymentCreated is the outcome of recording a venue payment: the payment,
+// its proof files and where the venue's cost stands.
+type VenuePaymentCreated struct {
+	Payment  *domain.VenuePayment
+	Evidence []domain.Evidence
+	Ledger   domain.Ledger
+}
+
+// CreateWithProof is Create plus the proof files, as one atomic action: see
+// ClientPaymentService.CreateWithProof.
+func (s *VenuePaymentService) CreateWithProof(ctx context.Context, tenantID, projectID, actorStaffID int64, input VenuePaymentInput, items []ProofItem) (*VenuePaymentCreated, error) {
+	proof := s.proof
+	if proof == nil {
+		proof = NewProofSupport(nil, nil, s.evidence)
+	}
+	fe := newFieldErrors()
+	validatePaymentFields(fe, input.Type, input.Amount)
+	resolved, err := proof.resolve(ctx, tenantID, projectID, items, outgoingProofTypes)
+	if err != nil && !fe.mergeErr(err) {
+		return nil, err
+	}
+	if !fe.empty() {
+		return nil, fe.err()
+	}
+
+	var out VenuePaymentCreated
+	err = proof.tx.InTx(ctx, func(ctx context.Context) error {
+		if err := proof.tx.LockProject(ctx, projectID); err != nil {
+			return err
+		}
+		if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+			return err
+		}
+		p := &domain.VenuePayment{
+			ProjectID: projectID, Type: input.Type, Amount: input.Amount,
+			PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
+		}
+		if err := s.repo.Create(ctx, p); err != nil {
+			return err
+		}
+		evidence, err := proof.attach(ctx, proofTarget{
+			ProjectID: projectID, ActorStaffID: actorStaffID, Kind: domain.RelatedVenuePayment, RelatedID: p.ID,
+			Date: input.PaymentDate, Reference: input.ReferenceNumber,
+		}, resolved)
+		if err != nil {
+			return err
+		}
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "venue_payment", formatID(p.ID), string(p.Type),
+			"Pembayaran venue dicatat")
+		cost, err := s.contracts.VenueCost(ctx, tenantID, projectID)
+		if err != nil {
+			return err
+		}
+		all, err := s.repo.ListByProject(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		lines := make([]domain.PaymentLine, 0, len(all))
+		for _, q := range all {
+			lines = append(lines, lineOf(q.Type, q.Amount))
+		}
+		out = VenuePaymentCreated{Payment: p, Evidence: evidence, Ledger: domain.ComputeLedger(lines, cost)}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

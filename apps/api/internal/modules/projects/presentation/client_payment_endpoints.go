@@ -79,9 +79,28 @@ type clientPaymentInputBody struct {
 	Method          string `json:"method"`
 	ReferenceNumber string `json:"referenceNumber"`
 	Notes           string `json:"notes"`
+	// Evidence names files already uploaded with POST /projects/{id}/uploads
+	// (type "Transfer Proof", at most 4); they are recorded in the same
+	// transaction as the payment.
+	Evidence []proofBody `json:"evidence"`
 }
 
+// clientPaymentCreatedResponse is the payment (as listed) plus where the
+// contract and the payment schedule stand now.
+type clientPaymentCreatedResponse struct {
+	clientPaymentResponse
+	LedgerSummary clientLedgerSummaryResponse `json:"ledgerSummary"`
+}
+
+// createClientPayment records a client payment, optionally with its proof, as
+// one atomic action, under the optional Idempotency-Key header.
 func (h *Handler) createClientPayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	h.idempotent(w, r, claims, func(w http.ResponseWriter, r *http.Request) {
+		h.createClientPaymentNow(w, r, claims, projectID)
+	})
+}
+
+func (h *Handler) createClientPaymentNow(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
 	var body clientPaymentInputBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
@@ -92,20 +111,25 @@ func (h *Handler) createClientPayment(w http.ResponseWriter, r *http.Request, cl
 		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
 		return
 	}
-	p, err := h.clientPayments.Create(r.Context(), claims.tenantID, projectID, claims.staffID, application.ClientPaymentInput{
+	created, err := h.clientPayments.CreateWithProof(r.Context(), claims.tenantID, projectID, claims.staffID, application.ClientPaymentInput{
 		Type: domain.PaymentType(body.Type), Amount: body.Amount,
 		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
+	}, toProofItems(body.Evidence), nowWIB())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	resp, err := h.oneClientPaymentResponse(r.Context(), claims, projectID, *created.Payment)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.Created(w, "Pembayaran client berhasil dicatat", clientPaymentCreatedResponse{
+		clientPaymentResponse: resp,
+		LedgerSummary: clientLedgerSummaryResponse{
+			ledgerSummaryResponse: toLedgerSummary(created.Ledger), Terms: toPaymentTermResponses(created.Terms),
+		},
 	})
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	resp, err := h.oneClientPaymentResponse(r.Context(), claims, projectID, *p)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	response.Created(w, "Pembayaran client berhasil dicatat", resp)
 }
 
 // updateClientPayment is a full-field overwrite, no role-gate — see

@@ -42,6 +42,8 @@ type Handler struct {
 	clientAccess   ClientAccessResolver
 	refs           *application.References
 	clientHome     *application.ClientHomeService
+	uploads        *application.UploadService
+	idem           *application.IdempotencyService
 }
 
 func NewHandler(
@@ -66,6 +68,12 @@ func NewHandler(
 
 // SetClientHome gives the handler the Client Portal home assembler (E5).
 func (h *Handler) SetClientHome(s *application.ClientHomeService) { h.clientHome = s }
+
+// SetUploads gives the handler the signed-upload service (E3).
+func (h *Handler) SetUploads(s *application.UploadService) { h.uploads = s }
+
+// SetIdempotency gives the handler the Idempotency-Key store (E3, E7).
+func (h *Handler) SetIdempotency(s *application.IdempotencyService) { h.idem = s }
 
 // SetReferences gives the handler the checks that ids named inside a request
 // body (PICs, vendors, categories) belong to the caller's own workspace.
@@ -213,6 +221,10 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.linkEvidence(w, r, projectID, rest[1], claims.isClient)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "toggle-client-visible" && r.Method == http.MethodPost:
 		h.toggleEvidenceClientVisible(w, r, projectID, rest[1])
+	case len(rest) == 1 && rest[0] == "uploads" && r.Method == http.MethodPost:
+		h.createUpload(w, r, claims, projectID)
+	case len(rest) == 2 && rest[0] == "uploads" && r.Method == http.MethodPut:
+		h.putUpload(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "documents" && r.Method == http.MethodGet:
 		h.listDocuments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "activity" && r.Method == http.MethodGet:
@@ -293,6 +305,11 @@ func staffWritePermission(method string, rest []string) (perm string, alt string
 			return "finance.payment.delete", ""
 		}
 		return "finance.record", ""
+	case "uploads":
+		// A signed upload is the first half of attaching a file, so it needs what
+		// the evidence upload needs: a payment proof is uploaded by a role that
+		// has finance.record but not project.edit.
+		return "project.edit", "finance.record"
 	case "evidence":
 		// Showing a document to the client is a project decision, not a
 		// finance one.
