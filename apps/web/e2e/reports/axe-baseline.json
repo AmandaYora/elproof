@@ -1,0 +1,460 @@
+{
+  "generatedBy": "e2e/tests/axe.spec.ts (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa)",
+  "pagesScanned": 68,
+  "violationsByImpact": {
+    "critical": 0,
+    "serious": 10,
+    "moderate": 0,
+    "minor": 0
+  },
+  "byRule": {
+    "dlitem": {
+      "impact": "serious",
+      "help": "<dt> and <dd> elements must be contained by a <dl>",
+      "pages": 2,
+      "nodes": 4
+    },
+    "aria-command-name": {
+      "impact": "serious",
+      "help": "ARIA commands must have an accessible name",
+      "pages": 2,
+      "nodes": 4
+    },
+    "nested-interactive": {
+      "impact": "serious",
+      "help": "Interactive controls must not be nested",
+      "pages": 2,
+      "nodes": 4
+    },
+    "target-size": {
+      "impact": "serious",
+      "help": "All touch targets must be 24px large, or leave sufficient space",
+      "pages": 2,
+      "nodes": 2
+    },
+    "definition-list": {
+      "impact": "serious",
+      "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
+      "pages": 2,
+      "nodes": 2
+    }
+  },
+  "pages": [
+    {
+      "page": "marketing/beranda",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/beranda",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "marketing/faq",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/faq",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/audit-log",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/audit-log",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/kebijakan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/kebijakan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/pengumuman",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/pengumuman",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/ringkasan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/ringkasan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/tagihan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/tagihan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/tambah-tenant (dialog)",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/tambah-tenant (dialog)",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/tenant-detail",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/tenant-detail",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "platform/tenant",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "platform/tenant",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/beranda",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/beranda",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/dokumen",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/dokumen",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/jadwal",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/jadwal",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/kendala",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/kendala",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/lainnya",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/lainnya",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/pembayaran",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/pembayaran",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "portal/vendor",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "portal/vendor",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/beranda",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/beranda",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/klien",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/klien",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/langganan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/langganan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/login",
+      "viewport": "desktop",
+      "violations": [
+        {
+          "rule": "target-size",
+          "impact": "serious",
+          "help": "All touch targets must be 24px large, or leave sufficient space",
+          "nodes": 1,
+          "sample": ".right-3"
+        }
+      ]
+    },
+    {
+      "page": "wo/login",
+      "viewport": "mobile",
+      "violations": [
+        {
+          "rule": "target-size",
+          "impact": "serious",
+          "help": "All touch targets must be 24px large, or leave sufficient space",
+          "nodes": 1,
+          "sample": ".right-3"
+        }
+      ]
+    },
+    {
+      "page": "wo/peran-akses",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/peran-akses",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/profil-usaha",
+      "viewport": "desktop",
+      "violations": [
+        {
+          "rule": "definition-list",
+          "impact": "serious",
+          "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
+          "nodes": 1,
+          "sample": ".py-4.px-5:nth-child(2) > dl"
+        },
+        {
+          "rule": "dlitem",
+          "impact": "serious",
+          "help": "<dt> and <dd> elements must be contained by a <dl>",
+          "nodes": 2,
+          "sample": ".sm\\:col-span-2 > .min-w-0 > dt"
+        }
+      ]
+    },
+    {
+      "page": "wo/profil-usaha",
+      "viewport": "mobile",
+      "violations": [
+        {
+          "rule": "definition-list",
+          "impact": "serious",
+          "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
+          "nodes": 1,
+          "sample": ".py-4.px-5:nth-child(2) > dl"
+        },
+        {
+          "rule": "dlitem",
+          "impact": "serious",
+          "help": "<dt> and <dd> elements must be contained by a <dl>",
+          "nodes": 2,
+          "sample": ".sm\\:col-span-2 > .min-w-0 > dt"
+        }
+      ]
+    },
+    {
+      "page": "wo/proyek-dokumen",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-dokumen",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-kendala",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-kendala",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-keuangan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-keuangan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-ringkasan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-ringkasan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-vendor",
+      "viewport": "desktop",
+      "violations": [
+        {
+          "rule": "aria-command-name",
+          "impact": "serious",
+          "help": "ARIA commands must have an accessible name",
+          "nodes": 2,
+          "sample": "li:nth-child(1) > .sm\\:flex.hidden.py-3\\.5 > .gap-1.items-center.flex > .hover\\:text-navy-900.hover\\:bg-white[role=\"button\"]"
+        },
+        {
+          "rule": "nested-interactive",
+          "impact": "serious",
+          "help": "Interactive controls must not be nested",
+          "nodes": 2,
+          "sample": "li:nth-child(1) > .sm\\:flex.hidden.py-3\\.5"
+        }
+      ]
+    },
+    {
+      "page": "wo/proyek-vendor",
+      "viewport": "mobile",
+      "violations": [
+        {
+          "rule": "aria-command-name",
+          "impact": "serious",
+          "help": "ARIA commands must have an accessible name",
+          "nodes": 2,
+          "sample": "li:nth-child(1) > .sm\\:hidden.py-3\\.5.text-left > .items-start.justify-between.gap-3 > .gap-1.items-center.flex > .hover\\:text-navy-900.hover\\:bg-white[role=\"button\"]"
+        },
+        {
+          "rule": "nested-interactive",
+          "impact": "serious",
+          "help": "Interactive controls must not be nested",
+          "nodes": 2,
+          "sample": "li:nth-child(1) > .sm\\:hidden.py-3\\.5.text-left"
+        }
+      ]
+    },
+    {
+      "page": "wo/proyek",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/tambah-pembayaran (dialog)",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/tambah-pembayaran (dialog)",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/tambah-vendor (dialog)",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/tambah-vendor (dialog)",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/tim",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/tim",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/vendor",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/vendor",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/venue",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/venue",
+      "viewport": "mobile",
+      "violations": []
+    }
+  ]
+}
