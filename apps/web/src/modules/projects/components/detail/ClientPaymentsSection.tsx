@@ -11,6 +11,8 @@ import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
+import { ProofStamp } from "@/shared/components/ui/ProofStamp";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, ClientPaymentEvidenceError } from "@/modules/projects/stores/useProjectStore";
@@ -24,6 +26,7 @@ import {
 import { PAYMENT_METHOD_OPTIONS } from "@/modules/projects/schemas/payment.schema";
 import type { ClientPayment } from "@/modules/projects/types";
 import { todayISO } from "@/modules/projects/lib/dates";
+import { verifiedLabel } from "@/modules/projects/lib/proof";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { remainingToPay, overpaymentMessage, countsAgainstContract } from "@/modules/projects/lib/payments";
 import { toast } from "@/shared/stores/useToastStore";
@@ -44,6 +47,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const createClientPayment = useProjectStore((s) => s.createClientPayment);
   const updateClientPayment = useProjectStore((s) => s.updateClientPayment);
   const deleteClientPayment = useProjectStore((s) => s.deleteClientPayment);
+  const verifyClientPayment = useProjectStore((s) => s.verifyClientPayment);
   // What the workspace role allows (ADR-0026): hard delete needs
   // finance.payment.delete; adding and editing payments finance.record.
   const canDelete = useCan("finance.payment.delete");
@@ -56,6 +60,9 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewingEvidencePayment, setViewingEvidencePayment] = useState<ClientPayment | null>(null);
+  const [verifying, setVerifying] = useState<ClientPayment | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifySubmitting, setVerifySubmitting] = useState(false);
 
   useEffect(() => {
     void fetchClientPayments(projectId);
@@ -71,6 +78,21 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   // outside the contract, so it must not shrink what the client still owes.
   const totalRemaining = remainingToPay(contractValue, clientPayments);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(clientPayments);
+
+  async function handleVerify() {
+    if (!verifying) return;
+    setVerifySubmitting(true);
+    setVerifyError(null);
+    try {
+      await verifyClientPayment(projectId, verifying.id);
+      toast.success("Pembayaran diverifikasi");
+      setVerifying(null);
+    } catch (err) {
+      setVerifyError(getApiErrorMessage(err, "Pembayaran belum bisa diverifikasi. Coba lagi."));
+    } finally {
+      setVerifySubmitting(false);
+    }
+  }
 
   async function handleAddPayment(values: ClientPaymentFormValues) {
     setActionError(null);
@@ -154,7 +176,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <span className="font-medium text-text-primary">{payment.type}</span>
-                    {payment.evidenceComplete ? <Badge tone="success">Ada</Badge> : <Badge tone="warning">Belum Ada</Badge>}
+                    <PaymentProofCell payment={payment} canVerify={canRecord} onOpen={() => setViewingEvidencePayment(payment)} onVerify={() => setVerifying(payment)} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
@@ -193,7 +215,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <TD>{formatDate(payment.paymentDate)}</TD>
                     <TD>{payment.method}</TD>
                     <TD>{payment.referenceNumber}</TD>
-                    <TD>{payment.evidenceComplete ? <Badge tone="success">Ada</Badge> : <Badge tone="warning">Belum Ada</Badge>}</TD>
+                    <TD><PaymentProofCell payment={payment} canVerify={canRecord} onOpen={() => setViewingEvidencePayment(payment)} onVerify={() => setVerifying(payment)} /></TD>
                     <TD>
                       <div className="flex items-center gap-2">
                         <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
@@ -279,6 +301,22 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
         </Modal>
       )}
 
+      <ConfirmDialog
+        open={verifying !== null}
+        title="Verifikasi pembayaran ini?"
+        confirmLabel="Verifikasi pembayaran"
+        tone="primary"
+        isSubmitting={verifySubmitting}
+        error={verifyError}
+        onConfirm={() => void handleVerify()}
+        onClose={() => setVerifying(null)}
+      >
+        <p>
+          Anda menyatakan {verifying ? `${formatCurrency(verifying.amount)} (${verifying.type})` : "pembayaran ini"} sudah diterima dan buktinya sesuai. Klien akan
+          melihat tanda terverifikasi beserta nama Anda. Mengubah pembayaran ini nanti akan menghapus verifikasinya.
+        </p>
+      </ConfirmDialog>
+
       {viewingEvidencePayment && (
         <EvidenceListModal
           open
@@ -289,6 +327,28 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The proof state of one payment: a stamp when verified (opens the file), else
+ * whether a file is attached and, for roles that may, the button to verify it.
+ */
+function PaymentProofCell({ payment, canVerify, onOpen, onVerify }: { payment: ClientPayment; canVerify: boolean; onOpen: () => void; onVerify: () => void }) {
+  const proof = payment.evidence[0];
+  if (payment.verifiedAt && proof) {
+    return <ProofStamp proof={proof} label={verifiedLabel(payment.verifiedAt, payment.verifiedBy)} onOpen={onOpen} />;
+  }
+  if (!proof) return <Badge tone="warning">Belum ada bukti</Badge>;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <Badge tone="neutral">Bukti ada</Badge>
+      {canVerify && (
+        <Button size="sm" variant="secondary" onClick={onVerify}>
+          Verifikasi
+        </Button>
+      )}
+    </span>
   );
 }
 

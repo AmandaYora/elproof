@@ -1,36 +1,25 @@
-import { FileText } from "lucide-react";
+import { Button } from "@/shared/components/kit/button";
 import { IssueImpactBadge, IssueStatusBadge } from "@/modules/projects/components/StatusBadges";
-import type { VendorIssue, Evidence } from "@/modules/projects/types";
 import { formatDate } from "@/shared/lib/formatters";
+import type { VendorIssue } from "@/modules/projects/types";
+import type { ProofToOpen } from "@/modules/client-portal/components/useProofViewer";
 
-interface IssueCardProps {
-  issue: VendorIssue;
-  evidence: Evidence[];
-  onViewEvidence: (evidence: Evidence) => void;
-  showVendorName?: boolean;
-  vendorName?: string;
-  // Name of the specific vendor timeline this kendala is about, if any --
-  // omitted/undefined shows "Kendala Umum" (general to the vendor).
-  milestoneName?: string;
-}
-
-export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = true, vendorName, milestoneName }: IssueCardProps) {
-  const isResolved = issue.status === "Resolved" || issue.status === "Closed";
+/**
+ * One kendala, always answering the same three questions (FLOW-IDEAL 3.2): what
+ * happened, what we are doing, when to expect news. Calm colors, never red.
+ * Names come with the issue (E6), so the card needs no vendor lists.
+ */
+export function IssueCard({ issue, onOpenProof, showVendorName = true }: { issue: VendorIssue; onOpenProof: (proof: ProofToOpen, title: string) => void; showVendorName?: boolean }) {
+  const resolved = issue.status === "Resolved" || issue.status === "Closed";
+  const where = [showVendorName ? issue.vendorName : "", issue.vendorMilestoneName || "Kendala umum"].filter(Boolean).join(" · ");
 
   return (
-    <div className="group relative rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      {/* Decorative side bar based on resolution status */}
-      <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-opacity opacity-70 group-hover:opacity-100 ${isResolved ? 'bg-emerald-500' : 'bg-warning-strong'}`}></div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-border/50 pb-4">
-        <div>
-          <p className="text-[15px] font-bold text-navy-950 sm:text-[16px]">{issue.title}</p>
-          <p className="mt-1 text-[12.5px] font-medium text-text-secondary sm:text-[13px] bg-surface-muted inline-block px-2.5 py-1 rounded-md">
-            {showVendorName && <span className="text-navy-700 font-semibold">{vendorName ?? "Vendor tidak diketahui"}</span>}
-            {showVendorName && <span className="mx-1.5 text-border">|</span>}
-            <span className="font-semibold text-navy-700">{milestoneName ?? "Kendala Umum"}</span>
-            <span className="mx-1.5 text-border">|</span>
-            Ditemukan {formatDate(issue.foundDate)}
+    <article className="rounded-2xl border border-border bg-card p-5">
+      <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold text-foreground">{issue.title}</h3>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            {where} · Ditemukan {formatDate(issue.foundDate)}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -39,58 +28,43 @@ export function IssueCard({ issue, evidence, onViewEvidence, showVendorName = tr
         </div>
       </div>
 
-      {/* Always the same three answers (FLOW-IDEAL 3.2): what happened, what we
-          are doing, when to expect news. Calm colors, never red. */}
       <dl className="mt-4 flex flex-col gap-4">
         <div>
-          <dt className="text-[13px] font-semibold text-text-primary">Apa yang terjadi</dt>
-          <dd className="mt-1 text-[13.5px] leading-relaxed text-text-secondary sm:text-[14px]">{issue.description || "Kami sedang memeriksa hal ini."}</dd>
+          <dt className="text-[13px] font-semibold text-foreground">Apa yang terjadi</dt>
+          <dd className="mt-1 text-[14px] leading-relaxed text-muted-foreground">{issue.description || "Kami sedang memeriksa hal ini."}</dd>
         </div>
-        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-          <dt className="text-[13px] font-semibold text-navy-900">Yang sedang kami lakukan</dt>
-          <dd className="mt-1 text-[13.5px] leading-relaxed text-navy-900/80">
+        <div className="rounded-xl bg-info-soft p-4">
+          <dt className="text-[13px] font-semibold text-info-text">Yang sedang kami lakukan</dt>
+          <dd className="mt-1 text-[14px] leading-relaxed text-foreground">
             {issue.resolutionPlan || "Tim kami sedang menyusun langkah penanganan dan akan memberi tahu Anda."}
           </dd>
         </div>
-        {!isResolved && (
+        {!resolved && (
           <div>
-            <dt className="text-[13px] font-semibold text-text-primary">Kabar berikutnya</dt>
-            <dd className="mt-1 text-[13.5px] text-text-secondary sm:text-[14px]">
-              {issue.targetResolutionDate
-                ? `Kami targetkan selesai sekitar ${formatDate(issue.targetResolutionDate)}.`
-                : "Kami akan mengabari Anda begitu ada perkembangan."}
+            <dt className="text-[13px] font-semibold text-foreground">Kabar berikutnya</dt>
+            <dd className="mt-1 text-[14px] text-muted-foreground">
+              {issue.targetResolutionDate ? `Kami targetkan selesai sekitar ${formatDate(issue.targetResolutionDate)}.` : "Kami akan mengabari Anda begitu ada perkembangan."}
             </dd>
           </div>
         )}
       </dl>
 
-      {isResolved && (
-        <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 relative overflow-hidden">
-          <div className="absolute top-0 left-0 bottom-0 w-1 bg-emerald-400 opacity-50"></div>
-          <p className="text-[13px] font-semibold text-emerald-800">
-            Diselesaikan {formatDate(issue.resolvedDate)}
-          </p>
-          {issue.resolutionNotes && (
-            <p className="mt-1.5 text-[13.5px] leading-relaxed text-emerald-900/80">{issue.resolutionNotes}</p>
-          )}
+      {resolved && (
+        <div className="mt-4 rounded-xl bg-success-soft p-4">
+          <p className="text-[13px] font-semibold text-success-text">Diselesaikan {formatDate(issue.resolvedDate)}</p>
+          {issue.resolutionNotes && <p className="mt-1 text-[14px] leading-relaxed text-foreground">{issue.resolutionNotes}</p>}
         </div>
       )}
 
-      {evidence.length > 0 && (
-        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border/50 pt-4">
-          <FileText className="h-4 w-4 shrink-0 text-text-tertiary" />
-          <span className="text-[13px] font-medium text-text-secondary mr-2">Dokumen Pendukung:</span>
-          {evidence.map((e) => (
-            <button
-              key={e.id}
-              onClick={() => onViewEvidence(e)}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-semibold text-navy-900 hover:bg-navy-50 hover:border-navy-200 transition-colors shadow-sm"
-            >
-              Lihat {e.type}
-            </button>
+      {issue.evidence.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
+          {issue.evidence.map((e) => (
+            <Button key={e.id} variant="outline" size="sm" onClick={() => onOpenProof(e, issue.title)}>
+              Lihat {e.type.toLowerCase()}
+            </Button>
           ))}
         </div>
       )}
-    </div>
+    </article>
   );
 }

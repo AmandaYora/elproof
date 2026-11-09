@@ -248,3 +248,11 @@ body {
   from { transform: translateY(8px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* ProofStamp: the one expressive moment (DESIGN.md §3). A stamp pressed onto
+   paper: it lands slightly large and settles. Reduced motion collapses it. */
+@keyframes stamp-press {
+  0% { transform: scale(1.35) rotate(-6deg); opacity: 0; }
+  60% { transform: scale(0.96) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}

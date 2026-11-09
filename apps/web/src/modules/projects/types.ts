@@ -146,6 +146,14 @@ export interface Project {
   progress?: ProjectProgress;
 }
 
+/** A file that backs something shown on screen (E4): enough to list it and open it. */
+export interface EvidenceRef {
+  id: string;
+  type: EvidenceType;
+  fileName: string;
+  uploadedAt: string;
+}
+
 export interface ProjectMilestone {
   id: string;
   order: number;
@@ -153,6 +161,8 @@ export interface ProjectMilestone {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string | null;
+  /** Files attached to this step (the Portal gets only those the WO shared). */
+  evidence: EvidenceRef[];
 }
 
 export type VendorPricingTier = "Akad" | "AkadResepsi" | "Resepsi";
@@ -176,6 +186,9 @@ export interface ProjectVendor {
   dueDate: string | null;
   picStaffId: string;
   notes: string;
+  /** Resolved by the server (E6); "" when it could not be. */
+  vendorName: string;
+  categoryName: string;
 }
 
 export interface VendorMilestone {
@@ -189,6 +202,7 @@ export interface VendorMilestone {
   completedDate: string | null;
   picStaffId: string;
   notes: string;
+  evidence: EvidenceRef[];
 }
 
 export interface VendorPayment {
@@ -217,6 +231,12 @@ export interface ClientPayment {
   referenceNumber: string;
   notes: string;
   evidenceComplete: boolean;
+  /** Who entered it (never sent to the Portal). */
+  recordedBy: string | null;
+  /** When and by whom the WO confirmed the money arrived; null = not yet verified. */
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  evidence: EvidenceRef[];
 }
 
 // Money going OUT to the project's venue -- same accounting direction and
@@ -250,6 +270,10 @@ export interface VendorIssue {
   targetResolutionDate: string | null;
   resolvedDate: string | null;
   resolutionNotes: string;
+  /** Names resolved by the server so the Portal needs no vendor lists (E6). */
+  vendorName: string;
+  vendorMilestoneName: string;
+  evidence: EvidenceRef[];
 }
 
 export interface Evidence {

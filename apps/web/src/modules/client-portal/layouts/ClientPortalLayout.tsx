@@ -1,5 +1,4 @@
-import { Suspense, useCallback, useEffect, useState } from "react";
-import axios from "axios";
+import { Suspense, useEffect } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CalendarDays, Ellipsis, Heart, House, Loader2, LogOut, Store, Wallet, type LucideIcon } from "lucide-react";
 import { Toaster } from "@/shared/components/ui/Toaster";
@@ -12,16 +11,13 @@ import { registerPortalServiceWorker } from "@/shared/lib/pwa";
 import { whatsappUrl } from "@/shared/lib/access-link";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { hasPermission, usePermissionStore } from "@/shared/stores/usePermissionStore";
-import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useContactStore } from "@/shared/stores/useContactStore";
+import { useClientHomeStore } from "@/modules/client-portal/stores/useClientHomeStore";
+import { OfflineBanner } from "@/modules/client-portal/components/OfflineBanner";
 
-/** Whether the money data (payments + schedule) is in: "off" when the role has no finance access. */
-export type FinanceState = "off" | "loading" | "ready" | "error";
-
+/** What every portal page gets: which project it is looking at. Each page loads its own data. */
 export interface ClientPortalContext {
   projectId: string;
-  finance: FinanceState;
-  retryFinance: () => void;
 }
 
 interface NavItem {
@@ -54,7 +50,20 @@ const GUARDED: Partial<Record<ClientPortalTab, string>> = {
   dokumen: "portal.documents.view",
 };
 
-type LoadState = "loading" | "ready" | "no-project" | "error";
+/** "Hubungi lewat WhatsApp" for the screens shown when there is no project to read a contact from. */
+function HelpLink({ message, label }: { message: string; label: string }) {
+  const contact = useContactStore((s) => s.contact);
+  const fetchContact = useContactStore((s) => s.fetch);
+  useEffect(() => {
+    void fetchContact();
+  }, [fetchContact]);
+  if (!contact?.whatsapp) return null;
+  return (
+    <a href={whatsappUrl(contact.whatsapp, message)} target="_blank" rel="noopener noreferrer" className="font-semibold text-navy-900 underline underline-offset-2">
+      {label}
+    </a>
+  );
+}
 
 function FullScreenMessage({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -68,13 +77,9 @@ function FullScreenMessage({ title, children }: { title: string; children: React
 export default function ClientPortalLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const project = useProjectStore((s) => s.currentProject);
-  const fetchMyProject = useProjectStore((s) => s.fetchMyProject);
-  const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
-  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
-  const fetchPaymentTerms = useProjectStore((s) => s.fetchPaymentTerms);
-  const fetchIssues = useProjectStore((s) => s.fetchIssues);
+  const home = useClientHomeStore((s) => s.home);
+  const state = useClientHomeStore((s) => s.status);
+  const fetchHome = useClientHomeStore((s) => s.fetch);
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
@@ -82,78 +87,21 @@ export default function ClientPortalLayout() {
   const grants = usePermissionStore((s) => s.grants);
   const grantsLoaded = usePermissionStore((s) => s.loaded);
   const fetchGrants = usePermissionStore((s) => s.fetch);
-  const contact = useContactStore((s) => s.contact);
-  const fetchContact = useContactStore((s) => s.fetch);
-  const [state, setState] = useState<LoadState>("loading");
-  const [attempt, setAttempt] = useState(0);
-  const [finance, setFinance] = useState<FinanceState>("loading");
-  const [financeAttempt, setFinanceAttempt] = useState(0);
 
+  // The three calls the shell needs, in parallel: permissions, branding and the
+  // landing page's data (which also tells every page which project this is).
   useEffect(() => {
     void fetchGrants();
     void hydrateBranding("Portal Klien");
-    void fetchContact();
+    void fetchHome();
     registerPortalServiceWorker();
-  }, [fetchGrants, hydrateBranding, fetchContact]);
-
-  const load = useCallback(async () => {
-    setState("loading");
-    try {
-      await fetchMyProject();
-      setState("ready");
-    } catch (err) {
-      // Not signed in is handled by the HTTP client (it sends the person to
-      // login). Everything else is NOT a reason to log anyone out: no project
-      // yet is a message, trouble reaching the server is a retry.
-      const code = axios.isAxiosError(err) ? err.response?.status : undefined;
-      setState(code === 403 || code === 404 ? "no-project" : "error");
-    }
-  }, [fetchMyProject]);
-
-  useEffect(() => {
-    void load();
-  }, [load, attempt]);
-
-  // What every page needs, loaded once the project is known and the role's
-  // permissions are in (a Keluarga account never asks for finance).
-  // Only once THIS load succeeded: until then the store may still hold a
-  // previous person's project.
-  const projectId = state === "ready" ? project?.id : undefined;
-  useEffect(() => {
-    if (!projectId || !grantsLoaded) return;
-    const quiet = (p: Promise<unknown>) => void p.catch(() => undefined);
-    if (hasPermission(grants, "portal.timeline.view")) quiet(fetchMilestones(projectId));
-    if (hasPermission(grants, "portal.vendor.view")) quiet(fetchVendorSection(projectId));
-    if (hasPermission(grants, "portal.issues.view")) quiet(fetchIssues(projectId));
-  }, [projectId, grantsLoaded, grants, fetchMilestones, fetchVendorSection, fetchIssues]);
-
-  // Money is different: showing "Sisa tagihan" before the payments arrive would
-  // show the whole contract as owed, so Beranda waits for this (and can retry).
-  useEffect(() => {
-    if (!projectId || !grantsLoaded) return;
-    if (!hasPermission(grants, "portal.finance.view")) {
-      setFinance("off");
-      return;
-    }
-    let cancelled = false;
-    setFinance("loading");
-    Promise.all([fetchClientPayments(projectId), fetchPaymentTerms(projectId)])
-      .then(() => !cancelled && setFinance("ready"))
-      .catch(() => !cancelled && setFinance("error"));
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, grantsLoaded, grants, fetchClientPayments, fetchPaymentTerms, financeAttempt]);
+  }, [fetchGrants, hydrateBranding, fetchHome]);
 
   if (state === "no-project") {
     return (
       <FullScreenMessage title="Akun Anda belum terhubung ke persiapan pernikahan">
         <p>Hubungi wedding organizer Anda agar akun ini dihubungkan ke project Anda.</p>
-        {contact?.whatsapp && (
-          <a href={whatsappUrl(contact.whatsapp, "Halo, akun portal saya belum terhubung ke project. Mohon dibantu.")} target="_blank" rel="noopener noreferrer" className="font-semibold text-navy-900 underline underline-offset-2">
-            Hubungi lewat WhatsApp
-          </a>
-        )}
+        <HelpLink message="Halo, akun portal saya belum terhubung ke project. Mohon dibantu." label="Hubungi lewat WhatsApp" />
         <Button variant="secondary" onClick={() => void logoutAndRedirect(navigate)}>Keluar</Button>
       </FullScreenMessage>
     );
@@ -163,17 +111,13 @@ export default function ClientPortalLayout() {
       <FullScreenMessage title="Gagal memuat">
         <p>Portal belum bisa dimuat. Periksa koneksi internet Anda, lalu coba lagi.</p>
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button onClick={() => setAttempt((n) => n + 1)}>Coba lagi</Button>
-          {contact?.whatsapp && (
-            <a href={whatsappUrl(contact.whatsapp, "Halo, portal saya tidak bisa dibuka. Mohon dibantu.")} target="_blank" rel="noopener noreferrer" className="text-[14px] font-semibold text-navy-900 underline underline-offset-2">
-              Hubungi WO
-            </a>
-          )}
+          <Button onClick={() => void fetchHome()}>Coba lagi</Button>
+          <HelpLink message="Halo, portal saya tidak bisa dibuka. Mohon dibantu." label="Hubungi WO" />
         </div>
       </FullScreenMessage>
     );
   }
-  if (state === "loading" || !project || !brandingHydrated || !grantsLoaded) {
+  if (state === "idle" || state === "loading" || !home || !brandingHydrated || !grantsLoaded) {
     // Waits on branding too: the hero and header read brand color live, and
     // painting before it lands would flash ElProof's own navy first.
     return (
@@ -193,6 +137,7 @@ export default function ClientPortalLayout() {
   return (
     <div className="min-h-screen bg-background" data-density="comfortable">
       <Toaster mobileOffset={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }} />
+      <OfflineBanner />
 
       <header className="sticky top-0 z-30 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
@@ -236,7 +181,7 @@ export default function ClientPortalLayout() {
 
       <main className="mx-auto max-w-5xl px-4 py-5 pb-28 sm:px-6 sm:py-8 md:pb-10">
         <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>}>
-          <Outlet context={{ projectId: project.id, finance, retryFinance: () => setFinanceAttempt((n) => n + 1) } satisfies ClientPortalContext} />
+          <Outlet context={{ projectId: home.project.id } satisfies ClientPortalContext} />
         </Suspense>
       </main>
 

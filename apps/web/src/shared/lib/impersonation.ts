@@ -5,6 +5,7 @@ import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { useContactStore } from "@/shared/stores/useContactStore";
+import { runSessionResets } from "@/shared/lib/session-reset";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import type { ImpersonationResult } from "@/modules/platform-admin/data/console.types";
 
@@ -13,6 +14,7 @@ function resetWorkspaceStores() {
   useSubscriptionStatusStore.getState().reset();
   usePermissionStore.getState().reset();
   useContactStore.getState().reset();
+  runSessionResets();
 }
 
 /**

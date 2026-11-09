@@ -177,6 +177,7 @@ export const API = {
   projects: {
     base: "/api/v1/projects",
     me: "/api/v1/projects/me",
+    meHome: "/api/v1/projects/me/home",
     item: (id: string) => `/api/v1/projects/${id}`,
     cancel: (id: string) => `/api/v1/projects/${id}/cancel`,
     transition: (id: string) => `/api/v1/projects/${id}/transition`,
@@ -196,6 +197,7 @@ export const API = {
     payment: (id: string, paymentId: string) => `/api/v1/projects/${id}/payments/${paymentId}`,
     clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
     clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
+    clientPaymentVerify: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/verify`,
     venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,
     venuePayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}`,
     issues: (id: string) => `/api/v1/projects/${id}/issues`,

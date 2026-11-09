@@ -20,6 +20,7 @@ import type {
   ActivityLogEntry,
   ClientPayment,
   Evidence,
+  EvidenceRef,
   EvidenceRelatedKind,
   EvidenceType,
   IssueStatus,
@@ -170,6 +171,17 @@ function toProjectVenueSummary(raw: RawProjectVenueSummary): ProjectVenueSummary
   };
 }
 
+interface RawEvidenceRef {
+  id: number;
+  type: EvidenceRef["type"];
+  fileName: string;
+  uploadedAt: string;
+}
+
+function toEvidenceRefs(raw: RawEvidenceRef[] | null | undefined): EvidenceRef[] {
+  return (raw ?? []).map((e) => ({ id: String(e.id), type: e.type, fileName: e.fileName, uploadedAt: e.uploadedAt }));
+}
+
 interface RawMilestone {
   id: number;
   order: number;
@@ -177,10 +189,19 @@ interface RawMilestone {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string | null;
+  evidence?: RawEvidenceRef[] | null;
 }
 
 function toMilestone(raw: RawMilestone): ProjectMilestone {
-  return { id: String(raw.id), order: raw.order, name: raw.name, status: raw.status, targetDate: raw.targetDate, completedDate: raw.completedDate };
+  return {
+    id: String(raw.id),
+    order: raw.order,
+    name: raw.name,
+    status: raw.status,
+    targetDate: raw.targetDate,
+    completedDate: raw.completedDate,
+    evidence: toEvidenceRefs(raw.evidence),
+  };
 }
 
 export interface ProjectMilestoneUpdateFields {
@@ -206,6 +227,8 @@ interface RawProjectVendor {
   dueDate: string | null;
   picStaffId: number;
   notes: string;
+  vendorName?: string;
+  categoryName?: string;
   // Only populated by GET .../vendors (listVendorEngagements) — see
   // fetchVendorSection, which reads this instead of issuing its own
   // per-engagement GET .../milestones request.
@@ -230,6 +253,8 @@ function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
     dueDate: raw.dueDate,
     picStaffId: String(raw.picStaffId),
     notes: raw.notes,
+    vendorName: raw.vendorName ?? "",
+    categoryName: raw.categoryName ?? "",
   };
 }
 
@@ -264,6 +289,7 @@ interface RawVendorMilestone {
   completedDate: string | null;
   picStaffId: number;
   notes: string;
+  evidence?: RawEvidenceRef[] | null;
 }
 
 function toVendorMilestone(raw: RawVendorMilestone, projectVendorId: string): VendorMilestone {
@@ -278,6 +304,7 @@ function toVendorMilestone(raw: RawVendorMilestone, projectVendorId: string): Ve
     completedDate: raw.completedDate,
     picStaffId: String(raw.picStaffId),
     notes: raw.notes,
+    evidence: toEvidenceRefs(raw.evidence),
   };
 }
 
@@ -325,10 +352,18 @@ interface RawClientPayment {
   referenceNumber: string;
   notes: string;
   evidenceComplete: boolean;
+  recordedBy?: { name: string } | null;
+  verifiedAt?: string | null;
+  verifiedBy?: { name: string } | null;
+  evidence?: RawEvidenceRef[] | null;
 }
 
 function toClientPayment(raw: RawClientPayment): ClientPayment {
   return {
+    recordedBy: raw.recordedBy?.name ?? null,
+    verifiedAt: raw.verifiedAt ?? null,
+    verifiedBy: raw.verifiedBy?.name ?? null,
+    evidence: toEvidenceRefs(raw.evidence),
     id: String(raw.id),
     type: raw.type,
     amount: raw.amount,
@@ -378,6 +413,9 @@ interface RawIssue {
   targetResolutionDate: string | null;
   resolvedDate: string | null;
   resolutionNotes: string;
+  vendorName?: string;
+  vendorMilestoneName?: string;
+  evidence?: RawEvidenceRef[] | null;
 }
 
 function toPaymentTerms(raw: Array<Omit<PaymentTerm, "id"> & { id: number }>): PaymentTerm[] {
@@ -399,6 +437,9 @@ function toIssue(raw: RawIssue): VendorIssue {
     targetResolutionDate: raw.targetResolutionDate,
     resolvedDate: raw.resolvedDate,
     resolutionNotes: raw.resolutionNotes,
+    vendorName: raw.vendorName ?? "",
+    vendorMilestoneName: raw.vendorMilestoneName ?? "",
+    evidence: toEvidenceRefs(raw.evidence),
   };
 }
 
@@ -600,6 +641,8 @@ interface ProjectState {
   createClientPayment: (projectId: string, values: ClientPaymentFormValues) => Promise<void>;
   updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues) => Promise<void>;
   deleteClientPayment: (projectId: string, paymentId: string) => Promise<void>;
+  /** The WO confirms the money arrived (E4). Needs a proof file; the client then sees the stamp. */
+  verifyClientPayment: (projectId: string, paymentId: string) => Promise<void>;
 
   fetchVenuePayments: (projectId: string) => Promise<void>;
   // Same two-slot evidence orchestration as createPayment (vendor's own),
@@ -1041,6 +1084,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   deleteClientPayment: async (projectId, paymentId) => {
     await httpClient.delete(API.projects.clientPayment(projectId, paymentId));
+    await get().fetchClientPayments(projectId);
+  },
+
+  verifyClientPayment: async (projectId, paymentId) => {
+    await httpClient.post(API.projects.clientPaymentVerify(projectId, paymentId));
     await get().fetchClientPayments(projectId);
   },
 

@@ -6,6 +6,7 @@ import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { useContactStore } from "@/shared/stores/useContactStore";
+import { runSessionResets } from "@/shared/lib/session-reset";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { disableGoogleAutoSelect } from "@/shared/lib/google-identity";
 
@@ -28,6 +29,7 @@ export async function logoutAndRedirect(navigate: NavigateFunction) {
   useSubscriptionStatusStore.getState().reset();
   usePermissionStore.getState().reset();
   useContactStore.getState().reset();
+  runSessionResets();
   disableGoogleAutoSelect();
   navigate(ROUTE_PATHS.login);
 
