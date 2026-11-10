@@ -73,17 +73,24 @@ test.describe("role screens follow the API", () => {
       name: "Gedung Uji Akses", picName: "Pak Uji", phonePic: "081300000000", phoneVenue: "", email: "", address: "Jl. Uji", city: "Kota Bandung",
       rentalPrice: 1, charge: 0, capacity: 100, facilities: "", socialMedia: "", notes: "",
     }));
+    const cats = must("categories", await call(apiURL(), ws.owner.accessToken, "GET", "/api/v1/vendor-categories?all=true")).json.data as { id: number }[];
+    must("vendor", await call(apiURL(), ws.owner.accessToken, "POST", "/api/v1/vendors", {
+      name: "Katering Uji Akses", categoryId: cats[0].id, picName: "Bu Uji", phone: "081211110000", email: "", socialMedia: "", city: "Kota Bandung",
+      address: "Jl. Uji", priceAkad: 1, priceAkadResepsi: 1, priceResepsi: 1, notes: "",
+    }));
     const finance = await staff(ws, "Uji Keuangan", roleId(ws, "Keuangan"));
     const { page, close } = await as(browser, info, finance);
-    for (const route of ["/vendors", "/venues"]) {
+    for (const [route, row] of [["/vendors", "Katering Uji Akses"], ["/venues", "Gedung Uji Akses"]] as const) {
       await visit(page, route);
+      await expect(page.getByText(row).first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Ekspor ke Excel" })).toBeVisible();
       await expect(page.getByRole("button", { name: /^Tambah (vendor|venue)$/i })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Impor bulk" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Ubah (vendor|venue)$/i })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Nonaktifkan" })).toHaveCount(0);
+      // No row selection either: the bulk (de)activation needs vendor.manage.
+      await expect(page.getByRole("table").getByRole("checkbox")).toHaveCount(0);
     }
-    await expect(page.getByText("Gedung Uji Akses").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Ubah venue$/i })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Nonaktifkan" })).toHaveCount(0);
     await close();
   });
 
@@ -115,8 +122,10 @@ test.describe("role screens follow the API", () => {
     const lead = must("custom role", await call(apiURL(), ws.owner.accessToken, "POST", "/api/v1/access/roles", {
       kind: "staff", name: "Kepala Tim", description: "", projectScope: "assigned", permissions: ["team.manage", "role.manage", "project.edit"],
     })).json.data.id as number;
-    await staff(ws, "Uji Admin", roleId(ws, "Admin"));
+    const admin = await staff(ws, "Uji Admin", roleId(ws, "Admin"));
     const manager = await staff(ws, "Uji Kepala", lead);
+    // The delete warning is the first step of deleting: Admin's is the Owner's to read (review round 1).
+    expect((await call(apiURL(), manager.accessToken, "GET", `/api/v1/staff/${admin.principalId}/delete-impact`)).status).toBe(403);
     const { page, close } = await as(browser, info, manager);
 
     await visit(page, "/pengguna");
@@ -124,6 +133,23 @@ test.describe("role screens follow the API", () => {
     await expect(adminRow.getByText("Hanya dapat diubah oleh Owner")).toBeVisible();
     await expect(adminRow.getByRole("button", { name: "Ubah anggota tim" })).toHaveCount(0);
 
+    // Inviting: only roles the manager's own role covers can be handed out (Admin and Wedding Planner hold more).
+    await page.getByRole("button", { name: "Undang anggota tim" }).first().click();
+    const invite = page.getByRole("dialog", { name: "Undang anggota tim" });
+    await invite.getByLabel("Peran").click();
+    await expect(page.getByRole("option", { name: "Kepala Tim" })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Admin" })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: "Wedding Planner" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+
+    // A new role cannot be given what the manager lacks, nor every project.
+    await visit(page, "/peran-akses");
+    await page.getByRole("button", { name: "Buat peran" }).click();
+    const create = page.getByRole("dialog", { name: "Buat peran" });
+    await expect(create.getByRole("checkbox", { name: /^Lihat dasbor/ })).toBeDisabled();
+    await expect(create.getByRole("checkbox", { name: /^Kelola tim/ })).toBeEnabled();
+    await expect(create.getByRole("radio", { name: /^Semua proyek/ })).toBeDisabled();
     await visit(page, "/peran-akses");
     await page.getByRole("button", { name: "Ubah", exact: true }).nth(roleIndex(ws, "Admin")).click();
     const drawer = page.getByRole("dialog");

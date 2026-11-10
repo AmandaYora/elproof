@@ -362,6 +362,8 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 
 type deleteImpactResponse struct {
 	AffectedProjects []deleteImpactProjectRef `json:"affectedProjects"`
+	// HiddenProjectCount: affected projects outside the caller's scope, counted but not named.
+	HiddenProjectCount int `json:"hiddenProjectCount"`
 }
 
 type deleteImpactProjectRef struct {
@@ -403,11 +405,12 @@ func (h *VendorHandler) deleteImpact(w http.ResponseWriter, r *http.Request, ten
 		writeAppError(w, err)
 		return
 	}
-	result := make([]deleteImpactProjectRef, 0, len(refs))
-	for _, ref := range refs {
-		result = append(result, deleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
+	impact, err := scopedImpact(r.Context(), h.projects, tenantID, refs)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
-	response.OK(w, "ok", deleteImpactResponse{AffectedProjects: result})
+	response.OK(w, "ok", impact)
 }
 
 type vendorProjectHistoryResponse struct {
@@ -446,41 +449,85 @@ func (h *VendorHandler) projectHistory(w http.ResponseWriter, r *http.Request, t
 	response.OK(w, "ok", result)
 }
 
-// visibleHistory is the vendor's project history as the caller may see it: a
-// role that reaches only the projects it holds (PIC or PIC Sales) never sees a
-// tenant-wide list of projects (ADR-0026), so its history keeps only those.
+// picLookup names who holds a project (PIC, PIC Sales); projects' contract.
+type picLookup interface {
+	ProjectPICStaffID(ctx context.Context, tenantID, projectID int64) (int64, error)
+	ProjectPICSalesStaffID(ctx context.Context, tenantID, projectID int64) (int64, error)
+}
+
+// projectScope answers which projects the caller may see by name: nil keep
+// means every project (a role that reaches all of them); otherwise keep says
+// whether a project is one the person holds (PIC or PIC Sales). A role limited
+// to its own projects never sees a tenant-wide list of projects (ADR-0026).
+func projectScope(ctx context.Context, projects picLookup, tenantID int64) (keep func(projectID int64) (bool, error)) {
+	if g := middleware.GrantsFrom(ctx); g != nil && g.AllProjects {
+		return nil
+	}
+	claims, ok := middleware.FromContext(ctx)
+	staffID, err := int64(0), error(nil)
+	if ok {
+		staffID, err = strconv.ParseInt(claims.PrincipalID, 10, 64)
+	}
+	if !ok || err != nil {
+		return func(int64) (bool, error) { return false, nil }
+	}
+	return func(projectID int64) (bool, error) {
+		pic, err := projects.ProjectPICStaffID(ctx, tenantID, projectID)
+		if err != nil {
+			return false, err
+		}
+		if pic == staffID {
+			return true, nil
+		}
+		sales, err := projects.ProjectPICSalesStaffID(ctx, tenantID, projectID)
+		return sales == staffID, err
+	}
+}
+
+// visibleHistory is the vendor's project history as the caller may see it: an
+// "assigned" role keeps only the projects it holds.
 func (h *VendorHandler) visibleHistory(ctx context.Context, tenantID, vendorID int64) ([]projectscontracts.VendorEngagementHistoryItem, error) {
 	rows, err := h.projects.ListVendorEngagementHistory(ctx, tenantID, vendorID)
 	if err != nil {
 		return nil, err
 	}
-	g := middleware.GrantsFrom(ctx)
-	if g != nil && g.AllProjects {
+	keep := projectScope(ctx, h.projects, tenantID)
+	if keep == nil {
 		return rows, nil
-	}
-	claims, ok := middleware.FromContext(ctx)
-	if !ok {
-		return nil, nil
-	}
-	staffID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
-	if err != nil {
-		return nil, nil
 	}
 	kept := make([]projectscontracts.VendorEngagementHistoryItem, 0, len(rows))
 	for _, row := range rows {
-		pic, err := h.projects.ProjectPICStaffID(ctx, tenantID, row.ProjectID)
+		ok, err := keep(row.ProjectID)
 		if err != nil {
 			return nil, err
 		}
-		sales, err := h.projects.ProjectPICSalesStaffID(ctx, tenantID, row.ProjectID)
-		if err != nil {
-			return nil, err
-		}
-		if pic == staffID || sales == staffID {
+		if ok {
 			kept = append(kept, row)
 		}
 	}
 	return kept, nil
+}
+
+// scopedImpact is a hard-delete warning as the caller may read it: the projects
+// it holds by name, the others only counted (the warning stays honest without
+// naming projects an "assigned" role cannot open).
+func scopedImpact(ctx context.Context, projects picLookup, tenantID int64, refs []projectscontracts.ProjectRef) (deleteImpactResponse, error) {
+	out := deleteImpactResponse{AffectedProjects: make([]deleteImpactProjectRef, 0, len(refs))}
+	keep := projectScope(ctx, projects, tenantID)
+	for _, ref := range refs {
+		if keep != nil {
+			ok, err := keep(ref.ID)
+			if err != nil {
+				return deleteImpactResponse{}, err
+			}
+			if !ok {
+				out.HiddenProjectCount++
+				continue
+			}
+		}
+		out.AffectedProjects = append(out.AffectedProjects, deleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
+	}
+	return out, nil
 }
 
 type vendorAttachmentUploadBody struct {

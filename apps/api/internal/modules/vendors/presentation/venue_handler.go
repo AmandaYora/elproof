@@ -360,11 +360,12 @@ func (h *VenueHandler) deleteImpact(w http.ResponseWriter, r *http.Request, tena
 		writeAppError(w, err)
 		return
 	}
-	result := make([]deleteImpactProjectRef, 0, len(refs))
-	for _, ref := range refs {
-		result = append(result, deleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
+	impact, err := scopedImpact(r.Context(), h.projects, tenantID, refs)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
-	response.OK(w, "ok", deleteImpactResponse{AffectedProjects: result})
+	response.OK(w, "ok", impact)
 }
 
 func (h *VenueHandler) get(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

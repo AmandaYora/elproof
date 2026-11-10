@@ -52,3 +52,37 @@ func TestVendorHistoryFollowsTheProjectScope(t *testing.T) {
 		t.Errorf("every-project scope keeps the whole history: %+v %v", all, err)
 	}
 }
+
+func (f fakeProjects) ListAffectedProjectsForVendor(context.Context, int64, int64) ([]projectscontracts.ProjectRef, error) {
+	return f.refs(), nil
+}
+
+func (f fakeProjects) refs() []projectscontracts.ProjectRef {
+	out := make([]projectscontracts.ProjectRef, 0, len(f.history))
+	for _, h := range f.history {
+		out = append(out, projectscontracts.ProjectRef{ID: h.ProjectID, Name: h.ProjectName})
+	}
+	return out
+}
+
+// The hard-delete warning is the same kind of list: an "assigned" role (e.g. a
+// custom one holding vendor.delete) is told how many other projects are affected,
+// never their names (review round 1, T-20261110-12).
+func TestDeleteImpactNamesOnlyProjectsInScope(t *testing.T) {
+	f := fakeProjects{
+		history:  []projectscontracts.VendorEngagementHistoryItem{{ProjectID: 1, ProjectName: "Milik saya"}, {ProjectID: 2, ProjectName: "Orang lain"}, {ProjectID: 3, ProjectName: "Orang lain juga"}},
+		pic:      map[int64]int64{1: 7, 2: 9, 3: 9},
+		picSales: map[int64]int64{},
+	}
+	got, err := scopedImpact(staffCtx("7", false), f, 1, f.refs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.AffectedProjects) != 1 || got.AffectedProjects[0].Name != "Milik saya" || got.HiddenProjectCount != 2 {
+		t.Errorf("assigned scope: got %+v, want only 'Milik saya' named and 2 hidden", got)
+	}
+	all, err := scopedImpact(staffCtx("7", true), f, 1, f.refs())
+	if err != nil || len(all.AffectedProjects) != 3 || all.HiddenProjectCount != 0 {
+		t.Errorf("every-project scope names every project: %+v %v", all, err)
+	}
+}
