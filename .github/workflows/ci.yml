@@ -20,7 +20,11 @@ permissions:
 
 env:
   NODE_VERSION: "20"
+  # dl.min.io answers 410 for community binaries (pinned and latest) and the minio/minio images are gone from Docker Hub
+  # and quay; the release assets on GitHub (github.com/minio/minio, archived) are still served. The checksum is pinned here,
+  # not fetched next to the binary, so a replaced asset fails the job.
   MINIO_VERSION: RELEASE.2025-04-22T22-12-26Z
+  MINIO_SHA256: 53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c
 
 jobs:
   api:
@@ -45,8 +49,10 @@ jobs:
           MINIO_ROOT_USER: ciaccesskey
           MINIO_ROOT_PASSWORD: cisecretkey123
         run: |
-          curl -fsSL "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}" -o /usr/local/bin/minio
-          chmod +x /usr/local/bin/minio
+          curl -fsSL --retry 3 "https://github.com/minio/minio/releases/download/${MINIO_VERSION}/minio.linux-amd64.${MINIO_VERSION}" -o "$RUNNER_TEMP/minio-bin"
+          echo "${MINIO_SHA256}  $RUNNER_TEMP/minio-bin" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/minio-bin" /usr/local/bin/minio
+          minio --version
           mkdir -p "$RUNNER_TEMP/minio"
           nohup minio server "$RUNNER_TEMP/minio" --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 > "$RUNNER_TEMP/minio.log" 2>&1 &
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:9000/minio/health/live && break; sleep 1; done
@@ -131,8 +137,9 @@ jobs:
       - name: MinIO (throwaway object storage the harness starts itself)
         working-directory: .
         run: |
-          curl -fsSL "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}" -o /usr/local/bin/minio
-          chmod +x /usr/local/bin/minio
+          curl -fsSL --retry 3 "https://github.com/minio/minio/releases/download/${MINIO_VERSION}/minio.linux-amd64.${MINIO_VERSION}" -o "$RUNNER_TEMP/minio-bin"
+          echo "${MINIO_SHA256}  $RUNNER_TEMP/minio-bin" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/minio-bin" /usr/local/bin/minio
           minio --version
       - name: axe, strict (desktop and mobile, 68 pages)
         env:
