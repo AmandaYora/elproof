@@ -12,7 +12,8 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatLinkExpiry, type AccessLinkPurpose } from "@/shared/lib/access-link";
-import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
+import { AuthAside, AuthCard, AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
+import { ctaClass } from "@/modules/homepage/components/cta";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 import { invitationPasswordSchema, MIN_PASSWORD } from "@/modules/auth/schemas/invitation.schema";
 import { useZodForm } from "@/shared/forms/useZodForm";
@@ -127,35 +128,33 @@ export default function InvitationPage() {
   return (
     <AuthSplitLayout
       aside={
-        <>
-          <h1 className="text-[36px] font-bold leading-[1.15] text-white">
-            {isStaff ? "Selamat bergabung." : "Setiap langkah menuju hari istimewa Anda."}
-          </h1>
-          <div className="mt-4 h-px w-12 bg-white/40" />
-          <p className="mt-4 text-[15px] leading-relaxed text-white/70">
-            {isStaff
-              ? "Satu tempat untuk timeline, vendor, pembayaran, dan bukti kerja setiap pernikahan yang ditangani tim Anda."
-              : "Pantau persiapan pernikahan Anda bersama WO: timeline, vendor, pembayaran, dan dokumen, kapan saja."}
-          </p>
-        </>
+        <AuthAside
+          title={isStaff ? "Selamat bergabung." : "Setiap langkah menuju hari istimewa Anda."}
+          body={
+            isStaff
+              ? "Satu tempat untuk jadwal, vendor, pembayaran, dan bukti kerja setiap pernikahan yang ditangani tim Anda."
+              : "Pantau persiapan pernikahan Anda bersama WO: jadwal, vendor, pembayaran, dan dokumen, kapan saja."
+          }
+        />
       }
     >
-      <div className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-10">
+      <AuthCard>
         {!info && !loadError && (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-secondary">
-            <Loader2 className="h-4 w-4 animate-spin" /> Memeriksa link...
+            <h1 className="sr-only">Membuka link undangan</h1>
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Memeriksa link...
           </div>
         )}
 
         {loadError && (
           <>
-            <h2 className="text-2xl font-bold text-text-primary">Link tidak dapat dipakai</h2>
+            <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-foreground">Link tidak dapat dipakai</h1>
             <p role="alert" className="mt-3 text-[14px] leading-relaxed text-text-secondary">
               {loadError}
             </p>
             <Link
               to={ROUTE_PATHS.login}
-              className="mt-8 inline-flex h-9 w-full items-center justify-center rounded-md bg-slate-800 px-4 text-sm font-medium text-white hover:bg-slate-700"
+              className={ctaClass("primary", "md", "mt-8 w-full")}
             >
               Ke halaman masuk
             </Link>
@@ -165,15 +164,15 @@ export default function InvitationPage() {
         {info && (
           <>
             <p className="text-[13px] font-medium text-text-secondary">{info.tenantName || "ElProof"}</p>
-            <h2 className="mt-1 text-2xl font-bold text-text-primary">
+            <h1 className="mt-1 text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-foreground">
               {isStaff ? `Halo, ${info.displayName}` : isReset ? "Atur ulang kata sandi" : `Halo, ${info.displayName}`}
-            </h2>
+            </h1>
             <p className="mt-2 text-[13.5px] leading-relaxed text-text-secondary">
               {isStaff
                 ? `Anda diundang bergabung di ${info.tenantName || "WO ini"}. Masuk dengan akun Google ${info.email} untuk menerima undangan.`
                 : isReset
-                  ? "Buat kata sandi baru untuk portal client Anda. Kata sandi lama berhenti berlaku setelah ini."
-                  : "Buat kata sandi untuk masuk ke portal client dan memantau persiapan pernikahan Anda."}
+                  ? "Buat kata sandi baru untuk Portal Klien Anda. Kata sandi lama berhenti berlaku setelah ini."
+                  : "Buat kata sandi untuk masuk ke Portal Klien dan memantau persiapan pernikahan Anda."}
             </p>
             <p className="mt-1 text-[12px] text-text-secondary">Link berlaku sampai {formatLinkExpiry(info.expiresAt)}.</p>
 
@@ -222,7 +221,7 @@ export default function InvitationPage() {
                       onBlur={() => form.blur("confirm")}
                     />
                   </Field>
-                  <Button type="submit" variant="neutral" className="w-full justify-center" disabled={form.submitting}>
+                  <Button type="submit" variant="primary" className="h-12 w-full justify-center rounded-full text-[15px]" disabled={form.submitting}>
                     {form.submitting ? "Menyimpan..." : "Simpan kata sandi dan masuk"}
                   </Button>
                 </form>
@@ -230,7 +229,7 @@ export default function InvitationPage() {
             </div>
           </>
         )}
-      </div>
+      </AuthCard>
     </AuthSplitLayout>
   );
 }

@@ -8,7 +8,7 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
+import { AuthAside, AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
 import { workspaceSchema } from "@/modules/auth/schemas/workspace.schema";
 import type { GoogleSignupState } from "@/modules/auth/types";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
@@ -84,17 +84,14 @@ export default function WorkspaceSetupPage() {
   return (
     <AuthSplitLayout
       aside={
-        <>
-          <h1 className="text-[36px] font-bold leading-[1.15] text-white">Satu langkah lagi.</h1>
-          <div className="mt-4 h-px w-12 bg-white/40" />
-          <p className="mt-4 text-[15px] leading-relaxed text-white/70">
-            Setelah workspace dibuat, Anda langsung masuk ke WO Console dengan panduan singkat untuk memulai.
-          </p>
-        </>
+        <AuthAside
+          title="Satu langkah lagi."
+          body="Setelah workspace dibuat, Anda langsung masuk ke WO Console dengan panduan singkat untuk memulai."
+        />
       }
     >
-      <form ref={formRef} onSubmit={(e) => void handleSubmit(e)} noValidate className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-10">
-        <h2 className="text-2xl font-bold text-text-primary">Buat workspace WO</h2>
+      <form ref={formRef} onSubmit={(e) => void handleSubmit(e)} noValidate className="rounded-2xl border border-border bg-card p-6 sm:p-9">
+        <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-foreground">Buat workspace WO</h1>
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-text-secondary">
           <span>
             Daftar sebagai <span className="font-semibold text-text-primary">{name || email}</span>
@@ -134,7 +131,7 @@ export default function WorkspaceSetupPage() {
                 type="checkbox"
                 checked={values.acceptTerms}
                 onChange={(e) => form.set("acceptTerms", e.target.checked)}
-                className="mt-1 h-4 w-4 shrink-0 accent-navy-900"
+                className="mt-1 h-4 w-4 shrink-0 accent-primary"
                 aria-invalid={Boolean(errors.acceptTerms)}
               />
               <span>
@@ -166,7 +163,7 @@ export default function WorkspaceSetupPage() {
               type="checkbox"
               checked={values.marketingOptIn}
               onChange={(e) => form.set("marketingOptIn", e.target.checked)}
-              className="mt-1 h-4 w-4 shrink-0 accent-navy-900"
+              className="mt-1 h-4 w-4 shrink-0 accent-primary"
             />
             <span>Kirimi saya kabar fitur baru dan promo ElProof (opsional).</span>
           </label>
@@ -183,7 +180,7 @@ export default function WorkspaceSetupPage() {
             </span>
           </p>
 
-          <Button type="submit" variant="neutral" className="mt-1 w-full justify-center" disabled={form.submitting}>
+          <Button type="submit" variant="primary" className="mt-1 h-12 w-full justify-center rounded-full text-[15px]" disabled={form.submitting}>
             {form.submitting ? "Menyiapkan workspace..." : "Buat workspace"}
           </Button>
         </div>

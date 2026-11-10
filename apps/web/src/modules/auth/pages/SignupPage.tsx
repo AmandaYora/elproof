@@ -8,7 +8,7 @@ import { landingPathFor } from "@/shared/lib/auth-actions";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
+import { AuthAside, AuthCard, AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
 import type { GoogleAuthOutcome, GoogleSignupState } from "@/modules/auth/types";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
@@ -64,24 +64,20 @@ export default function SignupPage() {
   return (
     <AuthSplitLayout
       aside={
-        <>
-          <h1 className="text-[36px] font-bold leading-[1.15] text-white">Rapikan setiap pernikahan yang Anda tangani.</h1>
-          <div className="mt-4 h-px w-12 bg-white/40" />
-          <p className="mt-4 text-[15px] leading-relaxed text-white/70">
-            Jadwal, vendor, pembayaran, dan bukti kerja tercatat di satu tempat, sementara pasangan memantau
-            persiapannya sendiri lewat portal klien.
-          </p>
-        </>
+        <AuthAside
+          title="Rapikan setiap pernikahan yang Anda tangani."
+          body="Jadwal, vendor, pembayaran, dan buktinya tercatat di satu tempat, sementara pasangan memantau persiapannya sendiri lewat Portal Klien."
+        />
       }
     >
-      <div className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-10">
-        <h2 className="text-2xl font-bold text-text-primary">Coba ElProof gratis 14 hari</h2>
-        <p className="mt-1.5 text-[13.5px] text-text-secondary">Daftar dengan akun Google, workspace WO Anda siap dalam satu menit.</p>
+      <AuthCard>
+        <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-foreground">Coba ElProof gratis 14 hari</h1>
+        <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">Daftar dengan akun Google, workspace WO Anda siap dalam satu menit.</p>
 
         <ul className="mt-6 flex flex-col gap-2.5">
           {INCLUDED.map((item) => (
             <li key={item} className="flex items-start gap-2.5 text-[14px] text-text-primary">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success-text" aria-hidden />
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-seal-text" aria-hidden />
               {item}
             </li>
           ))}
@@ -103,13 +99,13 @@ export default function SignupPage() {
           </p>
         </div>
 
-        <p className="mt-8 border-t border-border pt-5 text-center text-[13.5px] text-text-secondary">
+        <p className="mt-8 border-t border-border pt-5 text-center text-[14px] text-muted-foreground">
           Sudah punya akun?{" "}
           <Link to={ROUTE_PATHS.login} className="font-semibold text-text-primary hover:underline">
             Masuk
           </Link>
         </p>
-      </div>
+      </AuthCard>
     </AuthSplitLayout>
   );
 }
