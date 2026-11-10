@@ -106,7 +106,9 @@ submit semantics.
 | id | BIGINT UNSIGNED PK | |
 | tenant_id | BIGINT UNSIGNED | `FK*` → `platform.tenants.id` |
 | type | ENUM('new','renewal') | |
-| amount | BIGINT UNSIGNED | |
+| amount | BIGINT UNSIGNED | what was charged (after a voucher discount) — revenue reports read this |
+| original_amount, discount_amount | BIGINT UNSIGNED | migration `000074` (ADR-0041): price before the voucher and the discount; without a voucher `original_amount = amount`, `discount_amount = 0` |
+| voucher_code | VARCHAR(32) NULL | the voucher used, if any |
 | payment_method | VARCHAR(100) | |
 | payment_reference | VARCHAR(100) | |
 | status | ENUM('unpaid','pending','paid','expired','granted') | `pending` (Fase 9) = a real gateway charge exists, awaiting webhook confirmation — distinct from `unpaid` (no charge attempt yet, e.g. right after tenant registration). `granted` = manual activation, excluded from paid-revenue reports |
@@ -124,6 +126,7 @@ dropped by migration `000073` (ADR-0040): every plan now names its one owning Ap
 | app_id | VARCHAR(100) | `FK*` → `payment.payment_apps.app_id`, no SQL constraint |
 | plan_id | BIGINT UNSIGNED `FK` → subscription_plans.id | same-module FK |
 | plan_name, plan_price, plan_duration_months | VARCHAR(150), BIGINT UNSIGNED, INT | **snapshot** of the plan at the moment the intent row is written (before `payment.Client` is ever called) — a later catalog price edit never rewrites what a customer already agreed to pay |
+| discount_amount, amount, voucher_code | BIGINT UNSIGNED, BIGINT UNSIGNED, VARCHAR(32) NULL | migration `000074` (ADR-0041): the voucher discount, the amount actually charged (`plan_price − discount_amount`) and the code |
 | status | ENUM('pending','paid','expired','failed','cancelled') | |
 | subscription_until | DATE NULL | filled only when `status='paid'` — the answer to "paid up until when" |
 | created_at | TIMESTAMP | |
@@ -140,6 +143,29 @@ ledger is intentionally empty until an App switches its payment call from `payme
 `KEY(app_id, status)` and `KEY(resolved_at, created_at)` back the reconciler's own polling query
 (`billing`'s `SubscriptionReconciler`, independent from `payment`'s own reconciler — see
 `knowledge/MODULE_PAYMENT.md`).
+
+### `subscription_vouchers` — migration `000074`, ADR-0041
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| code | VARCHAR(32) utf8mb4_bin UNIQUE | stored upper case; the service upper-cases every input |
+| app_id | VARCHAR(100) utf8mb4_bin | `FK*` → `payment.payment_apps.app_id` (the App whose plans it discounts; `platform-billing` = ElProof), no SQL constraint |
+| plan_id | BIGINT UNSIGNED NULL `FK` → subscription_plans.id | NULL = every plan of the App |
+| discount_type, discount_value | ENUM('percent','amount'), BIGINT UNSIGNED | percent 1–99, or rupiah |
+| max_discount | BIGINT UNSIGNED NULL | cap of a percent discount |
+| valid_from, valid_until | DATE NULL | inclusive WIB days |
+| quota | INT UNSIGNED NULL | total uses (reserved + used); NULL = unlimited |
+| once_per_customer, is_active | BOOLEAN | |
+| created_at, updated_at | TIMESTAMP(6) | `updated_at` is the If-Match version |
+
+### `subscription_voucher_redemptions` — migration `000074`, ADR-0041
+One row per use of a voucher on one subscription charge: `voucher_id` (FK), `voucher_code` (snapshot), `order_ref`
+(UNIQUE; `subscription_transactions.payment_reference` or `subscription_app_charges.order_ref`), `customer_type`
+(`tenant`\|`app`) + `customer_ref` (tenant id or app_id, primitive), `plan_id`, `original_amount`, `discount_amount`,
+`final_amount`, `status` (`reserved` while the charge is pending, `used` once paid, `released` when it expired / failed /
+ was cancelled — released rows no longer count), `created_at`, `resolved_at`. A reservation is written under
+`SELECT … FOR UPDATE` on the voucher row (READ COMMITTED), so the quota and once-per-customer rule hold under concurrent
+charges.
 
 ---
 

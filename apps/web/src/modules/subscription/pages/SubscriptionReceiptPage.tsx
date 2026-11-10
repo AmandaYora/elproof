@@ -107,8 +107,25 @@ export default function SubscriptionReceiptPage() {
           </div>
         </dl>
 
-        <div className="mt-8 flex items-center justify-between rounded-md bg-surface-muted px-5 py-4 print:border print:border-border">
-          <span className="text-[13.5px] font-semibold">Total dibayar</span>
+        {tx.discountAmount > 0 && (
+          <dl className="mt-8 flex flex-col gap-2 px-5 text-[13.5px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-text-secondary">Harga awal</dt>
+              <dd className="tabular-nums">{formatCurrency(tx.originalAmount)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-text-secondary">
+                Potongan voucher{tx.voucherCode && <span className="ml-1.5 font-mono text-[12.5px] font-semibold text-text-primary">{tx.voucherCode}</span>}
+              </dt>
+              <dd className="tabular-nums">−{formatCurrency(tx.discountAmount)}</dd>
+            </div>
+          </dl>
+        )}
+
+        <div
+          className={`${tx.discountAmount > 0 ? "mt-3" : "mt-8"} flex items-center justify-between rounded-md bg-surface-muted px-5 py-4 print:border print:border-border`}
+        >
+          <span className="text-[13.5px] font-semibold">{tx.discountAmount > 0 ? "Nominal dibayar" : "Total dibayar"}</span>
           <span className="text-[22px] font-bold tabular-nums">{formatCurrency(tx.amount)}</span>
         </div>
 

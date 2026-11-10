@@ -19,6 +19,8 @@ import (
 
 type Module struct {
 	transactionService          *application.TransactionService
+	voucherService              *application.VoucherService
+	voucherHandler              *presentation.VoucherHandler
 	planHandler                 *presentation.PlanHandler
 	transactionHandler          *presentation.TransactionHandler
 	externalPlanHandler         *presentation.ExternalPlanHandler
@@ -38,17 +40,24 @@ func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClie
 	planRepo := infrastructure.NewMySQLPlanRepository(db)
 	transactionRepo := infrastructure.NewMySQLTransactionRepository(db)
 	appChargeRepo := infrastructure.NewMySQLAppChargeRepository(db)
+	voucherRepo := infrastructure.NewMySQLVoucherRepository(db)
 
 	planService := application.NewPlanService(planRepo)
 	transactionService := application.NewTransactionService(transactionRepo)
+	voucherService := application.NewVoucherService(voucherRepo, planRepo)
+	transactionService.SetVouchers(voucherService)
 	subscriptionService := application.NewSubscriptionService(planService, appChargeRepo, paymentClient)
+	subscriptionService.SetVouchers(voucherService)
 	// 24h is a bootstrap default only — SetSubscriptionChargeMaxAge (called
 	// from main.go right after NewModule, before StartSubscriptionReconciler)
 	// applies cfg.SubscriptionChargeMaxAge before this reconciler ever ticks.
 	subscriptionReconciler := application.NewSubscriptionReconciler(appChargeRepo, paymentClient, subscriptionService, 24*time.Hour)
+	subscriptionReconciler.SetVouchers(voucherService)
 
 	return &Module{
 		transactionService:          transactionService,
+		voucherService:              voucherService,
+		voucherHandler:              presentation.NewVoucherHandler(voucherService, planService, appRegistry),
 		planHandler:                 presentation.NewPlanHandler(planService, appRegistry),
 		transactionHandler:          presentation.NewTransactionHandler(transactionService),
 		externalPlanHandler:         presentation.NewExternalPlanHandler(planService, appRegistry),
@@ -56,7 +65,7 @@ func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClie
 		appSubscriptionHandler:      presentation.NewAppSubscriptionHandler(appChargeRepo),
 		publicPlanHandler:           presentation.NewPublicPlanHandler(planService),
 		subscriptionReconciler:      subscriptionReconciler,
-		contracts:                   contracts.New(planService, transactionService),
+		contracts:                   contracts.New(planService, transactionService, voucherService),
 	}
 }
 
@@ -68,6 +77,7 @@ func (m *Module) Contracts() contracts.Contracts {
 // billing): tenant names and the tenant-name search of the transaction list.
 func (m *Module) SetTenantDirectory(d application.TenantDirectory) {
 	m.transactionService.SetTenants(d)
+	m.voucherService.SetTenants(d)
 }
 
 // StartSubscriptionReconciler starts the background safety net for
@@ -110,9 +120,16 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	// vocabulary every other external route uses (T17/A24).
 	mux.Handle("/api/v1/external/subscription-plans", authed(http.HandlerFunc(m.externalPlanHandler.List)))
 	mux.Handle("/api/v1/external/subscriptions/charges", authed(http.HandlerFunc(m.externalSubscriptionHandler.CreateCharge)))
+	mux.Handle("/api/v1/external/subscriptions/voucher-check", authed(http.HandlerFunc(m.externalSubscriptionHandler.VoucherCheck)))
 
 	// CONSOLE: /app-subscriptions is GET-only, so httpx.Method applies. A
 	// plan's App is a field of the plan itself (ADR-0040), managed through
 	// /api/v1/plans — there is no separate mapping endpoint any more.
 	mux.Handle("/api/v1/app-subscriptions", authed(httpx.Method(http.MethodGet, m.appSubscriptionHandler.List)))
+
+	// Vouchers (ADR-0041): managed in the Platform Console; a WO Owner previews
+	// a code before paying (the payment itself stays POST /subscriptions/pay).
+	mux.Handle("/api/v1/vouchers", authed(http.HandlerFunc(m.voucherHandler.Collection)))
+	mux.Handle("/api/v1/vouchers/", authed(http.HandlerFunc(m.voucherHandler.Item)))
+	mux.Handle("/api/v1/subscriptions/voucher-check", authed(httpx.Method(http.MethodPost, m.voucherHandler.TenantCheck)))
 }

@@ -17,7 +17,8 @@ func CORS(devMode bool) func(http.Handler) http.Handler {
 					w.Header().Set("Vary", "Origin")
 				}
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				// If-Match (ADR-0036) and Idempotency-Key are sent by the web app on writes.
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, If-Match, Idempotency-Key")
 			}
 
 			if r.Method == http.MethodOptions {

@@ -41,7 +41,7 @@ membangun biner API (`go build`), membuat basis data sementara `elproof_e2e_pw` 
 |---|---|---|
 | `desktop` / `mobile` | potret halaman emas × keadaan, dan `axe.spec.ts` | hanya axe (`AXE_STRICT=1`); potret tidak, karena pikselnya render macOS |
 | `behavior` | `overlays`, `proof`, `forms`, `overview`, `lists`, `nav`, `terms`, `structure`, `keyboard` | ya |
-| `mutating` | `payment-flow`, `tahap5`, `tahap6`, `tahap8`, `branding`, `access`, `plans` (menulis data; setelah semua potret, `--no-deps` di CI) | ya |
+| `mutating` | `payment-flow`, `tahap5`, `tahap6`, `tahap8`, `branding`, `access`, `plans`, `vouchers` (menulis data; setelah semua potret, `--no-deps` di CI) | ya |
 | `baseline` | pengukuran performa profil HP (`npm run e2e:perf`), sendirian | ya, lalu `budget:routes` |
 
 ## Isi

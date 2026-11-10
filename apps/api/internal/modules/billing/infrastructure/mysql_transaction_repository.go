@@ -20,7 +20,7 @@ func NewMySQLTransactionRepository(db *sql.DB) *MySQLTransactionRepository {
 }
 
 func (r *MySQLTransactionRepository) List(ctx context.Context, tenantID *int64) ([]domain.Transaction, error) {
-	query := `SELECT id, tenant_id, type, amount, payment_method, payment_reference, status, created_at, paid_at
+	query := `SELECT id, tenant_id, type, amount, original_amount, discount_amount, COALESCE(voucher_code, ''), payment_method, payment_reference, status, created_at, paid_at
 	          FROM subscription_transactions`
 	args := []interface{}{}
 	if tenantID != nil {
@@ -40,7 +40,7 @@ func (r *MySQLTransactionRepository) List(ctx context.Context, tenantID *int64) 
 		var t domain.Transaction
 		var txType, status string
 		var paidAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.OriginalAmount, &t.DiscountAmount, &t.VoucherCode, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
 			return nil, err
 		}
 		t.Type = domain.TransactionType(txType)
@@ -56,7 +56,7 @@ func (r *MySQLTransactionRepository) List(ctx context.Context, tenantID *int64) 
 // FindByID returns one transaction, or nil. tenantID, when set, confines the
 // lookup to that tenant (a staff member can only ever see their own).
 func (r *MySQLTransactionRepository) FindByID(ctx context.Context, tenantID *int64, id int64) (*domain.Transaction, error) {
-	query := `SELECT id, tenant_id, type, amount, payment_method, payment_reference, status, created_at, paid_at
+	query := `SELECT id, tenant_id, type, amount, original_amount, discount_amount, COALESCE(voucher_code, ''), payment_method, payment_reference, status, created_at, paid_at
 	          FROM subscription_transactions WHERE id = ?`
 	args := []interface{}{id}
 	if tenantID != nil {
@@ -67,7 +67,7 @@ func (r *MySQLTransactionRepository) FindByID(ctx context.Context, tenantID *int
 	var txType, status string
 	var paidAt sql.NullTime
 	err := r.db.QueryRowContext(ctx, query+` LIMIT 1`, args...).
-		Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt)
+		Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.OriginalAmount, &t.DiscountAmount, &t.VoucherCode, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -85,7 +85,7 @@ func (r *MySQLTransactionRepository) FindByID(ctx context.Context, tenantID *int
 // ListPaidSince returns the paid (not granted) transactions since a moment.
 func (r *MySQLTransactionRepository) ListPaidSince(ctx context.Context, since time.Time) ([]domain.Transaction, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, tenant_id, type, amount, payment_method, payment_reference, status, created_at, paid_at
+		`SELECT id, tenant_id, type, amount, original_amount, discount_amount, COALESCE(voucher_code, ''), payment_method, payment_reference, status, created_at, paid_at
 		 FROM subscription_transactions WHERE status = 'paid' AND paid_at >= ? ORDER BY paid_at`, since)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (r *MySQLTransactionRepository) ListPaidSince(ctx context.Context, since ti
 		var t domain.Transaction
 		var txType, status string
 		var paidAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.OriginalAmount, &t.DiscountAmount, &t.VoucherCode, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
 			return nil, err
 		}
 		t.Type = domain.TransactionType(txType)
@@ -125,7 +125,7 @@ func (r *MySQLTransactionRepository) ListSortSpec() (map[string]pagination.SortC
 	return transactionSortColumns, pagination.By("createdAt", true)
 }
 
-const transactionColumns = `id, tenant_id, type, amount, payment_method, payment_reference, status, created_at, paid_at`
+const transactionColumns = `id, tenant_id, type, amount, original_amount, discount_amount, COALESCE(voucher_code, ''), payment_method, payment_reference, status, created_at, paid_at`
 
 // transactionWhere: the tenant scope (a staff member sees only their own tenant),
 // the status, the date range on created_at and the search (payment reference, or
@@ -172,7 +172,7 @@ func scanTransactions(rows *sql.Rows) ([]domain.Transaction, error) {
 		var t domain.Transaction
 		var txType, status string
 		var paidAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.TenantID, &txType, &t.Amount, &t.OriginalAmount, &t.DiscountAmount, &t.VoucherCode, &t.PaymentMethod, &t.PaymentReference, &status, &t.CreatedAt, &paidAt); err != nil {
 			return nil, err
 		}
 		t.Type = domain.TransactionType(txType)
@@ -232,9 +232,9 @@ func (r *MySQLTransactionRepository) UpdateStatusByReference(ctx context.Context
 
 func (r *MySQLTransactionRepository) Create(ctx context.Context, tx *domain.Transaction) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO subscription_transactions (tenant_id, type, amount, payment_method, payment_reference, status, paid_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		tx.TenantID, string(tx.Type), tx.Amount, tx.PaymentMethod, tx.PaymentReference, string(tx.Status), tx.PaidAt,
+		`INSERT INTO subscription_transactions (tenant_id, type, amount, original_amount, discount_amount, voucher_code, payment_method, payment_reference, status, paid_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tx.TenantID, string(tx.Type), tx.Amount, tx.OriginalAmount, tx.DiscountAmount, nullString(tx.VoucherCode), tx.PaymentMethod, tx.PaymentReference, string(tx.Status), tx.PaidAt,
 	)
 	if err != nil {
 		return err
@@ -245,4 +245,11 @@ func (r *MySQLTransactionRepository) Create(ctx context.Context, tx *domain.Tran
 	}
 	tx.ID = id
 	return nil
+}
+
+func nullString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }

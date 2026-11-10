@@ -35,10 +35,15 @@ const (
 )
 
 type Transaction struct {
-	ID               int64
-	TenantID         int64
-	Type             TransactionType
+	ID       int64
+	TenantID int64
+	Type     TransactionType
+	// Amount is what was charged; OriginalAmount the plan price before the
+	// voucher discount DiscountAmount (equal to Amount without a voucher).
 	Amount           int64
+	OriginalAmount   int64
+	DiscountAmount   int64
+	VoucherCode      string
 	PaymentMethod    string
 	PaymentReference string
 	Status           TransactionStatus

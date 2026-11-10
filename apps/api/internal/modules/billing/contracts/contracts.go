@@ -3,6 +3,7 @@ package contracts
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"elproof/internal/modules/billing/application"
@@ -32,9 +33,14 @@ type Plan struct {
 }
 
 type RecordTransactionInput struct {
-	TenantID         int64
-	Type             TransactionType
-	Amount           int64
+	TenantID int64
+	Type     TransactionType
+	Amount   int64
+	// OriginalAmount, DiscountAmount and VoucherCode come from a VoucherQuote
+	// when a voucher was used (Amount is then its FinalAmount); otherwise 0/"".
+	OriginalAmount   int64
+	DiscountAmount   int64
+	VoucherCode      string
 	PaymentMethod    string
 	PaymentReference string
 	Status           TransactionStatus
@@ -56,6 +62,16 @@ type Contracts interface {
 	ListPlans(ctx context.Context) ([]Plan, error)
 	RecordTransaction(ctx context.Context, input RecordTransactionInput) error
 	UpdateTransactionStatus(ctx context.Context, paymentReference string, status TransactionStatus) error
+	// ReserveTenantVoucher takes one use of a voucher code on one of ElProof's
+	// plans for the charge orderRef of a WO tenant (checked under a lock; the
+	// preview before paying is billing's own POST /subscriptions/voucher-check).
+	// A refused code is a 422 on voucherCode with errors.code (voucher_expired,
+	// …). The use is settled by UpdateTransactionStatus on orderRef (paid ->
+	// used; expired/cancelled -> released); if the charge is never recorded,
+	// call ReleaseVoucher.
+	ReserveTenantVoucher(ctx context.Context, tenantID, planID int64, code, orderRef string) (*VoucherReservation, error)
+	// ReleaseVoucher deletes a reservation whose charge never came to exist.
+	ReleaseVoucher(ctx context.Context, r *VoucherReservation) error
 	// PaidSince lists paid (never granted) subscription transactions since a
 	// moment, for the platform revenue metrics.
 	PaidSince(ctx context.Context, since time.Time) ([]PaidTransaction, error)
@@ -69,13 +85,55 @@ type PaidTransaction struct {
 	PaidAt   time.Time
 }
 
+// VoucherQuote is what a voucher does to a plan price.
+type VoucherQuote struct {
+	Code           string
+	OriginalAmount int64
+	DiscountAmount int64
+	FinalAmount    int64
+}
+
+// VoucherReservation is a reserved voucher use (opaque id for ReleaseVoucher).
+type VoucherReservation struct {
+	VoucherQuote
+	id int64
+}
+
 type impl struct {
 	plans        *application.PlanService
 	transactions *application.TransactionService
+	vouchers     *application.VoucherService
 }
 
-func New(plans *application.PlanService, transactions *application.TransactionService) Contracts {
-	return &impl{plans: plans, transactions: transactions}
+func New(plans *application.PlanService, transactions *application.TransactionService, vouchers *application.VoucherService) Contracts {
+	return &impl{plans: plans, transactions: transactions, vouchers: vouchers}
+}
+
+func tenantCustomer(tenantID int64) domain.Customer {
+	return domain.Customer{Type: domain.CustomerTenant, Ref: strconv.FormatInt(tenantID, 10)}
+}
+
+func quoteOf(q application.VoucherQuote) VoucherQuote {
+	return VoucherQuote{Code: q.Code, OriginalAmount: q.OriginalAmount, DiscountAmount: q.DiscountAmount, FinalAmount: q.FinalAmount}
+}
+
+func (c *impl) ReserveTenantVoucher(ctx context.Context, tenantID, planID int64, code, orderRef string) (*VoucherReservation, error) {
+	plan, err := c.plans.GetTenantPlan(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+	r, err := c.vouchers.Reserve(ctx, code, plan, tenantCustomer(tenantID), orderRef)
+	if err != nil {
+		return nil, err
+	}
+	return &VoucherReservation{VoucherQuote: quoteOf(r.VoucherQuote), id: r.RedemptionID}, nil
+}
+
+func (c *impl) ReleaseVoucher(ctx context.Context, r *VoucherReservation) error {
+	if r == nil {
+		return nil
+	}
+	return c.vouchers.Cancel(ctx, &application.Reservation{RedemptionID: r.id})
 }
 
 func (c *impl) ListPlans(ctx context.Context) ([]Plan, error) {
@@ -111,6 +169,9 @@ func (c *impl) RecordTransaction(ctx context.Context, input RecordTransactionInp
 		TenantID:         input.TenantID,
 		Type:             domain.TransactionType(input.Type),
 		Amount:           input.Amount,
+		OriginalAmount:   input.OriginalAmount,
+		DiscountAmount:   input.DiscountAmount,
+		VoucherCode:      input.VoucherCode,
 		PaymentMethod:    input.PaymentMethod,
 		PaymentReference: input.PaymentReference,
 		Status:           domain.TransactionStatus(input.Status),

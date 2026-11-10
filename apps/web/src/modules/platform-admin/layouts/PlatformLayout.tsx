@@ -1,7 +1,7 @@
 import { Toaster } from "@/shared/components/ui/Toaster";
 import { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, Megaphone, FileLock2, ScrollText, SlidersHorizontal, ImageIcon } from "lucide-react";
+import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, Megaphone, FileLock2, ScrollText, SlidersHorizontal, ImageIcon, TicketPercent } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
 import { Button } from "@/shared/components/kit/button";
@@ -44,6 +44,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     label: "Produk",
     items: [
       { to: ROUTE_PATHS.platformPlans, label: "Paket", icon: Package },
+      { to: ROUTE_PATHS.platformVouchers, label: "Voucher", icon: TicketPercent },
       { to: ROUTE_PATHS.platformPolicy, label: "Kebijakan Langganan", icon: SlidersHorizontal },
     ],
   },

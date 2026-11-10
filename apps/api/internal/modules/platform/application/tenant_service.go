@@ -639,7 +639,12 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 // in flight. If both charges were ever paid, the tenant would be billed
 // twice and the subscription would be double-extended (computeNewExpiry
 // stacks on top of whatever expiry is already there).
-func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64) (*paymentcontracts.ChargeResult, error) {
+//
+// voucherCode (optional, ADR-0041): one use of the voucher is reserved in
+// `billing` before the gateway is called, and the discounted amount is what
+// is charged and recorded. If the charge is not created or not recorded, the
+// reservation is released again; otherwise the ledger status settles it.
+func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64, voucherCode string) (*paymentcontracts.ChargeResult, error) {
 	tenant, err := s.Get(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -658,18 +663,49 @@ func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64) (
 	}
 
 	orderRef := generatePaymentReference()
-	charge, err := s.payment.CreateCharge(ctx, paymentcontracts.InternalAppBilling, strconv.FormatInt(tenantID, 10), orderRef, plan.Price)
+	amount := plan.Price
+	var voucher *billingcontracts.VoucherReservation
+	if strings.TrimSpace(voucherCode) != "" {
+		if voucher, err = s.billing.ReserveTenantVoucher(ctx, tenantID, planID, voucherCode, orderRef); err != nil {
+			return nil, err
+		}
+		amount = voucher.FinalAmount
+	}
+	// releaseVoucher gives the use back when no pending charge comes out of
+	// this call (best effort: billing's stale sweep is the safety net).
+	releaseVoucher := func() {
+		if voucher == nil {
+			return
+		}
+		if err := s.billing.ReleaseVoucher(ctx, voucher); err != nil {
+			logger.Error("platform: voucher %s for charge %s could not be released: %v", voucher.Code, orderRef, err)
+		}
+	}
+
+	charge, err := s.payment.CreateCharge(ctx, paymentcontracts.InternalAppBilling, strconv.FormatInt(tenantID, 10), orderRef, amount)
 	if err != nil {
+		releaseVoucher()
 		return nil, err
 	}
 
-	if err := s.billing.RecordTransaction(ctx, billingcontracts.RecordTransactionInput{
-		TenantID: tenantID, Type: txTypeFor(tenant), Amount: plan.Price,
+	record := billingcontracts.RecordTransactionInput{
+		TenantID: tenantID, Type: txTypeFor(tenant), Amount: amount,
 		PaymentMethod: charge.Channel, PaymentReference: orderRef, Status: billingcontracts.StatusPending,
-	}); err != nil {
+	}
+	if voucher != nil {
+		record.OriginalAmount, record.DiscountAmount, record.VoucherCode = voucher.OriginalAmount, voucher.DiscountAmount, voucher.Code
+	}
+	if err := s.billing.RecordTransaction(ctx, record); err != nil {
+		releaseVoucher()
 		return nil, err
 	}
 	if err := s.pendingCharges.Create(ctx, orderRef, tenantID, planID); err != nil {
+		// Without its tracking row the charge can never activate anything (a
+		// late webhook is ignored), so it is cancelled in the ledger too —
+		// which also gives the voucher use back.
+		if cerr := s.billing.UpdateTransactionStatus(ctx, orderRef, billingcontracts.StatusCancelled); cerr != nil {
+			logger.Error("platform: charge %s could not be tracked nor cancelled: %v", orderRef, cerr)
+		}
 		return nil, err
 	}
 

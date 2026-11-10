@@ -11,7 +11,8 @@
     { "key": "secret", "value": "", "type": "string", "description": "Secret App eksternal Anda — rahasia, jangan commit ke repo manapun" },
     { "key": "accessToken", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Tukar appId + secret -> Token'" },
     { "key": "orderRef", "value": "CONTOH-ORDER-0001", "type": "string", "description": "ID transaksi milik sistem Anda sendiri — ganti dengan ID unik yang belum pernah dipakai sebelum membuat charge baru" },
-    { "key": "planId", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Lihat Katalog Paket Saya' — id paket pertama milik App Anda" }
+    { "key": "planId", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Lihat Katalog Paket Saya' — id paket pertama milik App Anda" },
+    { "key": "voucherCode", "value": "", "type": "string", "description": "Kode voucher potongan harga dari tim ElProof (opsional). Kosong = tanpa voucher" }
   ],
   "item": [
     {
@@ -190,6 +191,52 @@
           "response": []
         },
         {
+          "name": "Cek Voucher",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 (voucher berlaku) atau 422 (ditolak, lihat errors.reason)\", function () {",
+                  "    pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const d = pm.response.json().data;",
+                  "    console.log(\"Harga awal \" + d.originalAmount + \", potongan \" + d.discountAmount + \", harga akhir \" + d.finalAmount);",
+                  "}",
+                  "if (pm.response.code === 422) {",
+                  "    const body = pm.response.json();",
+                  "    console.log(\"Ditolak (\" + (body.errors && body.errors.reason) + \"): \" + body.message);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": {{planId}},\n  \"voucherCode\": \"{{voucherCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/external/subscriptions/voucher-check",
+              "host": ["{{baseUrl}}"],
+              "path": ["external", "subscriptions", "voucher-check"]
+            },
+            "description": "Opsional, sebelum Buat Charge Langganan: menampilkan harga awal, potongan, dan harga akhir yang akan ditagih untuk paket ini bila kode voucher dipakai. Tidak memesan apa pun — kuota baru terpakai saat charge dibuat, dan charge memeriksa kodenya lagi. Potongan dihitung ElProof; harga akhir tidak pernah Rp0. Ditolak = 422 dengan errors.reason: voucher_not_found (kode salah, atau milik aplikasi lain), voucher_inactive, voucher_not_started, voucher_expired, voucher_exhausted (kuota habis), voucher_already_used (App Anda sudah memakainya, untuk voucher sekali per pelanggan), voucher_wrong_plan, voucher_too_large (potongan akan menghabiskan harga paket)."
+          },
+          "response": []
+        },
+        {
           "name": "Buat Charge Langganan",
           "event": [
             {
@@ -223,14 +270,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"orderRef\": \"{{orderRef}}\",\n  \"planId\": {{planId}},\n  \"customerName\": \"Budi Santoso\",\n  \"customerEmail\": \"budi@example.com\",\n  \"customerPhone\": \"081234567890\"\n}"
+              "raw": "{\n  \"orderRef\": \"{{orderRef}}\",\n  \"planId\": {{planId}},\n  \"customerName\": \"Budi Santoso\",\n  \"customerEmail\": \"budi@example.com\",\n  \"customerPhone\": \"081234567890\",\n  \"voucherCode\": \"{{voucherCode}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/external/subscriptions/charges",
               "host": ["{{baseUrl}}"],
               "path": ["external", "subscriptions", "charges"]
             },
-            "description": "Tidak ada field amount — nominal diambil ElProof dari harga paket, jadi App tidak bisa menentukan sendiri berapa yang ia bayar. planId harus paket milik App Anda; planId milik App lain dijawab 422 walaupun Anda tahu id-nya. orderRef harus unik selamanya milik sistem Anda sendiri — mengulang orderRef yang sama menghasilkan 409, bukan charge duplikat. Bentuk responsnya identik dengan \"Buat Charge\" di folder Pembayaran, jadi parser yang sudah Anda punya tidak perlu diubah.\n\nCatatan: planId di body raw di atas SENGAJA tanpa tanda kutip — ia angka (int64), bukan string. Jangan \"perbaiki\" jadi \"{{planId}}\" berkutip, endpoint akan menolaknya."
+            "description": "Tidak ada field amount — nominal diambil ElProof dari harga paket, jadi App tidak bisa menentukan sendiri berapa yang ia bayar. planId harus paket milik App Anda; planId milik App lain dijawab 422 walaupun Anda tahu id-nya. orderRef harus unik selamanya milik sistem Anda sendiri — mengulang orderRef yang sama menghasilkan 409, bukan charge duplikat. Bentuk responsnya identik dengan \"Buat Charge\" di folder Pembayaran, jadi parser yang sudah Anda punya tidak perlu diubah.\n\nCatatan: planId di body raw di atas SENGAJA tanpa tanda kutip — ia angka (int64), bukan string. Jangan \"perbaiki\" jadi \"{{planId}}\" berkutip, endpoint akan menolaknya.\n\nVoucher (opsional): isi variable voucherCode. Nominal yang ditagih (amount) sudah dipotong; respons juga membawa originalAmount, discountAmount, dan voucherCode. Kode yang ditolak dijawab 422 dengan errors.reason yang sama seperti Cek Voucher, dan tidak ada charge yang dibuat. voucherCode kosong = tanpa voucher."
           },
           "response": []
         },

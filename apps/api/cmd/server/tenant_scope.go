@@ -27,7 +27,7 @@ func staffAllowedWhenRestricted(method, path string) bool {
 		}
 	case http.MethodPost:
 		switch p {
-		case "/api/v1/subscriptions/pay", "/api/v1/subscriptions/pending-charge/cancel":
+		case "/api/v1/subscriptions/pay", "/api/v1/subscriptions/voucher-check", "/api/v1/subscriptions/pending-charge/cancel":
 			return true
 		}
 	}

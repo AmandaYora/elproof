@@ -56,7 +56,23 @@ export default function PlatformTransactionsPage() {
     { id: "createdAt", header: "Tanggal", sortKey: "createdAt", cell: (tx) => formatDate(tx.createdAt) },
     { id: "tenant", header: "Tenant", sortKey: "tenantName", primary: true, cell: tenantCell },
     { id: "type", header: "Jenis", cell: (tx) => TRANSACTION_TYPE_LABEL[tx.type] },
-    { id: "amount", header: "Nominal", sortKey: "amount", align: "right", cell: (tx) => formatCurrency(tx.amount) },
+    {
+      id: "amount",
+      header: "Nominal",
+      sortKey: "amount",
+      align: "right",
+      cell: (tx) =>
+        tx.discountAmount > 0 ? (
+          <span className="inline-flex flex-col items-end">
+            {formatCurrency(tx.amount)}
+            <span className="text-[11.5px] text-muted-foreground">
+              dari {formatCurrency(tx.originalAmount)}, voucher{tx.voucherCode ? ` ${tx.voucherCode}` : ""}
+            </span>
+          </span>
+        ) : (
+          formatCurrency(tx.amount)
+        ),
+    },
     { id: "method", header: "Metode", cell: (tx) => tx.paymentMethod },
     {
       id: "status",

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle, XCircle, Receipt } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle, XCircle, Receipt, CircleAlert, TicketPercent } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -19,7 +19,9 @@ import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatu
 import { usePlatformAdminStore, type PaymentCharge } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LABEL } from "@/modules/platform-admin/lib/status";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
+import { FieldLabel, Input } from "@/shared/components/ui/Input";
+import type { VoucherQuote } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -80,6 +82,7 @@ export default function SubscriptionPage() {
   const meta = usePlatformAdminStore((s) => s.transactionPageMeta);
   const fetchTransactionPage = usePlatformAdminStore((s) => s.fetchTransactionPage);
   const paySubscription = usePlatformAdminStore((s) => s.paySubscription);
+  const checkVoucher = usePlatformAdminStore((s) => s.checkVoucher);
   const fetchPendingCharge = usePlatformAdminStore((s) => s.fetchPendingCharge);
   const cancelPendingCharge = usePlatformAdminStore((s) => s.cancelPendingCharge);
 
@@ -105,6 +108,14 @@ export default function SubscriptionPage() {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Voucher in the "Bayar Sekarang" dialog. Only a code the server accepted (quote) is sent with the payment; editing the
+  // text drops it, so a code is always checked again before it counts.
+  const [voucherCode, setVoucherCode] = useState("");
+  const [voucherQuote, setVoucherQuote] = useState<VoucherQuote | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [isCheckingVoucher, setIsCheckingVoucher] = useState(false);
+  // The check whose answer is awaited: an answer for an older code, another plan or a closed dialog is dropped.
+  const voucherSeq = useRef(0);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -178,18 +189,60 @@ export default function SubscriptionPage() {
     }, POLL_INTERVAL_MS);
   }
 
+  function resetVoucher(code = "") {
+    voucherSeq.current++;
+    setVoucherCode(code);
+    setVoucherQuote(null);
+    setVoucherError(null);
+    setIsCheckingVoucher(false);
+  }
+
   function handleSelectPlan(planId: string) {
     setActionError(null);
     setSelectedPlanId(planId);
+    resetVoucher(); // a code checked for one plan says nothing about another
     setConfirmOpen(true);
   }
 
+  async function handleApplyVoucher() {
+    if (!selectedPlan) return;
+    const code = voucherCode.trim().toUpperCase();
+    if (!code) {
+      setVoucherError("Masukkan kode voucher.");
+      return;
+    }
+    const seq = ++voucherSeq.current;
+    const planId = selectedPlan.id;
+    setVoucherError(null);
+    setVoucherQuote(null);
+    setIsCheckingVoucher(true);
+    try {
+      const quote = await checkVoucher(planId, code);
+      if (seq !== voucherSeq.current) return;
+      setVoucherCode(quote.voucherCode);
+      setVoucherQuote(quote);
+    } catch (err) {
+      if (seq !== voucherSeq.current) return;
+      setVoucherError(getApiFieldErrors(err).voucherCode ?? getApiErrorMessage(err, "Kode voucher belum bisa diperiksa. Periksa koneksi lalu coba lagi."));
+    } finally {
+      if (seq === voucherSeq.current) setIsCheckingVoucher(false);
+    }
+  }
+
+  // The voucher counts only for the plan it was checked against.
+  const appliedVoucher = voucherQuote && selectedPlan && String(voucherQuote.planId) === selectedPlan.id ? voucherQuote : null;
+
   async function handleConfirmSubscribe() {
     if (!selectedPlan) return;
+    // A typed code that was never checked is not silently dropped: the Owner either uses it or clears it.
+    if (voucherCode.trim() && !appliedVoucher) {
+      setVoucherError("Tekan Pakai untuk memeriksa kode ini, atau kosongkan kolom kode voucher.");
+      return;
+    }
     setActionError(null);
     setIsSubmitting(true);
     try {
-      const charge = await paySubscription(selectedPlan.id);
+      const charge = await paySubscription(selectedPlan.id, appliedVoucher?.voucherCode);
       setConfirmOpen(false);
       setActiveCharge(charge);
       setPendingCharge(charge);
@@ -197,7 +250,16 @@ export default function SubscriptionPage() {
       setChargePeriod(newPeriod(periodEnd, selectedPlan.durationMonths));
       startPolling(charge.orderRef);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memproses pembayaran"));
+      // The server checks the code again: refused at the last second (quota just ran out), it says so on the voucher field
+      // and the price goes back to normal, with the dialog still open.
+      const refusal = appliedVoucher ? getApiFieldErrors(err).voucherCode : undefined;
+      if (refusal) {
+        voucherSeq.current++;
+        setVoucherQuote(null);
+        setVoucherError(refusal);
+      } else {
+        setActionError(getApiErrorMessage(err, "Gagal memproses pembayaran"));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -415,7 +477,13 @@ export default function SubscriptionPage() {
                     <div className="flex flex-col gap-1.5">
                       <CardListField label="Metode" value={tx.paymentMethod} />
                       <CardListField label="No. Referensi" value={<span className="font-mono">{tx.paymentReference}</span>} />
-                      <CardListField label="Nominal" value={formatCurrency(tx.amount)} />
+                      {tx.discountAmount > 0 && (
+                        <>
+                          <CardListField label="Harga awal" value={formatCurrency(tx.originalAmount)} />
+                          <CardListField label={`Potongan voucher${tx.voucherCode ? ` ${tx.voucherCode}` : ""}`} value={`−${formatCurrency(tx.discountAmount)}`} />
+                        </>
+                      )}
+                      <CardListField label={tx.discountAmount > 0 ? "Nominal dibayar" : "Nominal"} value={formatCurrency(tx.amount)} />
                       <CardListField label="Dibuat" value={formatDate(tx.createdAt)} />
                       <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
                     </div>
@@ -444,7 +512,14 @@ export default function SubscriptionPage() {
                       <TD className="font-semibold text-text-primary">{TRANSACTION_TYPE_LABEL[tx.type]}</TD>
                       <TD>{tx.paymentMethod}</TD>
                       <TD className="font-mono text-[12.5px]">{tx.paymentReference}</TD>
-                      <TD className="tabular-nums">{formatCurrency(tx.amount)}</TD>
+                      <TD className="tabular-nums">
+                        {formatCurrency(tx.amount)}
+                        {tx.discountAmount > 0 && (
+                          <span className="mt-0.5 block text-[11.5px] text-text-secondary">
+                            Harga awal {formatCurrency(tx.originalAmount)}, potongan voucher{tx.voucherCode ? ` ${tx.voucherCode}` : ""} −{formatCurrency(tx.discountAmount)}
+                          </span>
+                        )}
+                      </TD>
                       <TD>{formatDate(tx.createdAt)}</TD>
                       <TD>
                         <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
@@ -487,10 +562,6 @@ export default function SubscriptionPage() {
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Biaya</span>
-            <span className="font-semibold text-text-primary">{formatCurrency(selectedPlan?.price ?? 0)}</span>
-          </div>
-          <div className="flex items-center justify-between">
             <span className="text-text-secondary">Masa Aktif</span>
             <span className="font-semibold text-text-primary">{selectedPlan?.durationMonths ?? 0} bulan</span>
           </div>
@@ -502,6 +573,74 @@ export default function SubscriptionPage() {
               </span>
             </div>
           )}
+
+          <div className="flex flex-col gap-1.5 border-t border-border-light pt-3">
+            <FieldLabel htmlFor="subscription-voucher-code">Kode voucher (opsional)</FieldLabel>
+            <div className="flex gap-2">
+              <Input
+                id="subscription-voucher-code"
+                data-no-autofocus
+                value={voucherCode}
+                onChange={(e) => resetVoucher(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!appliedVoucher) void handleApplyVoucher();
+                  }
+                }}
+                placeholder="cth. HEMAT10"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={32}
+                disabled={isSubmitting}
+                aria-invalid={voucherError ? true : undefined}
+                aria-describedby={voucherError ? "subscription-voucher-message" : undefined}
+                className="font-mono uppercase placeholder:normal-case placeholder:font-sans"
+              />
+              {appliedVoucher ? (
+                <Button variant="secondary" onClick={() => resetVoucher()} disabled={isSubmitting}>
+                  Hapus
+                </Button>
+              ) : (
+                <Button variant="secondary" onClick={() => void handleApplyVoucher()} disabled={isCheckingVoucher || isSubmitting}>
+                  {isCheckingVoucher ? "Memeriksa..." : "Pakai"}
+                </Button>
+              )}
+            </div>
+            {voucherError && (
+              <span id="subscription-voucher-message" role="alert" className="flex items-start gap-1 text-xs font-medium text-danger-text">
+                <CircleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
+                {voucherError}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-md bg-surface-muted px-3.5 py-3" aria-live="polite">
+            {appliedVoucher ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Harga awal</span>
+                  <span className="tabular-nums text-text-primary">{formatCurrency(appliedVoucher.originalAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5 text-text-secondary">
+                    <TicketPercent aria-hidden className="h-3.5 w-3.5 shrink-0" />
+                    Potongan <span className="font-mono text-[12px] font-semibold text-text-primary">{appliedVoucher.voucherCode}</span>
+                  </span>
+                  <span className="tabular-nums font-medium text-success-text">−{formatCurrency(appliedVoucher.discountAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-border-light pt-2">
+                  <span className="font-semibold text-text-primary">Harga akhir</span>
+                  <span className="text-[15px] font-bold tabular-nums text-text-primary">{formatCurrency(appliedVoucher.finalAmount)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-text-primary">Biaya</span>
+                <span className="text-[15px] font-bold tabular-nums text-text-primary">{formatCurrency(selectedPlan?.price ?? 0)}</span>
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 

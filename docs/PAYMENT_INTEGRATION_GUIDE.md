@@ -216,7 +216,8 @@ Content-Type: application/json
   "planId": 7,
   "customerName": "Budi Santoso",
   "customerEmail": "budi@example.com",
-  "customerPhone": "081234567890"
+  "customerPhone": "081234567890",
+  "voucherCode": "HEMAT10"
 }
 ```
 
@@ -225,6 +226,7 @@ Content-Type: application/json
 | `orderRef` | ya | Sama aturannya dengan §5 — unik selamanya milik sistem Anda. |
 | `planId` | ya | `id` dari katalog Anda sendiri (§6). **Tidak ada `amount`** — nominal diambil ElProof dari harga paket, Anda tidak bisa menentukannya sendiri. |
 | `customerName`/`customerEmail`/`customerPhone` | tidak | Sama seperti §5. |
+| `voucherCode` | tidak | Kode voucher potongan harga dari tim ElProof (§7a). Potongan dihitung ElProof; `amount` di respons sudah dipotong. Kosong / tidak dikirim = harga paket penuh. |
 
 `planId` yang bukan milik App Anda (App lain, atau tidak ada) ditolak dengan **`422`**, walaupun
 Anda tahu id-nya — endpoint katalog (§6) saja bukan penjaga yang cukup karena `planId` bisa
@@ -255,6 +257,46 @@ charge biasa tidak perlu diubah:
 `orderRef` duplikat → `409`, sama persis seperti §5. Mengecek status charge langganan memakai
 endpoint **yang sama** dengan §9 — `GET /external/payments/charges/{orderRef}/status` **tidak
 dipindahkan**, jadi satu polling/parser status melayani kedua jenis charge.
+
+### 7a. Voucher potongan harga — `POST /external/subscriptions/voucher-check`
+
+Tim ElProof bisa membuat voucher untuk App Anda (potongan persen atau nominal; bisa dibatasi ke satu paket,
+masa berlaku, kuota, dan sekali per pelanggan). Sebelum membuat charge, Anda boleh memeriksa kode lebih dulu
+untuk menampilkan harga ke pelanggan — **tidak ada yang dipesan** di langkah ini:
+
+```http
+POST /external/subscriptions/voucher-check
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "planId": 7, "voucherCode": "HEMAT10" }
+```
+
+```json
+{ "success": true, "message": "Voucher dapat dipakai",
+  "data": { "voucherCode": "HEMAT10", "planId": 7, "originalAmount": 2000000, "discountAmount": 200000, "finalAmount": 1800000 } }
+```
+
+Lalu kirim `voucherCode` yang sama di §7. Charge memeriksa kodenya **lagi** (kuota bisa habis di antara dua
+panggilan); pemakaian baru tercatat saat charge dibuat, dan kembali ke kuota bila charge kedaluwarsa/gagal.
+Respons §7 lalu membawa `originalAmount`, `discountAmount`, dan `voucherCode`; `amount` = yang ditagih.
+
+Kode yang ditolak (di 7a maupun §7) → **`422`**, tanpa charge, dengan alasan yang bisa Anda tangani di
+`errors.reason` dan kalimat siap tampil di `message`:
+```json
+{ "success": false, "message": "Voucher ini sudah kedaluwarsa (berlaku sampai 31 Desember 2026).",
+  "errors": { "code": "bad_request", "reason": "voucher_expired" } }
+```
+
+| `reason` | Arti |
+|---|---|
+| `voucher_not_found` | Kode tidak ada — **atau milik aplikasi lain** (dijawab sama persis) |
+| `voucher_inactive` | Dinonaktifkan tim ElProof |
+| `voucher_not_started` / `voucher_expired` | Di luar masa berlaku (tanggal WIB) |
+| `voucher_exhausted` | Kuota total habis |
+| `voucher_already_used` | Voucher sekali-per-pelanggan sudah dipakai App Anda (pelanggan = App Anda, pemilik langganan di ledger ElProof) |
+| `voucher_wrong_plan` | Voucher hanya untuk paket lain |
+| `voucher_too_large` | Potongan akan menghabiskan seluruh harga — harga akhir tidak pernah Rp0 |
 
 ## 8. Melihat kanal yang tersedia — `GET /external/payments/channels`
 
@@ -411,7 +453,9 @@ Berlangganan ElProof (§6/§7) — sama persis, hanya langkah 2-3 yang beda:
 ```
 1. POST /auth/app/token                { appId, secret }         → simpan accessToken
 2. GET  /external/subscription-plans                              → ambil planId milik App Anda
+   (opsional) POST /external/subscriptions/voucher-check { planId, voucherCode } → tampilkan harga akhir
 3. POST /external/subscriptions/charges { orderRef, planId }      → tampilkan QR/VA/redirect ke pelanggan
+   (dengan voucher: { orderRef, planId, voucherCode })
 4. (tunggu) polling berkala: GET /external/payments/charges/{orderRef}/status — endpoint status
    SAMA dengan charge umum, tidak dipindahkan
 5. Saat status = "paid" → langganan Anda tercatat di ElProof sampai tanggal yang dihitung dari planId

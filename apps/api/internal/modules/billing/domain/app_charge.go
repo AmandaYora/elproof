@@ -19,11 +19,16 @@ const (
 // written — before payment.Client is ever called (A20) — so a later catalog
 // price change never rewrites what a customer already agreed to pay.
 type AppCharge struct {
-	OrderRef           string
-	AppID              string
-	PlanID             int64
-	PlanName           string
-	PlanPrice          int64
+	OrderRef  string
+	AppID     string
+	PlanID    int64
+	PlanName  string
+	PlanPrice int64
+	// DiscountAmount is the voucher discount (0 without one) and Amount what
+	// the gateway was asked to charge: PlanPrice - DiscountAmount.
+	DiscountAmount     int64
+	Amount             int64
+	VoucherCode        string
 	PlanDurationMonths int
 	Status             AppChargeStatus
 	SubscriptionUntil  *time.Time

@@ -126,10 +126,11 @@ type UntilComputer interface {
 // directly (A16). Deliberately isolated from payment's own switch-based
 // dispatch (T15): payment's `payment` module is never touched by this file.
 type SubscriptionReconciler struct {
-	charges AppChargeReconcileRepo
-	payment paymentcontracts.Client
-	until   UntilComputer
-	maxAge  time.Duration
+	charges  AppChargeReconcileRepo
+	payment  paymentcontracts.Client
+	until    UntilComputer
+	maxAge   time.Duration
+	vouchers VoucherSweeper
 }
 
 func NewSubscriptionReconciler(charges AppChargeReconcileRepo, payment paymentcontracts.Client, until UntilComputer, maxAge time.Duration) *SubscriptionReconciler {
@@ -155,6 +156,7 @@ func (s *SubscriptionReconciler) Start(ctx context.Context, interval time.Durati
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				s.releaseStaleVouchers(ctx)
 				checked, resolved, err := s.ReconcilePending(ctx)
 				if err != nil {
 					log.Printf("billing: subscription reconciliation sweep gagal: %v", err)
@@ -222,6 +224,9 @@ func (s *SubscriptionReconciler) reconcileOne(ctx context.Context, charge domain
 			log.Printf("billing: subscription reconciliation — gagal menandai lunas order_ref %q: %v", charge.OrderRef, err)
 			return false
 		}
+		if won {
+			s.settleVoucher(ctx, charge.OrderRef, true)
+		}
 		return won
 	case actionResolve:
 		won, err := s.charges.MarkResolvedIfUnresolved(ctx, charge.OrderRef, decision.status)
@@ -229,8 +234,48 @@ func (s *SubscriptionReconciler) reconcileOne(ctx context.Context, charge domain
 			log.Printf("billing: subscription reconciliation — gagal menyelesaikan order_ref %q: %v", charge.OrderRef, err)
 			return false
 		}
+		if won {
+			s.settleVoucher(ctx, charge.OrderRef, false)
+		}
 		return won
 	default: // actionSkip
 		return false
+	}
+}
+
+// SetVouchers wires the voucher ledger: a charge's voucher use is settled
+// with the charge, and reservations left behind by a dead process are
+// released on every tick.
+func (s *SubscriptionReconciler) SetVouchers(v VoucherSweeper) { s.vouchers = v }
+
+// VoucherSweeper is the slice of VoucherService the reconciler needs.
+type VoucherSweeper interface {
+	Settle(ctx context.Context, orderRef string, paid bool) error
+	ReleaseStale(ctx context.Context) (int64, error)
+}
+
+// settleVoucher is best effort: a use left reserved after a paid charge
+// still counts (as it should); one left after a failed charge is released
+// by the stale sweep once the charge is no longer pending.
+func (s *SubscriptionReconciler) settleVoucher(ctx context.Context, orderRef string, paid bool) {
+	if s.vouchers == nil {
+		return
+	}
+	if err := s.vouchers.Settle(ctx, orderRef, paid); err != nil {
+		log.Printf("billing: gagal mencatat pemakaian voucher order_ref %q: %v", orderRef, err)
+	}
+}
+
+func (s *SubscriptionReconciler) releaseStaleVouchers(ctx context.Context) {
+	if s.vouchers == nil {
+		return
+	}
+	n, err := s.vouchers.ReleaseStale(ctx)
+	if err != nil {
+		log.Printf("billing: gagal melepas voucher yang tertahan: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("billing: %d pemakaian voucher diselesaikan dari buku besar", n)
 	}
 }

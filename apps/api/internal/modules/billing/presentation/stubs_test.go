@@ -52,14 +52,29 @@ type stubSubscriptionCharger struct {
 	lastAppID    string
 	lastOrderRef string
 	lastPlanID   int64
+	lastVoucher  string
+	discount     int64
+	quote        *application.VoucherQuote
 }
 
-func (s *stubSubscriptionCharger) StartSubscriptionCharge(ctx context.Context, appID, orderRef string, planID int64, opts paymentcontracts.ChargeOptions) (*paymentcontracts.ChargeResult, error) {
+func (s *stubSubscriptionCharger) StartSubscriptionCharge(ctx context.Context, appID, orderRef string, planID int64, voucherCode string, opts paymentcontracts.ChargeOptions) (*application.SubscriptionCharge, error) {
 	s.called = true
 	s.lastAppID = appID
 	s.lastOrderRef = orderRef
 	s.lastPlanID = planID
-	return s.result, s.err
+	s.lastVoucher = voucherCode
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &application.SubscriptionCharge{Charge: s.result, OriginalAmount: s.result.Amount + s.discount, DiscountAmount: s.discount, VoucherCode: voucherCode}, nil
+}
+
+func (s *stubSubscriptionCharger) QuoteVoucher(ctx context.Context, appID string, planID int64, voucherCode string) (*application.VoucherQuote, error) {
+	s.lastAppID, s.lastPlanID, s.lastVoucher = appID, planID, voucherCode
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.quote, nil
 }
 
 // stubPlanLister implements planLister — used by TestPlansList_* to lock
