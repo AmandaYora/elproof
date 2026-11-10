@@ -8,39 +8,39 @@ pengumuman), bukan hanya data halaman.
 
 | Layar | Panggilan API | JSON API (KB) | Chunk JS | JS gzip (KB) | LCP (ms) | CLS | TBT-like (ms) | INP-like (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Beranda pemasaran | 0 | 0.0 | 12 | 156.1 | 1940 | 0.424 | 31 | - |
-| Ringkasan Platform | 3 | 1.4 | 21 | 168.7 | 2696 | 0.083 | 27 | 16 |
-| Tagihan Platform | 2 | 0.5 | 36 | 216.4 | 2756 | 0 | 33 | - |
-| Daftar Tenant | 3 | 2.3 | 62 | 256.1 | 3472 | 0 | 25 | - |
-| Detail Tenant | 4 | 1.9 | 53 | 230.9 | 3416 | 0.081 | 27 | - |
-| Beranda Portal | 4 | 2.7 | 24 | 173.0 | 2448 | 0 | 35 | 360 |
-| Portal, Jadwal | 4 | 2.7 | 21 | 171.7 | 2324 | 0 | 27 | - |
-| Portal, Kendala | 4 | 2.4 | 24 | 173.5 | 2380 | 0 | 30 | - |
-| Portal, Pembayaran | 5 | 2.6 | 23 | 173.7 | 2340 | 0 | 27 | - |
-| Portal, Vendor | 6 | 3.4 | 28 | 177.0 | 2420 | 0 | 27 | - |
-| Beranda WO | 6 | 6.7 | 34 | 217.9 | 2916 | 0.442 | 25 | 16 |
-| Daftar Client | 6 | 4.5 | 48 | 249.5 | 3004 | 0.098 | 23 | - |
-| Daftar Project | 6 | 4.0 | 37 | 231.0 | 2788 | 0.054 | 34 | - |
-| Detail Proyek, tab Kendala | 7 | 5.2 | 53 | 257.4 | 1548 | 0.113 | 31 | - |
-| Detail Proyek, tab Keuangan | 9 | 5.7 | 68 | 275.2 | 1536 | 0.113 | 24 | - |
-| Detail Proyek (Ringkasan) | 5 | 3.6 | 50 | 254.0 | 1528 | 0.069 | 28 | - |
-| Detail Proyek, tab Vendor | 7 | 5.2 | 63 | 277.4 | 1552 | 0.113 | 29 | - |
-| Daftar Vendor | 6 | 3.3 | 49 | 247.9 | 1584 | 0.098 | 37 | - |
+| Beranda pemasaran | 0 | 0.0 | 12 | 156.4 | 1964 | 0.424 | 29 | - |
+| Ringkasan Platform | 3 | 1.4 | 22 | 169.5 | 2732 | 0.083 | 27 | 16 |
+| Tagihan Platform | 2 | 0.5 | 37 | 216.9 | 2780 | 0 | 24 | - |
+| Daftar Tenant | 3 | 2.3 | 64 | 256.8 | 3544 | 0 | 23 | - |
+| Detail Tenant | 4 | 1.9 | 54 | 231.4 | 3520 | 0.081 | 26 | - |
+| Beranda Portal | 4 | 3.0 | 24 | 173.3 | 2452 | 0 | 24 | 384 |
+| Portal, Jadwal | 4 | 3.0 | 22 | 172.4 | 2336 | 0 | 24 | - |
+| Portal, Kendala | 4 | 2.4 | 25 | 174.2 | 2404 | 0 | 22 | - |
+| Portal, Pembayaran | 5 | 2.6 | 24 | 174.4 | 2428 | 0 | 24 | - |
+| Portal, Vendor | 6 | 3.5 | 29 | 177.6 | 2484 | 0 | 22 | - |
+| Beranda WO | 6 | 6.8 | 36 | 219.1 | 3060 | 0.442 | 71 | 24 |
+| Daftar Client | 6 | 4.6 | 49 | 250.1 | 3104 | 0.098 | 25 | - |
+| Daftar Project | 6 | 4.1 | 38 | 231.6 | 2844 | 0.098 | 26 | - |
+| Detail Proyek, tab Kendala | 7 | 5.4 | 55 | 258.3 | 1556 | 0.113 | 28 | - |
+| Detail Proyek, tab Keuangan | 9 | 5.9 | 70 | 276.5 | 1572 | 0.113 | 27 | - |
+| Detail Proyek (Ringkasan) | 5 | 3.7 | 52 | 254.9 | 1572 | 0.113 | 30 | - |
+| Detail Proyek, tab Vendor | 7 | 5.4 | 65 | 278.7 | 1556 | 0.113 | 26 | - |
+| Daftar Vendor | 6 | 3.3 | 50 | 248.3 | 1556 | 0.098 | 28 | - |
 
-**Total JS seluruh aplikasi:** 1793.8 KB mentah, **626.5 KB gzip** (191 chunk).
+**Total JS seluruh aplikasi:** 1799.2 KB mentah, **629.5 KB gzip** (195 chunk).
 
 Chunk terbesar (gzip):
 
-- `index-Du76Lh60.js`: 146.6 KB gzip (442.3 KB mentah)
-- `ProjectMilestoneTabPage-BQjFF5ia.js`: 87.4 KB gzip (264.4 KB mentah)
-- `ProjectDetailLayout-CkC3XfNI.js`: 20.5 KB gzip (59.7 KB mentah)
-- `CommandPaletteDialog-Bs2MSKA8.js`: 19.5 KB gzip (57.5 KB mentah)
-- `usePositioner-BuR1lLHY.js`: 14.2 KB gzip (38.0 KB mentah)
-- `store-B3BPt1LE.js`: 12.6 KB gzip (35.5 KB mentah)
+- `index-D3w6M99y.js`: 146.8 KB gzip (442.9 KB mentah)
+- `ProjectMilestoneTabPage-CBEoWq2c.js`: 87.8 KB gzip (265.4 KB mentah)
+- `ProjectDetailLayout-BRfXyvc2.js`: 20.5 KB gzip (59.9 KB mentah)
+- `CommandPaletteDialog-D7JjtleH.js`: 19.5 KB gzip (57.5 KB mentah)
+- `usePositioner-ucm-NbkO.js`: 14.2 KB gzip (38.0 KB mentah)
+- `store-BfbrsJsD.js`: 12.6 KB gzip (35.5 KB mentah)
 - `types-B4jcjfVQ.js`: 12.2 KB gzip (52.9 KB mentah)
-- `MfaSetupPage-pAwvEeEP.js`: 11.9 KB gzip (30.4 KB mentah)
-- `index-gzBnxZX6.js`: 9.6 KB gzip (34.3 KB mentah)
-- `ProjectVendorTabPage-CThorqMk.js`: 9.6 KB gzip (36.0 KB mentah)
+- `MfaSetupPage-M4p2c-fC.js`: 11.9 KB gzip (30.4 KB mentah)
+- `index-B2TFLBt3.js`: 9.6 KB gzip (34.3 KB mentah)
+- `ProjectVendorTabPage-pS8g0Y8-.js`: 9.6 KB gzip (36.0 KB mentah)
 
 ## Panggilan API per layar
 
@@ -76,21 +76,21 @@ Chunk terbesar (gzip):
 - GET /api/v1/access/me (239 B)
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/milestones (941 B)
+- GET /api/v1/projects/1/milestones (1193 B)
 
 **Portal, Jadwal** (4):
 
 - GET /api/v1/access/me (239 B)
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/milestones (941 B)
+- GET /api/v1/projects/1/milestones (1193 B)
 
 **Portal, Kendala** (4):
 
 - GET /api/v1/access/me (239 B)
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/issues (535 B)
+- GET /api/v1/projects/1/issues (577 B)
 
 **Portal, Pembayaran** (5):
 
@@ -98,7 +98,7 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/projects/me/home (1525 B)
 - GET /api/v1/projects/1/payment-terms (392 B)
-- GET /api/v1/projects/1/client-payments (400 B)
+- GET /api/v1/projects/1/client-payments (442 B)
 
 **Portal, Vendor** (6):
 
@@ -106,8 +106,8 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/projects/me/home (1525 B)
 - GET /api/v1/projects/1/venue (44 B)
-- GET /api/v1/projects/1/issues (535 B)
-- GET /api/v1/projects/1/vendors (1008 B)
+- GET /api/v1/projects/1/issues (577 B)
+- GET /api/v1/projects/1/vendors (1134 B)
 
 **Beranda WO** (6):
 
@@ -115,7 +115,7 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/dashboard (5522 B)
+- GET /api/v1/dashboard (5606 B)
 - GET /api/v1/tenants/me/onboarding (237 B)
 
 **Daftar Client** (6):
@@ -125,16 +125,16 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
 - GET /api/v1/clients?… (756 B)
-- GET /api/v1/projects?… (2743 B)
+- GET /api/v1/projects?… (2869 B)
 
 **Daftar Project** (6):
 
 - GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/tenants/me/branding (110 B)
+- GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
 - GET /api/v1/staff/summary (210 B)
-- GET /api/v1/projects?… (2748 B)
+- GET /api/v1/projects?… (2874 B)
 
 **Detail Proyek, tab Kendala** (7):
 
@@ -142,9 +142,9 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2574 B)
-- GET /api/v1/projects/1/issues (547 B)
-- GET /api/v1/projects/1/vendors (1102 B)
+- GET /api/v1/projects/1/overview (2616 B)
+- GET /api/v1/projects/1/issues (589 B)
+- GET /api/v1/projects/1/vendors (1228 B)
 
 **Detail Proyek, tab Keuangan** (9):
 
@@ -152,19 +152,19 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2574 B)
+- GET /api/v1/projects/1/overview (2616 B)
 - GET /api/v1/projects/1/payment-terms (392 B)
-- GET /api/v1/projects/1/client-payments (431 B)
-- GET /api/v1/projects/1/evidence (913 B)
+- GET /api/v1/projects/1/client-payments (473 B)
+- GET /api/v1/projects/1/evidence (1039 B)
 - GET /api/v1/projects/1/payment-terms (392 B)
 
 **Detail Proyek (Ringkasan)** (5):
 
 - GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/tenants/me/branding (110 B)
+- GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2574 B)
+- GET /api/v1/projects/1/overview (2616 B)
 
 **Detail Proyek, tab Vendor** (7):
 
@@ -172,9 +172,9 @@ Chunk terbesar (gzip):
 - GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2574 B)
-- GET /api/v1/projects/1/issues (547 B)
-- GET /api/v1/projects/1/vendors (1102 B)
+- GET /api/v1/projects/1/overview (2616 B)
+- GET /api/v1/projects/1/issues (589 B)
+- GET /api/v1/projects/1/vendors (1228 B)
 
 **Daftar Vendor** (6):
 

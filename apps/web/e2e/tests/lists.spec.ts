@@ -4,6 +4,9 @@ import { open } from "../lib/suite";
 // PLAN Tahap 6: list state lives in the URL, headers sort (aria-sort, keyboard), money is right aligned, an empty
 // result offers "Reset filter", and no list loads every row (all=true) just to filter or sort in the browser.
 
+// MySQL's collation ignores case and punctuation; compare the same way.
+const compare = (x: string, y: string) => x.localeCompare(y, "id", { sensitivity: "base", ignorePunctuation: true });
+
 test.describe("Vendor list", () => {
   test("sorting is a header button, shows in aria-sort and the URL, and survives a reload", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
@@ -11,17 +14,22 @@ test.describe("Vendor list", () => {
     const header = page.getByRole("columnheader", { name: /Nama vendor/ });
     await expect(header).toHaveAttribute("aria-sort", "none");
 
-    await header.getByRole("button").click();
-    await expect(header).toHaveAttribute("aria-sort", "ascending");
+    // The order is judged on what the server sent, not on the first row on screen: other tests add vendors to this workspace
+    // at the same moment, so a row can appear between two looks at the table.
+    const sentNames = async (direction: "asc" | "desc") => {
+      const answer = page.waitForResponse((r) => r.request().method() === "GET" && r.url().includes("/vendors") && new RegExp(`sort=name(:|%3A)${direction}`).test(r.url()));
+      await header.getByRole("button").click();
+      const names = ((await (await answer).json()).data as Array<{ name: string }>).map((v) => v.name.toLowerCase());
+      await expect(header).toHaveAttribute("aria-sort", direction === "asc" ? "ascending" : "descending");
+      return names;
+    };
+    const asc = await sentNames("asc");
     await expect(page).toHaveURL(/sort=name%3Aasc/);
-    // The first cell is the selection checkbox: take the first one with text.
-    const firstName = async () => (await page.getByRole("row").nth(1).getByRole("cell").filter({ hasText: /\S/ }).first().innerText()).trim();
-    const asc = await firstName();
-    expect(asc).not.toBe("");
+    expect(asc.length).toBeGreaterThan(1);
+    expect(asc).toEqual([...asc].sort(compare));
 
-    await header.getByRole("button").click();
-    await expect(header).toHaveAttribute("aria-sort", "descending");
-    await expect.poll(firstName).not.toBe(asc);
+    const desc = await sentNames("desc");
+    expect(desc).toEqual([...desc].sort((x, y) => compare(y, x)));
 
     // Reload keeps the sort: it is in the address, not in memory.
     await page.reload();

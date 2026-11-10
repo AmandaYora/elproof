@@ -44,6 +44,14 @@ interceptor normalizing the `{success, message, data}` / `{success:false, messag
 so module stores can just read `response.data.data` (or handle the error object) without
 re-implementing envelope parsing per store.
 
+### Saving over someone else's change (ADR-0036)
+
+Items of the editable project resources carry `updatedAt`. A form keeps the `updatedAt` it was **opened** with (not the one the store holds when the person presses save, which
+a background refresh may have replaced) and passes it as the last argument of the store's update method; the store sends it as `If-Match` (`shared/lib/concurrency.ts: ifMatch`).
+Inline edits (a status dropdown) send only the changed field. A 409 is handled in one place: the HTTP client opens the global "Data diubah orang lain" dialog
+(`useConflictStore`, `ConflictHost`, loaded on demand) and the page that owns the data registers how to reload it (`registerRevalidator`, e.g. `ProjectDetailLayout`), so "Muat ulang"
+rebuilds the page and any form still holding old values. State changes are explicit (`setProjectArchived(id, true)`), never a flip of whatever is current.
+
 ## Theme / tenant branding (ADR-0012)
 
 `apps/web/src/theme/`:

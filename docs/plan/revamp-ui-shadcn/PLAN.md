@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (10 Nov 2026): **Tahap 0–6 dikerjakan dan dikomit; Tahap 7 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (10 Nov 2026): **Tahap 0–7 dikerjakan dan dikomit; Tahap 8 dikerjakan, belum dikomit** (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -332,6 +332,28 @@ API: **E9** (PATCH parsial, toggle eksplisit, `If-Match` → 409, hapus jalur to
 timeline di-restyle, Gantt (`@svar-ui`) disesuaikan tema, TrendBarChart di-restyle, keadaan data basi, dialog "Data
 diubah orang lain, muat ulang?" untuk 409. **Selesai bila:** dua sesi yang mengedit butir yang sama tidak saling
 menimpa diam-diam (tes); animasi hormati `prefers-reduced-motion`.
+
+*Tahap 8 (10 Nov 2026).* API (ADR-0036): migrasi `000071` (`updated_at` menjadi `TIMESTAMP(6)` di sembilan tabel; delapan di antaranya belum punya kolom itu); **PATCH parsial** (hanya
+kunci yang dikirim yang berubah, `{}` 422, `null` hanya di bidang nullable, aturan dinilai pada hasil gabungan, hanya kolom yang berubah ditulis) untuk proyek, tahapan, vendor proyek,
+tahapan vendor, kendala, dan tiga jenis pembayaran; **`If-Match`** sebagai compare-and-set satu `UPDATE … WHERE updated_at = ?`, 409 `{_conflict:["stale"], data:{current}}` tanpa menulis
+apa pun, `updatedAt` dan `ETag` di semua butir dan daftar; **keadaan eksplisit** (`isArchived`, `isClientVisible` lewat `PATCH …/evidence/{id}` baru, `isActive` di lima direktori),
+mengulang keadaan yang sama = 200 tanpa tulis; **tujuh jalur toggle lama dihapus** (platform tidak disentuh). Satu temuan saya sendiri: respons `transition`/`cancel`/`verify`/batal vendor
+membawa `updatedAt` sebelum tulisannya, sehingga suntingan berikutnya oleh orang yang sama ditolak 409; kini dibaca ulang sesudah menulis (dan dikunci tes). Web: `updatedAt` di sembilan tipe;
+form menyimpan versi **saat dibuka** (bukan versi di store saat simpan, yang bisa sudah tergantikan segar-ulang) dan mengirimnya sebagai `If-Match`; edit inline (status tahapan, status
+kendala, venue) hanya mengirim yang berubah; toggle diganti `setXActive(id, bool)`; **dialog global "Data diubah orang lain"** dibuka interceptor pada 409, dimuat saat dipakai, "Muat ulang" memuat
+ulang proyek sehingga form lama ikut terbuang. `TrendBarChart` bersama menggantikan tiga grafik kembar (tabel data untuk pembaca layar, label ≥ 11 px), Gantt memakai token tema aplikasi dan label
+status Indonesia, penampil bukti punya keadaan muat/galat dengan "Coba lagi" dan zoom gambar. Pemeriksa istilah kini menjangkau `setError(...)` dan sejenisnya. Tes: `tahap8.spec.ts` (reduced
+motion, dua sesi pada satu proyek dan satu tahapan, versi API, arsip eksplisit, urutan suntingan satu orang, versi setelah ubah status), Go: unit baru dan `TestTahap8`/`TestTahap8Migration`
+(361 butir lulus di putaran agen; putaran saya setelah perbaikan `afterWrite`: 6 tes integrasi lulus dengan MinIO sementara); **234 tes e2e lulus**, axe 68 halaman **0 pelanggaran**, entri JS 146,8 KB gzip.
+**Belum / berbeda:** (1) **`If-Match` masih opsional** (tanpa header = tulis terakhir menang); Tahap 9 memutuskan `428`. Tes tidak bisa membuktikan bahwa *setiap* pemanggil web mengirimnya: semua
+simpan form dan edit inline proyek sudah, tetapi tidak ada pemeriksaan otomatis. (2) `docs/API_CONTRACT.md` dan koleksi Postman belum diperbarui (Tahap 9). (3) Respons **restore** dan beberapa
+penulisan non-PATCH lain masih membawa butir yang dimuat sebelum tulisan; aman hari ini karena web memuat ulang daftarnya, tetapi bukan jaminan kontrak. (4) "Keadaan data basi" saya artikan sebagai
+dialog 409 + muat ulang; belum ada penyegaran otomatis saat tab kembali aktif. Edit direktori (vendor, venue, klien, tim, kategori) tidak memakai `If-Match`; hanya `isActive` yang eksplisit.
+(5) Setiap penulisan ke baris menaikkan versinya, jadi orang yang membuka form lalu aksi lain (batal vendor, ubah urutan tahapan) di baris yang sama akan melihat 409 saat menyimpan: itu disengaja,
+tetapi pesannya tidak menyebut aksi apa yang mengubah. (6) Gantt hanya penanda tahapan (bukan rentang), tidak bisa dioperasikan keyboard, dan butuh gulir horizontal di kartu sempit (di bawah ±900 px
+pustaka menyembunyikan grafik waktunya); tampilan daftar "Jadwal" tidak diubah selain token. Penampil bukti: PDF tidak berubah dan tidak ada panah berikut/sebelumnya. (7) `lists.spec.ts` (urutan
+vendor) rapuh terhadap tes lain yang menambah vendor di workspace yang sama; kini menilai data respons, bukan baris pertama di layar. (8) **Uji kegunaan putaran 4** dan uji di HP nyata masih menunggu
+manusia.
 
 ### Tahap 9 — Pengerasan dan penutupan
 Axe di seluruh rute dan keadaan; uji papan ketik dan pembaca layar manual pada alur utama (masuk, buat proyek, catat dan
