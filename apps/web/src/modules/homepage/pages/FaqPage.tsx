@@ -188,9 +188,10 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
         question: "Bagaimana klien melihat perkembangan persiapannya?",
         answer: (
           <>
-            Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Klien masuk dengan nama
-            pengguna dan kata sandi yang Anda berikan, lalu melihat tahapan persiapan, tagihan, dan buktinya — hanya
-            yang Anda pilih untuk ditampilkan. Klien hanya bisa membaca, tidak bisa mengubah apa pun.
+            Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Anda mengirim tautan
+            undangan ke nomor WhatsApp klien; dari situ klien membuat kata sandinya sendiri, lalu melihat tahapan
+            persiapan, tagihan, dan buktinya — hanya yang Anda pilih untuk ditampilkan. Klien hanya bisa membaca,
+            tidak bisa mengubah apa pun.
           </>
         ),
       },
