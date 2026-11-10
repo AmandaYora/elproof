@@ -21,7 +21,7 @@ export function FormErrorSummary({ errors, labels, formError, root }: Props) {
   const showList = errors.length >= 3;
   if (!showList && !formError) return null;
   return (
-    <div id="form-error-summary" tabIndex={-1} role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger-text outline-none focus-visible:ring-2 focus-visible:ring-danger-text/40">
+    <div id="form-error-summary" tabIndex={-1} role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger-text outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-danger-text">
       {formError && (
         <p className="flex items-start gap-2 font-medium">
           <CircleAlert aria-hidden className="mt-px size-4 shrink-0" />

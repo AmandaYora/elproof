@@ -17,7 +17,7 @@ function Tick({ status, size }: { status: RailMilestoneStatus; size: "sm" | "md"
   const dims = size === "sm" ? "h-4 w-[5px]" : "h-5 w-[7px]";
 
   if (status === "Completed") {
-    return <span className={cn(dims, "rounded-[2px] bg-navy-900")} title="Selesai" />;
+    return <span className={cn(dims, "rounded-[2px] bg-primary")} title="Selesai" />;
   }
   if (status === "In Progress") {
     return (
@@ -37,7 +37,7 @@ function Tick({ status, size }: { status: RailMilestoneStatus; size: "sm" | "md"
       />
     );
   }
-  return <span className={cn(dims, "rounded-[2px] border border-border bg-white")} title="Belum dimulai" />;
+  return <span className={cn(dims, "rounded-[2px] border border-border bg-card")} title="Belum dimulai" />;
 }
 
 export function MilestoneRail({ milestones, size = "md", showCount = true, className }: MilestoneRailProps) {
@@ -69,7 +69,7 @@ export function MilestoneRailLegend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-text-secondary">
       <span className="flex items-center gap-1.5">
-        <span className="h-4 w-[5px] rounded-[2px] bg-navy-900" /> Selesai
+        <span className="h-4 w-[5px] rounded-[2px] bg-primary" /> Selesai
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-4 w-[5px] rounded-[2px] border border-info bg-info/10" /> Sedang berjalan
@@ -78,7 +78,7 @@ export function MilestoneRailLegend() {
         <span className="h-4 w-[5px] rounded-[2px] border border-danger bg-danger-soft" /> Terhambat
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-4 w-[5px] rounded-[2px] border border-border bg-white" /> Belum dimulai
+        <span className="h-4 w-[5px] rounded-[2px] border border-border bg-card" /> Belum dimulai
       </span>
     </div>
   );

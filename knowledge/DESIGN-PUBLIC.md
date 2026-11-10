@@ -27,7 +27,10 @@
 | Scrolljacking membingungkan; animasi saat menggulir harus bisa dimatikan [nng-scrolljack][wcag-233] | Reveal CSS saja, hanya Beranda/Tentang, mati bila "kurangi gerakan"; tanpa parallax |
 | Masuk/daftar: tombol Google sama menonjol, formulir di atas pada HP, `autocomplete` benar [google-brand][webdev-signup] | Tata letak terbelah; di HP formulir lebih dulu, panel foto disembunyikan |
 
-## 3. Token (`src/theme/marketing.css`)
+## 3. Token (`src/theme/theme.css` + permukaan di `marketing.css`)
+
+Sejak ADR-0039 (10 Nov 2026) palet ini dipakai juga oleh semua konsol dan nilainya tinggal di `theme.css`; `marketing.css` hanya
+mengganti permukaan publik (halaman putih, pita blush, garis blush). Tabel kontras konsol: `DESIGN.md` §4.1.
 
 | Peran | Nilai | Kontras (dihitung) |
 |---|---|---|

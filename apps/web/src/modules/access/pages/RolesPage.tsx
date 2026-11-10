@@ -67,7 +67,7 @@ export default function RolesPage() {
             onClick={() => setKind(t.kind)}
             className={cn(
               "-mb-px border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
-              kind === t.kind ? "border-navy-900 text-text-primary" : "border-transparent text-text-secondary hover:text-text-primary",
+              kind === t.kind ? "border-primary text-text-primary" : "border-transparent text-text-secondary hover:text-text-primary",
             )}
           >
             {t.label}
@@ -95,7 +95,7 @@ export default function RolesPage() {
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-[14.5px] font-semibold text-text-primary group-hover:underline">{role.name}</span>
                     {role.isSystem ? (
-                      <Badge tone="navy">
+                      <Badge tone="brand">
                         <Lock className="h-3 w-3" aria-hidden /> Terkunci
                       </Badge>
                     ) : role.templateKey ? (

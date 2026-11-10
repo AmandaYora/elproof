@@ -161,7 +161,7 @@ export default function ProjectVenueTabPage() {
         <Card className="flex flex-col gap-4 p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-navy-900 text-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Building2 className="h-5 w-5" />
               </div>
               <div>

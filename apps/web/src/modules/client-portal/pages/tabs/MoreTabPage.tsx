@@ -11,9 +11,9 @@ function Row({ to, icon: Icon, label, hint }: { to: ClientPortalTab; icon: typeo
   return (
     <Link
       to={ROUTE_PATHS.portal(to)}
-      className="flex min-h-14 items-center gap-3 border-b border-border-light px-4 py-3 last:border-b-0 hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
+      className="flex min-h-14 items-center gap-3 border-b border-border-light px-4 py-3 last:border-b-0 hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
     >
-      <Icon className="h-5 w-5 shrink-0 text-navy-900" aria-hidden />
+      <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
       <span className="min-w-0 flex-1">
         <span className="block text-[14px] font-semibold text-text-primary">{label}</span>
         <span className="block text-[12.5px] text-text-secondary">{hint}</span>
@@ -44,13 +44,13 @@ export default function MoreTabPage() {
       <h1 className="text-xl font-bold text-text-primary">Lainnya</h1>
 
       {(canDocuments || canIssues) && (
-        <div className="overflow-hidden rounded-2xl border border-border bg-white">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card">
           {canDocuments && <Row to="dokumen" icon={FileText} label="Dokumen" hint="Rundown, buku acara, dan dokumen yang dibagikan WO" />}
           {canIssues && <Row to="kendala" icon={HeartHandshake} label="Kendala" hint="Hal yang sedang kami tangani untuk Anda" />}
         </div>
       )}
 
-      <section aria-labelledby="install-heading" className="rounded-2xl border border-border bg-white p-5">
+      <section aria-labelledby="install-heading" className="rounded-2xl border border-border bg-card p-5">
         <h2 id="install-heading" className="flex items-center gap-2 text-[15px] font-semibold text-text-primary">
           <Smartphone className="h-4 w-4" aria-hidden /> Pasang di layar utama
         </h2>
@@ -77,7 +77,7 @@ export default function MoreTabPage() {
       <button
         type="button"
         onClick={() => void logoutAndRedirect(navigate)}
-        className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-[14px] font-semibold text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
+        className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 text-[14px] font-semibold text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
       >
         <LogOut className="h-4 w-4" aria-hidden /> Keluar
       </button>

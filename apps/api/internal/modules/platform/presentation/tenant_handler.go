@@ -41,7 +41,6 @@ type tenantResponse struct {
 	SubscriptionExpiresAt *string `json:"subscriptionExpiresAt"`
 	IsSuspended           bool    `json:"isSuspended"`
 	LastCredentialResetAt *string `json:"lastCredentialResetAt"`
-	BrandColorPreset      string  `json:"brandColorPreset"`
 	HasLogo               bool    `json:"hasLogo"`
 	TrialEndsAt           *string `json:"trialEndsAt"`
 	// SignupSource: "self_service" (Fase 2 signup) or "platform".
@@ -78,9 +77,8 @@ func toLifecycleResponse(lc domain.Lifecycle) lifecycleResponse {
 // tenantResponse/me, which stays Owner-only since it also carries
 // subscription/billing data.
 type brandingResponse struct {
-	BusinessName     string `json:"businessName"`
-	BrandColorPreset string `json:"brandColorPreset"`
-	HasLogo          bool   `json:"hasLogo"`
+	BusinessName string `json:"businessName"`
+	HasLogo      bool   `json:"hasLogo"`
 }
 
 func dateOrNil(t *time.Time) *string {
@@ -100,14 +98,14 @@ func toTenantResponse(t domain.Tenant) tenantResponse {
 		TrialEndsAt: dateOrNil(t.TrialEndsAt), Lifecycle: toLifecycleResponse(lc),
 		SubscriptionExpiresAt: dateOrNil(t.SubscriptionExpiresAt), IsSuspended: t.IsSuspended,
 		LastCredentialResetAt: dateOrNil(t.LastCredentialResetAt),
-		BrandColorPreset:      t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
-		SignupSource: string(t.SignupSource),
+		HasLogo:               t.LogoStoragePath != nil,
+		SignupSource:          string(t.SignupSource),
 	}
 }
 
 func toBrandingResponse(t domain.Tenant) brandingResponse {
 	return brandingResponse{
-		BusinessName: t.BusinessName, BrandColorPreset: t.BrandColorPreset, HasLogo: t.LogoStoragePath != nil,
+		BusinessName: t.BusinessName, HasLogo: t.LogoStoragePath != nil,
 	}
 }
 
@@ -234,8 +232,6 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 			h.updateMyBusinessDetails(w, r)
 		case len(segments) == 2 && segments[1] == "contact" && r.Method == http.MethodGet:
 			h.myContact(w, r)
-		case len(segments) == 2 && segments[1] == "brand-color" && r.Method == http.MethodPatch:
-			h.updateMyBrandColor(w, r)
 		case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodPut:
 			h.uploadMyLogo(w, r)
 		case len(segments) == 2 && segments[1] == "onboarding" && r.Method == http.MethodGet:
@@ -372,12 +368,11 @@ func (h *TenantHandler) get(w http.ResponseWriter, r *http.Request, id int64) {
 }
 
 type updateTenantBody struct {
-	BusinessName     string `json:"businessName"`
-	OwnerName        string `json:"ownerName"`
-	Email            string `json:"email"`
-	Phone            string `json:"phone"`
-	City             string `json:"city"`
-	BrandColorPreset string `json:"brandColorPreset"`
+	BusinessName string `json:"businessName"`
+	OwnerName    string `json:"ownerName"`
+	Email        string `json:"email"`
+	Phone        string `json:"phone"`
+	City         string `json:"city"`
 }
 
 func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64) {
@@ -402,7 +397,6 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request, id int64)
 	}
 	tenant, err := h.tenants.Update(r.Context(), id, application.UpdateTenantInput{
 		BusinessName: body.BusinessName, OwnerName: body.OwnerName, Email: body.Email, Phone: body.Phone, City: body.City,
-		BrandColorPreset: body.BrandColorPreset,
 	})
 	if err != nil {
 		writeAppError(w, err)

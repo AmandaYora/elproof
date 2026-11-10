@@ -193,7 +193,7 @@ export function VendorMilestoneEditModal({
                     type="file"
                     accept="image/jpeg,image/png,application/pdf"
                     onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                    className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
+                    className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-primary-foreground"
                   />
                 </Field>
                 <Field label="Nama bukti" required>
@@ -249,7 +249,7 @@ export function VendorMilestoneEditModal({
               {historyEntries.map((h, idx) => (
                 <li key={h.id} className="flex gap-3">
                   <div className="flex flex-col items-center">
-                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-navy-900" />
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                     {idx !== historyEntries.length - 1 && <span className="w-px flex-1 bg-border" />}
                   </div>
                   <div className="pb-4">

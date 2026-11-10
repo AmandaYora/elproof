@@ -74,7 +74,7 @@ export function SubscriptionBanner({ lifecycle, canManage }: { lifecycle: Subscr
       {canManage ? (
         <Link
           to={ROUTE_PATHS.subscription}
-          className="shrink-0 rounded-md bg-white/70 px-3 py-1.5 text-[13px] font-semibold text-text-primary hover:bg-white"
+          className="shrink-0 rounded-md bg-card/70 px-3 py-1.5 text-[13px] font-semibold text-text-primary hover:bg-card"
         >
           {lifecycle.isTrial && lifecycle.status === "trialing" ? "Pilih paket" : "Perpanjang langganan"}
         </Link>
@@ -103,7 +103,7 @@ export function SubscriptionLockedScreen({ canManage }: { canManage: boolean }) 
       {canManage ? (
         <Link
           to={ROUTE_PATHS.subscription}
-          className="mt-6 inline-flex h-9 items-center rounded-md bg-navy-900 px-4 text-sm font-semibold text-white hover:bg-navy-800"
+          className="mt-6 inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
         >
           Perpanjang langganan
         </Link>

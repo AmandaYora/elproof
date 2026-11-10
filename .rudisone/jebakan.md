@@ -1,0 +1,9 @@
+# Jebakan elproof
+
+- 2026-11-10 · kena 2 · Tailwind 4 `outline-none` menyetel `--tw-outline-style:none` sehingga `focus-visible:outline-2` tidak menggambar cincin fokus (kit/button, input, textarea, Combobox, SearchInput) → selalu tambah `focus-visible:outline-solid` · sumber: T-20261110-9 7161d06, T-20261110-11 · diperiksa: e2e/tests/keyboard.spec.ts (kit button, search, input, combobox)
+- 2026-11-10 · kena 1 · `transition-colors` ikut menganimasikan `outline-color`: cincin yang warnanya baru dipasang di `:focus-visible` memudar dari currentColor (putih di tombol plum) → warna outline diam di `--ring` (theme.css @layer base) dan kit memakai `outline-ring` tanpa varian · sumber: T-20261110-11
+- 2026-11-10 · kena 1 · Reveal JS (IntersectionObserver) menyembunyikan isi pada gulir cepat/potret halaman penuh → gerak masuk hanya CSS `.reveal` (animation-timeline di @supports), isi tak pernah disembunyikan menunggu JS · sumber: T-20261110-9 ADR-0038
+- 2026-11-10 · kena 1 · Persen hemat dari harga dengan float (1−0,9 → 9%) → hitung dengan bilangan bulat · sumber: T-20261110-9 7161d06
+- 2026-11-10 · kena 1 · e2e: halaman dengan tombol Google (skrip GSI dari internet) acak gagal `networkidle` di suite penuh → tiruan GSI di e2e/lib/fixtures.ts (prepareContext); tes baru pakai `open()`/prepareContext · sumber: T-20261110-9 2507d3e · diperiksa: npm run e2e
+- 2026-11-10 · kena 1 · Uji alur manual di tumpukan e2e meninggalkan data (proyek/klien uji) → `npm run e2e:down` lalu nyalakan ulang sebelum `npm run e2e` potret; tes yang menulis data (mis. unggah logo) masuk proyek `mutating` · sumber: T-20261110-9, T-20261110-11
+- 2026-11-10 · kena 1 · MySQL e2e :3399 yatim milik worktree yang sudah dihapus (datadir hilang) → "Failed to create schema directory"; jangan matikan proses orang lain: `E2E_MYSQL_PORT=3400 sh e2e/scripts/start-mysql.sh` lalu `E2E_MYSQL_ADMIN=root@127.0.0.1:3400` · sumber: T-20261110-11

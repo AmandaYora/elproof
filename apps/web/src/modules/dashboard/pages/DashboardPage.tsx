@@ -148,12 +148,12 @@ function FullDashboard() {
               ["Siap", stage.ready],
             ].map(([label, n]) => (
               <div key={label as string} className="rounded-md bg-surface-muted px-2 py-3">
-                <dd className="text-xl font-bold tabular-nums text-navy-900">{n}</dd>
+                <dd className="text-xl font-bold tabular-nums text-primary">{n}</dd>
                 <dt className="text-[12px] text-text-secondary">{label}</dt>
               </div>
             ))}
           </dl>
-          <Link to={ROUTE_PATHS.projects} className="mt-3 inline-block text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline">
+          <Link to={ROUTE_PATHS.projects} className="mt-3 inline-block text-[13px] font-medium text-primary underline-offset-2 hover:underline">
             Lihat semua proyek
           </Link>
         </section>

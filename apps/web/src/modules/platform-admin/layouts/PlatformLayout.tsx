@@ -106,11 +106,11 @@ function PlatformShell() {
           sections={sections}
           brand={(collapsed) =>
             collapsed ? (
-              <ShieldCheck aria-hidden className="size-6 text-warning-text" />
+              <ShieldCheck aria-hidden className="size-6 text-primary" />
             ) : (
               <span className="flex flex-col gap-0.5">
                 <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
-                <span className="flex items-center gap-1.5 text-[12px] font-medium text-warning-text">
+                <span className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
                   <ShieldCheck aria-hidden className="size-3.5" /> Platform Console
                 </span>
               </span>

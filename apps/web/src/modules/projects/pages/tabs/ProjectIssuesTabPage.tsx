@@ -145,13 +145,13 @@ export default function ProjectIssuesTabPage() {
                     <button
                       type="button"
                       onClick={() => setModal({ mode: "edit", issueId: issue.id, version: issue.updatedAt, initialValues: toIssueUpdateFields(issue) })}
-                      className="text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline"
+                      className="text-[13px] font-medium text-primary underline-offset-2 hover:underline"
                     >
                       Ubah kendala
                     </button>
                   )}
                   {issue.projectVendorId && (
-                    <Link to={ROUTE_PATHS.projectDetail(projectId, "vendor")} className="text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline">
+                    <Link to={ROUTE_PATHS.projectDetail(projectId, "vendor")} className="text-[13px] font-medium text-primary underline-offset-2 hover:underline">
                       Buka di tab Vendor
                     </Link>
                   )}

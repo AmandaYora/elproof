@@ -125,7 +125,7 @@ export default function AppListPage() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <CardListField label="App ID" value={<span className="font-mono">{app.appId}</span>} />
-                  <CardListField label="Jenis" value={<Badge tone={app.kind === "internal" ? "navy" : "info"}>{app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}</Badge>} />
+                  <CardListField label="Jenis" value={<Badge tone={app.kind === "internal" ? "brand" : "info"}>{app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}</Badge>} />
                   <CardListField label="Callback URL" value={app.callbackUrl || "-"} />
                   <CardListField label="Terdaftar" value={formatDate(app.createdAt)} />
                 </div>
@@ -162,7 +162,7 @@ export default function AppListPage() {
                 <TR key={app.appId}>
                   <TD className="font-medium">{app.name}</TD>
                   <TD>
-                    <Badge tone={app.kind === "internal" ? "navy" : "info"}>
+                    <Badge tone={app.kind === "internal" ? "brand" : "info"}>
                       {app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}
                     </Badge>
                   </TD>

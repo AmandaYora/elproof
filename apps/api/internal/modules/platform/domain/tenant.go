@@ -48,7 +48,6 @@ type Tenant struct {
 	// separate from the billing lifecycle and blocks every principal.
 	IsSuspended           bool
 	LastCredentialResetAt *time.Time
-	BrandColorPreset      string
 	LogoStoragePath       *string
 	// SignupSource: self-service signup (Fase 2) or created by ElProof's team.
 	SignupSource SignupSource

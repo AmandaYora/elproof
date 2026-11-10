@@ -4,7 +4,7 @@ import type { PlatformAdminRole } from "@/modules/platform-admin/data/types";
 import type { BadgeTone } from "@/shared/components/ui/Badge";
 
 const ROLE_TONE: Record<PlatformAdminRole, BadgeTone> = {
-  "Super Admin": "navy",
+  "Super Admin": "brand",
   Billing: "info",
   Support: "neutral",
   "Read-only": "neutral",

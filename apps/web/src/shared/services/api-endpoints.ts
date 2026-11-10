@@ -86,7 +86,6 @@ export const API = {
     tenantMeSubscription: "/api/v1/tenants/me/subscription",
     tenantMeBranding: "/api/v1/tenants/me/branding",
     tenantMeLogo: "/api/v1/tenants/me/logo",
-    tenantMeBrandColor: "/api/v1/tenants/me/brand-color",
     tenantMeBusinessDetails: "/api/v1/tenants/me/business-details",
     tenantMeContact: "/api/v1/tenants/me/contact",
     // Owner-only self-service (Fase 2): "Lengkapi Profil" and the

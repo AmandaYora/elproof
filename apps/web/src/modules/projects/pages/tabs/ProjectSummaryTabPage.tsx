@@ -45,7 +45,7 @@ export default function ProjectSummaryTabPage() {
                 <li key={`${a.kind}-${a.id}`}>
                   <Link
                     to={ROUTE_PATHS.projectDetail(projectId, a.tab)}
-                    className="flex items-start gap-3 py-3 first:pt-0 last:pb-0 hover:bg-surface-muted/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
+                    className="flex items-start gap-3 py-3 first:pt-0 last:pb-0 hover:bg-surface-muted/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.tone === "danger" ? "bg-danger" : "bg-warning"}`} />
                     <span className="min-w-0">
@@ -94,14 +94,14 @@ export default function ProjectSummaryTabPage() {
                   <p className="text-[12.5px] text-text-secondary">
                     Jatuh tempo {formatDate(nextTerm.dueDate)} · {relativeDay(nextTerm.dueDate)}
                   </p>
-                  <p className="mt-1 text-[15px] font-bold tabular-nums text-navy-900">{formatCurrency(nextTerm.remaining)}</p>
+                  <p className="mt-1 text-[15px] font-bold tabular-nums text-primary">{formatCurrency(nextTerm.remaining)}</p>
                 </div>
                 <Badge tone={TERM_STATUS_TONE[nextTerm.status]}>{TERM_STATUS_LABELS.staff[nextTerm.status]}</Badge>
               </div>
             ) : !hasTerms ? (
               <p className="text-[13px] text-text-secondary">
                 Belum ada jadwal termin.{" "}
-                <Link to={ROUTE_PATHS.projectDetail(projectId, "pembayaran/client")} className="font-medium text-navy-900 underline-offset-2 hover:underline">
+                <Link to={ROUTE_PATHS.projectDetail(projectId, "pembayaran/client")} className="font-medium text-primary underline-offset-2 hover:underline">
                   Buat jadwal termin
                 </Link>
               </p>

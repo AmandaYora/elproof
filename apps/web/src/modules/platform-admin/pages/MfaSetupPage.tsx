@@ -87,7 +87,7 @@ export default function MfaSetupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-sm sm:p-10">
-        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800 text-white">
+        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <ShieldCheck className="h-5 w-5" />
         </div>
         <h1 className="text-2xl font-bold text-text-primary">Aktifkan verifikasi dua langkah</h1>
@@ -106,13 +106,13 @@ export default function MfaSetupPage() {
               Verifikasi dua langkah untuk akun ini sudah aktif. Masuk ulang dan masukkan kode dari aplikasi authenticator
               Anda.
             </p>
-            <Button variant="neutral" className="w-full justify-center" onClick={() => void logoutAndRedirect(navigate)}>
+            <Button className="w-full justify-center" onClick={() => void logoutAndRedirect(navigate)}>
               Masuk ulang
             </Button>
           </div>
         ) : !setup ? (
           <div className="mt-8 flex flex-col gap-3">
-            <Button variant="neutral" className="w-full justify-center" onClick={() => void startSetup()} disabled={busy}>
+            <Button className="w-full justify-center" onClick={() => void startSetup()} disabled={busy}>
               {busy ? "Membuat kunci..." : "Mulai penyiapan"}
             </Button>
           </div>
@@ -139,7 +139,7 @@ export default function MfaSetupPage() {
                 </Button>
                 <a
                   href={setup.otpauthUrl}
-                  className="inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-[13px] font-semibold text-text-primary hover:bg-surface-muted"
+                  className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-[13px] font-semibold text-text-primary hover:bg-surface-muted"
                 >
                   Buka di aplikasi authenticator (HP)
                 </a>
@@ -161,7 +161,7 @@ export default function MfaSetupPage() {
                     className="font-mono tracking-[0.3em]"
                   />
                 </Field>
-                <Button type="submit" variant="neutral" className="w-full justify-center" disabled={form.submitting}>
+                <Button type="submit" className="w-full justify-center" disabled={form.submitting}>
                   {form.submitting ? "Memeriksa kode..." : "Aktifkan verifikasi"}
                 </Button>
               </form>

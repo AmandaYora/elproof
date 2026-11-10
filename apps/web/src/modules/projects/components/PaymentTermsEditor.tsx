@@ -62,7 +62,7 @@ export function PaymentTermsEditor({
             type="button"
             aria-label={`Hapus termin ${i + 1}`}
             onClick={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
-            className="mt-6 flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 sm:h-9 sm:w-9"
+            className="mt-6 flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring sm:h-9 sm:w-9"
           >
             <Trash2 className="h-4 w-4" />
           </button>

@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { Circle, CircleAlert, CircleCheck, Info, TriangleAlert, type LucideIcon } from "lucide-react";
 import { Badge as KitBadge } from "@/shared/components/kit/badge";
 
-export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info" | "navy";
+export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info" | "brand";
 
-const VARIANT = { neutral: "neutral", success: "success", warning: "warning", danger: "danger", info: "info", navy: "brand" } as const;
+const VARIANT = { neutral: "neutral", success: "success", warning: "warning", danger: "danger", info: "info", brand: "brand" } as const;
 
 // Status is never color alone (DESIGN.md T5): each tone carries its own icon
 // next to the text, in the same -text color.
@@ -14,7 +14,7 @@ const ICON: Record<BadgeTone, LucideIcon> = {
   warning: TriangleAlert,
   danger: CircleAlert,
   info: Info,
-  navy: Circle,
+  brand: Circle,
 };
 
 interface BadgeProps {

@@ -130,7 +130,7 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
               className={cn(
                 "shrink-0 border-b-2 py-2.5 text-[13.5px] font-medium transition-colors",
                 tab === t.key
-                  ? "border-navy-900 font-semibold text-navy-900"
+                  ? "border-primary font-semibold text-primary"
                   : "border-transparent text-text-secondary hover:text-text-primary"
               )}
             >
@@ -144,7 +144,7 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
             <CardListField label="App ID" value={<span className="font-mono">{app.appId}</span>} />
             <CardListField
               label="Jenis"
-              value={<Badge tone={app.kind === "internal" ? "navy" : "info"}>{app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}</Badge>}
+              value={<Badge tone={app.kind === "internal" ? "brand" : "info"}>{app.kind === "internal" ? "Sistem ElProof" : "Eksternal"}</Badge>}
             />
             {/* Sengaja TIDAK memakai CardListField untuk Callback URL — nilainya
                ditruncate paksa di sana, padahal bebas dari truncate itulah

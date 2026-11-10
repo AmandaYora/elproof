@@ -217,7 +217,7 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
                     {attachmentIsImage ? "Lihat Foto" : "Lihat Dokumen"}
                   </Button>
                 )}
-                <label className="flex cursor-pointer items-center gap-2 text-[12.5px] font-semibold text-navy-900 hover:underline">
+                <label className="flex cursor-pointer items-center gap-2 text-[12.5px] font-semibold text-primary hover:underline">
                   <FileText className="h-4 w-4" />
                   {attachmentUploading ? "Mengunggah..." : hasAttachment ? "Ganti Lampiran" : "Unggah Lampiran"}
                   <input

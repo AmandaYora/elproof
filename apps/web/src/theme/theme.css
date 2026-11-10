@@ -1,44 +1,44 @@
 /*
- * ElProof design tokens (DESIGN.md §4).
+ * ElProof design tokens (DESIGN.md §4, ADR-0039).
+ *
+ * One palette for every surface ("Janji Terbukti": plum + seal gold, one
+ * typeface). The WO Console, Client Portal and Platform Console read these
+ * values; the public site (marketing.css) only swaps the few surface tokens
+ * that differ there (white page, blush bands). There is no per-tenant colour:
+ * a tenant keeps its logo and name, never its own palette (ADR-0039).
  *
  * The shadcn/ui semantic names (--background, --primary, --ring, ...) are the
  * source of truth. The names this app has always used (--color-surface,
  * --color-text-primary, ...) are kept as aliases so existing Tailwind classes
- * (bg-surface, text-text-secondary, ...) keep working while components move
- * over. Tenant branding only ever overrides --brand-navy-* (and --color-primary-
- * soft) at runtime (theme/brandPresets.ts); everything below derives from them.
+ * (bg-surface, text-text-secondary, ...) keep working. Contrast ratios are
+ * WCAG 2.x, computed: DESIGN.md §4.1.
  */
 :root {
-  /* Brand: default "navy" preset, replaced at runtime per tenant. */
-  --brand-navy-950: #172741;
-  --brand-navy-900: #1e3a5f;
-  --brand-navy-800: #24476f;
-  --color-primary-soft: #e3ebf3;
-
-  /* Warm neutrals (D13). Not cream: the page stays near white so any of the 21
-     tenant colors reads clean. Contrast ratios are in DESIGN.md §4.1. */
-  --background: #fafaf9;
-  --foreground: #1c1917;
+  /* Neutrals: a plum-tinted near-white, calmer than the public blush for dense
+     work screens (tables, forms) but from the same family of text greys. */
+  --background: #faf8f9;
+  --foreground: #2a1a27; /* 15.6:1 on --background */
   --card: #ffffff;
   --card-foreground: var(--foreground);
   --popover: #ffffff;
   --popover-foreground: var(--foreground);
-  --muted: #f5f5f4;
-  --muted-foreground: #57534e; /* 7.6:1 on white, 7.0:1 on --muted */
-  --subtle-foreground: #78716c; /* placeholder / helper text, only on white (4.8:1) */
-  --border: #e7e5e4; /* decorative separators and card outlines */
-  --border-light: #f0eeed;
-  --input: #8a847e; /* the boundary of a control must reach 3:1 (WCAG 1.4.11): 3.7:1 on white */
+  --muted: #f4eff2;
+  --muted-foreground: #6b5566; /* 6.74:1 on white, 6.37:1 on --background, 5.93:1 on --muted */
+  --subtle-foreground: #7e6a7a; /* placeholder / helper text, on white or --background only (4.96 / 4.70) */
+  --border: #e8dfe5; /* decorative separators and card outlines */
+  --border-light: #f2ecef;
+  --input: #8e7a8b; /* control boundary (WCAG 1.4.11): 3.96:1 on white, 3.74 on --background, 3.48 on --muted */
 
-  --primary: var(--brand-navy-900);
+  /* Plum: the one brand colour (actions, active navigation, focus). */
+  --primary: #3e1f3b; /* 14.34:1 with white text */
   --primary-foreground: #ffffff;
-  --primary-hover: var(--brand-navy-800);
-  --secondary: #f5f5f4;
+  --primary-hover: #2f162c;
+  --secondary: #f4eff2;
   --secondary-foreground: var(--foreground);
-  --accent: var(--color-primary-soft);
-  --accent-foreground: var(--brand-navy-950);
+  --accent: #efe3ec; /* active nav item, soft highlight; plum text on it 11.5:1 */
+  --accent-foreground: #3e1f3b;
   --destructive: var(--color-danger-text);
-  --ring: var(--brand-navy-900);
+  --ring: #3e1f3b; /* focus: >= 11.5:1 on every neutral surface */
 
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
@@ -49,9 +49,18 @@
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 
+  /* Seal gold: proof only, never status. --seal is a graphic colour (rules,
+     seal outline) on white (3.11:1) or plum (4.61:1), never on --background;
+     text in seal colour uses --seal-text. */
+  --seal: #b88a3e;
+  --seal-text: #7a5a1e; /* 6.35:1 on white, 5.60:1 on --seal-soft */
+  --seal-soft: #f8f0e1;
+  --highlight-text: #9b3d4a; /* small accents such as "H-180": 6.65:1 on white */
+  --on-primary-muted: #e9d9c4; /* secondary text on plum: 10.37:1 */
+
   /* Status (DESIGN.md §4.2). The bare colors are for icons, dots, bars and
      borders (3:1); -text is for any text in a status color (4.5:1); -soft is
-     the badge/banner background. Brand color is never used for status. */
+     the badge/banner background. Brand and seal colours are never status. */
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-danger: #dc2626;
@@ -64,15 +73,12 @@
   --color-warning-soft: #fffbeb;
   --color-danger-soft: #fef2f2;
   --color-info-soft: #eff6ff;
-  --color-neutral-soft: #f0efed;
+  --color-neutral-soft: #f1eaee;
 
-  /* Public site roles: real values live in marketing.css under
-     [data-surface="marketing"]; these defaults only keep the utilities valid. */
-  --seal: #b45309;
-  --seal-text: #b45309;
-  --seal-soft: #fffbeb;
-  --highlight-text: var(--foreground);
-  --on-primary-muted: #ffffff;
+  /* WhatsApp: the one third-party colour, only on "Kirim via WhatsApp" (white text 5.32:1). */
+  --whatsapp: #1f7a4d;
+  --whatsapp-hover: #19663f;
+  --whatsapp-foreground: #ffffff;
 
   /* Legacy names, same values (read by inline styles and old classes). */
   --color-background: var(--background);
@@ -89,10 +95,8 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
-  /* Type */
+  /* Type: one family everywhere (ADR-0039). */
   --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  /* Display face: marketing and the Client Portal home title only. */
-  --font-display: "Fraunces Variable", "Fraunces", "Iowan Old Style", Georgia, serif;
 
   /* One z-index scale (DESIGN.md §4.4). */
   --z-sticky: 10;
@@ -112,11 +116,6 @@
 }
 
 @theme inline {
-  --color-navy-950: var(--brand-navy-950);
-  --color-navy-900: var(--brand-navy-900);
-  --color-navy-800: var(--brand-navy-800);
-  --color-primary-soft: var(--color-primary-soft);
-
   /* shadcn semantic colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -126,6 +125,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -167,15 +167,16 @@
   --color-danger-soft: var(--color-danger-soft);
   --color-info-soft: var(--color-info-soft);
   --color-neutral-soft: var(--color-neutral-soft);
+  --color-whatsapp: var(--whatsapp);
+  --color-whatsapp-hover: var(--whatsapp-hover);
+  --color-whatsapp-foreground: var(--whatsapp-foreground);
 
-  /* Public site roles (marketing.css); the console never uses them. */
+  /* Seal gold and the small accents shared with the public site. */
   --color-seal: var(--seal);
   --color-seal-text: var(--seal-text);
   --color-seal-soft: var(--seal-soft);
   --color-highlight-text: var(--highlight-text);
   --color-on-primary-muted: var(--on-primary-muted);
-
-  --font-display: var(--font-display);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -187,12 +188,16 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Tailwind 4 draws a bare `border` in currentColor; shadcn components rely on
-   the old default of the theme's border color. */
+   the old default of the theme's border color. The outline colour rests on
+   --ring too: `transition-colors` also animates outline-color, so a focus ring
+   whose colour only appears on :focus-visible would fade in from currentColor
+   (white on a plum button) instead of showing at once (ADR-0039). */
 @layer base {
   *,
   ::before,
   ::after {
     border-color: var(--border);
+    outline-color: var(--ring);
   }
 }
 

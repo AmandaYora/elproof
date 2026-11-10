@@ -11,7 +11,7 @@ export function CommandTrigger({ onOpen, placeholder = "Cari proyek, vendor, ata
     <button
       type="button"
       onClick={onOpen}
-      className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-input bg-card px-3 text-left text-sm text-subtle-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+      className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-input bg-card px-3 text-left text-sm text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
     >
       <Search aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{placeholder}</span>

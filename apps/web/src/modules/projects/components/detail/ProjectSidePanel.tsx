@@ -24,12 +24,12 @@ export function ProjectSidePanel({ projectId }: { projectId: string }) {
           <PanelItem label="Tahap">
             <div className="flex items-center gap-2">
               <ProjectStatusBadge status={project.status} />
-              {progress && <span className="text-[13px] font-semibold tabular-nums text-navy-900">{progress.overallPercent}% jadwal selesai</span>}
+              {progress && <span className="text-[13px] font-semibold tabular-nums text-primary">{progress.overallPercent}% jadwal selesai</span>}
             </div>
           </PanelItem>
 
           <PanelItem label="Sisa tagihan klien">
-            <p className="text-[15px] font-bold tabular-nums text-navy-900">{formatCurrency(finance.remaining)}</p>
+            <p className="text-[15px] font-bold tabular-nums text-primary">{formatCurrency(finance.remaining)}</p>
             {finance.nextTerm && (
               <p className="text-[12.5px] text-text-secondary">
                 {finance.nextTerm.label} jatuh tempo {formatDate(finance.nextTerm.dueDate)}
@@ -57,7 +57,7 @@ export function ProjectSidePanel({ projectId }: { projectId: string }) {
             </p>
           </PanelItem>
 
-          <Link to={ROUTE_PATHS.projectDetail(projectId, "client")} className="text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline">
+          <Link to={ROUTE_PATHS.projectDetail(projectId, "client")} className="text-[13px] font-medium text-primary underline-offset-2 hover:underline">
             {clients.length > 0 ? `Kelola akses klien (${clients.length})` : "Undang klien"}
           </Link>
         </CardContent>

@@ -18,9 +18,8 @@ import { landingPathFor } from "@/shared/lib/auth-actions";
 import type { GoogleAuthOutcome, GoogleSignupState } from "@/modules/auth/types";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
-// The sign-in screen uses the public site's palette (AuthSplitLayout, ADR-0038),
-// never a tenant's brand color: no tenant is knowable before anyone has signed
-// in (ADR-0012).
+// The sign-in screen uses the public site's surface (AuthSplitLayout, ADR-0038)
+// and the one ElProof palette (ADR-0039).
 
 /** What the person is told when a sign-in call fails: the server's own words, or a connection hint when it never answered. */
 function loginErrorMessage(err: unknown, fallback: string) {

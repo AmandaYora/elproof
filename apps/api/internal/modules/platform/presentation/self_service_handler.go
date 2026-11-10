@@ -119,29 +119,6 @@ func (h *TenantHandler) updateMyProfile(w http.ResponseWriter, r *http.Request) 
 	response.OK(w, "Profil WO tersimpan", toTenantResponse(*tenant))
 }
 
-type brandColorBody struct {
-	Preset string `json:"preset"`
-}
-
-// updateMyBrandColor is PATCH /tenants/me/brand-color (business_profile.manage).
-func (h *TenantHandler) updateMyBrandColor(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := ownerTenantID(w, r)
-	if !ok {
-		return
-	}
-	var body brandColorBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
-		return
-	}
-	tenant, err := h.tenants.UpdateOwnBrandColor(r.Context(), tenantID, body.Preset)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	response.OK(w, "Warna tersimpan", toTenantResponse(*tenant))
-}
-
 type businessDetailsBody struct {
 	Address           string `json:"address"`
 	BankName          string `json:"bankName"`

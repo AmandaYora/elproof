@@ -41,7 +41,7 @@ export const TRANSACTION_STATUS_TONE: Record<SubscriptionTransactionStatus, Badg
   pending: "warning",
   paid: "success",
   expired: "danger",
-  granted: "navy",
+  granted: "brand",
   cancelled: "neutral",
 };
 

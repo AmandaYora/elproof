@@ -22,7 +22,7 @@ function Figure({ label, value, tone }: { label: string; value: number; tone?: "
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <p className="text-[12.5px] font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold tabular-nums ${tone === "good" ? "text-success-text" : tone === "owed" ? "text-warning-text" : "text-navy-950"}`}>{formatCurrency(value)}</p>
+      <p className={`mt-2 text-2xl font-semibold tabular-nums ${tone === "good" ? "text-success-text" : tone === "owed" ? "text-warning-text" : "text-foreground"}`}>{formatCurrency(value)}</p>
     </div>
   );
 }
@@ -104,7 +104,7 @@ export default function PembayaranTabPage() {
                           <p className="text-[15px] font-semibold text-foreground">{p.type}</p>
                           <p className="text-[13px] text-muted-foreground">{formatDate(p.paymentDate)} · {p.method}</p>
                         </div>
-                        <p className="text-[18px] font-semibold tabular-nums text-navy-950">{formatCurrency(p.amount)}</p>
+                        <p className="text-[18px] font-semibold tabular-nums text-foreground">{formatCurrency(p.amount)}</p>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         {p.verifiedAt && proof ? (

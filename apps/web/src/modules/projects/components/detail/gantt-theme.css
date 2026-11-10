@@ -1,7 +1,7 @@
 /*
  * The Gantt library draws with its own --wx-* variables, defined per theme class. It sits inside <Willow fonts={false}>
  * (so no web font is fetched) and this class, on the same element, wins by specificity and points every variable at
- * the app's tokens (DESIGN.md §4), so the timeline follows the tenant brand color and the neutral surface.
+ * the app's tokens (DESIGN.md §4), so the timeline follows the plum primary and the neutral surface.
  */
 .wx-willow-theme.milestone-gantt {
   --wx-font-family: var(--font-sans);

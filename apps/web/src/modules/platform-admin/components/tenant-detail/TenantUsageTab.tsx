@@ -16,7 +16,7 @@ function UsageBar({ label, item }: { label: string; item: UsageItem }) {
       </div>
       {limited && (
         <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-muted" role="img" aria-label={`${label}: ${item.used} dari ${item.max}`}>
-          <div className={`h-full rounded-full ${full ? "bg-danger" : "bg-navy-900"}`} style={{ width: `${percent}%` }} />
+          <div className={`h-full rounded-full ${full ? "bg-danger" : "bg-primary"}`} style={{ width: `${percent}%` }} />
         </div>
       )}
     </div>

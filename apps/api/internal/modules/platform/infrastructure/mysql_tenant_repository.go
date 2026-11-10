@@ -21,7 +21,7 @@ func NewMySQLTenantRepository(db *sql.DB) *MySQLTenantRepository {
 
 const tenantColumns = `id, business_name, owner_name, username, email, phone, city, joined_at, plan_id,
 	subscription_status, subscription_expires_at, trial_ends_at, is_suspended, last_credential_reset_at,
-	brand_color_preset, logo_storage_path, signup_source, onboarding_dismissed_at, created_at, updated_at`
+	logo_storage_path, signup_source, onboarding_dismissed_at, created_at, updated_at`
 
 func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 	var t domain.Tenant
@@ -33,7 +33,7 @@ func scanTenant(scan func(dest ...interface{}) error) (*domain.Tenant, error) {
 
 	err := scan(
 		&t.ID, &t.BusinessName, &t.OwnerName, &t.Username, &t.Email, &t.Phone, &t.City, &t.JoinedAt, &planID,
-		&status, &expiresAt, &trialEndsAt, &t.IsSuspended, &lastReset, &t.BrandColorPreset, &logoStoragePath,
+		&status, &expiresAt, &trialEndsAt, &t.IsSuspended, &lastReset, &logoStoragePath,
 		&signupSource, &onboardingDismissed, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -180,11 +180,11 @@ func (r *MySQLTenantRepository) FindByID(ctx context.Context, id int64) (*domain
 
 func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenant) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at, brand_color_preset, signup_source)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at, signup_source)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tenant.BusinessName, tenant.OwnerName, tenant.Username, tenant.Email, tenant.Phone, tenant.City,
 		tenant.JoinedAt, tenant.PlanID, string(tenant.SubscriptionStatus), tenant.TrialEndsAt,
-		brandPresetOrDefault(tenant.BrandColorPreset), signupSourceOrDefault(tenant.SignupSource),
+		signupSourceOrDefault(tenant.SignupSource),
 	)
 	if err != nil {
 		return err
@@ -199,8 +199,8 @@ func (r *MySQLTenantRepository) Create(ctx context.Context, tenant *domain.Tenan
 
 func (r *MySQLTenantRepository) Update(ctx context.Context, tenant *domain.Tenant) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ?, brand_color_preset = ? WHERE id = ?`,
-		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.BrandColorPreset, tenant.ID,
+		`UPDATE tenants SET business_name = ?, owner_name = ?, email = ?, phone = ?, city = ? WHERE id = ?`,
+		tenant.BusinessName, tenant.OwnerName, tenant.Email, tenant.Phone, tenant.City, tenant.ID,
 	)
 	return err
 }
@@ -235,13 +235,6 @@ func (r *MySQLTenantRepository) UpdateSubscription(ctx context.Context, id int64
 	return err
 }
 
-func brandPresetOrDefault(p string) string {
-	if p == "" {
-		return domain.DefaultBrandColorPreset
-	}
-	return p
-}
-
 func signupSourceOrDefault(s domain.SignupSource) string {
 	if s == "" {
 		return string(domain.SignupSourcePlatform)
@@ -259,11 +252,11 @@ func (r *MySQLTenantRepository) CreateForSignup(ctx context.Context, tenant *dom
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at, brand_color_preset, signup_source)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tenants (business_name, owner_name, username, email, phone, city, joined_at, plan_id, subscription_status, trial_ends_at, signup_source)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tenant.BusinessName, tenant.OwnerName, tenant.Username, tenant.Email, tenant.Phone, tenant.City,
 		tenant.JoinedAt, tenant.PlanID, string(tenant.SubscriptionStatus), tenant.TrialEndsAt,
-		brandPresetOrDefault(tenant.BrandColorPreset), signupSourceOrDefault(tenant.SignupSource),
+		signupSourceOrDefault(tenant.SignupSource),
 	)
 	if err != nil {
 		return false, err
@@ -298,13 +291,6 @@ func (r *MySQLTenantRepository) UpdateUsername(ctx context.Context, id int64, us
 func (r *MySQLTenantRepository) UpdateProfile(ctx context.Context, id int64, businessName, phone, city string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE tenants SET business_name = ?, phone = ?, city = ? WHERE id = ?`, businessName, phone, city, id)
-	return err
-}
-
-// UpdateBrandColor sets only the workspace's brand color preset (the Owner's
-// own choice on Profil Usaha).
-func (r *MySQLTenantRepository) UpdateBrandColor(ctx context.Context, id int64, preset string) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET brand_color_preset = ? WHERE id = ?`, preset, id)
 	return err
 }
 

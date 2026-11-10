@@ -58,7 +58,7 @@ Platform: Tambah Tenant). Portal Klien tidak punya dialog di baseline (satu-satu
 
 ## Data benih (deterministik)
 
-Workspace **WO Contoh** (preset navy): Owner "Rina Marlina", 2 staf lain, 3 vendor, 2 venue; proyek **Citra & Bima** (Persiapan, termin
+Workspace **WO Contoh**: Owner "Rina Marlina", 2 staf lain, 3 vendor, 2 venue; proyek **Citra & Bima** (Persiapan, termin
 terlambat, 2 tahapan selesai, 2 vendor, pembayaran klien dan vendor, 1 kendala, 2 klien: Bride dengan login `citra.contoh` /
 `Kata-sandi-klien-123`), **Dewi & Arga** (Selesai), **Sari & Doni** (Draf). Workspace **WO Berbayar** (langganan aktif dan satu
 transaksi lunas) dan **WO Kosong** (tanpa data). Platform: Super Admin `superadmin` dengan 2FA aktif (TOTP dihitung di Node),
@@ -67,7 +67,7 @@ satu pengumuman, satu permintaan data. Semua tanggal benih dihitung dari hari te
 ## Determinisme dan batasnya
 
 Dibuat tetap: jam peramban dibekukan di **9 Nov 2026 10:00 WIB** (`page.clock.setFixedTime`, timer tetap jalan; zona
-`Asia/Jakarta`, locale `id-ID`), animasi dan gerak dimatikan, font Google (Inter, Fraunces) disajikan dari cache lokal
+`Asia/Jakarta`, locale `id-ID`), animasi dan gerak dimatikan, font Google (bila ada) disajikan dari cache lokal
 (`e2e/.tmp/fonts`) setelah unduhan pertama, service worker diblokir, semua cap waktu basis data (created_at, paid_at, audit)
 dinormalkan ke 10:00 WIB + id detik, dan tunggu jaringan idle + font siap + teks "Memuat" hilang.
 

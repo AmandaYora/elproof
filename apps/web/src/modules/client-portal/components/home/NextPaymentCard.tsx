@@ -52,7 +52,7 @@ export function NextPaymentCard({ finance, payTo, projectName, clientName, busin
       <h2 id="pay-heading" className="text-[15px] font-semibold text-foreground">Tagihan berikutnya</h2>
 
       <p className="mt-3 text-[13px] text-muted-foreground">{label}</p>
-      <p className="font-display text-[32px] leading-tight font-semibold text-navy-950 tabular-nums">{formatCurrency(amount)}</p>
+      <p className="text-[32px] leading-tight font-extrabold tracking-[-0.02em] text-foreground tabular-nums">{formatCurrency(amount)}</p>
       {term && (
         <p className="mt-1 text-[13.5px] text-muted-foreground">
           Jatuh tempo {formatDate(term.dueDate)}

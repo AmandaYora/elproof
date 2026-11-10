@@ -14,7 +14,7 @@ interface ActiveAnnouncement {
 const STYLE = {
   info: { icon: Info, box: "border-info/30 bg-info-soft text-info-text" },
   warning: { icon: TriangleAlert, box: "border-warning/30 bg-warning-soft text-warning-text" },
-  maintenance: { icon: Wrench, box: "border-navy-900/20 bg-navy-900/10 text-navy-900" },
+  maintenance: { icon: Wrench, box: "border-primary/20 bg-primary/10 text-primary" },
 } as const;
 
 const DISMISSED_KEY = "elproof.dismissedAnnouncements";
@@ -74,7 +74,7 @@ export function AnnouncementBanner() {
               type="button"
               onClick={() => dismiss(a.id)}
               aria-label="Tutup pengumuman"
-              className="shrink-0 rounded p-1 hover:bg-black/5"
+              className="shrink-0 rounded p-1 hover:bg-foreground/5"
             >
               <X className="h-4 w-4" />
             </button>

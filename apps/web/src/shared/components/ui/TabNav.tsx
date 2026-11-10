@@ -30,7 +30,7 @@ export function TabNav({ items, className, sticky = true }: TabNavProps) {
           className={({ isActive }) =>
             cn(
               "shrink-0 border-b-2 py-3 text-[13.5px] font-medium transition-colors",
-              isActive ? "border-navy-900 font-semibold text-navy-900" : "border-transparent text-text-secondary hover:text-text-primary"
+              isActive ? "border-primary font-semibold text-primary" : "border-transparent text-text-secondary hover:text-text-primary"
             )
           }
         >

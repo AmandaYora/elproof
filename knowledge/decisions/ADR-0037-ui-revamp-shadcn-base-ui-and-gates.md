@@ -3,6 +3,8 @@
 ## Status
 Accepted — implemented 2026-11-08 … 2026-11-10 (docs/plan/revamp-ui-shadcn/PLAN.md, Tahap 0–9). The API half is in ADR-0032 … ADR-0036; this ADR is the
 front end and the process around it. The visual contract is `knowledge/DESIGN.md`.
+**Amended by ADR-0039** (2026-11-10): no tenant branding override (one plum + seal-gold palette for every surface) and no Fraunces (Plus
+Jakarta Sans only); kit controls keep a solid 2 px focus outline.
 
 ## Context
 The web app had grown to ~190 `.tsx` files with its own hand-written components. Four things were wrong, and measured in Tahap 0:

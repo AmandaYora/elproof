@@ -5,6 +5,10 @@
 > `docs/plan/revamp-ui-shadcn/PLAN.md`. Alur dan susunan menu per peran mengikuti
 > `docs/plan/registrasi-wo-self-service/FLOW-IDEAL.md`; dokumen ini mengatur **rupa, komponen, bahasa, dan perilaku UI**.
 >
+> **Revisi 3 (10 Nov 2026, T-20261110-11, ADR-0039):** satu palet plum + emas segel dan satu huruf (Plus Jakarta Sans)
+> untuk semua permukaan; fitur pilih warna per WO dihapus (logo WO tetap); cincin fokus kit diperbaiki. Berubah: §1, §4.1
+> (palet + tabel kontras), §4.2, §4.3, §4.4, §5.
+>
 > **Yang berubah di revisi 2:** (1) tujuan diperluas dari "ganti lapisan komponen" menjadi "mudah dipahami, mudah
 > dipakai, rupa modern"; **endpoint boleh diubah** bila bentuk API membuat alur UI buruk (keputusan pemilik produk,
 > 9 Nov 2026, daftar di PLAN.md §4); (2) arah rupa baru (§5); (3) token teks status dan netral hangat (§4), karena warna
@@ -26,8 +30,8 @@
   kapan, dan sudah sampai mana persiapannya?" Tim ElProof: "bisnis sehat, siapa perlu ditindaklanjuti?"
 - **Ukuran "mudah dipakai"** (bukan perasaan): tingkat keberhasilan tugas, waktu tugas, jumlah salah langkah, dan skor
   kemudahan per tugas (SEQ 1–7), diukur **sebelum** revamp dan diulang dengan tugas yang sama (PLAN.md §7).
-- **Sistem yang sudah ada dan tetap dipakai:** token `--color-*` dan `--brand-navy-*` yang ditimpa saat runtime oleh
-  21 preset warna tenant (`src/theme/brandPresets.ts`), token kepadatan `data-density` (console compact, portal
+- **Sistem yang sudah ada dan tetap dipakai:** token semantik `src/theme/theme.css` (satu palet plum + emas segel untuk
+  semua permukaan sejak revisi 3, ADR-0039; warna per WO dihapus), token kepadatan `data-density` (console compact, portal
   comfortable), label status terpusat (`shared/lib/labels.ts`, FLOW-IDEAL §4), `ProofSeal` sebagai tanda merek,
   `@svar-ui/react-gantt` untuk Gantt, `lucide-react` untuk ikon.
 
@@ -83,25 +87,63 @@ Aturan `ProofStamp` (turunan `ProofSeal`):
 
 ## 4. Token
 
-### 4.1 Netral (revisi 2: dari slate dingin ke netral hangat)
+### 4.1 Palet dan netral (revisi 3, 10 Nov 2026: satu palet plum + emas segel, ADR-0039)
 
-FLOW-IDEAL §0 dan arah Linear 2026 meminta netral hangat, tetapi `theme.css` memakai slate (abu kebiruan). Usulan
-memakai keluarga stone Tailwind; **bukan krem** (latar tetap hampir putih) supaya warna merek tenant tetap jernih.
-Keputusan D13.
+Satu palet untuk WO Console, Portal Klien, dan Platform Console, sekeluarga dengan situs publik "Janji Terbukti"
+(`DESIGN-PUBLIC.md`). Tidak ada lagi warna per WO: WO tetap tampil lewat logo dan namanya. Sumber nilai: `src/theme/theme.css`
+(`:root`); situs publik hanya mengganti permukaan (halaman putih, pita blush) di `marketing.css`.
 
-| Peran | Sekarang | Usulan | Kontras (dihitung) |
+**Netral konsol: abu bernada plum, bukan blush.** Pita blush publik (#F7EEEC) terlalu merah muda untuk layar kerja padat
+(tabel, formulir, baris hover); konsol memakai hampir-putih bernada plum yang tenang, dengan abu teks, batas kontrol, plum, dan
+emas yang **sama persis** dengan situs publik. Mengikuti pola skala warna: latar aplikasi → latar halus → latar elemen → batas
+→ teks redup → teks utama dari satu keluarga warna [radix-scale], dan peran netral terpisah dari peran merek dan status
+[atl-color]. Keputusan D13 (netral hangat, bukan krem) tetap; nadanya kini mengikuti plum.
+
+| Peran | Nilai | Dipakai untuk |
+|---|---|---|
+| `--background` | #FAF8F9 | latar halaman, sidebar |
+| `--card`, `--popover` | #FFFFFF | kartu, dialog, menu, isian |
+| `--muted`, `--secondary` | #F4EFF2 | permukaan tenang: kepala tabel, baris hover, isian nonaktif |
+| `--foreground` | #2A1A27 | teks utama |
+| `--muted-foreground` | #6B5566 | teks sekunder, label |
+| `--subtle-foreground` | #7E6A7A | placeholder/teks bantu — **hanya** di atas putih atau `--background` |
+| `--border` / `--border-light` | #E8DFE5 / #F2ECEF | garis dekoratif (tidak wajib 3:1) |
+| `--input` | #8E7A8B | batas kontrol (WCAG 1.4.11) |
+| `--primary` / hover | #3E1F3B / #2F162C | tombol utama, item navigasi aktif, tautan |
+| `--accent` / `--accent-foreground` | #EFE3EC / #3E1F3B | latar item aktif, lencana `brand` |
+| `--ring` | #3E1F3B | cincin fokus papan ketik, 2 px |
+| `--seal` | #B88A3E | emas segel: garis/ikon segel, **non-teks**, hanya di atas putih atau plum |
+| `--seal-text` / `--seal-soft` | #7A5A1E / #F8F0E1 | teks dan latar `ProofStamp` |
+| `--on-primary-muted` | #E9D9C4 | teks sekunder di atas plum (hero Portal) |
+| `--color-neutral-soft` | #F1EAEE | latar lencana netral |
+| `--whatsapp` / hover | #1F7A4D / #19663F | satu-satunya warna pihak ketiga: tombol "Kirim via WhatsApp" |
+
+**Kontras (dihitung dengan rumus luminansi relatif WCAG 2.x, 10 Nov 2026).** Ambang: teks 4,5:1 (1.4.3), batas kontrol dan
+indikator fokus 3:1 (1.4.11).
+
+| Pasangan | Rasio | Ambang | Hasil |
 |---|---|---|---|
-| `--background` | #f8fafc | #fafaf9 | — |
-| `--card`, `--popover` | #ffffff | #ffffff | — |
-| `--muted` (latar) | #f1f5f9 | #f5f5f4 | — |
-| `--foreground` | #0f172a | #1c1917 | 16,7:1 di atas #fafaf9 |
-| `--muted-foreground` | #64748b (4,34:1 di atas muted, **gagal**) | #57534e | 7,6:1 di atas putih; 7,0:1 di atas muted |
-| teks pembantu/placeholder | — | #78716c | 4,80:1 di atas putih (**hanya** di atas putih; 4,40:1 di atas muted) |
-| `--border` (dekoratif) | #d6e0ea | #e7e5e4 | dekoratif, tak wajib 3:1 |
-| `--input` (batas kontrol) | #d6e0ea (1,34:1, **gagal 1.4.11**) | #8a847e | 3,70:1 di atas putih |
+| `--foreground` di putih / `--background` / `--muted` / `--accent` | 16,46 / 15,57 / 14,48 / 13,23 | 4,5 | lolos |
+| `--muted-foreground` di putih / `--background` / `--muted` | 6,74 / 6,37 / 5,93 | 4,5 | lolos |
+| `--muted-foreground` di `--accent` / `--color-neutral-soft` / `--seal-soft` | 5,41 / 5,69 / 5,95 | 4,5 | lolos |
+| `--subtle-foreground` di putih / `--background` | 4,96 / 4,70 | 4,5 | lolos |
+| `--subtle-foreground` di `--muted` | 4,37 | 4,5 | **gagal → dilarang** (pakai `--muted-foreground`) |
+| `--input` (batas) di putih / `--background` / `--muted` / `--accent` | 3,96 / 3,74 / 3,48 / 3,18 | 3 | lolos |
+| teks putih di `--primary` / `--primary-hover` | 14,34 / 16,51 | 4,5 | lolos |
+| `--primary` sebagai teks di `--background` / `--accent` | 13,57 / 11,52 | 4,5 | lolos |
+| `--ring` (fokus) di putih / `--background` / `--muted` / `--accent` | 14,34 / 13,57 / 12,62 / 11,52 | 3 | lolos |
+| `--ring` di `--color-neutral-soft` / `--seal-soft` | 12,12 / 12,67 | 3 | lolos |
+| `--seal` (non-teks) di putih / di plum | 3,11 / 4,61 | 3 | lolos |
+| `--seal` di `--background` / di `--seal-soft` | 2,95 / 2,75 | 3 | **gagal → dilarang** untuk informasi (segel memakai `--seal-text` untuk ikon dan teks); garis tepi dekoratif `ProofStamp` (`border-seal/60`) dikecualikan karena tombolnya dikenali dari teksnya (1.4.11 tidak berlaku) |
+| `--seal-text` di `--seal-soft` / putih | 5,60 / 6,35 | 4,5 | lolos |
+| `--on-primary-muted` di plum | 10,37 | 4,5 | lolos |
+| teks putih di `--whatsapp` / hover | 5,32 / 6,97 | 4,5 | lolos |
+| `-text` status di `--background`: success / warning / danger / info | 4,74 / 4,75 / 6,12 / 6,34 | 4,5 | lolos |
 
-Bila D13 ditolak, perbaikan minimum di slate: `--muted-foreground` ±#5b6b82 (4,95:1 di atas #f1f5f9) dan `--input`
-±#7b8ba1 (3,47:1).
+Fokus: cincin plum 2 px, `outline-offset` 2 px di tombol (tergambar di atas latar halaman, bukan di atas tombol plum) dan
+0 px di isian (menebalkan batasnya). Di Tailwind 4 `outline-none` ikut menyetel `--tw-outline-style: none`, jadi setiap kontrol
+yang menyembunyikan garis bawaan peramban **wajib** `focus-visible:outline-solid` bersama `outline-2` [tw-outline]. Fokus
+2 px ber-kontras ≥ 3:1 juga memenuhi ukuran yang disarankan 2.4.13 (AAA) [wcag-2413].
 
 ### 4.2 Status (revisi 2: temuan baru, gagal kontras)
 
@@ -115,30 +157,28 @@ Dipakai ±173 kali di 86 berkas (`text-success|warning|danger|info`) termasuk `B
 | `--color-success-text` / `-warning-text` / `-danger-text` / `-info-text` (baru) | #15803d / #b45309 / #b91c1c / #1d4ed8 | semua teks berwarna status | 5,02 / 5,02 / 6,47 / 6,70 di atas putih |
 | `--color-*-soft` (latar lencana, diganti) | #f0fdf4 / #fffbeb / #fef2f2 / #eff6ff | latar lencana dan banner | teks `-text` di atasnya 4,79 / 4,84 / 5,91 / 6,16 |
 
-Tabrakan merek vs status: preset tenant **gold** memakai #b45309/#d97706 (sama dengan warning) dan **emerald** dekat
-dengan success. Karena itu status **selalu** ikon + teks (T5), dan warna merek tidak pernah dipakai untuk status.
+Emas segel vs status (revisi 3): emas #B88A3E berdekatan dengan warning amber (#D97706/#B45309). Karena itu emas **hanya**
+berarti bukti (`ProofStamp`, garis segel di hero Portal), tidak pernah status, latar banner, atau hiasan kerangka; status
+**selalu** ikon + teks (T5), dan plum maupun emas tidak pernah dipakai untuk status.
 
 ### 4.3 Pemetaan semantik shadcn
 
 | Token shadcn | Sumber | Catatan |
 |---|---|---|
-| `--primary` / `--primary-foreground` | `--brand-navy-900` (preset tenant) / putih | tiap preset ≥ 4,5:1 terhadap putih |
-| `--primary` hover | `--brand-navy-800` | |
-| `--ring` | `--brand-navy-900` | fokus ≥ 3:1 |
-| `--accent` | `--color-primary-soft` (preset `soft`) | latar sorot lembut, item navigasi aktif |
-| `--sidebar` | **`--background`** (revisi 2; sebelumnya `--brand-navy-950`) | sidebar netral, merek hanya di logo, indikator item aktif, tombol utama (§5, D13) |
+| `--primary` / `--primary-foreground` | plum #3E1F3B / putih | 14,34:1 (§4.1) |
+| `--primary-hover` | #2F162C | utilitas `hover:bg-primary-hover` |
+| `--ring` | plum #3E1F3B | fokus ≥ 11,5:1 di semua permukaan netral |
+| `--accent` | #EFE3EC | latar sorot lembut, item navigasi aktif |
+| `--sidebar` | **`--background`** (revisi 2; sebelumnya warna merek gelap) | sidebar netral, merek hanya di logo, indikator item aktif, tombol utama (§5, D13) |
 | `--destructive` | `--color-danger` (teks: `--color-danger-text`) | tindakan merusak, bukan status klien |
 | `--radius` | 10 px | kontrol 8 px, kartu 12 px, lencana penuh (pil) — radius mengikuti hierarki, bukan satu nilai |
 | `--chart-1..5` | tidak dipakai | grafik buatan sendiri (D11) |
 
 ### 4.4 Tipografi, kepadatan, gerak, lapisan
 
-- **Huruf UI:** Inter (sekarang) dengan `tabular-nums` untuk angka. Opsi D14: **Plus Jakarta Sans** (Tokotype,
-  dirancang untuk identitas kota Jakarta, OFL) memberi karakter Indonesia yang khas tanpa mengorbankan keterbacaan;
-  **syarat**: punya fitur `tnum` dan ukuran berkas variabel wajar; dicek di prototipe Tahap 0 [?: `tnum` belum
-  terverifikasi]. Bila tidak lolos, tetap Inter.
-- **Fraunces** hanya untuk judul besar Beranda Portal (nama pasangan, hitung mundur; D8); situs publik memakai satu keluarga, Plus Jakarta Sans (ADR-0038). Tidak pernah
-  di tabel/formulir.
+- **Huruf: hanya Plus Jakarta Sans** (Tokotype, OFL; D14) di semua permukaan, dengan `tabular-nums` untuk angka.
+  Revisi 3 (ADR-0039) menghapus Fraunces dan `--font-display`: nama pasangan, hitung mundur, dan nominal besar di Portal
+  memakai Plus Jakarta Sans tebal (`font-extrabold`) dan rapat (tracking −0,02 s.d. −0,035em), sama dengan judul situs publik.
 - **Skala:** 12 / 14 / 16 / 20 / 24 / 30 px; line-height 16 / 20 / 24 / 28 / 32 / 38; bobot 400/500/600 (700 hanya
   angka besar). Badan console 14 px, Portal 16 px. Panjang baris prosa ≤ 70 karakter. Label tidak huruf kapital semua.
 - **Kepadatan** per `data-density`: console `compact` (kontrol 36 px, baris 40/32 px, celah 16 px), Portal
@@ -147,7 +187,7 @@ dengan success. Karena itu status **selalu** ikon + teks (T5), dan warna merek t
   Semua dibungkus `motion-reduce:`. Tidak ada animasi masuk per bagian (pengecualian terlingkup untuk Beranda dan Tentang
   Kami situs publik: ADR-0038, `DESIGN-PUBLIC.md`).
 - **Lapisan (z-index):** konten 0, sticky 10, sidebar 30, dropdown/popover 40, dialog 50, toast 60, banner sesi
-  dukungan 70. Root `isolation: isolate` (Base UI); variabel tenant di `:root`/`body` agar konten portal mewarisinya.
+  dukungan 70. Root `isolation: isolate` (Base UI); token di `:root` agar konten portal (dirender di `body`) mewarisinya.
 - **Elevasi:** permukaan datar = garis `--border`, tanpa bayangan. Bayangan hanya untuk popover/menu (kecil) dan
   dialog/drawer (sedang).
 
@@ -156,16 +196,16 @@ dengan success. Karena itu status **selalu** ikon + teks (T5), dan warna merek t
 Arah: **tenang, padat, dan bisa dipercaya**; satu-satunya hal yang mencolok adalah bukti (§3). Prinsip:
 
 1. **Konten memimpin, kerangka mundur.** Sidebar netral (latar sama dengan halaman, ikon 16 px abu, item aktif
-   memakai latar `--accent` + teks `--primary`), bukan blok warna merek penuh. Ini perubahan yang terlihat oleh tenant
-   (D13): warna merek tetap hadir di logo, tombol utama, cincin fokus, dan item aktif.
-2. **Warna hanya bila bermakna.** Abu hangat untuk semua permukaan; warna merek untuk aksi utama; warna status untuk
+   memakai latar `--accent` + teks `--primary`), bukan blok warna merek penuh (D13). Plum hadir di tombol utama, cincin
+   fokus, dan item aktif; identitas WO hadir lewat logo dan namanya (ADR-0039).
+2. **Warna hanya bila bermakna.** Abu bernada plum untuk semua permukaan; plum untuk aksi utama; emas hanya untuk bukti; warna status untuk
    keadaan (selalu dengan ikon + teks); tanpa gradien dekoratif, kaca, atau bayangan di kartu datar.
 3. **Struktur dari jarak dan garis tipis**, bukan kotak di dalam kotak. Halaman detail memakai bagian berjudul dengan
    pemisah, bukan tumpukan kartu seragam. Kartu hanya untuk hal yang berdiri sendiri (tagihan berikutnya, KPI).
 4. **Angka adalah isi utama** untuk WO dan klien: rupiah rata kanan, `tabular-nums`, format PUEBI, nominal penting
    memakai ukuran 20–30 px dengan label kecil di atasnya, bukan sebaliknya.
-5. **Portal berbeda suasana dengan console, satu sistem:** Portal lebih lega, judul Fraunces untuk nama pasangan dan
-   hitung mundur, foto header dari WO bila ada; console padat dan netral.
+5. **Portal berbeda suasana dengan console, satu sistem:** Portal lebih lega, pita plum dengan nama pasangan dan hitung
+   mundur dalam huruf tebal-rapat dipisah garis emas segel, foto header dari WO bila ada; console padat dan netral.
 6. **Hindari ciri template:** label huruf kapital di atas tiap judul, kartu seragam dengan bayangan sama, angka besar +
    gradien sebagai pahlawan, ikon di setiap judul, panah "→" di setiap tautan.
 
@@ -196,7 +236,7 @@ urutan di URL; pilih baris → bilah aksi massal menggantikan toolbar; paginasi 
 ```
 ┌──────────────────────────┐
 │ Nama WO                   │
-│ Citra & Bima        (serif)│
+│ Citra & Bima        (tebal)│
 │ H-266 menuju hari bahagia │
 │ ┌──────────────────────┐ │
 │ │ Tagihan berikutnya   │ │  ← kartu terbesar, satu-satunya yang menonjol
@@ -358,6 +398,10 @@ https://faq.whatsapp.com/5913398998672934
   [s3-presigned] https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html
 - Lain: [pigment] https://engineering.pigment.com/2026/04/08/safe-user-impersonation/ · [baymard-inline]
   https://baymard.com/blog/inline-form-validation · [tldraw-baseui] https://github.com/tldraw/tldraw/issues/7584
+
+**Revisi 3 (diakses 10 Nov 2026) [R]:** [radix-scale] https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale ·
+[atl-color] https://atlassian.design/foundations/color · [tw-outline] https://tailwindcss.com/docs/outline-style · [wcag-2413]
+https://www.w3.org/WAI/WCAG22/Understanding/focus-appearance
 
 **Sekunder [S]:** [selular] https://selular.id/2025/08/pasar-smartphone-indonesia-kuartal-ii-2025-hp-murah-dan-menengah-jadi-andalan/ ·
 perbandingan shadcn/Radix/Base UI (dev.to, openreplay), saasframe cmd+K, aturan rupiah di media (Detik), blog tabel/UX,

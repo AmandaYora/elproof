@@ -1,7 +1,9 @@
 # ADR-0012: Per-tenant branding — logo, fixed color presets, and where it does/doesn't apply
 
 ## Status
-Accepted
+Accepted; **colour half superseded by ADR-0039** (2026-11-10): the 21 colour presets, `PATCH /tenants/me/brand-color` and
+`tenants.brand_color_preset` are removed — every surface uses one palette. The logo, business-name fallback, tab title/favicon and
+the `hydrated` render gate below still hold.
 
 ## Context
 Every tenant saw identical ElProof branding inside an authenticated session: a hardcoded `APP_NAME`

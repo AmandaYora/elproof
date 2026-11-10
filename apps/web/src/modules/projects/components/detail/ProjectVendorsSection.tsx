@@ -531,11 +531,11 @@ function VendorAccordionRow({
           </div>
 
           {milestones.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-white px-4 py-3 text-[13px] text-text-secondary">
+            <p className="rounded-md border border-dashed border-border bg-card px-4 py-3 text-[13px] text-text-secondary">
               Belum ada tahapan untuk vendor ini.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-md border border-border bg-white">
+            <div className="overflow-x-auto rounded-md border border-border bg-card">
               <table className="w-full text-left text-[13px]">
                 <thead className="border-b border-border-light">
                   <tr>
@@ -626,7 +626,7 @@ function VendorAccordionRow({
           )}
 
           <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-md border border-border bg-white p-3">
+            <div className="rounded-md border border-border bg-card p-3">
               <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Pembayaran</p>
               {payments.length === 0 ? (
                 <p className="text-[13px] text-text-secondary">Belum ada pembayaran tercatat.</p>
@@ -644,14 +644,14 @@ function VendorAccordionRow({
                 </ul>
               )}
             </div>
-            <div className="rounded-md border border-border bg-white p-3">
+            <div className="rounded-md border border-border bg-card p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Kendala</p>
                 {canEdit && (
                   <button
                     type="button"
                     onClick={() => onAddIssue()}
-                    className="text-[12px] font-semibold text-navy-900 hover:underline"
+                    className="text-[12px] font-semibold text-primary hover:underline"
                   >
                     + Kendala
                   </button>

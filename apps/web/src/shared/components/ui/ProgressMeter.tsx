@@ -21,7 +21,7 @@ export function ProgressMeter({ percent, segments, caption, className }: Progres
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="relative h-2.5 w-full overflow-visible rounded-full bg-surface-muted">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-navy-800 to-navy-900 transition-[width] duration-500 ease-out"
+          className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
           style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
         />
         {showNotches &&
