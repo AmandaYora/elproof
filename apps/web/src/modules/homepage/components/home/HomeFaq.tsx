@@ -2,27 +2,33 @@ import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
-// Answers taken from the FAQ page, worded with the glossary (usaha Anda, tim, klien).
+// The questions a WO weighing ElProof asks first. Answers are taken from the FAQ page (FaqPage.tsx) and worded with
+// the glossary (usaha Anda, tim, klien); change both together.
 const QUESTIONS = [
+  {
+    question: "Bagaimana cara mencoba ElProof?",
+    answer:
+      "Daftar dengan akun Google, lalu siapkan workspace usaha Anda. Workspace baru mendapat masa coba gratis 14 hari, tanpa kartu kredit dan tanpa tagihan otomatis.",
+  },
   {
     question: "Bagaimana cara membayar langganan?",
     answer:
-      "Pembayaran langganan diproses lewat mitra payment gateway pihak ketiga. ElProof tidak menyimpan data kartu atau rekening Anda; otorisasi pembayaran ditangani langsung oleh mitra tersebut.",
+      "Pemilik usaha membayar dari menu Langganan di WO Console: pilih paket, lalu pindai kode QRIS yang muncul dengan aplikasi m-banking atau e-wallet. Langganan aktif begitu pembayaran diterima.",
   },
   {
-    question: "Apa yang terjadi jika masa langganan habis?",
+    question: "Apa yang terjadi jika langganan saya berakhir?",
     answer:
       "Akses dikurangi bertahap, bukan langsung diputus: 7 hari pertama tetap penuh dengan pengingat, 23 hari berikutnya hanya baca dan ekspor data, setelah itu tim Anda hanya bisa membuka halaman Langganan untuk membayar. Portal Klien tetap bisa dibaca, dan data yang sudah tercatat tidak dihapus. Akses penuh kembali begitu pembayaran diterima.",
   },
   {
     question: "Apakah data proyek saya aman?",
     answer:
-      "Data setiap usaha terpisah penuh dan tidak bisa dibuka dari akun usaha lain. Akses dibagi menurut peran (tim, klien, admin platform), jadi setiap pihak hanya melihat data yang menjadi haknya.",
+      "Data setiap usaha terpisah penuh dan tidak bisa diakses dari akun usaha lain. Akses juga dibatasi per peran (tim, klien, admin ElProof), jadi setiap pihak hanya melihat data yang menjadi haknya.",
   },
   {
-    question: "Apakah saya bisa mengajukan refund?",
+    question: "Bagaimana klien melihat perkembangan persiapannya?",
     answer:
-      "Bisa, dalam kondisi tertentu, misalnya kesalahan penagihan sistem. Syarat, kondisi yang tidak dapat direfund, dan cara mengajukannya ada di halaman Kebijakan Refund.",
+      "Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Klien hanya melihat yang Anda pilih untuk ditampilkan dan tidak bisa mengubah apa pun.",
   },
 ];
 

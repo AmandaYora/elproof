@@ -21,10 +21,12 @@ interface Faq {
   answer: ReactNode;
 }
 
+// What a WO weighing ElProof asks first. Every fact here comes from the product or the legal pages (Syarat &
+// Ketentuan §4–§6, Kebijakan Refund, Kebijakan Privasi); change both together.
 const GROUPS: { id: string; title: string; items: Faq[] }[] = [
   {
-    id: "akun-dan-harga",
-    title: "Akun & harga",
+    id: "tentang-elproof",
+    title: "Tentang ElProof",
     items: [
       {
         id: "apa-itu-elproof",
@@ -32,21 +34,28 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
         answer: (
           <>
             ElProof adalah aplikasi berlangganan untuk wedding organizer (WO). Tim Anda mencatat persiapan setiap
-            proyek pernikahan — vendor, jadwal, pembayaran, dan kendala — lalu sebagian informasinya bisa dilihat
-            pasangan klien lewat Portal Klien.
+            pernikahan — jadwal dan tahapan, vendor dan venue, termin pembayaran beserta buktinya, juga kendala — di WO
+            Console. Pasangan klien melihat perkembangannya lewat Portal Klien.
           </>
         ),
       },
       {
         id: "siapa-pengguna",
-        question: "Siapa yang bisa memakai ElProof?",
+        question: "ElProof cocok untuk siapa?",
         answer: (
           <>
-            ElProof dibuat untuk usaha wedding organizer. Setiap usaha punya satu workspace, dan pemiliknya bisa
-            menambahkan anggota tim sesuai kebutuhan. Pasangan klien mendapat akses baca terbatas lewat Portal Klien.
+            Untuk usaha wedding organizer yang ingin persiapan setiap pernikahan tercatat rapi dan bisa ditunjukkan ke
+            klien. Setiap usaha punya satu workspace; pemiliknya menambahkan anggota tim dan mengatur peran serta
+            aksesnya. Pasangan klien cukup membaca lewat Portal Klien.
           </>
         ),
       },
+    ],
+  },
+  {
+    id: "mulai-dan-coba",
+    title: "Mulai & coba gratis",
+    items: [
       {
         id: "cara-mulai",
         question: "Bagaimana cara mulai memakai ElProof?",
@@ -56,8 +65,8 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
             <Link to={ROUTE_PATHS.signup} className={linkClass}>
               halaman Daftar
             </Link>
-            . Workspace baru mendapat masa coba gratis 14 hari, tanpa kartu kredit dan tanpa tagihan otomatis. Lebih
-            suka dibantu? Tim kami bisa menyiapkan workspace untuk Anda — hubungi kami lewat{" "}
+            , lalu siapkan workspace usaha Anda. Lebih suka dibantu? Tim kami bisa menyiapkan workspace untuk Anda —
+            hubungi kami lewat{" "}
             <Link to={ROUTE_PATHS.homepageContact} className={linkClass}>
               halaman Kontak
             </Link>
@@ -66,13 +75,45 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
         ),
       },
       {
-        id: "metode-pembayaran",
-        question: "Metode pembayaran apa saja yang didukung?",
+        id: "coba-gratis",
+        question: "Bagaimana cara mencoba ElProof gratis?",
         answer: (
           <>
-            Pembayaran langganan diproses oleh mitra pembayaran pihak ketiga (payment gateway), dari menu Langganan di
-            WO Console. ElProof tidak menyimpan data kartu atau rekening Anda — otorisasi pembayaran ditangani langsung
-            oleh mitra tersebut.
+            Setiap workspace baru mendapat masa coba gratis 14 hari, tanpa kartu kredit dan tanpa tagihan otomatis.
+            Selama masa coba, jumlah anggota tim, proyek aktif, dan akun klien dibatasi sesuai batas yang tampil di WO
+            Console; batas itu hilang setelah Anda membayar paket. Masa coba berlaku satu kali per akun Google dan per
+            usaha.
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: "harga-dan-langganan",
+    title: "Harga & langganan",
+    items: [
+      {
+        id: "harga-paket",
+        question: "Berapa harga langganan ElProof?",
+        answer: (
+          <>
+            Harga setiap paket tercantum terbuka di{" "}
+            <Link to={`${ROUTE_PATHS.homepage}#harga`} className={linkClass}>
+              bagian Harga di Beranda
+            </Link>
+            . Paket dibedakan menurut lama masa aktifnya, dan semua fitur yang tercantum di paket sudah termasuk dalam
+            harga. Yang berlaku adalah harga yang tampil saat tagihan dibuat.
+          </>
+        ),
+      },
+      {
+        id: "metode-pembayaran",
+        question: "Bagaimana cara membayar langganan?",
+        answer: (
+          <>
+            Pemilik usaha membayar dari menu Langganan di WO Console: pilih paket, lalu pindai kode QRIS yang muncul
+            dengan aplikasi m-banking atau e-wallet. Langganan aktif begitu pembayaran diterima. Memperpanjang sebelum
+            masa aktif habis tidak memotong sisanya — masa baru dimulai setelah masa berjalan selesai.
           </>
         ),
       },
@@ -99,19 +140,6 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
               Kebijakan Refund
             </Link>
             .
-          </>
-        ),
-      },
-      {
-        id: "menghubungi-tim",
-        question: "Bagaimana cara menghubungi tim ElProof?",
-        answer: (
-          <>
-            Lewat WhatsApp, telepon, atau email — semuanya ada di{" "}
-            <Link to={ROUTE_PATHS.homepageContact} className={linkClass}>
-              halaman Kontak
-            </Link>
-            . Jam layanan: {CONTACT.hours}. Di luar jam itu, pesan Anda tetap kami balas sesegera mungkin.
           </>
         ),
       },
@@ -153,15 +181,17 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
   },
   {
     id: "klien-dan-portal",
-    title: "Klien & Portal",
+    title: "Klien & Portal Klien",
     items: [
       {
         id: "portal-klien",
         question: "Bagaimana klien melihat perkembangan persiapannya?",
         answer: (
           <>
-            Lewat Portal Klien. Klien masuk dengan nama pengguna dan kata sandi yang Anda berikan, lalu hanya bisa
-            membaca data proyeknya sendiri — tidak bisa mengubah apa pun.
+            Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Anda mengirim tautan
+            undangan ke nomor WhatsApp klien; dari situ klien membuat kata sandinya sendiri, lalu melihat tahapan
+            persiapan, tagihan, dan buktinya — hanya yang Anda pilih untuk ditampilkan. Klien hanya bisa membaca,
+            tidak bisa mengubah apa pun.
           </>
         ),
       },
@@ -172,6 +202,25 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
           <>
             Tidak. Akses Portal Klien termasuk dalam langganan usaha Anda; klien tidak membuat akun berlangganan
             tersendiri.
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: "bantuan",
+    title: "Bantuan",
+    items: [
+      {
+        id: "menghubungi-tim",
+        question: "Bagaimana cara menghubungi tim ElProof?",
+        answer: (
+          <>
+            Lewat WhatsApp, telepon, atau email — semuanya ada di{" "}
+            <Link to={ROUTE_PATHS.homepageContact} className={linkClass}>
+              halaman Kontak
+            </Link>
+            . Jam layanan: {CONTACT.hours}. Di luar jam itu, pesan Anda tetap kami balas sesegera mungkin.
           </>
         ),
       },
@@ -246,7 +295,10 @@ function FaqItem({ item, open, onToggle }: { item: Faq; open: boolean; onToggle:
 }
 
 export default function FaqPage() {
-  usePageMeta({ title: "Pertanyaan umum", description: "Jawaban atas pertanyaan yang sering diajukan tentang ElProof, langganan, dan keamanan data." });
+  usePageMeta({
+    title: "Pertanyaan umum",
+    description: "Jawaban singkat soal ElProof: untuk siapa, cara mulai dan coba gratis, harga dan cara membayar, keamanan data, dan Portal Klien.",
+  });
   const { hash } = useLocation();
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
 
@@ -273,7 +325,7 @@ export default function FaqPage() {
               Pertanyaan umum
             </h1>
             <p className="mt-4 text-[17px] leading-relaxed text-muted-foreground">
-              Jawaban singkat soal langganan, keamanan data, dan Portal Klien.
+              Jawaban singkat soal ElProof, coba gratis, harga, keamanan data, dan Portal Klien.
             </p>
             <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className={ctaClass("outline", "md", "mt-6 bg-background focus-visible:outline-solid")}>
               <MessageCircle aria-hidden className="h-[18px] w-[18px]" /> Tanya lewat WhatsApp
