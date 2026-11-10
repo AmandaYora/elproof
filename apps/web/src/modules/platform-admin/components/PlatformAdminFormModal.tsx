@@ -133,7 +133,7 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
 
         {!isEditing && (
           <>
-            <Field label="Password" required name="password" error={errors.password}>
+            <Field label="Kata sandi" required name="password" error={errors.password}>
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
@@ -154,13 +154,13 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
                 </button>
               </div>
             </Field>
-            <Field label="Konfirmasi Password" required name="confirmPassword" error={errors.confirmPassword}>
+            <Field label="Konfirmasi kata sandi" required name="confirmPassword" error={errors.confirmPassword}>
               <Input
                 type={showPassword ? "text" : "password"}
                 value={values.confirmPassword}
                 onChange={(e) => set("confirmPassword", e.target.value)}
                 onBlur={() => blur("confirmPassword")}
-                placeholder="Ulangi password"
+                placeholder="Ulangi kata sandi"
               />
             </Field>
           </>

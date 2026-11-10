@@ -7,6 +7,7 @@ import { Avatar } from "@/shared/components/ui/Avatar";
 import { Button } from "@/shared/components/kit/button";
 import { AppSidebar } from "@/shared/layouts/nav/AppSidebar";
 import { SidebarProvider, useSidebar } from "@/shared/layouts/nav/SidebarContext";
+import { useRouteTitle } from "@/shared/hooks/useRouteTitle";
 import { CommandPalette, CommandTrigger } from "@/shared/layouts/CommandPalette";
 import type { NavSection } from "@/shared/layouts/nav/types";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
@@ -68,6 +69,7 @@ export default function PlatformLayout() {
 }
 
 function PlatformShell() {
+  useRouteTitle("ElProof Platform");
   const navigate = useNavigate();
   const currentPlatformAdminId = useAuthStore((s) => s.currentPlatformAdminId);
   const platformAdmins = usePlatformAdminStore((s) => s.platformAdmins);

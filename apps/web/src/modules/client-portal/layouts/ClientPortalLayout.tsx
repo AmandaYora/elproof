@@ -10,6 +10,7 @@ import { logoutAndRedirect } from "@/shared/lib/auth-actions";
 import { registerPortalServiceWorker } from "@/shared/lib/pwa";
 import { whatsappUrl } from "@/shared/lib/access-link";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
+import { useRouteTitle } from "@/shared/hooks/useRouteTitle";
 import { hasPermission, usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { useContactStore } from "@/shared/stores/useContactStore";
 import { useClientHomeStore } from "@/modules/client-portal/stores/useClientHomeStore";
@@ -82,6 +83,7 @@ export default function ClientPortalLayout() {
   const fetchHome = useClientHomeStore((s) => s.fetch);
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
+  useRouteTitle(brandName);
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
   const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
   const grants = usePermissionStore((s) => s.grants);

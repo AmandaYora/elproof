@@ -191,7 +191,7 @@ export default function LoginPage() {
         <LoginPhotoSlider />
         <div className={`pointer-events-none absolute inset-0 ${SCRIM_CLASS}`} />
         <div className="relative z-10">
-          <h1 className="text-[40px] font-bold leading-[1.15] text-white">Every Step to Your Perfect Day.</h1>
+          <p className="text-[40px] font-bold leading-[1.15] text-white">Setiap langkah menuju hari istimewa Anda.</p>
           <div className="mt-4 h-px w-12 bg-white/40" />
           <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/70">
             Pantau seluruh perjalanan menuju hari pernikahan Anda dalam satu portal. Mulai dari jadwal, desain,
@@ -200,7 +200,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="flex w-full items-center justify-center bg-background px-6 py-12 lg:w-1/2">
+      <main className="flex w-full items-center justify-center bg-background px-6 py-12 lg:w-1/2">
         <div className="w-full max-w-md rounded-xl border border-border bg-surface p-10 shadow-sm">
           <div
             className={`mb-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl text-white ${ICON_BOX_CLASS}`}
@@ -208,7 +208,7 @@ export default function LoginPage() {
             <Lock className="h-5 w-5" />
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary">Selamat datang</h2>
+          <h1 className="text-2xl font-bold text-text-primary">Selamat datang</h1>
           <p className="mt-1.5 text-[13.5px] text-text-secondary">
             {mfaToken
               ? "Verifikasi dua langkah untuk admin platform."
@@ -383,7 +383,7 @@ export default function LoginPage() {
             </p>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

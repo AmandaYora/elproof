@@ -26,14 +26,6 @@ export interface Vendor {
   createdAt: string;
 }
 
-// Public-safe subset (ADR-0016-style split) — {id, name} only, backs Client
-// Portal's Vendor Progress tab. Never carries PIC/phone/email/price/
-// attachment — those stay staff-only via the full `Vendor` shape above.
-export interface VendorSummary {
-  id: string;
-  name: string;
-}
-
 // One row of a vendor's project engagement history — see
 // `GET /vendors/{id}/project-history`.
 export interface VendorProjectHistoryItem {

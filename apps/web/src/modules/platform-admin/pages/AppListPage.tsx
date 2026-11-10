@@ -132,7 +132,7 @@ export default function AppListPage() {
                 {app.kind === "external" && (
                   <div className="flex items-center gap-1.5 pt-1">
                     <IconActionButton icon={Info} label="Detail" onClick={() => setDetailApp(app)} />
-                    <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => {
+                    <IconActionButton icon={KeyRound} label="Atur ulang Secret" onClick={() => {
                       setResetError(null);
                       setResetTarget(app);
                     }} />
@@ -174,7 +174,7 @@ export default function AppListPage() {
                       {app.kind === "external" && (
                         <>
                           <IconActionButton icon={Info} label="Detail" onClick={() => setDetailApp(app)} />
-                          <IconActionButton icon={KeyRound} label="Reset Secret" onClick={() => {
+                          <IconActionButton icon={KeyRound} label="Atur ulang Secret" onClick={() => {
                       setResetError(null);
                       setResetTarget(app);
                     }} />
@@ -238,7 +238,7 @@ export default function AppListPage() {
             </div>
             <p className="text-[13px] leading-relaxed text-text-secondary">
               Berikan App ID dan Secret ini kepada tim teknis aplikasi eksternal tersebut untuk menyambungkan
-              sistem mereka ke pembayaran ElProof. Jika Secret hilang, gunakan tombol "Reset Secret" — nilai lama
+              sistem mereka ke pembayaran ElProof. Jika Secret hilang, gunakan tombol "Atur ulang Secret" — nilai lama
               langsung tidak berlaku lagi.
             </p>
           </div>
@@ -246,8 +246,8 @@ export default function AppListPage() {
       </Modal>
       <ConfirmDialog
         open={resetTarget !== undefined}
-        title="Reset secret aplikasi?"
-        confirmLabel="Reset secret"
+        title="Atur ulang secret aplikasi?"
+        confirmLabel="Atur ulang secret"
         confirmText={resetTarget?.appId}
         isSubmitting={isResetting}
         error={resetError}

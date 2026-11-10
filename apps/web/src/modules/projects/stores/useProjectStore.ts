@@ -698,7 +698,6 @@ interface ProjectState {
   // (possibly user-edited) fields, same shape as create.
   duplicateProject: (sourceId: string, values: ProjectFormValues) => Promise<Project>;
 
-  fetchProjectDetail: (projectId: string) => Promise<void>;
   /**
    * Loads the project page's header, side panel and Ringkasan in ONE call (E1) and sets currentProject and the
    * payment schedule from it; everything else on the page loads when its tab opens.
@@ -708,7 +707,6 @@ interface ProjectState {
   applyProgress: (projectId: string, progress: unknown) => void;
   /** Reloads the overview without clearing what is on screen. */
   refreshOverview: (projectId: string) => Promise<void>;
-  fetchMyProject: () => Promise<string>;
 
   fetchMilestones: (projectId: string) => Promise<void>;
   createMilestone: (projectId: string, values: ProjectMilestoneFormValues) => Promise<void>;
@@ -969,24 +967,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return project;
   },
 
-  fetchProjectDetail: async (projectId) => {
-    // vendorEngagements/vendorMilestones are separately fetched (fetchVendorSection)
-    // and, unlike currentProject, never scoped by project id in the store —
-    // cleared here, synchronously, the moment a project switch starts so a
-    // still-loading ProjectHeaderCard can never compute its Margin/Keuntungan
-    // (or anything else) against the PREVIOUS project's vendor costs while
-    // this project's own fetchVendorSection call is still in flight.
-    // Everything scoped to a project is cleared with it: the side panel, the
-    // Ringkasan and the schedule must never show (or, worse, edit) the previous
-    // project's milestones, payments, issues or installments.
-    set({
-      vendorEngagements: [], vendorMilestones: [], milestones: [], payments: [], clientPayments: [], venuePayments: [],
-      evidence: [], issues: [], paymentTerms: [], paymentTermsFor: null,
-    });
-    const res = await httpClient.get(API.projects.item(projectId));
-    set({ currentProject: toProject(res.data.data as RawProject) });
-  },
-
   fetchOverview: async (projectId) => {
     // Everything scoped to a project is cleared with it, so nothing of the previous project can show or be edited.
     set({
@@ -1007,16 +987,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => ({
       currentProject: state.currentProject?.id === projectId ? { ...state.currentProject, progress: next } : state.currentProject,
     }));
-  },
-
-  // Client Portal's entry point (Fase 6) — a client principal has no other
-  // way to learn its own project id, so this resolves + returns it in one
-  // call (mirrors GET /projects/me on the backend).
-  fetchMyProject: async () => {
-    const res = await httpClient.get(API.projects.me);
-    const project = toProject(res.data.data as RawProject);
-    set({ currentProject: project });
-    return project.id;
   },
 
   fetchMilestones: async (projectId) => {

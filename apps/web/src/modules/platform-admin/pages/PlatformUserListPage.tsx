@@ -133,7 +133,7 @@ export default function PlatformUserListPage() {
     return (
       <IconActionButton
         icon={ShieldOff}
-        label="Reset verifikasi dua langkah"
+        label="Atur ulang verifikasi dua langkah"
         tone="danger"
         onClick={() => {
           setMfaResetError(null);
@@ -219,7 +219,7 @@ export default function PlatformUserListPage() {
                       <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(admin)} />
                       <IconActionButton
                         icon={KeyRound}
-                        label="Reset Password"
+                        label="Atur ulang kata sandi"
                         tone="info"
                         onClick={() => setResetPasswordAdmin(admin)}
                       />
@@ -287,7 +287,7 @@ export default function PlatformUserListPage() {
                           <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(admin)} />
                           <IconActionButton
                             icon={KeyRound}
-                            label="Reset Password"
+                            label="Atur ulang kata sandi"
                             tone="info"
                             onClick={() => setResetPasswordAdmin(admin)}
                           />
@@ -332,8 +332,8 @@ export default function PlatformUserListPage() {
 
       <ConfirmDialog
         open={mfaResetAdmin !== undefined}
-        title="Reset verifikasi dua langkah?"
-        confirmLabel="Reset verifikasi"
+        title="Atur ulang verifikasi dua langkah?"
+        confirmLabel="Atur ulang verifikasi"
         confirmText={mfaResetAdmin?.username}
         isSubmitting={isResettingMfa}
         error={mfaResetError}
@@ -379,7 +379,7 @@ export default function PlatformUserListPage() {
               <span className="font-semibold text-text-primary">{credentialReveal.username}</span>
             </div>
             <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
-              <span className="text-text-secondary">Password</span>
+              <span className="text-text-secondary">Kata sandi</span>
               <span className="font-mono font-semibold text-text-primary">{credentialReveal.password}</span>
             </div>
           </div>

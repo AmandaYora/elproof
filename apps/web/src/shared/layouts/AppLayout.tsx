@@ -5,6 +5,7 @@ import { Sidebar } from "@/shared/layouts/Sidebar";
 import { SidebarProvider } from "@/shared/layouts/nav/SidebarContext";
 import { Topbar } from "@/shared/layouts/Topbar";
 import { ConflictHost } from "@/shared/layouts/ConflictHost";
+import { useRouteTitle } from "@/shared/hooks/useRouteTitle";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
@@ -26,6 +27,8 @@ export function AppLayout() {
   // A support session only looks, so it offers no way to pay.
   const canManageSubscription = usePermissionStore((s) => hasPermission(s.grants, "subscription.manage")) && !supportSession;
   const { pathname } = useLocation();
+  const businessName = useTenantBrandingStore((s) => s.businessName);
+  useRouteTitle(businessName);
 
   useEffect(() => {
     void hydrateBranding("WO Console");

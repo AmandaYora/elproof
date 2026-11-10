@@ -28,7 +28,7 @@ export const platformAdminCreateSchema = platformAdminSchema
     confirmPassword: z.string().min(1, "Ulangi password"),
   })
   .refine((values) => values.password === values.confirmPassword, {
-    message: "Kedua password belum sama",
+    message: "Kedua kata sandi belum sama",
     path: ["confirmPassword"],
   });
 
@@ -40,7 +40,7 @@ export const resetPlatformAdminPasswordSchema = z
     confirmPassword: z.string().min(1, "Ulangi password"),
   })
   .refine((values) => values.password === values.confirmPassword, {
-    message: "Kedua password belum sama",
+    message: "Kedua kata sandi belum sama",
     path: ["confirmPassword"],
   });
 

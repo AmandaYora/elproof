@@ -41,58 +41,58 @@ export const protectedRoutes: RouteObject = {
         // Project stays open to every staff role, including Wedding Planner
         // (scoped server-side to their own PIC'd projects — see PLAN.md's
         // RBAC section) — no RequireRole wrapper needed here.
-        { path: ROUTE_PATHS.projects, element: <ProjectListPage /> },
+        { path: ROUTE_PATHS.projects, element: <ProjectListPage />, handle: { title: "Proyek" } },
         // A static path wins over "/projects/:projectId" below.
         {
           element: <RequirePermission all={["project.create"]} />,
-          children: [{ path: ROUTE_PATHS.projectNew, element: <ProjectCreatePage /> }],
+          children: [{ path: ROUTE_PATHS.projectNew, element: <ProjectCreatePage />, handle: { title: "Proyek baru" } }],
         },
         {
           path: "/projects/:projectId",
           element: <ProjectDetailLayout />,
           children: [
             { index: true, element: <Navigate to="ringkasan" replace /> },
-            { path: "ringkasan", element: <ProjectSummaryTabPage /> },
-            { path: "kendala", element: <ProjectIssuesTabPage /> },
-            { path: "vendor", element: <ProjectVendorTabPage /> },
-            { path: "milestone", element: <ProjectMilestoneTabPage /> },
-            { path: "client", element: <ProjectClientTabPage /> },
+            { path: "ringkasan", element: <ProjectSummaryTabPage />, handle: { title: "Ringkasan proyek" } },
+            { path: "kendala", element: <ProjectIssuesTabPage />, handle: { title: "Kendala proyek" } },
+            { path: "vendor", element: <ProjectVendorTabPage />, handle: { title: "Vendor proyek" } },
+            { path: "milestone", element: <ProjectMilestoneTabPage />, handle: { title: "Jadwal proyek" } },
+            { path: "client", element: <ProjectClientTabPage />, handle: { title: "Klien proyek" } },
             {
               path: "pembayaran",
               element: <ProjectPaymentsTabPage />,
               children: [
                 { index: true, element: <Navigate to="client" replace /> },
-                { path: "client", element: <PembayaranClientTabPage /> },
-                { path: "vendor", element: <PembayaranVendorTabPage /> },
-                { path: "venue", element: <PembayaranVenueTabPage /> },
+                { path: "client", element: <PembayaranClientTabPage />, handle: { title: "Pembayaran klien" } },
+                { path: "vendor", element: <PembayaranVendorTabPage />, handle: { title: "Pembayaran vendor" } },
+                { path: "venue", element: <PembayaranVenueTabPage />, handle: { title: "Pembayaran venue" } },
               ],
             },
-            { path: "dokumen", element: <ProjectEvidenceTabPage /> },
-            { path: "aktivitas", element: <ProjectActivityTabPage /> },
-            { path: "venue", element: <ProjectVenueTabPage /> },
+            { path: "dokumen", element: <ProjectEvidenceTabPage />, handle: { title: "Dokumen proyek" } },
+            { path: "aktivitas", element: <ProjectActivityTabPage />, handle: { title: "Aktivitas proyek" } },
+            { path: "venue", element: <ProjectVenueTabPage />, handle: { title: "Venue proyek" } },
           ],
         },
         // Each page follows the workspace role's permissions (ADR-0026).
         // Open to every staff role: the page itself shows the tenant-wide
         // dashboard to roles that reach every project, "Proyek saya" to the rest.
-        { path: ROUTE_PATHS.dashboard, element: <DashboardPage /> },
+        { path: ROUTE_PATHS.dashboard, element: <DashboardPage />, handle: { title: "Beranda" } },
         {
           element: <RequirePermission all={["client.manage"]} allProjects />,
-          children: [{ path: ROUTE_PATHS.clients, element: <ClientListPage /> }],
+          children: [{ path: ROUTE_PATHS.clients, element: <ClientListPage />, handle: { title: "Klien" } }],
         },
         {
           element: <RequirePermission all={["vendor.view"]} />,
           children: [
-            { path: ROUTE_PATHS.vendors, element: <VendorListPage /> },
-            { path: ROUTE_PATHS.venues, element: <VenueListPage /> },
+            { path: ROUTE_PATHS.vendors, element: <VendorListPage />, handle: { title: "Vendor" } },
+            { path: ROUTE_PATHS.venues, element: <VenueListPage />, handle: { title: "Venue" } },
           ],
         },
-        { element: <RequirePermission all={["vendor.category.manage"]} />, children: [{ path: ROUTE_PATHS.vendorCategories, element: <VendorCategoryListPage /> }] },
-        { element: <RequirePermission all={["template.manage"]} />, children: [{ path: ROUTE_PATHS.milestoneTemplates, element: <MilestoneTemplateListPage /> }] },
-        { element: <RequirePermission all={["team.manage"]} />, children: [{ path: ROUTE_PATHS.users, element: <UserListPage /> }] },
-        { element: <RequirePermission all={["business_profile.manage"]} />, children: [{ path: ROUTE_PATHS.businessProfile, element: <BusinessProfilePage /> }] },
-        { element: <RequirePermission all={["role.manage"]} />, children: [{ path: ROUTE_PATHS.roles, element: <RolesPage /> }] },
-        { element: <RequirePermission all={["subscription.manage"]} />, children: [{ path: ROUTE_PATHS.subscription, element: <SubscriptionPage /> }, { path: "/langganan/kuitansi/:id", element: <SubscriptionReceiptPage /> }] },
+        { element: <RequirePermission all={["vendor.category.manage"]} />, children: [{ path: ROUTE_PATHS.vendorCategories, element: <VendorCategoryListPage />, handle: { title: "Kategori vendor" } }] },
+        { element: <RequirePermission all={["template.manage"]} />, children: [{ path: ROUTE_PATHS.milestoneTemplates, element: <MilestoneTemplateListPage />, handle: { title: "Jadwal bawaan" } }] },
+        { element: <RequirePermission all={["team.manage"]} />, children: [{ path: ROUTE_PATHS.users, element: <UserListPage />, handle: { title: "Tim" } }] },
+        { element: <RequirePermission all={["business_profile.manage"]} />, children: [{ path: ROUTE_PATHS.businessProfile, element: <BusinessProfilePage />, handle: { title: "Profil usaha" } }] },
+        { element: <RequirePermission all={["role.manage"]} />, children: [{ path: ROUTE_PATHS.roles, element: <RolesPage />, handle: { title: "Peran dan akses" } }] },
+        { element: <RequirePermission all={["subscription.manage"]} />, children: [{ path: ROUTE_PATHS.subscription, element: <SubscriptionPage />, handle: { title: "Langganan" } }, { path: "/langganan/kuitansi/:id", element: <SubscriptionReceiptPage />, handle: { title: "Kuitansi langganan" } }] },
       ],
     },
   ],

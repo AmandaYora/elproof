@@ -1,0 +1,65 @@
+{
+  "_comment": "Performance budget (PLAN Tahap 9). Bundle sizes are gzip KB (1024) of the production build; routes are what `npm run e2e:perf` measures on the mobile profile. API call counts are deterministic, so each route's ceiling is what it costs today: raise one only with the reason in the same change. LCP is NOT gated here (a lab number that moves with the machine); it stays in e2e/reports/BASELINE.md.",
+  "bundle": {
+    "entryGzipKB": 165,
+    "totalGzipKB": 700,
+    "largestChunkGzipKB": 100
+  },
+  "routeJsGzipKB": 300,
+  "routes": {
+    "marketing-beranda": {
+      "apiCalls": 0
+    },
+    "platform-ringkasan": {
+      "apiCalls": 3
+    },
+    "platform-tagihan": {
+      "apiCalls": 2
+    },
+    "platform-tenant": {
+      "apiCalls": 3
+    },
+    "platform-tenant-detail": {
+      "apiCalls": 4
+    },
+    "portal-beranda": {
+      "apiCalls": 4
+    },
+    "portal-jadwal": {
+      "apiCalls": 4
+    },
+    "portal-kendala": {
+      "apiCalls": 4
+    },
+    "portal-pembayaran": {
+      "apiCalls": 5
+    },
+    "portal-vendor": {
+      "apiCalls": 6
+    },
+    "wo-beranda": {
+      "apiCalls": 6
+    },
+    "wo-klien": {
+      "apiCalls": 6
+    },
+    "wo-proyek": {
+      "apiCalls": 6
+    },
+    "wo-proyek-kendala": {
+      "apiCalls": 7
+    },
+    "wo-proyek-keuangan": {
+      "apiCalls": 9
+    },
+    "wo-proyek-ringkasan": {
+      "apiCalls": 5
+    },
+    "wo-proyek-vendor": {
+      "apiCalls": 7
+    },
+    "wo-vendor": {
+      "apiCalls": 6
+    }
+  }
+}

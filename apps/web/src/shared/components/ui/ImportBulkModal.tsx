@@ -33,7 +33,7 @@ type Stage = "idle" | "selected" | "importing" | "result";
 
 const ACCEPTED_EXTENSION = ".xlsx";
 
-// Consolidates the "Download Template" + "Import Excel" button pair (used
+// Consolidates the "Unduh template" + "Import Excel" button pair (used
 // identically by Vendor and Venue list pages) into one modal: download the
 // template, then drag-and-drop or browse for the filled-in file, confirm,
 // and see the result — all in one place, instead of two separate header
@@ -164,13 +164,13 @@ export function ImportBulkModal({
       footer={
         stage === "result" ? (
           <>
-            <Button variant="secondary" onClick={reset}>Import Berkas Lain</Button>
+            <Button variant="secondary" onClick={reset}>Impor Berkas Lain</Button>
             <Button onClick={handleClose}>Selesai</Button>
           </>
         ) : stage === "selected" ? (
           <>
             <Button variant="secondary" onClick={handleChangeFile}>Ganti Berkas</Button>
-            <Button onClick={() => void handleStartImport()}>Mulai Import</Button>
+            <Button onClick={() => void handleStartImport()}>Mulai impor</Button>
           </>
         ) : stage === "importing" ? (
           <Button variant="secondary" disabled>Mengimpor...</Button>
@@ -187,7 +187,7 @@ export function ImportBulkModal({
           className="flex items-center gap-1.5 self-start text-[13px] font-semibold text-navy-900 hover:underline disabled:opacity-60"
         >
           <Download className="h-3.5 w-3.5" />
-          {downloadingTemplate ? "Mengunduh..." : "Download Template"}
+          {downloadingTemplate ? "Mengunduh..." : "Unduh template"}
         </button>
 
         {stage === "idle" && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, Ban, CheckCircle2, Pencil, ArrowUp, ArrowDown, Paperclip, List as ListIcon, GanttChartSquare } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
@@ -13,7 +13,8 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EvidenceUploadModal } from "@/shared/components/ui/EvidenceUploadModal";
 import { ProjectMilestoneFormModal } from "@/modules/projects/components/ProjectMilestoneFormModal";
 import { ProjectMilestoneEditModal, type ProjectMilestoneEditFields } from "@/modules/projects/components/detail/ProjectMilestoneEditModal";
-import { ProjectMilestoneGanttView } from "@/modules/projects/components/detail/ProjectMilestoneGanttView";
+// The Gantt library is ~88 KB gzip and only the "Gantt" view needs it, so it loads when that view is chosen.
+const ProjectMilestoneGanttView = lazy(() => import("@/modules/projects/components/detail/ProjectMilestoneGanttView").then((m) => ({ default: m.ProjectMilestoneGanttView })));
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
 import type { EvidenceUploadFormValues } from "@/modules/projects/schemas/evidence.schema";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
@@ -180,7 +181,9 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
 
           {viewMode === "gantt" ? (
             <div className="pt-4">
-              <ProjectMilestoneGanttView milestones={sortedMilestones} />
+              <Suspense fallback={<div role="status" className="rounded-md border border-border px-4 py-10 text-center text-[13px] text-muted-foreground">Memuat garis waktu...</div>}>
+                <ProjectMilestoneGanttView milestones={sortedMilestones} />
+              </Suspense>
             </div>
           ) : (
           <>

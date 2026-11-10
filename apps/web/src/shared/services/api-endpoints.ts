@@ -8,7 +8,6 @@ export const API = {
     login: "/api/v1/auth/login",
     refresh: "/api/v1/auth/refresh",
     logout: "/api/v1/auth/logout",
-    me: "/api/v1/auth/me",
     // Two-factor (TOTP) for Platform Console admins.
     mfaVerify: "/api/v1/auth/mfa/verify",
     mfaSetup: "/api/v1/auth/mfa/setup",
@@ -58,7 +57,6 @@ export const API = {
   console: {
     metrics: "/api/v1/platform/metrics",
     trends: "/api/v1/platform/trends",
-    tenantNames: "/api/v1/tenants/names",
     tenantOverview: (id: string) => `/api/v1/console/tenants/${id}/overview`,
     tenantNotes: (id: string) => `/api/v1/console/tenants/${id}/notes`,
     tenantDataRequests: (id: string) => `/api/v1/console/tenants/${id}/data-requests`,
@@ -151,7 +149,6 @@ export const API = {
     // Public-safe (staff AND client) — {id, name} only, powers Client
     // Portal's Vendor Progress tab. Every other vendor endpoint above is
     // staff-only now that commercial fields (harga akad, lampiran) exist.
-    summary: "/api/v1/vendors/summary",
     // Hard delete (PLAN.md) — `deleteImpact` names every project this vendor
     // is still engaged on, for the confirmation dialog; `item(id)` above is
     // reused with the DELETE verb for the delete itself. Vendor Category's
@@ -174,7 +171,6 @@ export const API = {
   },
   projects: {
     base: "/api/v1/projects",
-    me: "/api/v1/projects/me",
     meHome: "/api/v1/projects/me/home",
     overview: (id: string) => `/api/v1/projects/${id}/overview`,
     item: (id: string) => `/api/v1/projects/${id}`,

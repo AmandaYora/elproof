@@ -129,7 +129,7 @@ export default function InvitationPage() {
       aside={
         <>
           <h1 className="text-[36px] font-bold leading-[1.15] text-white">
-            {isStaff ? "Selamat bergabung." : "Every Step to Your Perfect Day."}
+            {isStaff ? "Selamat bergabung." : "Setiap langkah menuju hari istimewa Anda."}
           </h1>
           <div className="mt-4 h-px w-12 bg-white/40" />
           <p className="mt-4 text-[15px] leading-relaxed text-white/70">

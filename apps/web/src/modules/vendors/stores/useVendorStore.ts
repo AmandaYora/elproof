@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import type { Vendor, VendorSummary, VendorProjectHistoryItem, VendorImportResult, VendorImportRowError } from "@/modules/vendors/types";
+import type { Vendor, VendorProjectHistoryItem, VendorImportResult, VendorImportRowError } from "@/modules/vendors/types";
 import type { VendorFormValues, VendorCreateFormValues } from "@/modules/vendors/schemas/vendor.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
@@ -30,15 +30,6 @@ interface RawVendor {
 
 function toVendor(raw: RawVendor): Vendor {
   return { ...raw, id: String(raw.id), categoryId: String(raw.categoryId) };
-}
-
-interface RawVendorSummary {
-  id: number;
-  name: string;
-}
-
-function toVendorSummary(raw: RawVendorSummary): VendorSummary {
-  return { id: String(raw.id), name: raw.name };
 }
 
 interface RawVendorProjectHistoryItem {
@@ -81,16 +72,11 @@ interface VendorState {
   vendors: Vendor[];
   vendorPage: Vendor[];
   vendorPageMeta: PaginationMeta;
-  vendorSummaries: VendorSummary[];
   fetchVendors: () => Promise<void>;
   /** One page of the list. `params` is the list's own query: page, limit, sort, search and filters. */
   fetchVendorPage: (params: Record<string, string | number>) => Promise<void>;
   /** Activates or deactivates many vendors in one call (E13). */
   bulkVendors: (ids: string[], action: "activate" | "deactivate") => Promise<{ updated: number; unchanged: string[]; notFound: string[] }>;
-  // Public-safe {id, name} list — the only vendor data Client Portal is
-  // allowed to fetch directly now that commercial fields exist (see
-  // vendor_handler.go's Summary handler doc comment).
-  fetchVendorSummaries: () => Promise<void>;
   createVendor: (values: VendorCreateFormValues) => Promise<void>;
   updateVendor: (id: string, values: VendorFormValues) => Promise<void>;
   /** Sets the state explicitly (ADR-0036): a double click or a retry cannot flip it back. */
@@ -106,7 +92,7 @@ interface VendorState {
   // Exports the currently filtered set (search/categoryId/city) as .xlsx —
   // same column order as the import template, plus a Status column, so the
   // file round-trips through Import unmodified.
-  exportVendors: (search: string, categoryId: string, city: string) => Promise<Blob>;
+  exportVendors: (filter: { q: string; categoryId: string; city: string; isActive: string }) => Promise<Blob>;
   // Hard delete (PLAN.md) — informed-consent, not a blocking precondition:
   // fetchVendorDeleteImpact names every project that would lose this
   // vendor's data source, for the confirmation dialog; deleteVendor performs
@@ -118,12 +104,11 @@ interface VendorState {
 // Backed by the real `vendors` module (Fase 3) — tenant-scoped. Also the
 // single source of truth for vendor pickers elsewhere (e.g. `projects`'
 // ProjectVendorFormModal). `GET /vendors` is staff-only (ADR-0016-style
-// split) — Client Portal must use fetchVendorSummaries instead.
+// split): a client sees vendor names only inside its own project's responses (ADR-0032).
 export const useVendorStore = create<VendorState>((set, get) => ({
   vendors: [],
   vendorPage: [],
   vendorPageMeta: EMPTY_PAGINATION_META,
-  vendorSummaries: [],
 
   fetchVendors: async () => {
     const res = await httpClient.get(API.vendors.base, { params: { all: true } });
@@ -143,11 +128,6 @@ export const useVendorStore = create<VendorState>((set, get) => ({
   bulkVendors: async (ids, action) => {
     const res = await httpClient.post(API.vendors.bulk, { ids: ids.map(Number), action });
     return res.data.data as { updated: number; unchanged: string[]; notFound: string[] };
-  },
-
-  fetchVendorSummaries: async () => {
-    const res = await httpClient.get(API.vendors.summary);
-    set({ vendorSummaries: (res.data.data as RawVendorSummary[]).map(toVendorSummary) });
   },
 
   createVendor: async (values) => {
@@ -188,9 +168,10 @@ export const useVendorStore = create<VendorState>((set, get) => ({
     return toVendorImportResult(res.data.data as RawVendorImportResult);
   },
 
-  exportVendors: async (search, categoryId, city) => {
+  exportVendors: async (filter) => {
+    // The same filters the list was showing, so the file holds what the person was looking at (the API reads them with the list's own parser).
     const res = await httpClient.get(API.vendors.export, {
-      params: { search: search || undefined, categoryId: categoryId || undefined, city: city || undefined },
+      params: { q: filter.q || undefined, categoryId: filter.categoryId || undefined, city: filter.city || undefined, isActive: filter.isActive || undefined },
       responseType: "blob",
     });
     return res.data as Blob;

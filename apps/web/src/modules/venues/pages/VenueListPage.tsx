@@ -195,7 +195,7 @@ export default function VenueListPage() {
     setActionError(null);
     setIsExporting(true);
     try {
-      const blob = await exportVenues(list.q, list.filters.city);
+      const blob = await exportVenues({ q: list.q, city: list.filters.city, isActive: list.filters.isActive });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -219,11 +219,11 @@ export default function VenueListPage() {
         <div className="flex flex-wrap items-center gap-2">
           {!writeLocked && (
             <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
-              Import Bulk
+              Impor bulk
             </Button>
           )}
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVenues()} disabled={isExporting}>
-            {isExporting ? "Mengekspor..." : "Export Excel"}
+            {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
           </Button>
           {!writeLocked && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
@@ -351,8 +351,8 @@ export default function VenueListPage() {
         <ImportBulkModal
           open={importModalOpen}
           onClose={() => setImportModalOpen(false)}
-          title="Import Bulk Venue"
-          description="Download template Excel, isi datanya, lalu unggah kembali untuk menambah atau memperbarui banyak venue sekaligus."
+          title="Impor venue sekaligus"
+          description="Unduh template Excel, isi datanya, lalu unggah kembali untuk menambah atau memperbarui banyak venue sekaligus."
           templateFileName="template-venue.xlsx"
           entityLabel="venue"
           matchCriteriaLabel="nama+kota"

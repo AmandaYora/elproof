@@ -35,7 +35,7 @@ export default function DokumenTabPage() {
             <FileText className="h-5 w-5 shrink-0" />
           </div>
           <div>
-            <h2 className="text-[18px] font-bold text-navy-950 sm:text-[20px]">Dokumen</h2>
+            <h1 className="text-[18px] font-bold text-navy-950 sm:text-[20px]">Dokumen</h1>
             <p className="mt-0.5 text-[13px] text-text-secondary sm:text-[14px]">
               Dokumen umum acara yang telah kami bagikan untuk Anda — rundown, buku acara, dan lainnya.
             </p>

@@ -77,7 +77,7 @@ interface VenueState {
   importVenues: (file: File) => Promise<VenueImportResult>;
   // Exports the currently filtered set (search/city) as .xlsx — same column
   // order as the import template, plus a Status column.
-  exportVenues: (search: string, city: string) => Promise<Blob>;
+  exportVenues: (filter: { q: string; city: string; isActive: string }) => Promise<Blob>;
   // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
   fetchVenueDeleteImpact: (id: string) => Promise<AffectedProject[]>;
   deleteVenue: (id: string) => Promise<void>;
@@ -149,9 +149,9 @@ export const useVenueStore = create<VenueState>((set, get) => ({
     return toVenueImportResult(res.data.data as RawVenueImportResult);
   },
 
-  exportVenues: async (search, city) => {
+  exportVenues: async (filter) => {
     const res = await httpClient.get(API.venues.export, {
-      params: { search: search || undefined, city: city || undefined },
+      params: { q: filter.q || undefined, city: filter.city || undefined, isActive: filter.isActive || undefined },
       responseType: "blob",
     });
     return res.data as Blob;

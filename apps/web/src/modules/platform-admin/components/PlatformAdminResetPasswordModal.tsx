@@ -44,7 +44,7 @@ export function PlatformAdminResetPasswordModal({ open, onClose, adminName, onSu
       open={open}
       onClose={onClose}
       busy={form.submitting}
-      title="Reset Password Pengguna"
+      title="Atur ulang kata sandi pengguna"
       description={adminName ? `Atur password login baru untuk ${adminName}.` : "Atur password login baru untuk pengguna ini."}
       size="sm"
       footer={
@@ -60,7 +60,7 @@ export function PlatformAdminResetPasswordModal({ open, onClose, adminName, onSu
     >
       <form id="reset-password-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
-        <Field label="Password Baru" required name="password" error={errors.password}>
+        <Field label="Kata sandi baru" required name="password" error={errors.password}>
           <div className="relative">
             <Input
               type={showPassword ? "text" : "password"}
@@ -81,13 +81,13 @@ export function PlatformAdminResetPasswordModal({ open, onClose, adminName, onSu
             </button>
           </div>
         </Field>
-        <Field label="Konfirmasi Password Baru" required name="confirmPassword" error={errors.confirmPassword}>
+        <Field label="Konfirmasi kata sandi baru" required name="confirmPassword" error={errors.confirmPassword}>
           <Input
             type={showPassword ? "text" : "password"}
             value={values.confirmPassword}
             onChange={(e) => set("confirmPassword", e.target.value)}
             onBlur={() => blur("confirmPassword")}
-            placeholder="Ulangi password baru"
+            placeholder="Ulangi kata sandi baru"
           />
         </Field>
       </form>

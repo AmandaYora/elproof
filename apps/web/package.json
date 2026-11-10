@@ -13,7 +13,9 @@
     "e2e:down": "tsx e2e/scripts/stack.ts down",
     "check:terms": "node scripts/check-ui-terms.mjs",
     "e2e:typecheck": "tsc -p e2e/tsconfig.json",
-    "e2e:perf": "playwright test -c e2e/playwright.config.ts --project=baseline"
+    "e2e:perf": "playwright test -c e2e/playwright.config.ts --project=baseline",
+    "budget": "node scripts/check-budget.mjs",
+    "budget:routes": "node scripts/check-budget.mjs --routes"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

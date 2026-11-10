@@ -20,6 +20,13 @@ const TERMS = [
   [/\bMilestones?\b/i, "Tahapan"],
   [/\bSubmit\b/i, 'kata kerja + objek, mis. "Simpan pembayaran"'],
   [/\bStaf{1,2}\b/i, "Tim / anggota tim"],
+  // English verbs that crept into buttons and titles (Tahap 9). "Reset filter" is the term DESIGN.md §8 names for the empty-filter state.
+  [/\bExport\b/i, "Ekspor"],
+  [/\bImport\b/i, "Impor"],
+  [/\bDownload\b/i, "Unduh"],
+  [/\bUpload\b/i, "Unggah"],
+  [/\bPassword\b/i, "Kata sandi"],
+  [/\bReset\b(?! filter)/i, "Atur ulang"],
 ];
 const DISPLAY_ATTRS = new Set(["aria-label", "title", "placeholder", "alt", "label", "description", "subtitle", "hint", "error", "message", "header", "confirmLabel", "emptyText", "caption", "tooltip", "text", "heading"]);
 const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail"]);

@@ -45,8 +45,6 @@ interface ConsoleState {
 
   fetchMetrics: () => Promise<void>;
   fetchTrends: (period: DashboardPeriod) => Promise<void>;
-  /** Business names for the tenants on one page of a list, by id. */
-  fetchTenantNames: (ids: string[]) => Promise<Record<string, string>>;
   fetchAnnouncements: () => Promise<void>;
   saveAnnouncement: (id: number | null, input: AnnouncementInput) => Promise<void>;
   deleteAnnouncement: (id: number) => Promise<void>;
@@ -87,13 +85,6 @@ export const useConsoleStore = create<ConsoleState>((set, get) => ({
   fetchTrends: async (period) => {
     const res = await httpClient.get(API.console.trends, { params: { period } });
     set({ trends: res.data.data as PlatformTrends });
-  },
-
-  fetchTenantNames: async (ids) => {
-    const unique = [...new Set(ids)].slice(0, 100);
-    if (unique.length === 0) return {};
-    const res = await httpClient.get(API.console.tenantNames, { params: { ids: unique.join(",") } });
-    return res.data.data as Record<string, string>;
   },
 
   fetchAnnouncements: async () => {
