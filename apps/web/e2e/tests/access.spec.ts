@@ -103,7 +103,9 @@ test.describe("role screens follow the API", () => {
     await visit(page, `/projects/${project}/dokumen`);
     await page.getByRole("button", { name: "Tambah dokumen" }).click();
     const dialog = page.getByRole("dialog", { name: "Tambah dokumen" });
-    await dialog.getByLabel("Konteks").selectOption("general");
+    await dialog.getByLabel("Konteks").click();
+    await page.getByRole("option", { name: "Umum (tidak terkait spesifik)" }).click();
+    await expect(dialog.getByLabel("Konteks")).toContainText("Umum");
     await expect(dialog.getByText("Tampilkan dokumen ini ke portal klien")).toHaveCount(0);
     await close();
   });
@@ -123,7 +125,7 @@ test.describe("role screens follow the API", () => {
     await expect(adminRow.getByRole("button", { name: "Ubah anggota tim" })).toHaveCount(0);
 
     await visit(page, "/peran-akses");
-    await page.getByRole("button", { name: "Ubah" }).nth(roleIndex(ws, "Admin")).click();
+    await page.getByRole("button", { name: "Ubah", exact: true }).nth(roleIndex(ws, "Admin")).click();
     const drawer = page.getByRole("dialog");
     await expect(drawer.getByText("Peran ini memberi akses yang tidak Anda miliki. Hanya Owner yang dapat mengubahnya.")).toBeVisible();
     await close();
