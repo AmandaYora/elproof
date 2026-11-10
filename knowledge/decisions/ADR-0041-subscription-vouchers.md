@@ -46,7 +46,7 @@ tenant paying in Langganan (`/subscriptions/pay`), and an external App creating 
   `subscription_app_charges.discount_amount/amount/voucher_code`; `amount` stays what was charged, so revenue reports
   are unchanged.
 - **Console:** Platform Console › Voucher (Billing or Super Admin may write, every admin may read): list, form,
-  explicit activate/deactivate (ADR-0036; full edit with `If-Match`), and the list of uses per voucher. The App of a
+  explicit activate/deactivate (ADR-0036; full edit requires `If-Match`, 428 without), and the list of uses per voucher. The App of a
   voucher cannot change once it has been used. There is no delete.
 - **Dates** are inclusive WIB calendar days.
 

@@ -47,9 +47,10 @@ type VoucherRepository interface {
 	// Settle moves the reserved use of orderRef to status (used or released);
 	// a use already settled is left alone.
 	Settle(ctx context.Context, orderRef string, status domain.RedemptionStatus) error
-	// ReleaseStale releases reservations older than olderThan whose charge no
-	// longer exists as pending or paid in either ledger (a process that died
-	// between reserving and recording the charge).
+	// ReleaseStale settles reservations older than olderThan from the ledgers:
+	// one whose charge is paid becomes used; one whose charge no longer exists
+	// as pending or paid (a process that died between reserving and recording
+	// the charge, or a settle that failed) is released. Returns how many changed.
 	ReleaseStale(ctx context.Context, olderThan time.Time) (int64, error)
 }
 
@@ -79,6 +80,9 @@ var wib = time.FixedZone("WIB", 7*60*60)
 
 // Today is the current WIB calendar day, "YYYY-MM-DD".
 func (s *VoucherService) Today() string { return s.now().In(wib).Format("2006-01-02") }
+
+// maxVoucherQuota keeps a quota inside its INT UNSIGNED column (a larger one would be a 500).
+const maxVoucherQuota = 1_000_000_000
 
 var voucherCodePattern = regexp.MustCompile(`^[A-Z0-9][A-Z0-9_-]{2,31}$`)
 
@@ -146,8 +150,8 @@ func (s *VoucherService) validate(ctx context.Context, in *VoucherInput) error {
 	if in.ValidFrom != "" && in.ValidUntil != "" && in.ValidUntil < in.ValidFrom {
 		fields["validUntil"] = []string{"Tanggal akhir tidak boleh sebelum tanggal mulai"}
 	}
-	if in.Quota != nil && *in.Quota < 1 {
-		fields["quota"] = []string{"Kuota minimal 1, atau kosongkan untuk tanpa batas"}
+	if in.Quota != nil && (*in.Quota < 1 || *in.Quota > maxVoucherQuota) {
+		fields["quota"] = []string{"Kuota 1–1.000.000.000, atau kosongkan untuk tanpa batas"}
 	}
 	if in.PlanID != nil && *in.PlanID <= 0 {
 		in.PlanID = nil

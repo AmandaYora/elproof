@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elproof/internal/modules/billing/domain"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
 
@@ -251,12 +252,19 @@ func (s *TransactionService) UpdateStatus(ctx context.Context, paymentReference 
 	}
 	// A voucher use counts while its charge is pending: paid makes it final,
 	// expired or cancelled gives it back to the quota and to the customer.
+	// Best effort: the status is already written, and failing here would stop a
+	// paid webhook from activating the subscription. The voucher sweep
+	// (VoucherService.ReleaseStale) settles a use left behind from the ledger.
 	if s.vouchers != nil {
+		var err error
 		switch status {
 		case domain.StatusPaid:
-			return s.vouchers.Settle(ctx, paymentReference, true)
+			err = s.vouchers.Settle(ctx, paymentReference, true)
 		case domain.StatusExpired, domain.StatusCancelled:
-			return s.vouchers.Settle(ctx, paymentReference, false)
+			err = s.vouchers.Settle(ctx, paymentReference, false)
+		}
+		if err != nil {
+			logger.Error("billing: voucher use of %s not settled (%s): %v", paymentReference, status, err)
 		}
 	}
 	return nil

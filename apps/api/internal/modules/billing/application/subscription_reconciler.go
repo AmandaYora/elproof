@@ -276,6 +276,6 @@ func (s *SubscriptionReconciler) releaseStaleVouchers(ctx context.Context) {
 		return
 	}
 	if n > 0 {
-		log.Printf("billing: %d pemakaian voucher tanpa tagihan dilepas", n)
+		log.Printf("billing: %d pemakaian voucher diselesaikan dari buku besar", n)
 	}
 }

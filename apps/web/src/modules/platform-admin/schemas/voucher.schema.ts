@@ -35,8 +35,8 @@ export const voucherSchema = z
     if (v.validFrom && v.validUntil && v.validUntil < v.validFrom) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["validUntil"], message: "Tanggal akhir tidak boleh sebelum tanggal mulai" });
     }
-    if (v.quota !== "" && Number(v.quota) < 1) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["quota"], message: "Kuota minimal 1, atau kosongkan untuk tanpa batas" });
+    if (v.quota !== "" && (Number(v.quota) < 1 || Number(v.quota) > 1_000_000_000)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["quota"], message: "Kuota 1–1.000.000.000, atau kosongkan untuk tanpa batas" });
     }
   });
 

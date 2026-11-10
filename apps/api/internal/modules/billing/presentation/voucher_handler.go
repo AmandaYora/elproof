@@ -211,7 +211,19 @@ func (h *VoucherHandler) patch(w http.ResponseWriter, r *http.Request, id int64)
 	}
 	expected, err := etag.ParseIfMatch(r.Header.Get("If-Match"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "If-Match tidak valid", nil)
+		msg := "Header If-Match tidak valid. Kirim nilai updatedAt dari data yang Anda lihat."
+		response.Error(w, http.StatusBadRequest, msg, map[string][]string{"If-Match": {msg}})
+		return
+	}
+	if expected == nil {
+		// A full edit must say which version it was made on (ADR-0036): without it a
+		// forgotten header would silently overwrite someone else's change. A voucher
+		// that does not exist is still the 404.
+		if _, err := h.vouchers.Get(r.Context(), id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		response.Error(w, http.StatusPreconditionRequired, "Kirim header If-Match berisi updatedAt voucher yang Anda ubah.", map[string][]string{"If-Match": {"wajib"}})
 		return
 	}
 	var body voucherBody

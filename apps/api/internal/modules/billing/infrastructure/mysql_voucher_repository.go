@@ -319,6 +319,21 @@ func (r *MySQLVoucherRepository) Settle(ctx context.Context, orderRef string, st
 }
 
 func (r *MySQLVoucherRepository) ReleaseStale(ctx context.Context, olderThan time.Time) (int64, error) {
+	// A use whose charge is already paid but was never settled (the settle call
+	// failed, or the process died in between) becomes used, so the console
+	// shows it as it is. It already counted against the quota.
+	paid, err := r.db.ExecContext(ctx,
+		`UPDATE subscription_voucher_redemptions r SET r.status = 'used', r.resolved_at = CURRENT_TIMESTAMP(6)
+		 WHERE r.status = 'reserved' AND r.created_at < ?
+		   AND (EXISTS (SELECT 1 FROM subscription_transactions t WHERE t.payment_reference = r.order_ref AND t.status = 'paid')
+		     OR EXISTS (SELECT 1 FROM subscription_app_charges c WHERE c.order_ref = r.order_ref AND c.status = 'paid'))`, olderThan)
+	if err != nil {
+		return 0, err
+	}
+	used, err := paid.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE subscription_voucher_redemptions r SET r.status = 'released', r.resolved_at = CURRENT_TIMESTAMP(6)
 		 WHERE r.status = 'reserved' AND r.created_at < ?
@@ -329,5 +344,6 @@ func (r *MySQLVoucherRepository) ReleaseStale(ctx context.Context, olderThan tim
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	released, err := res.RowsAffected()
+	return used + released, err
 }

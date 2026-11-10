@@ -374,11 +374,14 @@ func (s *stubTxRepo) UpdateStatusByReference(_ context.Context, _ string, status
 	return nil
 }
 
-type recordingSettler struct{ calls map[string]bool }
+type recordingSettler struct {
+	calls map[string]bool
+	err   error
+}
 
 func (r *recordingSettler) Settle(_ context.Context, orderRef string, paid bool) error {
 	r.calls[orderRef] = paid
-	return nil
+	return r.err
 }
 
 func TestTransactionStatusMenyelesaikanVoucher(t *testing.T) {
@@ -402,5 +405,22 @@ func TestTransactionStatusMenyelesaikanVoucher(t *testing.T) {
 		if settled != tc.settled || paid != tc.paid {
 			t.Errorf("%s: settled=%v paid=%v, want %v/%v", tc.status, settled, paid, tc.settled, tc.paid)
 		}
+	}
+}
+
+// A voucher settle that fails must not fail the status change: a paid webhook
+// would otherwise never activate the subscription (the sweep settles it later).
+func TestTransactionStatus_GagalCatatVoucherTidakMenggagalkan(t *testing.T) {
+	s := NewTransactionService(&stubTxRepo{})
+	s.SetVouchers(&recordingSettler{calls: map[string]bool{}, err: errors.New("lock wait timeout")})
+	if err := s.UpdateStatus(context.Background(), "INV-1", domain.StatusPaid); err != nil {
+		t.Fatalf("paid must go through even if the voucher cannot be settled: %v", err)
+	}
+}
+
+func TestVoucherValidate_KuotaDalamBatasKolom(t *testing.T) {
+	in := VoucherInput{Code: "BESAR", AppID: TenantPlansApp, Type: domain.DiscountPercent, Value: 10, Quota: i64(5_000_000_000)}
+	if _, err := voucherSvc(newStubVoucherRepo()).Create(context.Background(), in); reasonOrField(err) != "quota" {
+		t.Fatalf("quota beyond INT UNSIGNED must be a 422 on quota, got %v", err)
 	}
 }

@@ -189,6 +189,15 @@ func TestVouchers(t *testing.T) {
 		r := s.mustOK("create", s.voucher(admin, voucherBody("VERSI", elproofApp)))
 		id, version := r.id("data", "id"), str(r, "data", "updatedAt")
 		path := fmt.Sprintf("/api/v1/vouchers/%d", id)
+		r = s.do(admin, "PATCH", path, voucherBody("VERSI", elproofApp, "discountValue", 15))
+		if r.status != http.StatusPreconditionRequired {
+			t.Errorf("a full edit without If-Match must be 428: %s", r)
+		}
+		wantStatus(t, "428 never hides a 404", s.do(admin, "PATCH", "/api/v1/vouchers/999999", voucherBody("VERSI", elproofApp)), http.StatusNotFound)
+		r = s.voucher(admin, voucherBody("BESAR", elproofApp, "quota", 5_000_000_000))
+		if r.status != http.StatusUnprocessableEntity || !strings.Contains(string(r.body), "quota") {
+			t.Errorf("a quota beyond the column must be a 422 on quota: %s", r)
+		}
 		s.mustOK("edit", s.doWith(admin, "PATCH", path, voucherBody("VERSI", elproofApp, "discountValue", 15), map[string]string{"If-Match": `"` + version + `"`}))
 		r = s.doWith(admin, "PATCH", path, voucherBody("VERSI", elproofApp, "discountValue", 20), map[string]string{"If-Match": `"` + version + `"`})
 		if r.status != http.StatusConflict || r.dig("data", "discountValue") != float64(15) {
@@ -273,9 +282,20 @@ func TestVouchers(t *testing.T) {
 			VALUES (?, 'new', 90, 100, 'QRIS', 'RACE-AFTER', 'pending')`, wo.tenant); err != nil {
 			t.Fatal(err)
 		}
+		// A use whose charge is paid but was never settled becomes used.
+		if _, err := s.db.Exec(`UPDATE subscription_voucher_redemptions SET created_at = ? WHERE order_ref = ?`, old, ok1[0]); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO subscription_transactions (tenant_id, type, amount, original_amount, payment_method, payment_reference, status, paid_at)
+			VALUES (?, 'new', 90, 100, 'QRIS', ?, 'paid', NOW())`, wo.tenant, ok1[0]); err != nil {
+			t.Fatal(err)
+		}
 		n, err := svc.ReleaseStale(ctx)
-		if err != nil || n != 1 {
-			t.Fatalf("ReleaseStale released %d (%v), want 1", n, err)
+		if err != nil || n != 2 {
+			t.Fatalf("ReleaseStale settled %d (%v), want 2", n, err)
+		}
+		if s.count(`SELECT COUNT(*) FROM subscription_voucher_redemptions WHERE order_ref = ? AND status = 'used'`, ok1[0]) != 1 {
+			t.Error("a reservation whose charge is paid must become used")
 		}
 		if s.count(`SELECT COUNT(*) FROM subscription_voucher_redemptions WHERE order_ref = ? AND status = 'released'`, ok[2]) != 1 ||
 			s.count(`SELECT COUNT(*) FROM subscription_voucher_redemptions WHERE order_ref = 'RACE-AFTER' AND status = 'reserved'`) != 1 {
