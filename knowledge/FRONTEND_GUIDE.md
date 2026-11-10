@@ -12,7 +12,7 @@ Read this before touching a screen. Layers, from the bottom:
 
 | Layer | Where | Rule |
 |---|---|---|
-| Tokens | `src/theme/theme.css` | Semantic names only (`bg-card`, `text-muted-foreground`, `text-danger-text`, `border-input`). No hex or palette colours in a component; text in a status colour uses the `-text` token (4.5:1). Tenant branding overrides `--brand-navy-*` only. |
+| Tokens | `src/theme/theme.css` | Semantic names only (`bg-card`, `text-muted-foreground`, `text-danger-text`, `border-input`). No hex or palette colours in a component; text in a status colour uses the `-text` token (4.5:1). One palette for every surface, no per-tenant colour (ADR-0039); the public site only swaps its surface tokens in `marketing.css`. A control that hides the browser outline adds `focus-visible:outline-solid` with `outline-2` (Tailwind 4 `outline-none` sets `--tw-outline-style: none`). |
 | Primitives | `src/shared/components/kit/` | shadcn copies on **Base UI**. Add one with the shadcn CLI only when a screen needs it; delete what nothing imports. |
 | App components | `src/shared/components/ui/` | `Button`, `Input`, `Field`, `Modal`, `Drawer`, `ConfirmDialog`, `Badge`, `Table`, `IconActionButton`, `TrendBarChart`, `ProofStamp`… The API screens use. Domain-agnostic. |
 | Forms | `src/shared/forms/` | `useZodForm(schema, …)` + `<Field name="…">` + `FormErrorSummary`; types with `z.infer`; a 422's `errors` keys land on the same fields; the first error takes focus. |
@@ -85,25 +85,22 @@ Inline edits (a status dropdown) send only the changed field. A 409 is handled i
 (`useConflictStore`, `ConflictHost`, loaded on demand) and the page that owns the data registers how to reload it (`registerRevalidator`, e.g. `ProjectDetailLayout`), so "Muat ulang"
 rebuilds the page and any form still holding old values. State changes are explicit (`setProjectArchived(id, true)`), never a flip of whatever is current.
 
-## Theme / tenant branding (ADR-0012)
+## Theme / tenant branding (ADR-0012, ADR-0039)
 
 `apps/web/src/theme/`:
-- `theme.css` — the app's default look (`--brand-navy-950/900/800` + `--color-primary-soft`, plus
-  fixed semantic colors that never vary per tenant: success/warning/danger/info, background, text,
-  border).
-- `brandPresets.ts` — the 20 fixed presets (keys MUST match `apps/api`'s
-  `domain.AllowedBrandColorPresets` exactly; hex values live only here, never on the backend).
-  `applyBrandColorPreset(key)` overrides the 4 variables above on `document.documentElement`;
-  `resetBrandColorPreset()` removes the overrides (reverting to `theme.css`'s own defaults, which
-  are identical to the `navy` preset by design).
+- `theme.css` — the one palette for every surface (plum `--primary`/`--ring`, seal gold `--seal*`,
+  plum-tinted neutrals, status colours; values and contrast in `DESIGN.md` §4.1). Nothing overrides
+  it at runtime: there is no per-tenant colour.
+- `marketing.css` — only the public surface's differences (white page, blush bands) under
+  `:root[data-surface="marketing"]`, plus its scoped motion (ADR-0038).
 - `tabIdentity.ts` — `applyTabIdentity(businessName, logoUrl, consoleLabel?)` sets the browser tab
   title and a lazily-created `<link rel="icon">` (reusing the same logo object URL already fetched
   for the header, no separate favicon upload); `resetTabIdentity()` reverts both.
 
 `shared/stores/useTenantBrandingStore.ts` follows the module-store convention above but isn't tied
 to one domain module — `hydrate(consoleLabel?)` fetches `GET /tenants/me/branding` (+ the logo
-blob, `GET /tenants/me/logo`, as an object URL) and calls the `apply*` functions above;
-`reset()` calls the `reset*` functions and revokes the logo object URL. A module-level generation
+blob, `GET /tenants/me/logo`, as an object URL) and calls `applyTabIdentity`; `reset()` calls
+`resetTabIdentity` and revokes the logo object URL. A module-level generation
 token guards `hydrate()` against a stale response winning a race against a newer call (React
 StrictMode's double-invoked mount effect, or a fast logout→login-as-a-different-tenant sequence) —
 only the *latest* call's result is ever applied, and `reset()` invalidates any `hydrate()` still in
@@ -114,18 +111,12 @@ flight.
   backoffice stays unbranded). `reset()` is called from both places a session actually ends:
   `shared/lib/auth-actions.ts`'s `logoutAndRedirect` and `http-client.ts`'s silent
   logout-on-refresh-failure.
-- **`Button`'s `"neutral"` variant** (`bg-slate-800`, deliberately not tied to `--brand-navy-*`)
-  exists specifically so `LoginPage` can render a primary-looking button without showing *anyone's*
-  brand color, not even ElProof's own — every other `<Button>` call site still uses the default
-  `primary` variant (brand-tied).
-- **`LoginPage` is always neutral** (no tenant is knowable before auth; per-tenant custom domains were removed, ADR-0030).
+- **`LoginPage`** uses the public surface (`AuthSplitLayout`, ADR-0038) and the same palette; no tenant is knowable before auth (per-tenant custom domains were removed, ADR-0030).
 
 ### Anti-flash render gating (ADR-0012's Revision)
 
-Every consumer of the CSS-variable-override mechanism above shares the same race: a `bg-navy-*`-
-classed element renders on mount with whatever the CSS variable currently holds, which is the
-`theme.css` default until an async branding lookup resolves and overrides it — painting the wrong
-identity first, then visibly swapping. The places this app renders brand-tied chrome hold off
+The header and sidebar show the tenant's logo and name, which arrive from an async lookup; painting
+the chrome before it resolves would show the text fallback first, then visibly swap in the logo. The places this app renders brand-tied chrome hold off
 painting it until the real answer is known, rather than accepting the flash:
 
 - `useTenantBrandingStore` exposes `hydrated: boolean` (false until `hydrate()` settles, reset to

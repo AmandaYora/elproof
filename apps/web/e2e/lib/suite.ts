@@ -64,3 +64,25 @@ export function screenshotSuite(group: string, pages: GoldenPage[], dialogs: Gol
     }
   });
 }
+
+/** Presses Tab until `target` has focus (keyboard modality, so :focus-visible applies). Fails after `max` presses. */
+export async function tabTo(page: Page, target: import("@playwright/test").Locator, max = 80) {
+  for (let i = 0; i < max; i++) {
+    if (await target.evaluate((el) => el === document.activeElement).catch(() => false)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(target).toBeFocused();
+}
+
+/** The focus ring a kit control draws: style, width and colour of its outline, and the --ring token for comparison. */
+export async function focusRing(target: import("@playwright/test").Locator) {
+  return target.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const probe = document.createElement("span");
+    probe.style.color = "var(--ring)";
+    document.body.appendChild(probe);
+    const ring = getComputedStyle(probe).color;
+    probe.remove();
+    return { style: cs.outlineStyle, width: parseFloat(cs.outlineWidth), color: cs.outlineColor, ring };
+  });
+}

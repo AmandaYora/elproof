@@ -18,7 +18,7 @@ export function SearchInput({ className, value, onChange, ...props }: InputHTMLA
         onChange={onChange}
         className={cn(
           "h-9 w-full rounded-lg border border-input bg-card pl-9 text-sm text-text-primary placeholder:text-subtle-foreground shadow-sm transition-shadow",
-          "outline-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-ring",
+          "outline-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 outline-ring",
           hasValue ? "pr-8" : "pr-3"
         )}
         {...props}

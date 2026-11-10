@@ -160,7 +160,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
         onKeyDown={handleTriggerKeyDown}
         className={cn(
           "flex h-9 pointer-coarse:h-11 w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-3 text-left text-sm text-text-primary transition-colors",
-          "outline-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-ring",
+          "outline-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 outline-ring",
           "disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-secondary",
           open && "border-ring"
         )}
@@ -188,7 +188,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
                 }}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Cari..."
-                className="h-8 w-full rounded-md border-0 bg-surface-muted pl-8 pr-2 text-[13px] text-text-primary placeholder:text-subtle-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-ring"
+                className="h-8 w-full rounded-md border-0 bg-surface-muted pl-8 pr-2 text-[13px] text-text-primary placeholder:text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 outline-ring"
               />
             </div>
             <ul role="listbox" className="max-h-52 overflow-y-auto py-1">

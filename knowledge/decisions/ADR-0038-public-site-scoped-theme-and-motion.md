@@ -47,4 +47,5 @@ and DESIGN.md forbids per-section entrance animation (written for the consoles).
 * A colour change on the public site is one file; the consoles cannot drift by accident.
 * The public site needs the API for prices; without it the section degrades to a WhatsApp prompt, never to stale numbers.
 * A cached price may lag an edit in Platform Console by up to five minutes.
-* Aligning the consoles to the new palette is a separate decision (not taken).
+* Aligning the consoles to the new palette is a separate decision — taken in ADR-0039 (2026-11-10): the palette now lives in `theme.css`
+  for every surface and `marketing.css` keeps only the public surface's differences; there is no tenant preset left to leak.

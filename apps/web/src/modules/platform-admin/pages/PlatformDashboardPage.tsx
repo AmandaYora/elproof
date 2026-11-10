@@ -111,7 +111,6 @@ export default function PlatformDashboardPage() {
         <StatCard
           label="Pendapatan bulanan (MRR)"
           value={formatCurrencyCompact(metrics.mrr)}
-          tone="info"
           sublabel={metrics.paidTenants > 0 ? `${metrics.paidTenants} tenant berbayar, rata-rata ${formatCurrencyCompact(metrics.arpa)}` : "Belum ada tenant berbayar"}
         />
         <StatCard

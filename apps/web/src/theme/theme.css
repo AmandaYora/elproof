@@ -188,12 +188,16 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Tailwind 4 draws a bare `border` in currentColor; shadcn components rely on
-   the old default of the theme's border color. */
+   the old default of the theme's border color. The outline colour rests on
+   --ring too: `transition-colors` also animates outline-color, so a focus ring
+   whose colour only appears on :focus-visible would fade in from currentColor
+   (white on a plum button) instead of showing at once (ADR-0039). */
 @layer base {
   *,
   ::before,
   ::after {
     border-color: var(--border);
+    outline-color: var(--ring);
   }
 }
 

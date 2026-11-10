@@ -13,8 +13,8 @@ subscription billing, default vendor categories) via their `contracts` packages,
 - **Tenant lifecycle**: register (creates the tenant row + its Owner staff row + Owner credential,
   in one flow), suspend/reactivate, reset the Owner's credential, and the subscription-activation
   paths (superadmin manual grant, or the Owner's own self-service Tripay payment — see §5).
-- **Tenant branding**: a logo + one of 20 fixed color presets, applied across WO Console and Client
-  Portal — see §6 and ADR-0012.
+- **Tenant branding**: the business name and an optional logo, shown in the WO Console and Client
+  Portal — see §6, ADR-0012 and ADR-0039 (no per-tenant colour).
 - **Platform Console's own admin accounts** (`platform_admins`) — a separate, simpler CRUD with no
   cross-module orchestration (a platform_admin has no Owner-equivalent staff row, no subscription).
 
@@ -33,7 +33,7 @@ subscription billing, default vendor categories) via their `contracts` packages,
 
 ```
 apps/api/internal/modules/platform/
-  domain/          — Tenant, PlatformAdmin, PendingCharge, SubscriptionStatus, brand_preset.go
+  domain/          — Tenant, PlatformAdmin, PendingCharge, SubscriptionStatus
   application/      — TenantService, PlatformAdminService
   infrastructure/    — MySQL repositories
   presentation/      — TenantHandler, PlatformAdminHandler
@@ -58,7 +58,7 @@ the sibling definition).
 
 - **`tenants`** — the core entity. Business/owner contact fields, subscription state
   (`plan_id`/`subscription_status`/`subscription_expires_at`), suspension flag, credential-reset
-  timestamp, and (ADR-0012) `brand_color_preset`/`logo_storage_path`. Full columns:
+  timestamp, and (ADR-0012) `logo_storage_path` (`brand_color_preset` was dropped by migration 000072, ADR-0039). Full columns:
   `docs/DB_SCHEMA.md`.
 - **`platform_admins`** — ElProof's own staff. Role is `'Super Admin'` or `'Support'` — no tenant
   scoping (these accounts aren't tied to any `tenant_id`).
@@ -93,19 +93,16 @@ the sibling definition).
     reconciliation sweep) confirms it, via `ApplyWebhookEvent` (this module's implementation of
     `payment.contracts.WebhookConsumer`).
 
-## 6. Branding (logo + color presets) — ADR-0012
+## 6. Branding (name + logo) — ADR-0012, ADR-0039
 
-Every tenant gets a visual identity: an optional logo (object storage, ADR-0006) and one of 20
-fixed color presets (`domain/brand_preset.go`'s `AllowedBrandColorPresets`, default `navy`) —
-applied across WO Console and Client Portal by overriding 4 CSS variables at runtime
-(`apps/web/src/theme/brandPresets.ts`; see `FRONTEND_GUIDE.md`'s "Theme / tenant branding" section
-for the frontend half). No free-form hex — see ADR-0012 for the full rationale, including why
-every preset's shades are chosen for WCAG contrast against white text, not just picked to look
-vivid.
+Every tenant shows its own business name and an optional logo (object storage, ADR-0006) in the WO
+Console and Client Portal header and the browser tab (see `FRONTEND_GUIDE.md`'s "Theme / tenant
+branding" section for the frontend half). There is **no per-tenant colour**: the 21 colour presets,
+`PATCH /tenants/me/brand-color` and the `brand_color_preset` column were removed (migration 000072,
+ADR-0039); every surface uses the one palette in `apps/web/src/theme/theme.css`.
 
-- **Configured by**: platform-admin only, via the same tenant edit form as every other tenant
-  field (`PATCH /tenants/{id}` now also accepts `brandColorPreset`; `PUT /tenants/{id}/logo` for
-  the logo). No tenant self-service branding settings page exists yet.
+- **Configured by**: platform-admin via the tenant edit form (`PUT /tenants/{id}/logo`), and the
+  Owner on Profil Usaha (`PUT /tenants/me/logo`, name through `PATCH /tenants/me/profile`).
 - **Read by**: `GET /tenants/me/branding` / `GET /tenants/me/logo` — deliberately **open to any
   tenant-scoped principal** (any staff role, or `client`), unlike `GET /tenants/me` which stays
   Owner-only (it also carries subscription/billing data). Both resolve the tenant strictly from the
