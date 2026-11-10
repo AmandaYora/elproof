@@ -120,6 +120,8 @@ export const API = {
     config: "/api/v1/public/config",
     // Self-service WO registration (Fase 2).
     signupWorkspace: "/api/v1/public/signup/workspace",
+    // ElProof's active public plans for the Beranda price section (ADR-0038).
+    plans: "/api/v1/public/plans",
   },
   staff: {
     base: "/api/v1/staff",

@@ -8,7 +8,8 @@
   "routeJsGzipKB": 300,
   "routes": {
     "marketing-beranda": {
-      "apiCalls": 0
+      "apiCalls": 1,
+      "_reason": "T-20261110-9 / ADR-0038: the price section reads the active public plans (GET /api/v1/public/plans) instead of hand-written numbers"
     },
     "platform-ringkasan": {
       "apiCalls": 3
