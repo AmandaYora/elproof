@@ -8,23 +8,34 @@ import (
 
 	"elproof/internal/modules/billing/domain"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
+	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/pagination"
 )
 
-// stubPlanCatalog implements PlanCatalog.
-type stubPlanCatalog struct {
-	mappedIDs []int64
-	getIDsErr error
-	plan      *domain.Plan
-	getErr    error
+// stubPlanRepo implements PlanRepository with one stored plan, so these tests
+// run the real PlanService.GetForApp ownership check (ADR-0040).
+type stubPlanRepo struct {
+	plan *domain.Plan
 }
 
-func (s *stubPlanCatalog) GetAppPlanIDs(ctx context.Context, appID string) ([]int64, error) {
-	return s.mappedIDs, s.getIDsErr
+func (s *stubPlanRepo) List(ctx context.Context, appID string) ([]domain.Plan, error) {
+	return nil, nil
 }
+func (s *stubPlanRepo) ListPaginated(ctx context.Context, params pagination.Params, search, appID string) ([]domain.Plan, int64, error) {
+	return nil, 0, nil
+}
+func (s *stubPlanRepo) FindByID(ctx context.Context, id int64) (*domain.Plan, error) {
+	if s.plan == nil || s.plan.ID != id {
+		return nil, nil
+	}
+	p := *s.plan
+	return &p, nil
+}
+func (s *stubPlanRepo) Create(ctx context.Context, plan *domain.Plan) error          { return nil }
+func (s *stubPlanRepo) Update(ctx context.Context, plan *domain.Plan) error          { return nil }
+func (s *stubPlanRepo) SetActive(ctx context.Context, id int64, isActive bool) error { return nil }
 
-func (s *stubPlanCatalog) Get(ctx context.Context, id int64) (*domain.Plan, error) {
-	return s.plan, s.getErr
-}
+func catalogWith(plan *domain.Plan) *PlanService { return NewPlanService(&stubPlanRepo{plan: plan}) }
 
 // stubAppChargeWriter implements AppChargeWriter. onCreate/onDelete let a
 // test observe call order relative to stubPaymentClient's own hook (A20).
@@ -86,34 +97,69 @@ func (s *stubPaymentClient) CheckStatusForApp(ctx context.Context, appID, orderR
 	return nil, nil
 }
 
-func TestSubCharge_PaketTidakDipetakanJadi422(t *testing.T) {
-	plans := &stubPlanCatalog{mappedIDs: []int64{1, 2}, plan: &domain.Plan{ID: 99, Price: 2000000, DurationMonths: 12}}
-	charges := &stubAppChargeWriter{}
-	payment := &stubPaymentClient{result: &paymentcontracts.ChargeResult{OrderRef: "ORD-1"}}
-	s := NewSubscriptionService(plans, charges, payment)
+func TestSubCharge_PaketMilikAppLainJadi422(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		planID int64
+	}{{"paket milik App lain", 99}, {"paket tidak ada", 100}} {
+		t.Run(tc.name, func(t *testing.T) {
+			plans := catalogWith(&domain.Plan{ID: 99, AppID: "app_lain", Price: 2000000, DurationMonths: 12})
+			charges := &stubAppChargeWriter{}
+			payment := &stubPaymentClient{result: &paymentcontracts.ChargeResult{OrderRef: "ORD-1"}}
+			s := NewSubscriptionService(plans, charges, payment)
 
-	_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 99, paymentcontracts.ChargeOptions{})
+			_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", tc.planID, paymentcontracts.ChargeOptions{})
 
-	if err == nil {
-		t.Fatal("planId 99 tidak ada di mappedIDs [1,2], harus galat 422")
+			if apperror.HTTPStatus(err) != 422 {
+				t.Fatalf("galat = %v (status %d), want 422 — paket milik App lain dijawab sama dengan paket yang tidak ada", err, apperror.HTTPStatus(err))
+			}
+			if charges.createCalled {
+				t.Fatal("intent TIDAK boleh ditulis untuk paket yang bukan milik App ini — ini penjaga sebenarnya terhadap lintas-App")
+			}
+			if payment.createChannelCalled {
+				t.Fatal("payment.Client TIDAK boleh dipanggil sama sekali")
+			}
+		})
 	}
-	if charges.createCalled {
-		t.Fatal("intent TIDAK boleh ditulis untuk paket yang bukan milik App ini (8.4) — ini penjaga sebenarnya terhadap lintas-App")
+}
+
+func TestSubCharge_PaketTanpaAppIdTidakLolos(t *testing.T) {
+	plans := catalogWith(&domain.Plan{ID: 1, AppID: "app_x", Price: 1})
+	s := NewSubscriptionService(plans, &stubAppChargeWriter{}, &stubPaymentClient{})
+	if _, err := s.StartSubscriptionCharge(context.Background(), "", "ORD-1", 1, paymentcontracts.ChargeOptions{}); err == nil {
+		t.Fatal("appId kosong harus ditolak")
 	}
-	if payment.createChannelCalled {
-		t.Fatal("payment.Client TIDAK boleh dipanggil sama sekali")
+}
+
+func TestPlanService_GetTenantPlanHanyaKatalogElProof(t *testing.T) {
+	if _, err := catalogWith(&domain.Plan{ID: 5, AppID: "app_jws"}).GetTenantPlan(context.Background(), 5); apperror.HTTPStatus(err) != 422 {
+		t.Fatalf("paket milik App eksternal harus 422 untuk tenant WO, got %v", err)
+	}
+	p, err := catalogWith(&domain.Plan{ID: 6, AppID: TenantPlansApp}).GetTenantPlan(context.Background(), 6)
+	if err != nil || p.ID != 6 {
+		t.Fatalf("paket ElProof harus lolos, got %v, %v", p, err)
+	}
+}
+
+func TestPlanService_AppIdWajib(t *testing.T) {
+	s := catalogWith(nil)
+	if _, err := s.Create(context.Background(), PlanInput{AppID: "  ", Name: "X"}); apperror.HTTPStatus(err) != 422 {
+		t.Fatalf("Create tanpa appId harus 422, got %v", err)
+	}
+	if _, err := s.Update(context.Background(), 1, PlanInput{Name: "X"}); apperror.HTTPStatus(err) != 422 {
+		t.Fatalf("Update tanpa appId harus 422, got %v", err)
 	}
 }
 
 func TestSubCharge_NominalDariKatalogBukanBody(t *testing.T) {
-	plans := &stubPlanCatalog{mappedIDs: []int64{1}, plan: &domain.Plan{ID: 1, Price: 2000000, DurationMonths: 12, Name: "Paket JWS"}}
+	plans := catalogWith(&domain.Plan{ID: 1, AppID: "app_x", Price: 2000000, DurationMonths: 12, Name: "Paket JWS"})
 	charges := &stubAppChargeWriter{}
 	payment := &stubPaymentClient{result: &paymentcontracts.ChargeResult{OrderRef: "ORD-1"}}
 	s := NewSubscriptionService(plans, charges, payment)
 
 	// Body/caller tidak pernah punya kesempatan mengirim amount sendiri —
 	// signature StartSubscriptionCharge tidak menerima parameter amount
-	// sama sekali (A18); nilainya HARUS berasal dari plans.Get().
+	// sama sekali (A18); nilainya HARUS berasal dari katalog (GetForApp).
 	_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, paymentcontracts.ChargeOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -127,7 +173,7 @@ func TestSubCharge_UrutanIntentSebelumCharge(t *testing.T) {
 	var intentWritten bool
 	var chargeCalledAfterIntentWritten bool
 
-	plans := &stubPlanCatalog{mappedIDs: []int64{1}, plan: &domain.Plan{ID: 1, Price: 2000000, DurationMonths: 12}}
+	plans := catalogWith(&domain.Plan{ID: 1, AppID: "app_x", Price: 2000000, DurationMonths: 12})
 	charges := &stubAppChargeWriter{onCreate: func() { intentWritten = true }}
 	payment := &stubPaymentClient{
 		result:                &paymentcontracts.ChargeResult{OrderRef: "ORD-1"},
@@ -144,7 +190,7 @@ func TestSubCharge_UrutanIntentSebelumCharge(t *testing.T) {
 }
 
 func TestSubCharge_ChargeGagalMenghapusIntent(t *testing.T) {
-	plans := &stubPlanCatalog{mappedIDs: []int64{1}, plan: &domain.Plan{ID: 1, Price: 2000000, DurationMonths: 12}}
+	plans := catalogWith(&domain.Plan{ID: 1, AppID: "app_x", Price: 2000000, DurationMonths: 12})
 	charges := &stubAppChargeWriter{}
 	payment := &stubPaymentClient{err: errors.New("gateway down")}
 	s := NewSubscriptionService(plans, charges, payment)
@@ -203,17 +249,4 @@ func TestComputeUntil_LanggananSudahLewat(t *testing.T) {
 	got := s.ComputeUntil(&currentUntil, 1)
 	want := time.Now().AddDate(0, 1, 0) // dihitung dari HARI INI, bukan dari tanggal basi
 	timeCloseEnough(t, got, want)
-}
-
-func TestDedupPlanIDs(t *testing.T) {
-	got := dedupInt64([]int64{1, 1, 2})
-	want := []int64{1, 2}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %v, want %v", got, want)
-		}
-	}
 }

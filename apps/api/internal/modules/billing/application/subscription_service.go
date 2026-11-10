@@ -25,8 +25,8 @@ type AppChargeWriter interface {
 
 // PlanCatalog is the narrow slice of PlanService SubscriptionService needs.
 type PlanCatalog interface {
-	GetAppPlanIDs(ctx context.Context, appID string) ([]int64, error)
-	Get(ctx context.Context, id int64) (*domain.Plan, error)
+	// GetForApp returns the plan only when it belongs to appID (422 otherwise).
+	GetForApp(ctx context.Context, appID string, id int64) (*domain.Plan, error)
 }
 
 type SubscriptionService struct {
@@ -43,9 +43,9 @@ func NewSubscriptionService(plans PlanCatalog, charges AppChargeWriter, payment 
 // POST /external/subscriptions/charges (D9) — kept out of the handler so it
 // can be tested with stubs (A34/§7.1).
 //
-// Validates planID is actually mapped to appID (the real guard against one
-// App buying another App's plan — R1/R2; planId can be guessed, so the
-// catalog endpoint alone isn't a sufficient gate), reads price/duration
+// Validates planID belongs to appID (the real guard against one App buying
+// another App's plan — planId can be guessed, so the catalog endpoint alone
+// isn't a sufficient gate; ADR-0040), reads price/duration
 // from the catalog rather than trusting the caller (A18), writes the
 // intent row BEFORE calling payment (A20) so a process death right after
 // leaves a ghost row the reconciler can resolve via a 404 from
@@ -56,15 +56,7 @@ func (s *SubscriptionService) StartSubscriptionCharge(ctx context.Context, appID
 		return nil, apperror.Validation("orderRef dan planId wajib diisi", nil)
 	}
 
-	mappedIDs, err := s.plans.GetAppPlanIDs(ctx, appID)
-	if err != nil {
-		return nil, err
-	}
-	if !containsInt64(mappedIDs, planID) {
-		return nil, apperror.Validation("Paket ini tidak tersedia untuk aplikasi Anda", nil)
-	}
-
-	plan, err := s.plans.Get(ctx, planID)
+	plan, err := s.plans.GetForApp(ctx, appID, planID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,15 +82,6 @@ func (s *SubscriptionService) StartSubscriptionCharge(ctx context.Context, appID
 		return nil, err
 	}
 	return result, nil
-}
-
-func containsInt64(ids []int64, target int64) bool {
-	for _, id := range ids {
-		if id == target {
-			return true
-		}
-	}
-	return false
 }
 
 // ComputeUntil stacks a renewal on top of remaining time rather than

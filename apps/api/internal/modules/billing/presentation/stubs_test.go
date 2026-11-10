@@ -12,7 +12,7 @@ import (
 // stubAppRegistry implements paymentcontracts.AppRegistry — shared across
 // this package's handler tests (A34). Records whether each method was
 // called so a test can assert a guard short-circuited before reaching it
-// (e.g. TestAppPlans_BukanPlatformAdmin).
+// (e.g. TestPlanCreate_AppTidakAdaJadi422).
 type stubAppRegistry struct {
 	isActive       bool
 	isActiveErr    error
@@ -43,27 +43,6 @@ func (s *stubExternalPlanLister) ListForApp(ctx context.Context, appID string) (
 	return s.plans, s.err
 }
 
-// stubAppPlanMapper implements appPlanMapper.
-type stubAppPlanMapper struct {
-	planIDs      []int64
-	getErr       error
-	setErr       error
-	setCalled    bool
-	lastSetAppID string
-	lastSetIDs   []int64
-}
-
-func (s *stubAppPlanMapper) GetAppPlanIDs(ctx context.Context, appID string) ([]int64, error) {
-	return s.planIDs, s.getErr
-}
-
-func (s *stubAppPlanMapper) SetAppPlans(ctx context.Context, appID string, planIDs []int64) error {
-	s.setCalled = true
-	s.lastSetAppID = appID
-	s.lastSetIDs = planIDs
-	return s.setErr
-}
-
 // stubSubscriptionCharger implements subscriptionCharger.
 type stubSubscriptionCharger struct {
 	result *paymentcontracts.ChargeResult
@@ -84,37 +63,30 @@ func (s *stubSubscriptionCharger) StartSubscriptionCharge(ctx context.Context, a
 }
 
 // stubPlanLister implements planLister — used by TestPlansList_* to lock
-// the principal-aware branching (D3/A12) that closes T9/T16.
+// which App's plans each principal is served (ADR-0040).
 type stubPlanLister struct {
-	all    []domain.Plan
-	public []domain.Plan
-	total  int64
-	err    error
+	plans []domain.Plan
+	total int64
+	err   error
 
-	calledList            bool
-	calledListPaginated   bool
-	calledListPublic      bool
-	calledListPublicPaged bool
+	calledList          bool
+	calledListPaginated bool
+	lastAppID           string // the appID the last list call was scoped to
+
+	created *application.PlanInput
+	updated *application.PlanInput
 }
 
-func (s *stubPlanLister) List(ctx context.Context) ([]domain.Plan, error) {
+func (s *stubPlanLister) List(ctx context.Context, appID string) ([]domain.Plan, error) {
 	s.calledList = true
-	return s.all, s.err
+	s.lastAppID = appID
+	return s.plans, s.err
 }
 
-func (s *stubPlanLister) ListPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
+func (s *stubPlanLister) ListPaginated(ctx context.Context, params pagination.Params, search, appID string) ([]domain.Plan, int64, error) {
 	s.calledListPaginated = true
-	return s.all, s.total, s.err
-}
-
-func (s *stubPlanLister) ListPublic(ctx context.Context) ([]domain.Plan, error) {
-	s.calledListPublic = true
-	return s.public, s.err
-}
-
-func (s *stubPlanLister) ListPublicPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
-	s.calledListPublicPaged = true
-	return s.public, s.total, s.err
+	s.lastAppID = appID
+	return s.plans, s.total, s.err
 }
 
 func (s *stubPlanLister) Get(ctx context.Context, id int64) (*domain.Plan, error) {
@@ -122,11 +94,13 @@ func (s *stubPlanLister) Get(ctx context.Context, id int64) (*domain.Plan, error
 }
 
 func (s *stubPlanLister) Create(ctx context.Context, input application.PlanInput) (*domain.Plan, error) {
-	return nil, nil
+	s.created = &input
+	return &domain.Plan{ID: 1, AppID: input.AppID, Name: input.Name}, nil
 }
 
 func (s *stubPlanLister) Update(ctx context.Context, id int64, input application.PlanInput) (*domain.Plan, error) {
-	return nil, nil
+	s.updated = &input
+	return &domain.Plan{ID: id, AppID: input.AppID, Name: input.Name}, nil
 }
 
 func (s *stubPlanLister) ToggleActive(ctx context.Context, id int64) (*domain.Plan, error) {

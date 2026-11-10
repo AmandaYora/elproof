@@ -9,7 +9,7 @@ import {
   type ActivateSubscriptionFormValues,
 } from "@/modules/platform-admin/schemas/activate-subscription.schema";
 import type { Tenant } from "@/modules/platform-admin/data/types";
-import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
+import { ELPROOF_APP_ID, type SubscriptionPlan } from "@/shared/data/subscriptionPlans";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
@@ -36,12 +36,9 @@ export function ActivateSubscriptionModal({
   plans,
   onSubmit,
 }: ActivateSubscriptionModalProps) {
-  // appIds.length === 0 is what closes T16: without it, a plan private to
-  // some external App (visible here because this store also feeds
-  // platform_admin's own Paket page, A12) could be assigned to a WO tenant
-  // — who would then be silently filtered out of their own plan by
-  // ListPublic on the very next page load.
-  const activePlans = plans.filter((p) => p.isActive && p.appIds.length === 0);
+  // Only ElProof's own plans can be given to a WO tenant (ADR-0040); the
+  // server refuses any other App's plan with a 422 on planId as well.
+  const activePlans = plans.filter((p) => p.isActive && p.appId === ELPROOF_APP_ID);
   const form = useZodForm({ schema: activateSubscriptionSchema, initial: initialValues(tenant, activePlans) });
   const { values, errors, set } = form;
   const formRef = useRef<HTMLFormElement>(null);
@@ -89,7 +86,7 @@ export function ActivateSubscriptionModal({
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         {activePlans.length === 0 ? (
           <p className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] font-medium text-warning-text">
-            Belum ada paket publik yang aktif. Tambahkan dulu di menu Paket.
+            Belum ada paket ElProof yang aktif. Tambahkan dulu di menu Paket.
           </p>
         ) : (
           <Field label="Paket Langganan" required name="planId" error={errors.planId}>

@@ -533,8 +533,8 @@ func TestTahap6(t *testing.T) {
 	wantLogin := map[string]string{"Rina": "active", "Dewa": "active", "Citra": "invited", "Banu": "inactive", "Eko": "invited", "Fajar": "none"}
 
 	// Platform data for the console lists.
-	s.mustOK("plan beta", s.do(admin, "POST", "/api/v1/plans", map[string]any{"name": "beta plan", "durationMonths": 1, "price": 100000, "features": []string{"x"}}))
-	s.mustOK("plan gamma", s.do(admin, "POST", "/api/v1/plans", map[string]any{"name": "Gamma Plan", "durationMonths": 6, "price": 500000, "features": []string{"x"}}))
+	s.mustOK("plan beta", s.do(admin, "POST", "/api/v1/plans", map[string]any{"appId": "platform-billing", "name": "beta plan", "durationMonths": 1, "price": 100000, "features": []string{"x"}}))
+	s.mustOK("plan gamma", s.do(admin, "POST", "/api/v1/plans", map[string]any{"appId": "platform-billing", "name": "Gamma Plan", "durationMonths": 6, "price": 500000, "features": []string{"x"}}))
 	plans := map[int64]string{}
 	for _, m := range rows(s.mustOK("plans", s.do(admin, "GET", "/api/v1/plans?all=true", nil)), "data") {
 		plans[int64(m["id"].(float64))] = fmt.Sprint(m["name"])

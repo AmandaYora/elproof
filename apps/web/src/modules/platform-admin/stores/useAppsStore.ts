@@ -34,11 +34,6 @@ export interface AppSubscription {
   status: string;
 }
 
-interface AppPlansResponse {
-  appId: string;
-  planIds: number[];
-}
-
 interface AppsState {
   apps: PaymentApp[];
   isLoading: boolean;
@@ -46,8 +41,6 @@ interface AppsState {
   createApp: (input: CreateAppInput) => Promise<CreateAppResult>;
   resetAppSecret: (appId: string) => Promise<ResetAppSecretResult>;
   toggleAppActive: (appId: string) => Promise<void>;
-  fetchAppPlans: (appId: string) => Promise<number[]>;
-  setAppPlans: (appId: string, planIds: number[]) => Promise<void>;
   fetchAppSubscriptions: () => Promise<AppSubscription[]>;
 }
 
@@ -83,15 +76,6 @@ export const useAppsStore = create<AppsState>((set, get) => ({
   toggleAppActive: async (appId) => {
     await httpClient.post(API.payment.appToggleActive(appId));
     await get().fetchApps();
-  },
-
-  fetchAppPlans: async (appId) => {
-    const res = await httpClient.get(API.billing.appPlans, { params: { appId } });
-    return (res.data.data as AppPlansResponse).planIds ?? [];
-  },
-
-  setAppPlans: async (appId, planIds) => {
-    await httpClient.put(API.billing.appPlans, { appId, planIds });
   },
 
   fetchAppSubscriptions: async () => {

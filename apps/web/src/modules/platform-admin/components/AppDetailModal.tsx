@@ -1,13 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { CardListField } from "@/shared/components/ui/CardList";
 import { cn } from "@/shared/lib/cn";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useAppsStore, type PaymentApp, type AppSubscription } from "@/modules/platform-admin/stores/useAppsStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
+import { PlanFormModal } from "@/modules/platform-admin/components/PlanFormModal";
+import { PlanTable } from "@/modules/platform-admin/components/PlanTable";
+import type { PlanFormValues } from "@/modules/platform-admin/schemas/plan.schema";
+import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
 
 type DetailTab = "info" | "paket" | "langganan";
 
@@ -28,72 +33,81 @@ interface AppDetailModalProps {
 // Kelas aktif/nonaktif tab bar di bawah sengaja menyamai TabNav.tsx supaya
 // bahasa visualnya tetap satu.
 export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
-  const plans = useSubscriptionPlanStore((s) => s.plans);
-  const fetchPlans = useSubscriptionPlanStore((s) => s.fetchPlans);
+  const fetchPlansForApp = useSubscriptionPlanStore((s) => s.fetchPlansForApp);
+  const createPlan = useSubscriptionPlanStore((s) => s.createPlan);
+  const updatePlan = useSubscriptionPlanStore((s) => s.updatePlan);
+  const togglePlanActive = useSubscriptionPlanStore((s) => s.togglePlanActive);
   const apps = useAppsStore((s) => s.apps);
-  const fetchAppPlans = useAppsStore((s) => s.fetchAppPlans);
-  const setAppPlans = useAppsStore((s) => s.setAppPlans);
   const fetchAppSubscriptions = useAppsStore((s) => s.fetchAppSubscriptions);
 
   const [tab, setTab] = useState<DetailTab>("info");
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [appPlans, setAppPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [planFormOpen, setPlanFormOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | undefined>(undefined);
 
   const [subscription, setSubscription] = useState<AppSubscription | undefined>(undefined);
   const [isLoadingSubscription, setIsLoadingSubscription] = useState(false);
 
   const appId = app?.appId;
 
+  // The plans this App owns (ADR-0040), narrowed by the server.
+  const loadPlans = useCallback(
+    (id: string) => {
+      setIsLoadingPlans(true);
+      setPlansError(null);
+      return fetchPlansForApp(id)
+        .then(setAppPlans)
+        .catch((err) => setPlansError(getApiErrorMessage(err, "Gagal memuat paket aplikasi ini")))
+        .finally(() => setIsLoadingPlans(false));
+    },
+    [fetchPlansForApp]
+  );
+
   useEffect(() => {
     if (!open || !appId) return;
     setTab("info");
-    setSaveError(null);
-    void fetchPlans();
-
-    setIsLoadingPlans(true);
-    fetchAppPlans(appId)
-      .then((ids) => setSelectedIds(new Set(ids)))
-      .finally(() => setIsLoadingPlans(false));
+    setAppPlans([]);
+    void loadPlans(appId);
 
     setIsLoadingSubscription(true);
     fetchAppSubscriptions()
       .then((subs) => setSubscription(subs.find((s) => s.appId === appId)))
       .finally(() => setIsLoadingSubscription(false));
-  }, [open, appId, fetchPlans, fetchAppPlans, fetchAppSubscriptions]);
+  }, [open, appId, loadPlans, fetchAppSubscriptions]);
 
   if (!app) return null;
 
-  function toggle(id: number) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  function openPlanForm(plan?: SubscriptionPlan) {
+    setEditingPlan(plan);
+    setPlanFormOpen(true);
   }
 
-  async function handleSave() {
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      // Replace-set semantics (A8): kirim SELURUH id yang tercentang, bukan
-      // delta — mengirim delta akan menghapus pemetaan yang tidak ikut terkirim.
-      await setAppPlans(appId as string, Array.from(selectedIds));
-      onClose();
-    } catch (err) {
-      setSaveError(getApiErrorMessage(err, "Gagal menyimpan pemetaan paket"));
-    } finally {
-      setIsSaving(false);
+  function closePlanForm() {
+    setPlanFormOpen(false);
+    setEditingPlan(undefined);
+  }
+
+  // Errors propagate to the form (422 on its fields). A plan moved to another App leaves this list on reload.
+  async function handlePlanSubmit(values: PlanFormValues) {
+    if (editingPlan) {
+      await updatePlan(editingPlan.id, values);
+    } else {
+      await createPlan(values);
     }
+    closePlanForm();
+    await loadPlans(appId as string);
   }
 
-  function appNameFor(id: string) {
-    return apps.find((a) => a.appId === id)?.name ?? id;
+  async function handleToggleActive(planId: string) {
+    setPlansError(null);
+    try {
+      await togglePlanActive(planId);
+      await loadPlans(appId as string);
+    } catch (err) {
+      setPlansError(getApiErrorMessage(err, "Gagal mengubah status paket"));
+    }
   }
 
   return (
@@ -104,20 +118,9 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
       description={app.appId}
       size="lg"
       footer={
-        tab === "paket" ? (
-          <>
-            <Button variant="secondary" onClick={onClose} disabled={isSaving}>
-              Batal
-            </Button>
-            <Button onClick={() => void handleSave()} disabled={isSaving || isLoadingPlans}>
-              {isSaving ? "Menyimpan..." : "Simpan Pemetaan"}
-            </Button>
-          </>
-        ) : (
-          <Button variant="secondary" onClick={onClose}>
-            Tutup
-          </Button>
-        )
+        <Button variant="secondary" onClick={onClose}>
+          Tutup
+        </Button>
       }
     >
       <div className="flex flex-col gap-4">
@@ -159,41 +162,40 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
         )}
 
         {tab === "paket" && (
-          <div className="flex flex-col gap-2.5">
-            {saveError && (
-              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{saveError}</p>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[13px] text-text-secondary">
+                {app.kind === "internal"
+                  ? "Paket milik ElProof: tampil di halaman Langganan tenant WO."
+                  : "Paket milik aplikasi ini: hanya aplikasi ini yang melihat dan menjualnya lewat API."}
+              </p>
+              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => openPlanForm()}>
+                Tambah paket
+              </Button>
+            </div>
+            {plansError && (
+              <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{plansError}</p>
             )}
-            {isLoadingPlans ? (
+            {isLoadingPlans && appPlans.length === 0 ? (
               <p className="py-8 text-center text-sm text-text-secondary">Memuat...</p>
-            ) : plans.length === 0 ? (
-              <p className="py-8 text-center text-sm text-text-secondary">Belum ada paket. Tambahkan dulu di menu Paket.</p>
+            ) : appPlans.length === 0 ? (
+              <p className="py-8 text-center text-sm text-text-secondary">Aplikasi ini belum punya paket.</p>
             ) : (
-              <ul className="flex flex-col gap-2">
-                {plans.map((plan) => {
-                  const otherApps = plan.appIds.filter((id) => id !== appId);
-                  return (
-                    <li key={plan.id}>
-                      <label className="flex items-start gap-2.5 rounded-md border border-border px-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={selectedIds.has(Number(plan.id))}
-                          onChange={() => toggle(Number(plan.id))}
-                        />
-                        <span className="flex-1">
-                          <span className="block text-[13.5px] font-medium text-text-primary">
-                            {plan.name} — {formatCurrency(plan.price)} / {plan.durationMonths} bulan
-                          </span>
-                          {otherApps.length > 0 && (
-                            <span className="block text-[12px] text-text-secondary">Juga dipetakan ke: {otherApps.map(appNameFor).join(", ")}</span>
-                          )}
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="-mx-6 border-y border-border-light">
+                <PlanTable plans={appPlans} onEdit={(plan) => openPlanForm(plan)} onToggleActive={(id) => void handleToggleActive(id)} />
+              </div>
             )}
+            {/* Inside the detail dialog so the two stack: Escape closes the plan form first. */}
+            <PlanFormModal
+              key={editingPlan?.id ?? "new"}
+              open={planFormOpen}
+              onClose={closePlanForm}
+              onSubmit={handlePlanSubmit}
+              initialPlan={editingPlan}
+              apps={apps}
+              defaultAppId={app.appId}
+              lockApp={!editingPlan}
+            />
           </div>
         )}
 

@@ -34,11 +34,9 @@ export const API = {
     planToggleActive: (id: string) => `/api/v1/plans/${id}/toggle-active`,
     transactions: "/api/v1/subscription-transactions",
     transaction: (id: string) => `/api/v1/subscription-transactions/${id}`,
-    // App-plan mapping + subscription ledger (D1) — owned by `billing`
-    // even though they're consumed from Manajemen Aplikasi (payment's
-    // domain), because "paket mana boleh dilihat App mana" is a catalog
-    // visibility concern.
-    appPlans: "/api/v1/app-plans",
+    // Subscription ledger of external Apps (D1) — owned by `billing` even
+    // though it is read from Manajemen Aplikasi. A plan's App is a field of
+    // the plan itself (ADR-0040): `plans?appId=` lists one App's plans.
     appSubscriptions: "/api/v1/app-subscriptions",
   },
   // `payment` module — see knowledge/MODULE_PAYMENT.md. Internal-mode
