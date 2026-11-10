@@ -1288,8 +1288,21 @@ func TestTahap8Migration(t *testing.T) {
 			t.Fatalf("migrate %s: %v\n%s", arg, err, out)
 		}
 	}
+	// `migrate down` takes one step, so later migrations are walked back first until 000071 itself is undone.
+	schemaVersion := func() int {
+		var v int
+		if err := s.db.QueryRow(`SELECT version FROM schema_migrations`).Scan(&v); err != nil {
+			t.Fatalf("schema_migrations: %v", err)
+		}
+		return v
+	}
+	if v := schemaVersion(); v < 71 {
+		t.Fatalf("schema version %d, want at least 71", v)
+	}
+	for schemaVersion() > 70 {
+		run("down")
+	}
 	// Down: the eight new columns go, projects keeps its column in whole seconds, data survives.
-	run("down")
 	for _, tb := range tables {
 		ok, p := precision(tb)
 		if tb == "projects" {
