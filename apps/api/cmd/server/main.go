@@ -352,6 +352,8 @@ func serve(cfg config.Config) {
 	// unwrapped, same style as identityModule.RegisterRoutes(mux) above.
 	platformModule.SetAuditRecorder(auditModule.Recorder())
 	platformModule.RegisterPublicRoutes(mux)
+	// The public homepage's pricing section: active plans, no session.
+	billingModule.RegisterPublicRoutes(mux)
 	if err := platformModule.LoadSubscriptionPolicy(context.Background()); err != nil {
 		log.Printf("subscription policy: using defaults (%v)", err)
 	}
