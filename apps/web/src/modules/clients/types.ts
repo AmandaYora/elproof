@@ -16,4 +16,7 @@ export interface Client {
   /** Portal role deciding what this client sees (ADR-0026). */
   accessRoleId: number;
   accessRoleName?: string;
+  /** Only in the paginated list: the project this client belongs to. */
+  projectName?: string;
+  projectEventDate?: string;
 }

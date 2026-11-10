@@ -4,6 +4,7 @@ import { API } from "@/shared/services/api-endpoints";
 import type { Client, ClientRole } from "@/modules/clients/types";
 import type { ClientContactFormValues, ClientCreateFormValues, RepresentativeFormValues } from "@/modules/clients/schemas/client.schema";
 import type { AccessLink } from "@/shared/lib/access-link";
+import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 
 interface RawClient {
   id: number;
@@ -19,6 +20,8 @@ interface RawClient {
   loginStatus?: Client["loginStatus"];
   accessRoleId: number;
   accessRoleName?: string;
+  projectName?: string;
+  projectEventDate?: string;
 }
 
 function toClient(raw: RawClient): Client {
@@ -36,6 +39,8 @@ function toClient(raw: RawClient): Client {
     loginStatus: raw.loginStatus,
     accessRoleId: raw.accessRoleId,
     accessRoleName: raw.accessRoleName,
+    projectName: raw.projectName,
+    projectEventDate: raw.projectEventDate,
   };
 }
 
@@ -46,10 +51,12 @@ interface ClientWithLink {
 
 interface ClientState {
   clientsByProject: Record<string, Client[]>;
-  allClients: Client[];
+  clientPage: Client[];
+  clientPageMeta: PaginationMeta;
 
   fetchClients: (projectId: string) => Promise<void>;
-  fetchAllClients: () => Promise<void>;
+  /** One page of the tenant-wide list. `params` is the list's own query: page, limit, sort, q, role, loginStatus, projectId. */
+  fetchClientPage: (params: Record<string, string | number>) => Promise<void>;
   /** Creates the client and returns their invitation link (they set their own password). */
   createClient: (projectId: string, role: ClientRole, values: ClientCreateFormValues) => Promise<{ client: Client; link: AccessLink }>;
   updateContact: (projectId: string, clientId: string, values: ClientContactFormValues) => Promise<void>;
@@ -67,7 +74,8 @@ interface ClientState {
 // project id rather than holding one flat list.
 export const useClientStore = create<ClientState>((set, get) => ({
   clientsByProject: {},
-  allClients: [],
+  clientPage: [],
+  clientPageMeta: EMPTY_PAGINATION_META,
 
   fetchClients: async (projectId) => {
     const res = await httpClient.get(API.clients.byProject(projectId));
@@ -75,11 +83,14 @@ export const useClientStore = create<ClientState>((set, get) => ({
     set((state) => ({ clientsByProject: { ...state.clientsByProject, [projectId]: list } }));
   },
 
-  // Tenant-wide, unscoped from any single project — powers WO Console's
-  // global search, which needs to match client names across all projects.
-  fetchAllClients: async () => {
-    const res = await httpClient.get(API.clients.base, { params: { all: true } });
-    set({ allClients: (res.data.data as RawClient[]).map(toClient) });
+  // Tenant-wide flat list for ClientListPage: the server pages, sorts and filters it, and every row says which
+  // project it belongs to. Always sent with page/limit, which selects the paginated form of the endpoint.
+  fetchClientPage: async (params) => {
+    const res = await httpClient.get(API.clients.base, { params });
+    set({
+      clientPage: (res.data.data as RawClient[]).map(toClient),
+      clientPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
+    });
   },
 
   createClient: async (projectId, role, values) => {

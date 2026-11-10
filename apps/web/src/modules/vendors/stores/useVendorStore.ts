@@ -83,7 +83,10 @@ interface VendorState {
   vendorPageMeta: PaginationMeta;
   vendorSummaries: VendorSummary[];
   fetchVendors: () => Promise<void>;
-  fetchVendorPage: (page: number, search: string, categoryId: string, city: string) => Promise<void>;
+  /** One page of the list. `params` is the list's own query: page, limit, sort, search and filters. */
+  fetchVendorPage: (params: Record<string, string | number>) => Promise<void>;
+  /** Activates or deactivates many vendors in one call (E13). */
+  bulkVendors: (ids: string[], action: "activate" | "deactivate") => Promise<{ updated: number; unchanged: string[]; notFound: string[] }>;
   // Public-safe {id, name} list — the only vendor data Client Portal is
   // allowed to fetch directly now that commercial fields exist (see
   // vendor_handler.go's Summary handler doc comment).
@@ -128,14 +131,17 @@ export const useVendorStore = create<VendorState>((set, get) => ({
 
   // Backs VendorListPage's table — real server-side pagination + search/
   // category filtering, separate from the `vendors` full-roster cache above.
-  fetchVendorPage: async (page, search, categoryId, city) => {
-    const res = await httpClient.get(API.vendors.base, {
-      params: { page, search: search || undefined, categoryId: categoryId || undefined, city: city || undefined },
-    });
+  fetchVendorPage: async (params) => {
+    const res = await httpClient.get(API.vendors.base, { params });
     set({
       vendorPage: (res.data.data as RawVendor[]).map(toVendor),
       vendorPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
     });
+  },
+
+  bulkVendors: async (ids, action) => {
+    const res = await httpClient.post(API.vendors.bulk, { ids: ids.map(Number), action });
+    return res.data.data as { updated: number; unchanged: string[]; notFound: string[] };
   },
 
   fetchVendorSummaries: async () => {

@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Plus, Pencil, Send, Zap, UserX, UserCheck, Download, ArrowUpRight } from "lucide-react";
-import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
-import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { Pagination } from "@/shared/components/ui/Pagination";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { LoadError } from "@/shared/components/feedback/LoadError";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
+import { useListState } from "@/shared/data-table/useListState";
+import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
 import { TenantFormModal } from "@/modules/platform-admin/components/TenantFormModal";
 import { daysUntilExpiry, periodEndsAt } from "@/modules/platform-admin/data";
@@ -25,11 +23,12 @@ import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { downloadFile } from "@/shared/lib/download";
 import { toast } from "@/shared/stores/useToastStore";
-import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { API } from "@/shared/services/api-endpoints";
 
 const SOURCE_LABEL = { self_service: "Daftar mandiri", platform: "Dibuat tim ElProof" } as const;
+
+const LIST_FILTERS = { status: "", planId: "", source: "" };
 
 export default function TenantListPage() {
   const tenants = usePlatformAdminStore((s) => s.tenantPage);
@@ -37,17 +36,14 @@ export default function TenantListPage() {
   const fetchTenantPage = usePlatformAdminStore((s) => s.fetchTenantPage);
   const registerTenant = usePlatformAdminStore((s) => s.registerTenant);
   const uploadTenantLogo = usePlatformAdminStore((s) => s.uploadTenantLogo);
-  const [params] = useSearchParams();
 
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query);
-  const [statusFilter, setStatusFilter] = useState<string>(params.get("status") ?? "Semua");
-  const [planFilter, setPlanFilter] = useState("Semua");
-  const [sourceFilter, setSourceFilter] = useState("Semua");
-  const [page, setPage] = useState(1);
+  // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
+  const list = useListState({ filters: LIST_FILTERS });
+  const { density, setDensity } = useListDensity();
+  const savedViews = useSavedViews("platform-tenants");
+  const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const canManage = usePlatformCan("tenant-manage");
@@ -57,40 +53,28 @@ export default function TenantListPage() {
   // The detail page reads a workspace's internals, which Read-only may not.
   const canOpen = canExport;
 
-  const status = statusFilter === "Semua" ? "" : statusFilter;
-  const extra = { planId: planFilter === "Semua" ? "" : planFilter, source: sourceFilter === "Semua" ? "" : sourceFilter };
-
-  const refetch = useCallback(async () => {
-    setFailed(false);
-    try {
-      await fetchTenantPage(page, debouncedQuery, status, { planId: extra.planId, source: extra.source });
-      setLoaded(true);
-    } catch {
-      setFailed(true);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState("loading");
+    fetchTenantPage(list.params)
+      .then(() => !cancelled && setLoadState("ready"))
+      .catch(() => !cancelled && setLoadState("error"));
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchTenantPage, page, debouncedQuery, status, extra.planId, extra.source]);
+  }, [fetchTenantPage, list.paramsKey, attempt]);
 
-  const actions = useTenantActions(refetch);
+  const reload = useCallback(() => fetchTenantPage(list.params), [fetchTenantPage, list.params]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedQuery, statusFilter, planFilter, sourceFilter]);
-
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-
-  function planName(planId: string | null) {
-    return actions.plans.find((p) => p.id === planId)?.name ?? "-";
-  }
+  const actions = useTenantActions(reload);
 
   // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.
   async function handleRegister(values: TenantCreateFormValues) {
     actions.clearActionError();
     const result = await registerTenant(values);
     setCreateOpen(false);
-    await refetch();
+    await reload();
     actions.showOwnerLink({
       tenant: result.tenant,
       link: result.invitation,
@@ -102,7 +86,11 @@ export default function TenantListPage() {
   async function handleExport() {
     setExporting(true);
     try {
-      await downloadFile(API.console.tenantsExport, { search: debouncedQuery || undefined, status: status || undefined, planId: extra.planId || undefined, source: extra.source || undefined }, "tenant.csv");
+      await downloadFile(
+        API.console.tenantsExport,
+        { search: list.q || undefined, status: list.filters.status || undefined, planId: list.filters.planId || undefined, source: list.filters.source || undefined },
+        "tenant.csv",
+      );
       toast.success("Daftar tenant diunduh. Pengunduhan ini tercatat di audit log.");
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Daftar tenant belum bisa diunduh"));
@@ -111,14 +99,8 @@ export default function TenantListPage() {
     }
   }
 
-  function renderName(tenant: Tenant, className: string) {
-    return canOpen ? (
-      <Link to={ROUTE_PATHS.platformTenantDetail(tenant.id)} className={`${className} hover:underline`}>
-        {tenant.businessName}
-      </Link>
-    ) : (
-      <span className={className}>{tenant.businessName}</span>
-    );
+  function planName(planId: string | null) {
+    return actions.plans.find((p) => p.id === planId)?.name ?? "-";
   }
 
   function renderRowActions(tenant: Tenant) {
@@ -147,7 +129,63 @@ export default function TenantListPage() {
     );
   }
 
-  if (failed && !loaded) return <LoadError onRetry={() => void refetch()} />;
+  const columns: Column<Tenant>[] = [
+    {
+      id: "name",
+      header: "Tenant",
+      sortKey: "name",
+      primary: true,
+      cell: (t) => (
+        <>
+          {canOpen ? (
+            <Link to={ROUTE_PATHS.platformTenantDetail(t.id)} className="block font-semibold text-text-primary hover:underline">
+              {t.businessName}
+            </Link>
+          ) : (
+            <span className="block font-semibold text-text-primary">{t.businessName}</span>
+          )}
+          <span className="block text-[12.5px] font-normal text-muted-foreground">
+            {t.ownerName} · {t.email}
+          </span>
+          {t.signupSource === "self_service" && <span className="block text-[12px] font-normal text-muted-foreground">Daftar mandiri</span>}
+        </>
+      ),
+    },
+    { id: "plan", header: "Paket", sortKey: "planName", cell: (t) => planName(t.planId) },
+    {
+      id: "status",
+      header: "Status",
+      sortKey: "status",
+      cell: (t) => (
+        <div className="flex flex-col items-start gap-1">
+          <TenantStatusBadge status={t.subscriptionStatus} />
+          {t.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
+        </div>
+      ),
+    },
+    { id: "trial", header: "Masa coba berakhir", sortKey: "trialEndsAt", cell: (t) => (t.trialEndsAt ? formatDate(t.trialEndsAt) : <span className="text-muted-foreground">-</span>) },
+    {
+      id: "ends",
+      header: "Langganan berakhir",
+      cell: (t) => {
+        const end = periodEndsAt(t);
+        if (!end) return <span className="text-muted-foreground">-</span>;
+        const d = daysUntilExpiry(t);
+        return (
+          <>
+            {formatDate(end)}
+            {t.lifecycle?.isTrial && <span className="ml-1 text-[12px] text-muted-foreground">(masa coba)</span>}
+            {d !== null && (
+              <span className={`ml-1.5 text-[12px] font-semibold ${d < 0 ? "text-danger-text" : "text-muted-foreground"}`}>
+                ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
+              </span>
+            )}
+          </>
+        );
+      },
+    },
+    { id: "joined", header: "Bergabung", sortKey: "createdAt", cell: (t) => formatDate(t.joinedAt) },
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -174,159 +212,65 @@ export default function TenantListPage() {
         <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actions.actionError}</p>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <SearchInput
-          className="max-w-xs"
-          placeholder="Cari nama WO, pemilik, atau email..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <Select className="w-56" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="Semua">Semua Status</option>
+      <ListToolbar
+        search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama WO, pemilik, atau email..." }}
+        density={{ value: density, onChange: setDensity }}
+        views={{
+          items: savedViews.views,
+          current: viewQuery(list.queryString),
+          onApply: list.applyQueryString,
+          onSave: savedViews.save,
+          onRemove: savedViews.remove,
+        }}
+      >
+        <Select className="w-52" aria-label="Status" value={list.filters.status || "Semua"} onChange={(e) => list.setFilter("status", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua status</option>
           {TENANT_STATUS_FILTERS.map((status) => (
             <option key={status} value={status}>
               {TENANT_STATUS_LABEL[status]}
             </option>
           ))}
         </Select>
-        <Select className="w-56" value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}>
-          <option value="Semua">Semua Paket</option>
+        <Select className="w-52" aria-label="Paket" value={list.filters.planId || "Semua"} onChange={(e) => list.setFilter("planId", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua paket</option>
           {actions.plans.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
         </Select>
-        <Select className="w-56" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-          <option value="Semua">Semua Sumber Daftar</option>
+        <Select className="w-56" aria-label="Sumber daftar" value={list.filters.source || "Semua"} onChange={(e) => list.setFilter("source", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua sumber daftar</option>
           <option value="self_service">{SOURCE_LABEL.self_service}</option>
           <option value="platform">{SOURCE_LABEL.platform}</option>
         </Select>
-      </div>
+      </ListToolbar>
 
-      <Card>
-        {tenants.length === 0 ? (
-          <EmptyState title="Tidak ada tenant ditemukan" description="Ubah kata kunci pencarian atau filter." />
-        ) : (
-          <>
-            <CardList
-              className="sm:hidden"
-              items={tenants}
-              keyFor={(tenant) => tenant.id}
-              renderItem={(tenant) => {
-                const d = daysUntilExpiry(tenant);
-                return (
-                  <>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="flex flex-col gap-1">
-                        {renderName(tenant, "font-semibold text-text-primary")}
-                        {tenant.signupSource === "self_service" && <span className="text-[12px] font-normal text-text-secondary">Daftar mandiri</span>}
-                      </span>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        <TenantStatusBadge status={tenant.subscriptionStatus} />
-                        {tenant.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <CardListField label="Owner" value={tenant.ownerName} />
-                      <CardListField label="Username" value={`@${tenant.username}`} />
-                      <CardListField label="Telepon" value={tenant.phone} />
-                      <CardListField label="Email" value={tenant.email} />
-                      <CardListField label="Kota" value={tenant.city} />
-                      <CardListField label="Paket" value={planName(tenant.planId)} />
-                      <CardListField
-                        label="Berakhir"
-                        value={
-                          periodEndsAt(tenant) ? (
-                            <>
-                              {formatDate(periodEndsAt(tenant))}
-                              {tenant.lifecycle?.isTrial && <span className="ml-1 text-text-secondary">(masa coba)</span>}
-                              {d !== null && (
-                                <span className={`ml-1 ${d < 0 ? "text-danger-text" : "text-text-secondary"}`}>
-                                  ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            "-"
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="pt-1">
-                      {renderRowActions(tenant)}
-                    </div>
-                  </>
-                );
-              }}
-            />
-            <div className="hidden sm:block">
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Nama WO</TH>
-                  <TH>Owner</TH>
-                  <TH>Kontak</TH>
-                  <TH>Kota</TH>
-                  <TH>Paket</TH>
-                  <TH>Status Langganan</TH>
-                  <TH>Berakhir</TH>
-                  <TH>Aksi</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {tenants.map((tenant) => {
-                  const d = daysUntilExpiry(tenant);
-                  return (
-                    <TR key={tenant.id}>
-                      <TD>
-                        {renderName(tenant, "block font-semibold text-text-primary")}
-                        {tenant.signupSource === "self_service" && <span className="block text-[12px] text-text-secondary">Daftar mandiri</span>}
-                      </TD>
-                      <TD>
-                        <span className="block">{tenant.ownerName}</span>
-                        <span className="block text-[12.5px] text-text-secondary">@{tenant.username}</span>
-                      </TD>
-                      <TD>
-                        <span className="block">{tenant.phone}</span>
-                        <span className="block text-[12.5px] text-text-secondary">{tenant.email}</span>
-                      </TD>
-                      <TD>{tenant.city}</TD>
-                      <TD>{planName(tenant.planId)}</TD>
-                      <TD>
-                        <div className="flex flex-col items-start gap-1">
-                          <TenantStatusBadge status={tenant.subscriptionStatus} />
-                          {tenant.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
-                        </div>
-                      </TD>
-                      <TD>
-                        {periodEndsAt(tenant) ? (
-                          <>
-                            {formatDate(periodEndsAt(tenant))}
-                            {tenant.lifecycle?.isTrial && <span className="ml-1 text-[12px] text-text-secondary">(masa coba)</span>}
-                            {d !== null && (
-                              <span className={`ml-1.5 text-[12px] font-semibold ${d < 0 ? "text-danger-text" : "text-text-secondary"}`}>
-                                ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          "-"
-                        )}
-                      </TD>
-                      <TD>
-                        {renderRowActions(tenant)}
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-            </div>
-            <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
-          </>
-        )}
-      </Card>
+      <DataTable
+        label="Daftar tenant"
+        columns={columns}
+        rows={tenants}
+        rowId={(t) => t.id}
+        status={loadState}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={meta}
+        onPageChange={list.setPage}
+        sort={list.sort}
+        onSortChange={list.setSort}
+        filtered={list.isFiltered}
+        onResetFilters={list.reset}
+        empty={{
+          title: "Belum ada tenant",
+          description: "Tenant muncul di sini setelah WO mendaftar sendiri atau tim ElProof menambahkannya.",
+          action: canManage ? (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+              Tambah tenant
+            </Button>
+          ) : undefined,
+        }}
+        density={density}
+        actions={renderRowActions}
+      />
 
       <TenantFormModal
         key="create"

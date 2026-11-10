@@ -27,6 +27,7 @@ import type {
   IssueStatus,
   MilestoneStatus,
   Project,
+  ProjectListItem,
   ProjectMilestone,
   ProjectProgress,
   ProjectVendor,
@@ -157,6 +158,16 @@ export function toProject(raw: RawProject): Project {
     isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,
   };
+}
+
+/** A row of GET /projects (paginated): the project plus what the client still owes and the next installment due. */
+interface RawProjectListItem extends RawProject {
+  remaining: number;
+  nextDueDate: string | null;
+}
+
+function toProjectListItem(raw: RawProjectListItem): ProjectListItem {
+  return { ...toProject(raw), remaining: raw.remaining ?? 0, nextDueDate: raw.nextDueDate ?? null };
 }
 
 function projectInputBody(values: ProjectFormValues) {
@@ -599,16 +610,18 @@ interface ProjectState {
   activityMeta: PaginationMeta;
   milestoneHistory: ActivityLogEntry[];
 
-  projectPage: Project[];
+  projectPage: ProjectListItem[];
   projectPageMeta: PaginationMeta;
 
   fetchProjects: () => Promise<void>;
-  // Backs ProjectListPage's table — real server-side pagination + search/
-  // status filtering, separate from the `projects` full-roster cache above
-  // (which the dashboard, global search, and client grouping still rely on).
-  // showArchived splits active/archived into two disjoint views, never
-  // merged (see ADR-0013) — omit or pass false for the normal active view.
-  fetchProjectPage: (page: number, search: string, status: string, showArchived?: boolean) => Promise<void>;
+  // Backs ProjectListPage's table — server-side page, sort, search and filters
+  // (status, archived, picStaffId, eventFrom, eventTo), separate from the
+  // `projects` full-roster cache above. `params` is the list's own query.
+  // archived splits active/archived into two disjoint views, never merged
+  // (see ADR-0013). Each row carries the derived `remaining` and `nextDueDate`.
+  fetchProjectPage: (params: Record<string, string | number | boolean>) => Promise<void>;
+  /** The first 100 projects by name as {id, name}: a small picker for filters on other lists. Not cached in the store. */
+  fetchProjectOptions: () => Promise<{ id: string; name: string }[]>;
   /**
    * One call creates the project together with its venue and payment schedule (PLAN.md E7): all or nothing, every
    * problem reported at once. Retrying with the same Idempotency-Key returns the project the first try made.
@@ -793,12 +806,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ projects: list });
   },
 
-  fetchProjectPage: async (page, search, status, showArchived = false) => {
-    const res = await httpClient.get(API.projects.base, {
-      params: { page, search: search || undefined, status: status || undefined, archived: showArchived || undefined },
-    });
-    const list = (res.data.data as RawProject[]).map(toProject);
+  fetchProjectPage: async (params) => {
+    const res = await httpClient.get(API.projects.base, { params });
+    const list = (res.data.data as RawProjectListItem[]).map(toProjectListItem);
     set({ projectPage: list, projectPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta) });
+  },
+
+  fetchProjectOptions: async () => {
+    const res = await httpClient.get(API.projects.base, { params: { page: 1, limit: 100, sort: "name:asc" } });
+    return (res.data.data as { id: number; name: string }[]).map((p) => ({ id: String(p.id), name: p.name }));
   },
 
   createProject: async (values, extra, options) => {

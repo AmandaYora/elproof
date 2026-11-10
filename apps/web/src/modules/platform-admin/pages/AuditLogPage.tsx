@@ -1,24 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { Download, ScrollText } from "lucide-react";
-import { Card } from "@/shared/components/ui/Card";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Download } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
-import { Field, Input, Select } from "@/shared/components/ui/Input";
-import { SearchInput } from "@/shared/components/ui/SearchInput";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { Pagination } from "@/shared/components/ui/Pagination";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { LoadError } from "@/shared/components/feedback/LoadError";
+import { Input, Select } from "@/shared/components/ui/Input";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
+import { useListState } from "@/shared/data-table/useListState";
+import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { toast } from "@/shared/stores/useToastStore";
 import { formatDateTime } from "@/shared/lib/formatters";
 import { downloadFile } from "@/shared/lib/download";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { API } from "@/shared/services/api-endpoints";
-import type { AuditEntry, AuditFilter } from "@/modules/platform-admin/data/console.types";
+import type { AuditEntry } from "@/modules/platform-admin/data/console.types";
 import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
 
 const ACTOR_LABEL: Record<string, string> = { platform_admin: "Tim ElProof", staff: "Staf WO", client: "Klien" };
@@ -45,53 +42,71 @@ function TenantLink({ id }: { id: number | null }) {
   );
 }
 
+const LIST_FILTERS = { actorType: "", outcome: "", from: "", to: "", action: "", tenantId: "" };
+
+/** The exact action label: typed, then applied on Enter or when leaving the field (not on every keystroke). */
+function ActionFilter({ value, onCommit }: { value: string; onCommit: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const commit = () => {
+    if (draft.trim() !== value) onCommit(draft.trim());
+  };
+  return (
+    <Input
+      className="w-52"
+      aria-label="Aksi (nama persis)"
+      placeholder="Aksi, cth. activate-subscription"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+      }}
+    />
+  );
+}
+
 export default function AuditLogPage() {
   const entries = useConsoleStore((s) => s.auditPage);
   const meta = useConsoleStore((s) => s.auditMeta);
   const fetchAuditPage = useConsoleStore((s) => s.fetchAuditPage);
-  const [params] = useSearchParams();
-  const [q, setQ] = useState("");
-  const debouncedQ = useDebouncedValue(q, 300);
-  const [filter, setFilter] = useState<AuditFilter>({ tenantId: params.get("tenantId") ?? "" });
-  const [page, setPage] = useState(1);
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
+
+  // Search, filters, sort and page live in the URL (shareable, survives reload and Back); ?tenantId= still narrows to one tenant.
+  const list = useListState({ filters: LIST_FILTERS, searchParam: "q" });
+  const { density, setDensity } = useListDensity();
+  const savedViews = useSavedViews("platform-audit-log");
+  const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
   const [exporting, setExporting] = useState(false);
 
-  const effective: AuditFilter = { ...filter, q: debouncedQ };
-
-  const latest = useRef(0);
-  const load = useCallback(() => {
-    const mine = ++latest.current;
-    setFailed(false);
-    fetchAuditPage(page, { ...filter, q: debouncedQ })
-      .then(() => {
-        if (mine === latest.current) setLoaded(true);
-      })
-      .catch(() => {
-        if (mine === latest.current) setFailed(true);
-      });
-  }, [fetchAuditPage, page, filter, debouncedQ]);
-
   useEffect(() => {
-    load();
-  }, [load]);
-
-  // Changing a filter returns to page 1 in the same update, so one fetch
-  // follows (a separate effect resetting the page would fire a second one
-  // whose answer could land first and be overwritten by the older page).
-  function set<K extends keyof AuditFilter>(key: K, value: AuditFilter[K]) {
-    setPage(1);
-    setFilter((prev) => ({ ...prev, [key]: value }));
-  }
+    let cancelled = false;
+    setLoadState("loading");
+    fetchAuditPage(list.params)
+      .then(() => !cancelled && setLoadState("ready"))
+      .catch(() => !cancelled && setLoadState("error"));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchAuditPage, list.paramsKey, attempt]);
 
   async function handleExport() {
     setExporting(true);
     try {
+      const f = list.filters;
       await downloadFile(
         API.console.auditLogExport,
-        { ...effective, actorType: effective.actorType || undefined, outcome: effective.outcome || undefined, q: effective.q || undefined, tenantId: effective.tenantId || undefined, from: effective.from || undefined, to: effective.to || undefined, actorId: undefined },
-        "audit-log.csv"
+        {
+          q: list.q || undefined,
+          actorType: f.actorType || undefined,
+          outcome: f.outcome || undefined,
+          action: f.action || undefined,
+          tenantId: f.tenantId || undefined,
+          from: f.from || undefined,
+          to: f.to || undefined,
+        },
+        "audit-log.csv",
       );
       toast.success("Audit log diunduh. Pengunduhan ini tercatat di audit log.");
     } catch (err) {
@@ -101,7 +116,33 @@ export default function AuditLogPage() {
     }
   }
 
-  if (failed && !loaded) return <LoadError onRetry={load} />;
+  const columns: Column<AuditEntry>[] = [
+    { id: "time", header: "Waktu", sortKey: "createdAt", className: "whitespace-nowrap", cell: (e) => formatDateTime(e.occurredAt) },
+    { id: "actor", header: "Pelaku", sortKey: "actor", cell: (e) => <Actor e={e} /> },
+    {
+      id: "action",
+      header: "Aksi",
+      sortKey: "action",
+      primary: true,
+      cell: (e) => (
+        <>
+          <span className="block font-medium text-text-primary">{e.action}</span>
+          <span className="block max-w-xs truncate font-mono text-[11.5px] font-normal text-muted-foreground" title={e.path}>{e.path}</span>
+        </>
+      ),
+    },
+    {
+      id: "detail",
+      header: "Rincian",
+      cell: (e) => (
+        <div className="flex flex-col items-start gap-1">
+          <Outcome e={e} />
+          <span className="text-[12.5px]"><TenantLink id={e.tenantId} /></span>
+          <span className="font-mono text-[12px] text-muted-foreground">{e.ip}</span>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -117,110 +158,57 @@ export default function AuditLogPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <div className="sm:col-span-2">
-          <Field label="Cari aksi atau alamat">
-            <SearchInput placeholder="cth. activate-subscription" value={q} onChange={(e) => {
-                setPage(1);
-                setQ(e.target.value);
-              }} />
-          </Field>
-        </div>
-        <Field label="Pelaku">
-          <Select value={filter.actorType ?? ""} onChange={(e) => set("actorType", e.target.value)}>
-            <option value="">Semua pelaku</option>
-            <option value="platform_admin">Tim ElProof</option>
-            <option value="staff">Staf WO</option>
-            <option value="client">Klien</option>
-          </Select>
-        </Field>
-        <Field label="Hasil">
-          <Select value={filter.outcome ?? ""} onChange={(e) => set("outcome", e.target.value as AuditFilter["outcome"])}>
-            <option value="">Semua hasil</option>
-            <option value="ok">Berhasil</option>
-            <option value="failed">Gagal</option>
-          </Select>
-        </Field>
-        <Field label="Dari tanggal">
-          <Input type="date" value={filter.from ?? ""} onChange={(e) => set("from", e.target.value)} />
-        </Field>
-        <Field label="Sampai tanggal">
-          <Input type="date" value={filter.to ?? ""} onChange={(e) => set("to", e.target.value)} />
-        </Field>
-        {filter.tenantId ? (
-          <div className="flex items-end sm:col-span-2">
-            <Button variant="secondary" size="sm" onClick={() => set("tenantId", "")}>
-              Hanya Tenant {filter.tenantId}. Tampilkan semua
-            </Button>
-          </div>
+      <ListToolbar
+        search={{ value: list.q, onChange: list.setQ, placeholder: "Cari aksi atau alamat..." }}
+        density={{ value: density, onChange: setDensity }}
+        views={{
+          items: savedViews.views,
+          current: viewQuery(list.queryString),
+          onApply: list.applyQueryString,
+          onSave: savedViews.save,
+          onRemove: savedViews.remove,
+        }}
+      >
+        <Select className="w-44" aria-label="Pelaku" value={list.filters.actorType || "Semua"} onChange={(e) => list.setFilter("actorType", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua pelaku</option>
+          <option value="platform_admin">Tim ElProof</option>
+          <option value="staff">Staf WO</option>
+          <option value="client">Klien</option>
+        </Select>
+        <Select className="w-40" aria-label="Hasil" value={list.filters.outcome || "Semua"} onChange={(e) => list.setFilter("outcome", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua hasil</option>
+          <option value="ok">Berhasil</option>
+          <option value="failed">Gagal</option>
+        </Select>
+        <ActionFilter value={list.filters.action} onCommit={(v) => list.setFilter("action", v)} />
+        <Input type="date" className="w-40" aria-label="Dari tanggal" value={list.filters.from} max={list.filters.to || undefined} onChange={(e) => list.setFilter("from", e.target.value)} />
+        <Input type="date" className="w-40" aria-label="Sampai tanggal" value={list.filters.to} min={list.filters.from || undefined} onChange={(e) => list.setFilter("to", e.target.value)} />
+        {list.filters.tenantId ? (
+          <Button variant="secondary" size="sm" onClick={() => list.setFilter("tenantId", "")}>
+            Hanya Tenant {list.filters.tenantId}. Tampilkan semua
+          </Button>
         ) : null}
-      </div>
+      </ListToolbar>
 
-      {failed && loaded && (
-        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-          Audit log belum bisa dimuat dengan filter ini. Data di bawah mungkin tidak sesuai filter; coba ubah filter lagi.
-        </p>
-      )}
-
-      <Card>
-        {!loaded ? (
-          <div className="py-12 text-center text-sm text-text-secondary">Memuat audit log...</div>
-        ) : entries.length === 0 ? (
-          <EmptyState icon={<ScrollText className="h-8 w-8" />} title="Tidak ada catatan" description="Ubah filter atau rentang tanggal untuk melihat catatan lain." />
-        ) : (
-          <>
-            <CardList
-              className="sm:hidden"
-              items={entries}
-              keyFor={(e) => String(e.id)}
-              renderItem={(e) => (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-semibold text-text-primary">{e.action}</span>
-                    <Outcome e={e} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <CardListField label="Waktu" value={formatDateTime(e.occurredAt)} />
-                    <CardListField label="Pelaku" value={<Actor e={e} />} />
-                    <CardListField label="Tenant" value={<TenantLink id={e.tenantId} />} />
-                    <CardListField label="IP" value={e.ip} />
-                  </div>
-                </>
-              )}
-            />
-            <div className="hidden sm:block">
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Waktu</TH>
-                    <TH>Pelaku</TH>
-                    <TH>Tenant</TH>
-                    <TH>Aksi</TH>
-                    <TH>Hasil</TH>
-                    <TH>IP</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {entries.map((e) => (
-                    <TR key={e.id}>
-                      <TD className="whitespace-nowrap">{formatDateTime(e.occurredAt)}</TD>
-                      <TD><Actor e={e} /></TD>
-                      <TD><TenantLink id={e.tenantId} /></TD>
-                      <TD>
-                        <span className="block font-medium text-text-primary">{e.action}</span>
-                        <span className="block max-w-xs truncate font-mono text-[11.5px] text-text-secondary" title={e.path}>{e.path}</span>
-                      </TD>
-                      <TD><Outcome e={e} /></TD>
-                      <TD className="font-mono text-[12.5px]">{e.ip}</TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            </div>
-            <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
-          </>
-        )}
-      </Card>
+      <DataTable
+        label="Daftar audit log"
+        columns={columns}
+        rows={entries}
+        rowId={(e) => String(e.id)}
+        status={loadState}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={meta}
+        onPageChange={list.setPage}
+        sort={list.sort}
+        onSortChange={list.setSort}
+        filtered={list.isFiltered}
+        onResetFilters={list.reset}
+        empty={{
+          title: "Belum ada catatan",
+          description: "Setiap perubahan oleh tim ElProof atau staf WO akan tercatat di sini: siapa, kapan, dan hasilnya.",
+        }}
+        density={density}
+      />
     </div>
   );
 }

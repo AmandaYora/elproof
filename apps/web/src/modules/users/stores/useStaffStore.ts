@@ -13,6 +13,7 @@ interface RawStaffMember {
   title: string;
   initials: string;
   role: string;
+  roleName?: string;
   roleId: number;
   username: string;
   email: string;
@@ -51,8 +52,8 @@ interface StaffState {
   staffPageMeta: PaginationMeta;
   staffSummaries: StaffSummary[];
   fetchStaff: () => Promise<void>;
-  /** role: a role id ("" = every role). */
-  fetchStaffPage: (page: number, search: string, role: string) => Promise<void>;
+  /** One page of the list. `params` is the list's own query: page, limit, sort, search, roleId and isActive. */
+  fetchStaffPage: (params: Record<string, string | number>) => Promise<void>;
   // Public-safe {id, name, title} list (any staff role) — what every PIC
   // picker/label across the `projects` module should use; `staff` above is
   // Owner-only now (Pengguna management, see staff_handler.go's
@@ -89,11 +90,11 @@ export const useStaffStore = create<StaffState>((set, get) => ({
     set({ staffSummaries: (res.data.data as RawStaffSummary[]).map(toStaffSummary) });
   },
 
-  // Backs UserListPage's table — real server-side pagination + search/role
-  // filtering, separate from the `staff` full-roster cache above (which PIC
+  // Backs UserListPage's table — real server-side pagination, sort, search
+  // and filters, separate from the `staff` full-roster cache above (which PIC
   // pickers elsewhere still rely on).
-  fetchStaffPage: async (page, search, role) => {
-    const res = await httpClient.get(API.staff.base, { params: { page, search: search || undefined, role: role || undefined } });
+  fetchStaffPage: async (params) => {
+    const res = await httpClient.get(API.staff.base, { params });
     set({
       staffPage: (res.data.data as RawStaffMember[]).map(toStaffMember),
       staffPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),

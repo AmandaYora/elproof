@@ -60,7 +60,10 @@ interface VenueState {
   venuePage: Venue[];
   venuePageMeta: PaginationMeta;
   fetchVenues: () => Promise<void>;
-  fetchVenuePage: (page: number, search: string, city: string) => Promise<void>;
+  /** One page of the list. `params` is the list's own query: page, limit, sort, search and filters. */
+  fetchVenuePage: (params: Record<string, string | number>) => Promise<void>;
+  /** Activates or deactivates many venues in one call. */
+  bulkVenues: (ids: string[], action: "activate" | "deactivate") => Promise<{ updated: number; unchanged: string[]; notFound: string[] }>;
   // Full staff-only record (rental price, charge, PIC contact) — used by
   // Project Detail's Venue tab once it knows which venue is attached, never
   // by Client Portal (see ADR-0016).
@@ -92,14 +95,19 @@ export const useVenueStore = create<VenueState>((set, get) => ({
     set({ venues: (res.data.data as RawVenue[]).map(toVenue) });
   },
 
-  // Backs VenueListPage's table — real server-side pagination + search,
-  // separate from the `venues` full-roster cache above.
-  fetchVenuePage: async (page, search, city) => {
-    const res = await httpClient.get(API.venues.base, { params: { page, search: search || undefined, city: city || undefined } });
+  // Backs VenueListPage's table — real server-side pagination, sort, search
+  // and filters, separate from the `venues` full-roster cache above.
+  fetchVenuePage: async (params) => {
+    const res = await httpClient.get(API.venues.base, { params });
     set({
       venuePage: (res.data.data as RawVenue[]).map(toVenue),
       venuePageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
     });
+  },
+
+  bulkVenues: async (ids, action) => {
+    const res = await httpClient.post(API.venues.bulk, { ids: ids.map(Number), action });
+    return res.data.data as { updated: number; unchanged: string[]; notFound: string[] };
   },
 
   fetchVenue: async (id) => {

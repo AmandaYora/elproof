@@ -142,6 +142,7 @@ export const API = {
     categories: "/api/v1/vendor-categories",
     category: (id: string) => `/api/v1/vendor-categories/${id}`,
     categoryToggleActive: (id: string) => `/api/v1/vendor-categories/${id}/toggle-active`,
+    bulk: "/api/v1/vendors/bulk",
     base: "/api/v1/vendors",
     item: (id: string) => `/api/v1/vendors/${id}`,
     toggleActive: (id: string) => `/api/v1/vendors/${id}/toggle-active`,
@@ -165,6 +166,7 @@ export const API = {
   // attachment slot per venue (no more photo gallery), plus a bulk Excel
   // import/template flow (ADR-0016's Revisi).
   venues: {
+    bulk: "/api/v1/venues/bulk",
     base: "/api/v1/venues",
     item: (id: string) => `/api/v1/venues/${id}`,
     toggleActive: (id: string) => `/api/v1/venues/${id}/toggle-active`,

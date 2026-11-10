@@ -146,6 +146,14 @@ export interface Project {
   progress?: ProjectProgress;
 }
 
+/** A row of the project list: the project plus two columns the server derives from its payment schedule. */
+export interface ProjectListItem extends Project {
+  /** What the client still owes on the contract (never negative). */
+  remaining: number;
+  /** Due date (YYYY-MM-DD) of the earliest installment not fully paid, or null. */
+  nextDueDate: string | null;
+}
+
 /** A file that backs something shown on screen (E4): enough to list it and open it. */
 export interface EvidenceRef {
   id: string;

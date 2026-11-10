@@ -1,17 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
-import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { SearchInput } from "@/shared/components/ui/SearchInput";
+import { Select } from "@/shared/components/ui/Input";
 import { Combobox } from "@/shared/components/ui/Combobox";
 import { CITIES } from "@/shared/constants/cities";
 import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
 import { Modal } from "@/shared/components/ui/Modal";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { Pagination } from "@/shared/components/ui/Pagination";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
+import { useListState } from "@/shared/data-table/useListState";
+import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
+import { toast } from "@/shared/stores/useToastStore";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { VenueFormModal } from "@/modules/venues/components/VenueFormModal";
 import { VenueStatusBadge } from "@/modules/venues/components/VenueStatusBadge";
@@ -20,7 +21,6 @@ import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
 import type { Venue } from "@/modules/venues/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
-import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
@@ -28,6 +28,7 @@ export default function VenueListPage() {
   const writeLocked = useWriteLocked();
   const venues = useVenueStore((s) => s.venuePage);
   const meta = useVenueStore((s) => s.venuePageMeta);
+  const bulkVenues = useVenueStore((s) => s.bulkVenues);
   const fetchVenuePage = useVenueStore((s) => s.fetchVenuePage);
   const createVenue = useVenueStore((s) => s.createVenue);
   const updateVenue = useVenueStore((s) => s.updateVenue);
@@ -40,10 +41,13 @@ export default function VenueListPage() {
   // Destructive/management actions follow the role's permissions (ADR-0026).
   const isOwner = useCan("vendor.delete");
 
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query);
-  const [cityFilter, setCityFilter] = useState<string>("Semua");
-  const [page, setPage] = useState(1);
+  // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
+  const list = useListState({ filters: { city: "", isActive: "" } });
+  const { density, setDensity } = useListDensity();
+  const savedViews = useSavedViews("venues");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVenue, setEditingVenue] = useState<Venue | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -55,12 +59,23 @@ export default function VenueListPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    setPage(1);
-  }, [debouncedQuery, cityFilter]);
+    let cancelled = false;
+    setStatus("loading");
+    fetchVenuePage(list.params)
+      .then(() => !cancelled && setStatus("ready"))
+      .catch(() => !cancelled && setStatus("error"));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchVenuePage, list.paramsKey, attempt]);
 
+  // What was selected on another page or before a filter changed is no longer in view: start clean.
   useEffect(() => {
-    void fetchVenuePage(page, debouncedQuery, cityFilter === "Semua" ? "" : cityFilter);
-  }, [fetchVenuePage, page, debouncedQuery, cityFilter]);
+    setSelected(new Set());
+  }, [list.paramsKey]);
+
+  const reload = useCallback(() => fetchVenuePage(list.params), [fetchVenuePage, list.params]);
 
   function openCreateModal() {
     setEditingVenue(undefined);
@@ -86,14 +101,14 @@ export default function VenueListPage() {
       await createVenue(values as VenueCreateFormValues);
     }
     closeModal();
-    await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
+    await reload();
   }
 
   async function handleToggleActive(venue: Venue) {
     setActionError(null);
     try {
       await toggleVenueActive(venue.id);
-      await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
+      await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status venue"));
     }
@@ -101,7 +116,7 @@ export default function VenueListPage() {
 
   async function handleImportVenues(file: File) {
     const result = await importVenues(file);
-    await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
+    await reload();
     return result;
   }
 
@@ -130,7 +145,7 @@ export default function VenueListPage() {
     try {
       await deleteVenue(deleteTarget.id);
       closeDeleteConfirm();
-      await fetchVenuePage(page, query, cityFilter === "Semua" ? "" : cityFilter);
+      await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menghapus venue"));
       closeDeleteConfirm();
@@ -139,11 +154,48 @@ export default function VenueListPage() {
     }
   }
 
+  async function handleBulk(ids: string[], action: "activate" | "deactivate") {
+    setActionError(null);
+    try {
+      const result = await bulkVenues(ids, action);
+      setSelected(new Set());
+      await reload();
+      const verb = action === "activate" ? "diaktifkan" : "dinonaktifkan";
+      toast.success(result.updated > 0 ? `${result.updated} venue ${verb}` : `Semua venue terpilih sudah ${action === "activate" ? "aktif" : "nonaktif"}`);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Venue terpilih belum bisa diubah. Coba lagi."));
+    }
+  }
+
+  const columns: Column<Venue>[] = [
+    { id: "name", header: "Venue", sortKey: "name", primary: true, cell: (v) => <span className="font-semibold">{v.name}</span> },
+    {
+      id: "pic",
+      header: "PIC",
+      cell: (v) => (
+        <>
+          <span className="block">{v.picName}</span>
+          <span className="block text-[12.5px] text-muted-foreground">{v.phonePic}</span>
+        </>
+      ),
+    },
+    { id: "city", header: "Kota", sortKey: "city", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
+    { id: "capacity", header: "Kapasitas", sortKey: "capacity", align: "right", cell: (v) => (v.capacity ? `${v.capacity} orang` : "-") },
+    {
+      id: "rentalPrice",
+      header: "Harga sewa",
+      sortKey: "rentalPrice",
+      align: "right",
+      cell: (v) => (v.rentalPrice ? formatCurrency(v.rentalPrice) : <span className="text-muted-foreground">Belum diisi</span>),
+    },
+    { id: "status", header: "Status", sortKey: "isActive", cell: (v) => <VenueStatusBadge isActive={v.isActive} /> },
+  ];
+
   async function handleExportVenues() {
     setActionError(null);
     setIsExporting(true);
     try {
-      const blob = await exportVenues(query, cityFilter === "Semua" ? "" : cityFilter);
+      const blob = await exportVenues(list.q, list.filters.city);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -185,103 +237,71 @@ export default function VenueListPage() {
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <SearchInput className="max-w-xs" placeholder="Cari nama venue atau PIC..." value={query} onChange={(e) => setQuery(e.target.value)} />
-        <Combobox className="w-52" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} placeholder="Cari kota...">
-          <option value="Semua">Semua Kota</option>
+      <ListToolbar
+        search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama venue atau PIC..." }}
+        density={{ value: density, onChange: setDensity }}
+        views={{
+          items: savedViews.views,
+          current: viewQuery(list.queryString),
+          onApply: list.applyQueryString,
+          onSave: savedViews.save,
+          onRemove: savedViews.remove,
+        }}
+      >
+        <Combobox className="w-52" value={list.filters.city || "Semua"} onChange={(e) => list.setFilter("city", e.target.value === "Semua" ? "" : e.target.value)} placeholder="Cari kota...">
+          <option value="Semua">Semua kota</option>
           {CITIES.map((city) => (
             <option key={city} value={city}>
               {city}
             </option>
           ))}
         </Combobox>
-      </div>
+        <Select className="w-40" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua status</option>
+          <option value="true">Aktif</option>
+          <option value="false">Nonaktif</option>
+        </Select>
+      </ListToolbar>
 
-      <Card>
-        {venues.length === 0 ? (
-          <EmptyState title="Tidak ada venue ditemukan" description="Ubah kata kunci pencarian, atau tambah venue baru." />
-        ) : (
+      <DataTable
+        label="Daftar venue"
+        columns={columns}
+        rows={venues}
+        rowId={(v) => v.id}
+        rowLabel={(v) => v.name}
+        status={status}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={meta}
+        onPageChange={list.setPage}
+        sort={list.sort}
+        onSortChange={list.setSort}
+        filtered={list.isFiltered}
+        onResetFilters={list.reset}
+        empty={{
+          title: "Belum ada venue",
+          description: "Catat gedung dan lokasi acara yang sering dipakai agar bisa dipilih saat membuat proyek.",
+          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah venue</Button> : undefined,
+        }}
+        density={density}
+        selection={writeLocked ? undefined : { selected, onChange: setSelected }}
+        bulkActions={(ids) => (
           <>
-            <CardList
-              className="sm:hidden"
-              items={venues}
-              keyFor={(venue) => venue.id}
-              renderItem={(venue) => (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-semibold text-text-primary">{venue.name}</span>
-                    <VenueStatusBadge isActive={venue.isActive} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <CardListField label="PIC" value={venue.picName} />
-                    <CardListField label="No Tlp PIC" value={venue.phonePic} />
-                    <CardListField label="Kota" value={venue.city ?? "-"} />
-                    <CardListField label="Harga Sewa" value={venue.rentalPrice ? formatCurrency(venue.rentalPrice) : "Belum diisi"} />
-                    <CardListField label="Kapasitas" value={venue.capacity ? `${venue.capacity} orang` : "-"} />
-                  </div>
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <IconActionButton icon={Pencil} label="Ubah Venue" tone="neutral" onClick={() => openEditModal(venue)} />
-                    {venue.isActive ? (
-                      <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(venue)} />
-                    ) : (
-                      <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
-                    )}
-                    {isOwner && (
-                      <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />
-                    )}
-                  </div>
-                </>
-              )}
-            />
-            <div className="hidden sm:block">
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Nama Venue</TH>
-                    <TH>PIC</TH>
-                    <TH>Kota</TH>
-                    <TH>Harga Sewa</TH>
-                    <TH>Kapasitas</TH>
-                    <TH>Status</TH>
-                    <TH>Aksi</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {venues.map((venue) => (
-                    <TR key={venue.id}>
-                      <TD className="font-semibold text-text-primary">{venue.name}</TD>
-                      <TD>
-                        <span className="block">{venue.picName}</span>
-                        <span className="block text-[12.5px] text-text-secondary">{venue.phonePic}</span>
-                      </TD>
-                      <TD>{venue.city ?? <span className="text-text-secondary">-</span>}</TD>
-                      <TD>{venue.rentalPrice ? formatCurrency(venue.rentalPrice) : <span className="text-text-secondary">Belum diisi</span>}</TD>
-                      <TD>{venue.capacity ? `${venue.capacity} orang` : "-"}</TD>
-                      <TD>
-                        <VenueStatusBadge isActive={venue.isActive} />
-                      </TD>
-                      <TD>
-                        <div className="flex items-center gap-1.5">
-                          <IconActionButton icon={Pencil} label="Ubah Venue" tone="neutral" onClick={() => openEditModal(venue)} />
-                          {venue.isActive ? (
-                            <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(venue)} />
-                          ) : (
-                            <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
-                          )}
-                          {isOwner && (
-                            <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />
-                          )}
-                        </div>
-                      </TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            </div>
-            <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
+            <Button variant="secondary" size="sm" onClick={() => void handleBulk(ids, "activate")}>Aktifkan</Button>
+            <Button variant="secondary" size="sm" onClick={() => void handleBulk(ids, "deactivate")}>Nonaktifkan</Button>
           </>
         )}
-      </Card>
+        actions={(venue) => (
+          <div className="flex items-center gap-1.5">
+            <IconActionButton icon={Pencil} label="Ubah Venue" tone="neutral" onClick={() => openEditModal(venue)} />
+            {venue.isActive ? (
+              <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(venue)} />
+            ) : (
+              <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
+            )}
+            {isOwner && <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />}
+          </div>
+        )}
+      />
 
       <VenueFormModal
         key={editingVenue?.id ?? "new"}

@@ -11,6 +11,8 @@ export interface StaffMember {
   title: string;
   initials: string;
   role: string;
+  /** Same as `role`; the name the list's sort field `roleName` refers to. */
+  roleName?: string;
   roleId: number;
   username: string;
   email: string;

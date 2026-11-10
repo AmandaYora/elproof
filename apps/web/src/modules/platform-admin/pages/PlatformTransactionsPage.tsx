@@ -1,56 +1,72 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Card } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
-import { Select } from "@/shared/components/ui/Input";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { Pagination } from "@/shared/components/ui/Pagination";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { Input, Select } from "@/shared/components/ui/Input";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
+import { useListState } from "@/shared/data-table/useListState";
+import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
-import type { SubscriptionTransactionStatus } from "@/modules/platform-admin/data";
+import type { SubscriptionTransaction, SubscriptionTransactionStatus } from "@/modules/platform-admin/data";
 import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LABEL } from "@/modules/platform-admin/lib/status";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
-import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 const STATUS_FILTERS: SubscriptionTransactionStatus[] = ["unpaid", "pending", "paid", "expired", "granted", "cancelled"];
+const LIST_FILTERS = { status: "", from: "", to: "" };
 
 export default function PlatformTransactionsPage() {
-  const fetchTenantNames = useConsoleStore((s) => s.fetchTenantNames);
-  const [tenantNames, setTenantNames] = useState<Record<string, string>>({});
   const transactions = usePlatformAdminStore((s) => s.transactionPage);
   const meta = usePlatformAdminStore((s) => s.transactionPageMeta);
-  const fetchTransactionPage = usePlatformAdminStore((s) => s.fetchTransactionPage);
+  const fetchTransactionList = usePlatformAdminStore((s) => s.fetchTransactionList);
   const canOpen = usePlatformCan("internal-read");
-  const [statusFilter, setStatusFilter] = useState<string>("Semua");
-  const [page, setPage] = useState(1);
+
+  // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
+  const list = useListState({ filters: LIST_FILTERS });
+  const { density, setDensity } = useListDensity();
+  const savedViews = useSavedViews("platform-transactions");
+  const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    setPage(1);
-  }, [statusFilter]);
+    let cancelled = false;
+    setLoadState("loading");
+    fetchTransactionList(list.params)
+      .then(() => !cancelled && setLoadState("ready"))
+      .catch(() => !cancelled && setLoadState("error"));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchTransactionList, list.paramsKey, attempt]);
 
-  useEffect(() => {
-    void fetchTransactionPage(page, statusFilter === "Semua" ? "" : statusFilter);
-  }, [fetchTransactionPage, page, statusFilter]);
-
-  // Only this page's tenants are looked up (names, not the whole roster).
-  useEffect(() => {
-    fetchTenantNames(transactions.map((t) => t.tenantId))
-      .then(setTenantNames)
-      .catch(() => undefined);
-  }, [fetchTenantNames, transactions]);
-
-  function tenantLink(tenantId: string) {
-    const name = tenantNames[tenantId] ?? `Tenant ${tenantId}`;
-    if (!canOpen) return name;
+  function tenantCell(tx: SubscriptionTransaction) {
+    const name = tx.tenantName || `Tenant ${tx.tenantId}`;
+    if (!canOpen) return <span className="font-semibold text-text-primary">{name}</span>;
     return (
-      <Link to={ROUTE_PATHS.platformTenantDetail(tenantId, "tagihan")} className="hover:underline">
+      <Link to={ROUTE_PATHS.platformTenantDetail(tx.tenantId, "tagihan")} className="font-semibold text-text-primary hover:underline">
         {name}
       </Link>
     );
   }
+
+  const columns: Column<SubscriptionTransaction>[] = [
+    { id: "createdAt", header: "Tanggal", sortKey: "createdAt", cell: (tx) => formatDate(tx.createdAt) },
+    { id: "tenant", header: "Tenant", sortKey: "tenantName", primary: true, cell: tenantCell },
+    { id: "type", header: "Jenis", cell: (tx) => TRANSACTION_TYPE_LABEL[tx.type] },
+    { id: "amount", header: "Nominal", sortKey: "amount", align: "right", cell: (tx) => formatCurrency(tx.amount) },
+    { id: "method", header: "Metode", cell: (tx) => tx.paymentMethod },
+    {
+      id: "status",
+      header: "Status",
+      sortKey: "status",
+      cell: (tx) => <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>,
+    },
+    { id: "reference", header: "Referensi", cell: (tx) => <span className="font-mono text-[12.5px]">{tx.paymentReference}</span> },
+    { id: "paidAt", header: "Dibayar", cell: (tx) => (tx.paidAt ? formatDate(tx.paidAt) : <span className="text-muted-foreground">-</span>) },
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -61,79 +77,48 @@ export default function PlatformTransactionsPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Select className="w-56" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="Semua">Semua Status</option>
+      <ListToolbar
+        search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama tenant atau referensi..." }}
+        density={{ value: density, onChange: setDensity }}
+        views={{
+          items: savedViews.views,
+          current: viewQuery(list.queryString),
+          onApply: list.applyQueryString,
+          onSave: savedViews.save,
+          onRemove: savedViews.remove,
+        }}
+      >
+        <Select className="w-56" aria-label="Status" value={list.filters.status || "Semua"} onChange={(e) => list.setFilter("status", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua status</option>
           {STATUS_FILTERS.map((status) => (
             <option key={status} value={status}>
               {TRANSACTION_STATUS_LABEL[status]}
             </option>
           ))}
         </Select>
-      </div>
+        <Input type="date" className="w-40" aria-label="Dari tanggal" value={list.filters.from} max={list.filters.to || undefined} onChange={(e) => list.setFilter("from", e.target.value)} />
+        <Input type="date" className="w-40" aria-label="Sampai tanggal" value={list.filters.to} min={list.filters.from || undefined} onChange={(e) => list.setFilter("to", e.target.value)} />
+      </ListToolbar>
 
-      <Card>
-        {transactions.length === 0 ? (
-          <EmptyState title="Tidak ada tagihan ditemukan" description="Ubah filter status untuk melihat tagihan lainnya." />
-        ) : (
-          <>
-            <CardList
-              className="sm:hidden"
-              items={transactions}
-              keyFor={(tx) => tx.id}
-              renderItem={(tx) => (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-semibold text-text-primary">{tenantLink(tx.tenantId)}</span>
-                    <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <CardListField label="Tipe" value={TRANSACTION_TYPE_LABEL[tx.type]} />
-                    <CardListField label="Metode" value={tx.paymentMethod} />
-                    <CardListField label="No. Referensi" value={<span className="font-mono">{tx.paymentReference}</span>} />
-                    <CardListField label="Nominal" value={formatCurrency(tx.amount)} />
-                    <CardListField label="Dibuat" value={formatDate(tx.createdAt)} />
-                    <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
-                  </div>
-                </>
-              )}
-            />
-            <div className="hidden sm:block">
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Tenant</TH>
-                  <TH>Tipe</TH>
-                  <TH>Metode</TH>
-                  <TH>No. Referensi</TH>
-                  <TH>Nominal</TH>
-                  <TH>Dibuat</TH>
-                  <TH>Status</TH>
-                  <TH>Dibayar</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {transactions.map((tx) => (
-                  <TR key={tx.id}>
-                    <TD className="font-semibold text-text-primary">{tenantLink(tx.tenantId)}</TD>
-                    <TD>{TRANSACTION_TYPE_LABEL[tx.type]}</TD>
-                    <TD>{tx.paymentMethod}</TD>
-                    <TD className="font-mono text-[12.5px]">{tx.paymentReference}</TD>
-                    <TD className="tabular-nums">{formatCurrency(tx.amount)}</TD>
-                    <TD>{formatDate(tx.createdAt)}</TD>
-                    <TD>
-                      <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
-                    </TD>
-                    <TD>{tx.paidAt ? formatDate(tx.paidAt) : "-"}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-            </div>
-            <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
-          </>
-        )}
-      </Card>
+      <DataTable
+        label="Daftar tagihan"
+        columns={columns}
+        rows={transactions}
+        rowId={(tx) => tx.id}
+        status={loadState}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={meta}
+        onPageChange={list.setPage}
+        sort={list.sort}
+        onSortChange={list.setSort}
+        filtered={list.isFiltered}
+        onResetFilters={list.reset}
+        empty={{
+          title: "Belum ada tagihan",
+          description: "Tagihan muncul di sini saat tenant membayar langganan atau tim ElProof mengaktifkannya.",
+        }}
+        density={density}
+      />
     </div>
   );
 }

@@ -50,9 +50,11 @@ interface ComboboxProps {
   className?: string;
   disabled?: boolean;
   placeholder?: string;
+  /** What the control is for ("Kategori"); read out together with the selected value so the name still contains the visible text. */
+  "aria-label"?: string;
 }
 
-export function Combobox({ value, onChange, children, className, disabled, placeholder = "Pilih..." }: ComboboxProps) {
+export function Combobox({ value, onChange, children, className, disabled, placeholder = "Pilih...", "aria-label": ariaLabel }: ComboboxProps) {
   const options = useMemo(() => optionsFromChildren(children), [children]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -151,6 +153,9 @@ export function Combobox({ value, onChange, children, className, disabled, place
         ref={triggerRef}
         type="button"
         disabled={disabled}
+        aria-label={ariaLabel ? `${ariaLabel}: ${selected ? selected.label : placeholder}` : undefined}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => (open ? closeDropdown() : openDropdown())}
         onKeyDown={handleTriggerKeyDown}
         className={cn(

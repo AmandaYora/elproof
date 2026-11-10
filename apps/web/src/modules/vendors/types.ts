@@ -7,6 +7,8 @@ export interface Vendor {
   id: string;
   name: string;
   categoryId: string;
+  /** Resolved by the server so the list needs no category list; "" when unknown. */
+  categoryName?: string;
   picName: string;
   phone: string;
   email: string | null;

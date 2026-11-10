@@ -8,7 +8,6 @@ import type { DashboardPeriod, TrendPoint } from "@/modules/platform-admin/lib/t
 import type {
   Announcement,
   AuditEntry,
-  AuditFilter,
   DataRequest,
   DataRequestKind,
   ImpersonationResult,
@@ -55,7 +54,8 @@ interface ConsoleState {
   savePolicy: (policy: SubscriptionPolicy) => Promise<void>;
   fetchDataRequests: (openOnly: boolean) => Promise<void>;
   completeDataRequest: (id: number, status: "done" | "rejected", note: string) => Promise<void>;
-  fetchAuditPage: (page: number, filter: AuditFilter) => Promise<void>;
+  /** `params` is the list's own query: page, limit, sort, q and filters (useListState). */
+  fetchAuditPage: (params: Record<string, string | number>) => Promise<void>;
 
   // Per-tenant calls return their data instead of caching it: the 360° page
   // owns that state and always reads fresh (ADR-0009, no client cache).
@@ -68,18 +68,6 @@ interface ConsoleState {
   startSupportSession: (tenantId: string, reason: string) => Promise<ImpersonationResult>;
   fetchTenantTransactions: (tenantId: string) => Promise<SubscriptionTransaction[]>;
   fetchTenantAudit: (tenantId: string) => Promise<AuditEntry[]>;
-}
-
-function auditParams(filter: AuditFilter): Record<string, string | undefined> {
-  return {
-    actorType: filter.actorType || undefined,
-    actorId: filter.actorId || undefined,
-    tenantId: filter.tenantId || undefined,
-    outcome: filter.outcome || undefined,
-    q: filter.q || undefined,
-    from: filter.from || undefined,
-    to: filter.to || undefined,
-  };
 }
 
 export const useConsoleStore = create<ConsoleState>((set, get) => ({
@@ -143,8 +131,8 @@ export const useConsoleStore = create<ConsoleState>((set, get) => ({
     await httpClient.post(API.console.dataRequestComplete(id), { status, note });
   },
 
-  fetchAuditPage: async (page, filter) => {
-    const res = await httpClient.get(API.console.auditLog, { params: { page, ...auditParams(filter) } });
+  fetchAuditPage: async (params) => {
+    const res = await httpClient.get(API.console.auditLog, { params });
     set({
       auditPage: res.data.data as AuditEntry[],
       auditMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),

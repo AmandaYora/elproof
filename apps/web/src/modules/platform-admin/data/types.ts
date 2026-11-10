@@ -59,6 +59,8 @@ export interface SubscriptionTransaction {
   createdAt: string;
   status: SubscriptionTransactionStatus;
   paidAt: string | null;
+  /** The workspace's name (the API labels each row; empty when it cannot be resolved). */
+  tenantName?: string;
 }
 
 export type PlatformAdminRole = "Super Admin" | "Billing" | "Support" | "Read-only";

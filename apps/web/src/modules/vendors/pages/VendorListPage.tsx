@@ -1,20 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Link } from "react-router-dom";
 import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
-import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Select } from "@/shared/components/ui/Input";
 import { Combobox } from "@/shared/components/ui/Combobox";
 import { CITIES } from "@/shared/constants/cities";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
 import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { Pagination } from "@/shared/components/ui/Pagination";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
+import { useListState } from "@/shared/data-table/useListState";
+import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
+import { toast } from "@/shared/stores/useToastStore";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { VendorFormModal } from "@/modules/vendors/components/VendorFormModal";
 import { VendorStatusBadge } from "@/modules/vendors/components/VendorStatusBadge";
@@ -24,14 +24,14 @@ import type { Vendor, VendorProjectHistoryItem } from "@/modules/vendors/types";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { formatDate } from "@/shared/lib/formatters";
-import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VendorListPage() {
   // Read-only workspace (subscription): no new records until it is renewed.
   const writeLocked = useWriteLocked();
   const vendors = useVendorStore((s) => s.vendorPage);
+  const bulkVendors = useVendorStore((s) => s.bulkVendors);
   const meta = useVendorStore((s) => s.vendorPageMeta);
   const fetchVendorPage = useVendorStore((s) => s.fetchVendorPage);
   const createVendor = useVendorStore((s) => s.createVendor);
@@ -48,11 +48,13 @@ export default function VendorListPage() {
   const categories = useVendorCategoryStore((s) => s.categories);
   const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
 
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query);
-  const [categoryFilter, setCategoryFilter] = useState<string>("Semua");
-  const [cityFilter, setCityFilter] = useState<string>("Semua");
-  const [page, setPage] = useState(1);
+  // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
+  const list = useListState({ filters: { categoryId: "", city: "", isActive: "" } });
+  const { density, setDensity } = useListDensity();
+  const savedViews = useSavedViews("vendors");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | undefined>(undefined);
   const [historyVendor, setHistoryVendor] = useState<Vendor | null>(null);
@@ -71,17 +73,23 @@ export default function VendorListPage() {
   }, [fetchCategories]);
 
   useEffect(() => {
-    setPage(1);
-  }, [debouncedQuery, categoryFilter, cityFilter]);
+    let cancelled = false;
+    setStatus("loading");
+    fetchVendorPage(list.params)
+      .then(() => !cancelled && setStatus("ready"))
+      .catch(() => !cancelled && setStatus("error"));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchVendorPage, list.paramsKey, attempt]);
 
+  // What was selected on another page or before a filter changed is no longer in view: start clean.
   useEffect(() => {
-    void fetchVendorPage(
-      page,
-      debouncedQuery,
-      categoryFilter === "Semua" ? "" : categoryFilter,
-      cityFilter === "Semua" ? "" : cityFilter
-    );
-  }, [fetchVendorPage, page, debouncedQuery, categoryFilter, cityFilter]);
+    setSelected(new Set());
+  }, [list.paramsKey]);
+
+  const reload = useCallback(() => fetchVendorPage(list.params), [fetchVendorPage, list.params]);
 
   useEffect(() => {
     if (!historyVendor) {
@@ -118,14 +126,14 @@ export default function VendorListPage() {
       await createVendor(values as VendorCreateFormValues);
     }
     closeModal();
-    await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+    await reload();
   }
 
   async function handleToggleActive(vendor: Vendor) {
     setActionError(null);
     try {
       await toggleVendorActive(vendor.id);
-      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+      await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status vendor"));
     }
@@ -133,7 +141,7 @@ export default function VendorListPage() {
 
   async function handleImportVendors(file: File) {
     const result = await importVendors(file);
-    await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+    await reload();
     return result;
   }
 
@@ -164,7 +172,7 @@ export default function VendorListPage() {
     try {
       await deleteVendor(deleteTarget.id);
       closeDeleteConfirm();
-      await fetchVendorPage(page, query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+      await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal menghapus vendor"));
       closeDeleteConfirm();
@@ -173,11 +181,44 @@ export default function VendorListPage() {
     }
   }
 
+  async function handleBulk(ids: string[], action: "activate" | "deactivate") {
+    setActionError(null);
+    try {
+      const result = await bulkVendors(ids, action);
+      setSelected(new Set());
+      await reload();
+      const verb = action === "activate" ? "diaktifkan" : "dinonaktifkan";
+      toast.success(result.updated > 0 ? `${result.updated} vendor ${verb}` : `Semua vendor terpilih sudah ${action === "activate" ? "aktif" : "nonaktif"}`);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Vendor terpilih belum bisa diubah. Coba lagi."));
+    }
+  }
+
+  const columns: Column<Vendor>[] = [
+    { id: "name", header: "Nama vendor", sortKey: "name", primary: true, cell: (v) => <span className="font-semibold">{v.name}</span> },
+    { id: "category", header: "Kategori", sortKey: "categoryName", cell: (v) => v.categoryName || categories.find((c) => c.id === v.categoryId)?.name || "-" },
+    { id: "pic", header: "PIC", cell: (v) => v.picName },
+    {
+      id: "contact",
+      header: "Kontak",
+      hideOnCard: false,
+      cell: (v) => (
+        <>
+          <span className="block">{v.phone}</span>
+          <span className="block text-[12.5px] text-muted-foreground">{v.email ?? "-"}</span>
+        </>
+      ),
+    },
+    { id: "city", header: "Kota", sortKey: "city", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
+    { id: "price", header: "Harga akad", sortKey: "priceAkad", align: "right", cell: (v) => (v.priceAkad ? formatCurrency(v.priceAkad) : "-") },
+    { id: "status", header: "Status", sortKey: "isActive", cell: (v) => <VendorStatusBadge isActive={v.isActive} /> },
+  ];
+
   async function handleExportVendors() {
     setActionError(null);
     setIsExporting(true);
     try {
-      const blob = await exportVendors(query, categoryFilter === "Semua" ? "" : categoryFilter, cityFilter === "Semua" ? "" : cityFilter);
+      const blob = await exportVendors(list.q, list.filters.categoryId, list.filters.city);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -219,123 +260,80 @@ export default function VendorListPage() {
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <SearchInput
-          className="max-w-xs"
-          placeholder="Cari nama vendor atau PIC..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <Select className="w-52" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-          <option value="Semua">Semua Kategori</option>
+      <ListToolbar
+        search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama vendor atau PIC..." }}
+        density={{ value: density, onChange: setDensity }}
+        views={{
+          items: savedViews.views,
+          current: viewQuery(list.queryString),
+          onApply: list.applyQueryString,
+          onSave: savedViews.save,
+          onRemove: savedViews.remove,
+        }}
+      >
+        <Select className="w-52" aria-label="Kategori" value={list.filters.categoryId || "Semua"} onChange={(e) => list.setFilter("categoryId", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua kategori</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </Select>
-        <Combobox className="w-52" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} placeholder="Cari kota...">
-          <option value="Semua">Semua Kota</option>
+        <Combobox className="w-52" value={list.filters.city || "Semua"} onChange={(e) => list.setFilter("city", e.target.value === "Semua" ? "" : e.target.value)} placeholder="Cari kota...">
+          <option value="Semua">Semua kota</option>
           {CITIES.map((city) => (
             <option key={city} value={city}>
               {city}
             </option>
           ))}
         </Combobox>
-      </div>
+        <Select className="w-40" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
+          <option value="Semua">Semua status</option>
+          <option value="true">Aktif</option>
+          <option value="false">Nonaktif</option>
+        </Select>
+      </ListToolbar>
 
-      <Card>
-        {vendors.length === 0 ? (
-          <EmptyState title="Tidak ada vendor ditemukan" description="Ubah kata kunci pencarian atau filter kategori." />
-        ) : (
+      <DataTable
+        label="Daftar vendor"
+        columns={columns}
+        rows={vendors}
+        rowId={(v) => v.id}
+        rowLabel={(v) => v.name}
+        status={status}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={meta}
+        onPageChange={list.setPage}
+        sort={list.sort}
+        onSortChange={list.setSort}
+        filtered={list.isFiltered}
+        onResetFilters={list.reset}
+        empty={{
+          title: "Belum ada vendor",
+          description: "Daftarkan vendor katering, dekorasi, foto, dan lainnya agar bisa dipasang ke proyek.",
+          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah vendor</Button> : undefined,
+        }}
+        density={density}
+        selection={writeLocked ? undefined : { selected, onChange: setSelected }}
+        bulkActions={(ids) => (
           <>
-          <CardList
-            className="sm:hidden"
-            items={vendors}
-            keyFor={(vendor) => vendor.id}
-            renderItem={(vendor) => {
-              const category = categories.find((c) => c.id === vendor.categoryId);
-              return (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-semibold text-text-primary">{vendor.name}</span>
-                    <VendorStatusBadge isActive={vendor.isActive} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <CardListField label="Kategori" value={category?.name ?? "-"} />
-                    <CardListField label="PIC" value={vendor.picName} />
-                    <CardListField label="No Tlp Vendor" value={vendor.phone} />
-                    <CardListField label="Kota" value={vendor.city ?? "-"} />
-                  </div>
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <IconActionButton icon={Pencil} label="Ubah Vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
-                    {vendor.isActive ? (
-                      <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
-                    ) : (
-                      <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
-                    )}
-                    <IconActionButton icon={Eye} readOnly label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
-                    {isOwner && (
-                      <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />
-                    )}
-                  </div>
-                </>
-              );
-            }}
-          />
-          <div className="hidden sm:block">
-          <Table>
-            <THead>
-              <TR>
-                <TH>Nama Vendor</TH>
-                <TH>Kategori</TH>
-                <TH>PIC</TH>
-                <TH>Kontak</TH>
-                <TH>Kota</TH>
-                <TH>Status</TH>
-                <TH>Aksi</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {vendors.map((vendor) => {
-                const category = categories.find((c) => c.id === vendor.categoryId);
-                return (
-                  <TR key={vendor.id}>
-                    <TD className="font-semibold text-text-primary">{vendor.name}</TD>
-                    <TD>{category?.name ?? "-"}</TD>
-                    <TD>{vendor.picName}</TD>
-                    <TD>
-                      <span className="block">{vendor.phone}</span>
-                      <span className="block text-[12.5px] text-text-secondary">{vendor.email ?? "-"}</span>
-                    </TD>
-                    <TD>{vendor.city ?? <span className="text-text-secondary">-</span>}</TD>
-                    <TD>
-                      <VendorStatusBadge isActive={vendor.isActive} />
-                    </TD>
-                    <TD>
-                      <div className="flex items-center gap-1.5">
-                        <IconActionButton icon={Pencil} label="Ubah Vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
-                        {vendor.isActive ? (
-                          <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
-                        ) : (
-                          <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
-                        )}
-                        <IconActionButton icon={Eye} readOnly label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
-                        {isOwner && (
-                          <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />
-                        )}
-                      </div>
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-          </div>
-          <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
+            <Button variant="secondary" size="sm" onClick={() => void handleBulk(ids, "activate")}>Aktifkan</Button>
+            <Button variant="secondary" size="sm" onClick={() => void handleBulk(ids, "deactivate")}>Nonaktifkan</Button>
           </>
         )}
-      </Card>
+        actions={(vendor) => (
+          <div className="flex items-center gap-1.5">
+            <IconActionButton icon={Pencil} label="Ubah Vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
+            {vendor.isActive ? (
+              <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
+            ) : (
+              <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
+            )}
+            <IconActionButton icon={Eye} readOnly label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
+            {isOwner && <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />}
+          </div>
+        )}
+      />
 
       <VendorFormModal
         key={editingVendor?.id ?? "new"}

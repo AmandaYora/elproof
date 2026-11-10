@@ -38,12 +38,6 @@ export interface ManualActivationInput {
   note: string;
 }
 
-/** Filters beyond search and status on the tenant list (Fase 6). */
-export interface TenantListExtraFilter {
-  planId?: string;
-  source?: string;
-}
-
 export interface RegisterPlatformAdminResult {
   admin: PlatformAdmin;
   username: string;
@@ -107,6 +101,8 @@ export interface RawTransaction {
   status: SubscriptionTransaction["status"];
   createdAt: string;
   paidAt: string | null;
+  /** The workspace's name; absent on rows from before the field existed. */
+  tenantName?: string;
 }
 
 export function toTransaction(raw: RawTransaction): SubscriptionTransaction {
@@ -147,9 +143,12 @@ interface PlatformAdminState {
   // Backs the respective Platform Console list-page tables — real
   // server-side pagination + search/filter, separate from the full-roster
   // caches above (used by dropdowns and the "Langganan" self-service page).
-  fetchTenantPage: (page: number, search: string, status: string, extra?: TenantListExtraFilter) => Promise<void>;
+  /** `params` is the list's own query: page, limit, sort, search and filters (useListState). */
+  fetchTenantPage: (params: Record<string, string | number>) => Promise<void>;
   fetchPlatformAdminPage: (page: number, search: string, role: string) => Promise<void>;
   fetchTransactionPage: (page: number, status: string) => Promise<void>;
+  /** The console's Tagihan list: page, limit, sort, search, status and date range. */
+  fetchTransactionList: (params: Record<string, string | number>) => Promise<void>;
 
   registerTenant: (values: TenantCreateFormValues) => Promise<RegisterTenantResult>;
   updateTenant: (id: string, values: TenantFormValues) => Promise<void>;
@@ -197,16 +196,8 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
     set({ platformAdmins: [toPlatformAdmin(res.data.data as RawPlatformAdmin)] });
   },
 
-  fetchTenantPage: async (page, search, status, extra) => {
-    const res = await httpClient.get(API.platform.tenants, {
-      params: {
-        page,
-        search: search || undefined,
-        status: status || undefined,
-        planId: extra?.planId || undefined,
-        source: extra?.source || undefined,
-      },
-    });
+  fetchTenantPage: async (params) => {
+    const res = await httpClient.get(API.platform.tenants, { params });
     set({
       tenantPage: (res.data.data as RawTenant[]).map(toTenant),
       tenantPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
@@ -225,6 +216,14 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
 
   fetchTransactionPage: async (page, status) => {
     const res = await httpClient.get(API.billing.transactions, { params: { page, status: status || undefined } });
+    set({
+      transactionPage: (res.data.data as RawTransaction[]).map(toTransaction),
+      transactionPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
+    });
+  },
+
+  fetchTransactionList: async (params) => {
+    const res = await httpClient.get(API.billing.transactions, { params });
     set({
       transactionPage: (res.data.data as RawTransaction[]).map(toTransaction),
       transactionPageMeta: toPaginationMeta(res.data.meta as RawPaginationMeta),
