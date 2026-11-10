@@ -34,8 +34,8 @@ Combobox trigger's border used the decorative `--border` (1.3:1) instead of `--i
   library's default black on white instead of a hex.
 
 ### Where gold goes
-Gold means **proof**, never status and never chrome: `ProofStamp` (seal-soft background, seal-text words and icon, seal outline) and the thin
-rule in the Portal home hero on plum (4.61:1). Warning stays amber with an icon and text; `--seal` is never drawn on `--background`
+Gold means **proof**, never status and never chrome: `ProofStamp` (seal-soft background, seal-text words and icon, a decorative seal outline) and
+the thin full-strength `--seal` rule in the Portal home hero on plum (4.61:1). Warning stays amber with an icon and text; `--seal` is never drawn on `--background`
 (2.95:1) and never used for text.
 
 ### One typeface
@@ -62,4 +62,4 @@ textarea, Combobox trigger, SearchInput: 2 px on the border). The ring is plum, 
 * The image runs `migrate up` before serving, as before; the new code never reads the column. Rolling the code back needs `migrate down 1`
   first (the old code selects the column), which restores it with the default for every WO.
 * `white`/`black` utilities remain only for modal scrims and text on solid status colours; any other palette class or hex in a component is
-  a review failure (ADR-0037).
+  a review failure (ADR-0037). The command palette's search box (kit `command.tsx`) shows its focus as a 2 px `--ring` ring on the group.

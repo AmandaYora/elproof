@@ -19,7 +19,7 @@ test.describe("wo: focus", () => {
     const { page, close } = await open(browser, info, "paying");
     await visit(page, "/vendors");
     await tabTo(page, page.getByRole("button", { name: "Tambah Vendor" }).first());
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Space"); // Space acts on keyup: no Enter keydown can reach the dialog's first field and submit it
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await tabTo(page, dialog.locator('input[data-slot="input"]').first());

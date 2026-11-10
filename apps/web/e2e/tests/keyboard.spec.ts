@@ -57,7 +57,7 @@ test("kit button, search, input and combobox show a solid 2px focus ring in --ri
   expect(searchRing.color).toBe(searchRing.ring);
 
   await tabTo(page, add);
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space"); // Space acts on keyup: no Enter keydown can reach the dialog's first field and submit it
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   const field = dialog.locator('input[data-slot="input"]').first();
@@ -75,5 +75,15 @@ test("kit button, search, input and combobox show a solid 2px focus ring in --ri
     expect(comboRing.width).toBeGreaterThanOrEqual(2);
     expect(comboRing.color).toBe(comboRing.ring);
   }
+
+  // The command palette's search box: its focus is a --ring ring on the group around it.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press("Control+k");
+  const command = page.locator('[data-slot="command-input"]');
+  await expect(command).toBeFocused();
+  const group = page.locator('[data-slot="input-group"]').filter({ has: command });
+  const shadow = await group.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(shadow).toContain(fieldRing.ring);
   await close();
 });

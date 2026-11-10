@@ -15,7 +15,7 @@ export function HomeHero({ project, daysToEvent }: { project: PortalHome["projec
       <h1 id="hero-names" className="mt-2 text-[28px] font-extrabold leading-[1.08] tracking-[-0.03em] sm:text-[40px]">
         {project.brideName} &amp; {project.groomName}
       </h1>
-      <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-1 border-t border-seal/70 pt-5">
+      <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-1 border-t border-seal pt-5">
         <span className="text-[56px] font-extrabold leading-none tracking-[-0.035em] tabular-nums sm:text-[72px]">{c.figure}</span>
         <span className="max-w-[16rem] pb-1.5 text-[14px] leading-snug text-on-primary-muted">{c.caption}</span>
       </div>

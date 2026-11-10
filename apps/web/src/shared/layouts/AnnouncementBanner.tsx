@@ -74,7 +74,7 @@ export function AnnouncementBanner() {
               type="button"
               onClick={() => dismiss(a.id)}
               aria-label="Tutup pengumuman"
-              className="shrink-0 rounded p-1 hover:bg-black/5"
+              className="shrink-0 rounded p-1 hover:bg-foreground/5"
             >
               <X className="h-4 w-4" />
             </button>

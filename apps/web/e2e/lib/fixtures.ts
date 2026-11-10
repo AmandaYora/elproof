@@ -12,7 +12,7 @@ export function state(): State {
 const FONT_CACHE = path.join(TMP, "fonts");
 
 /**
- * The app loads Inter/Fraunces from Google Fonts. Serve them from a local cache after the first fetch so
+ * Any font requested from Google Fonts (the app itself bundles Plus Jakarta Sans) is served from a local cache after the first fetch so
  * screenshots do not depend on the network (and do not change when Google updates a file). When offline
  * and not cached, the request is aborted and the page falls back to the system font.
  */

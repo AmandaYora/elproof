@@ -134,7 +134,7 @@ indikator fokus 3:1 (1.4.11).
 | `--ring` (fokus) di putih / `--background` / `--muted` / `--accent` | 14,34 / 13,57 / 12,62 / 11,52 | 3 | lolos |
 | `--ring` di `--color-neutral-soft` / `--seal-soft` | 12,12 / 12,67 | 3 | lolos |
 | `--seal` (non-teks) di putih / di plum | 3,11 / 4,61 | 3 | lolos |
-| `--seal` di `--background` / di `--seal-soft` | 2,95 / 2,75 | 3 | **gagal → dilarang** (segel memakai `--seal-text` untuk ikon dan teks) |
+| `--seal` di `--background` / di `--seal-soft` | 2,95 / 2,75 | 3 | **gagal → dilarang** untuk informasi (segel memakai `--seal-text` untuk ikon dan teks); garis tepi dekoratif `ProofStamp` (`border-seal/60`) dikecualikan karena tombolnya dikenali dari teksnya (1.4.11 tidak berlaku) |
 | `--seal-text` di `--seal-soft` / putih | 5,60 / 6,35 | 4,5 | lolos |
 | `--on-primary-muted` di plum | 10,37 | 4,5 | lolos |
 | teks putih di `--whatsapp` / hover | 5,32 / 6,97 | 4,5 | lolos |
@@ -187,7 +187,7 @@ berarti bukti (`ProofStamp`, garis segel di hero Portal), tidak pernah status, l
   Semua dibungkus `motion-reduce:`. Tidak ada animasi masuk per bagian (pengecualian terlingkup untuk Beranda dan Tentang
   Kami situs publik: ADR-0038, `DESIGN-PUBLIC.md`).
 - **Lapisan (z-index):** konten 0, sticky 10, sidebar 30, dropdown/popover 40, dialog 50, toast 60, banner sesi
-  dukungan 70. Root `isolation: isolate` (Base UI); variabel tenant di `:root`/`body` agar konten portal mewarisinya.
+  dukungan 70. Root `isolation: isolate` (Base UI); token di `:root` agar konten portal (dirender di `body`) mewarisinya.
 - **Elevasi:** permukaan datar = garis `--border`, tanpa bayangan. Bayangan hanya untuk popover/menu (kecil) dan
   dialog/drawer (sedang).
 
