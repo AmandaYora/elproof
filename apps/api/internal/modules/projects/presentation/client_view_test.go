@@ -26,7 +26,7 @@ func TestClientCanRead(t *testing.T) {
 		{"payments"}, {"venue-payments"}, {"activity"}, {"closing-checklist"}, {"transition"},
 		{"payment-terms", "1"},
 		{"vendors", "4", "milestones"}, {"evidence", "9"}, {"milestones", "3"},
-		{"client-payments", "3", "verify"}, {"evidence", "9", "toggle-client-visible"},
+		{"client-payments", "3", "verify"}, {"evidence", "9", "visibility"},
 	}
 	for _, rest := range denied {
 		if clientCanRead(rest) {

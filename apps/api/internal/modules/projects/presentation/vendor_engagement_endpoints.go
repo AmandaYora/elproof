@@ -259,49 +259,88 @@ func collectValidation(fields map[string][]string, err error) bool {
 	return true
 }
 
-// checkEngagementReferences: the vendor, its category and the PIC named in the
-// body must all be this workspace's own.
-func (h *Handler) checkEngagementReferences(ctx context.Context, tenantID int64, body vendorEngagementInputBody) error {
-	if err := h.refs.Vendor(ctx, tenantID, "vendorId", body.VendorID); err != nil {
-		return err
+// vendorItem is one engagement as GET /projects/{id}/vendors lists it (names,
+// milestones with their proof, evidence count, paid amount).
+func (h *Handler) vendorItem(ctx context.Context, claims staffClaims, projectID int64, pv domain.ProjectVendor) (projectVendorResponse, error) {
+	rows, err := h.vendorRows(ctx, claims, projectID, []domain.ProjectVendor{pv})
+	if err != nil {
+		return projectVendorResponse{}, err
 	}
-	if err := h.refs.Category(ctx, tenantID, "categoryId", body.CategoryID); err != nil {
-		return err
-	}
-	return h.refs.Staff(ctx, tenantID, "picStaffId", body.PICStaffID)
+	return rows[0], nil
 }
 
+// checkPatchedReferences: the vendor, its category and the PIC named in a patch
+// must all be this workspace's own (only the ones that were sent are checked).
+func (h *Handler) checkPatchedReferences(ctx context.Context, tenantID int64, patch application.VendorEngagementPatch) error {
+	if patch.VendorID.Present() {
+		if err := h.refs.Vendor(ctx, tenantID, "vendorId", patch.VendorID.Value()); err != nil {
+			return err
+		}
+	}
+	if patch.CategoryID.Present() {
+		if err := h.refs.Category(ctx, tenantID, "categoryId", patch.CategoryID.Value()); err != nil {
+			return err
+		}
+	}
+	if patch.PICStaffID.Present() {
+		return h.refs.Staff(ctx, tenantID, "picStaffId", patch.PICStaffID.Value())
+	}
+	return nil
+}
+
+// updateVendorEngagement is PATCH /projects/{id}/vendors/{pvid}: a partial update
+// of the engagement (vendorId, categoryId, scope, contractValue, pricingTier,
+// engagementStatus, bookingDate, eventDate, eventStartTime, eventEndTime,
+// dpAmount, dueDate, picStaffId, notes; the dates and times marked optional may be
+// null). See updateProject for the body, If-Match and 409 rules.
 func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
 	pvID, err := parseInt64(pvIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	var body vendorEngagementInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	input, err := toVendorEngagementInput(body)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}})
+	pr, ok := newPatchReader(w, r)
+	if !ok {
 		return
 	}
-	if err := h.checkEngagementReferences(r.Context(), claims.tenantID, body); err != nil {
+	tier, status := pr.text("pricingTier", false), pr.text("engagementStatus", false)
+	patch := application.VendorEngagementPatch{
+		VendorID: pr.integer("vendorId", false), CategoryID: pr.integer("categoryId", false), Scope: pr.text("scope", false),
+		ContractValue: pr.integer("contractValue", false), DPAmount: pr.integer("dpAmount", false), PICStaffID: pr.integer("picStaffId", false),
+		Notes: pr.text("notes", true), BookingDate: pr.date("bookingDate", true), DueDate: pr.date("dueDate", true),
+		EventDate: pr.date("eventDate", false), EventStartTime: pr.nullableText("eventStartTime"), EventEndTime: pr.nullableText("eventEndTime"),
+	}
+	if tier.Present() {
+		patch.PricingTier = application.Some(domain.VendorPricingTier(tier.Value()))
+	}
+	if status.Present() {
+		patch.EngagementStatus = application.Some(domain.EngagementStatus(status.Value()))
+	}
+	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	pv, err := h.vendors.Update(r.Context(), projectID, pvID, claims.staffID, input)
+	if err := h.checkPatchedReferences(r.Context(), claims.tenantID, patch); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	pv, err := h.vendors.Patch(r.Context(), projectID, pvID, claims.staffID, patch, expected)
+	if err != nil {
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.vendorItem(r.Context(), claims, projectID, *cur.(*domain.ProjectVendor))
+		})
+		return
+	}
+	item, err := h.vendorItem(r.Context(), claims, projectID, *pv)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	paid, err := h.vendorPaidAmounts(r.Context(), projectID)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	response.OK(w, "Kerja sama vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toProjectVendorResponse(*pv, paid[pv.ID])))
+	response.OK(w, "Kerja sama vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, item))
 }
 
 func (h *Handler) cancelVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
@@ -433,15 +472,9 @@ func (h *Handler) createVendorMilestone(w http.ResponseWriter, r *http.Request, 
 	response.Created(w, "Timeline vendor berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
 }
 
-type vendorMilestoneUpdateBody struct {
-	Status        string `json:"status"`
-	TargetDate    string `json:"targetDate"`
-	CompletedDate string `json:"completedDate"`
-	PICStaffID    int64  `json:"picStaffId"`
-	Description   string `json:"description"`
-	Notes         string `json:"notes"`
-}
-
+// updateVendorMilestone is PATCH /projects/{id}/vendors/{pvid}/milestones/{mid}: a
+// partial update (status, targetDate, completedDate (nullable), picStaffId,
+// description, notes). See updateProject for the body, If-Match and 409 rules.
 func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw, milestoneIDRaw string) {
 	pvID, err := parseInt64(pvIDRaw)
 	if err != nil {
@@ -453,26 +486,37 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
 		return
 	}
-	var body vendorMilestoneUpdateBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	targetDate, err := parseDate(body.TargetDate)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"targetDate": {"Gunakan format YYYY-MM-DD"}})
+	pr, ok := newPatchReader(w, r)
+	if !ok {
 		return
 	}
-	if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", body.PICStaffID); err != nil {
+	status := pr.text("status", false)
+	patch := application.VendorMilestonePatch{
+		TargetDate: pr.date("targetDate", false), CompletedDate: pr.date("completedDate", true),
+		PICStaffID: pr.integer("picStaffId", false), Description: pr.text("description", true), Notes: pr.text("notes", true),
+	}
+	if status.Present() {
+		patch.Status = application.Some(domain.MilestoneStatus(status.Value()))
+	}
+	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	m, err := h.vendors.UpdateMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, application.VendorMilestoneUpdateInput{
-		Status: domain.MilestoneStatus(body.Status), TargetDate: targetDate, CompletedDate: parseOptionalDate(body.CompletedDate),
-		PICStaffID: body.PICStaffID, Description: body.Description, Notes: body.Notes,
-	})
+	if patch.PICStaffID.Present() {
+		if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", patch.PICStaffID.Value()); err != nil {
+			writeAppError(w, err)
+			return
+		}
+	}
+	m, err := h.vendors.PatchMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, patch, expected)
 	if err != nil {
-		writeAppError(w, err)
+		writePatchError(w, err, func(cur any) (any, error) {
+			return toVendorMilestoneResponse(*cur.(*domain.VendorMilestone)), nil
+		})
 		return
 	}
 	response.OK(w, "Timeline vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))

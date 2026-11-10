@@ -18,7 +18,7 @@ func NewMySQLVendorEngagementRepository(db *sql.DB) *MySQLVendorEngagementReposi
 }
 
 const projectVendorColumns = `id, project_id, vendor_id, category_id, scope, contract_value, pricing_tier, engagement_status,
-	booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes, deleted_at`
+	booking_date, event_date, event_start_time, event_end_time, dp_amount, due_date, pic_staff_id, notes, deleted_at, updated_at`
 
 // timeToHHMM/hhmmToTime convert between MySQL's TIME wire format
 // ("15:04:05") and the "HH:MM" shape ProjectVendor.EventStartTime/
@@ -40,7 +40,7 @@ func scanProjectVendor(scan func(dest ...interface{}) error) (*domain.ProjectVen
 	var notes sql.NullString
 	var deletedAt sql.NullTime
 	err := scan(&pv.ID, &pv.ProjectID, &pv.VendorID, &pv.CategoryID, &pv.Scope, &pv.ContractValue, &pricingTier, &status,
-		&bookingDate, &pv.EventDate, &eventStartTime, &eventEndTime, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes, &deletedAt)
+		&bookingDate, &pv.EventDate, &eventStartTime, &eventEndTime, &pv.DPAmount, &dueDate, &pv.PICStaffID, &notes, &deletedAt, &pv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -153,15 +153,27 @@ func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain
 	return nil
 }
 
-func (r *MySQLVendorEngagementRepository) Update(ctx context.Context, pv *domain.ProjectVendor) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE project_vendors SET vendor_id = ?, category_id = ?, scope = ?, contract_value = ?, pricing_tier = ?, engagement_status = ?,
-		 booking_date = ?, event_date = ?, event_start_time = ?, event_end_time = ?, dp_amount = ?, due_date = ?, pic_staff_id = ?, notes = ?
-		 WHERE id = ?`,
-		pv.VendorID, pv.CategoryID, pv.Scope, pv.ContractValue, string(pv.PricingTier), string(pv.EngagementStatus),
-		pv.BookingDate, pv.EventDate, pv.EventStartTime, pv.EventEndTime, pv.DPAmount, pv.DueDate, pv.PICStaffID, pv.Notes, pv.ID,
-	)
-	return err
+var projectVendorPatchColumns = map[string]column[domain.ProjectVendor]{
+	"vendorId":         col("vendor_id", func(p *domain.ProjectVendor) any { return p.VendorID }),
+	"categoryId":       col("category_id", func(p *domain.ProjectVendor) any { return p.CategoryID }),
+	"scope":            col("scope", func(p *domain.ProjectVendor) any { return p.Scope }),
+	"contractValue":    col("contract_value", func(p *domain.ProjectVendor) any { return p.ContractValue }),
+	"pricingTier":      col("pricing_tier", func(p *domain.ProjectVendor) any { return string(p.PricingTier) }),
+	"engagementStatus": col("engagement_status", func(p *domain.ProjectVendor) any { return string(p.EngagementStatus) }),
+	"bookingDate":      col("booking_date", func(p *domain.ProjectVendor) any { return p.BookingDate }),
+	"eventDate":        col("event_date", func(p *domain.ProjectVendor) any { return p.EventDate }),
+	"eventStartTime":   col("event_start_time", func(p *domain.ProjectVendor) any { return p.EventStartTime }),
+	"eventEndTime":     col("event_end_time", func(p *domain.ProjectVendor) any { return p.EventEndTime }),
+	"dpAmount":         col("dp_amount", func(p *domain.ProjectVendor) any { return p.DPAmount }),
+	"dueDate":          col("due_date", func(p *domain.ProjectVendor) any { return p.DueDate }),
+	"picStaffId":       col("pic_staff_id", func(p *domain.ProjectVendor) any { return p.PICStaffID }),
+	"notes":            col("notes", func(p *domain.ProjectVendor) any { return p.Notes }),
+}
+
+// Patch writes the changed fields of a live engagement of the project (see patchRow).
+func (r *MySQLVendorEngagementRepository) Patch(ctx context.Context, pv *domain.ProjectVendor, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "project_vendors", projectVendorPatchColumns, pv, changed,
+		"project_id = ? AND id = ? AND deleted_at IS NULL", []any{pv.ProjectID, pv.ID}, expected)
 }
 
 func (r *MySQLVendorEngagementRepository) SetStatus(ctx context.Context, projectID, id int64, status domain.EngagementStatus) error {
@@ -210,14 +222,14 @@ func NewMySQLVendorMilestoneRepository(db *sql.DB) *MySQLVendorMilestoneReposito
 	return &MySQLVendorMilestoneRepository{db: db}
 }
 
-const vendorMilestoneColumns = `id, project_vendor_id, sort_order, name, description, status, target_date, completed_date, pic_staff_id, notes`
+const vendorMilestoneColumns = `id, project_vendor_id, sort_order, name, description, status, target_date, completed_date, pic_staff_id, notes, updated_at`
 
 func scanVendorMilestone(scan func(dest ...interface{}) error) (*domain.VendorMilestone, error) {
 	var m domain.VendorMilestone
 	var status string
 	var description, notes sql.NullString
 	var completedDate sql.NullTime
-	err := scan(&m.ID, &m.ProjectVendorID, &m.SortOrder, &m.Name, &description, &status, &m.TargetDate, &completedDate, &m.PICStaffID, &notes)
+	err := scan(&m.ID, &m.ProjectVendorID, &m.SortOrder, &m.Name, &description, &status, &m.TargetDate, &completedDate, &m.PICStaffID, &notes, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -298,13 +310,19 @@ func (r *MySQLVendorMilestoneRepository) Create(ctx context.Context, m *domain.V
 	return nil
 }
 
-func (r *MySQLVendorMilestoneRepository) Update(ctx context.Context, m *domain.VendorMilestone) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE vendor_milestones SET name = ?, description = ?, status = ?, target_date = ?, completed_date = ?,
-		 pic_staff_id = ?, notes = ? WHERE id = ?`,
-		m.Name, m.Description, string(m.Status), m.TargetDate, m.CompletedDate, m.PICStaffID, m.Notes, m.ID,
-	)
-	return err
+var vendorMilestonePatchColumns = map[string]column[domain.VendorMilestone]{
+	"status":        col("status", func(m *domain.VendorMilestone) any { return string(m.Status) }),
+	"targetDate":    col("target_date", func(m *domain.VendorMilestone) any { return m.TargetDate }),
+	"completedDate": col("completed_date", func(m *domain.VendorMilestone) any { return m.CompletedDate }),
+	"picStaffId":    col("pic_staff_id", func(m *domain.VendorMilestone) any { return m.PICStaffID }),
+	"description":   col("description", func(m *domain.VendorMilestone) any { return m.Description }),
+	"notes":         col("notes", func(m *domain.VendorMilestone) any { return m.Notes }),
+}
+
+// Patch writes the changed fields of a vendor milestone (see patchRow).
+func (r *MySQLVendorMilestoneRepository) Patch(ctx context.Context, m *domain.VendorMilestone, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "vendor_milestones", vendorMilestonePatchColumns, m, changed,
+		"project_vendor_id = ? AND id = ?", []any{m.ProjectVendorID, m.ID}, expected)
 }
 
 func (r *MySQLVendorMilestoneRepository) NextSortOrder(ctx context.Context, projectVendorID int64) (int, error) {

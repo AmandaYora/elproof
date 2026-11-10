@@ -15,7 +15,9 @@ type PaymentRepository interface {
 	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.VendorPayment, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.VendorPayment, error)
 	Create(ctx context.Context, p *domain.VendorPayment) error
-	Update(ctx context.Context, projectID, id int64, p domain.VendorPayment) error
+	// Patch writes the changed fields of a live payment (compare-and-set on
+	// updated_at when expected is given; see infrastructure.patchRow).
+	Patch(ctx context.Context, p *domain.VendorPayment, changed []string, expected *time.Time) (bool, error)
 	// SoftDelete hides a live payment (deleted_at = at); false when there was none.
 	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
 	// FindDeletedByID is the restore lookup (nil unless the payment waits in the
@@ -101,34 +103,62 @@ func (s *PaymentService) Create(ctx context.Context, projectID int64, actorStaff
 	return p, nil
 }
 
-// Update is an unconditional full-field overwrite -- same convention as
-// VendorEngagementService.Update/IssueService.Update, no status/role guard
-// (PLAN.md §2.3's correction: only Delete escalates to Owner-only, Edit
-// never does). ProjectVendorID is deliberately not accepted here (PLAN.md
-// §2.5) -- re-parenting a payment to a different engagement isn't supported;
-// delete and recreate instead.
-func (s *PaymentService) Update(ctx context.Context, projectID, id int64, actorStaffID int64, input PaymentInput) (*domain.VendorPayment, error) {
-	p, err := s.repo.FindByID(ctx, projectID, id)
+// Patch changes the fields of a vendor payment that were sent, and only those. No
+// status/role guard (only Delete escalates to Owner-only, PLAN.md §2.3).
+// ProjectVendorID is deliberately not patchable (PLAN.md §2.5): re-parenting a
+// payment to another engagement is not supported; delete and recreate instead.
+// The overpayment rule is judged on the merged type and amount (and only when one
+// of them changes, so an old overpaid row can still get a new note). Runs under the
+// project lock like every money write, so two edits cannot overpay together. A
+// patch that changes nothing writes nothing; with `expected` the write is a
+// compare-and-set on updated_at (a stale one is a 409 carrying the current payment).
+func (s *PaymentService) Patch(ctx context.Context, projectID, id int64, actorStaffID int64, patch PaymentPatch, expected *time.Time) (*domain.VendorPayment, error) {
+	if err := checkPaymentPatch(patch); err != nil {
+		return nil, err
+	}
+	var out *domain.VendorPayment
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		loaded := *p
+		var ch changeSet
+		applyPayment(&ch, patch, &p.Type, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &p.Notes)
+		if !ch.any() {
+			out = p
+			return nil
+		}
+		if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
+			return err
+		}
+		if ch.moneyChanged() {
+			if err := s.checkChange(ctx, projectID, p.ProjectVendorID, id, &domain.PaymentLine{Type: p.Type, Amount: p.Amount}); err != nil {
+				return err
+			}
+		}
+		wrote, err := s.repo.Patch(ctx, p, ch.keys, expected)
+		if err != nil {
+			return err
+		}
+		fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.VendorPayment, error) {
+			return s.repo.FindByID(ctx, projectID, id)
+		}, func(p *domain.VendorPayment) time.Time { return p.UpdatedAt }, apperror.NotFound("Pembayaran tidak ditemukan"))
+		if err != nil {
+			return err
+		}
+		out = fresh
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "vendor_payment", formatID(fresh.ID), string(fresh.Type),
+			"Pembayaran vendor diperbarui: "+ch.summary())
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if p == nil {
-		return nil, apperror.NotFound("Pembayaran tidak ditemukan")
-	}
-	if err := checkAmount(input.Amount); err != nil {
-		return nil, err
-	}
-	if err := s.checkChange(ctx, projectID, p.ProjectVendorID, id, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
-		return nil, err
-	}
-	p.Type, p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes =
-		input.Type, input.Amount, input.PaymentDate, input.Method, input.ReferenceNumber, input.Notes
-	if err := s.repo.Update(ctx, projectID, id, *p); err != nil {
-		return nil, err
-	}
-	s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "vendor_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran vendor diperbarui")
-	return p, nil
+	return out, nil
 }
 
 // Delete soft-deletes the payment (ADR-0034): it leaves the list, the vendor's

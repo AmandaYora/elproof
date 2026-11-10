@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elproof/internal/shared/logger"
+	"elproof/internal/shared/response"
 )
 
 // Every mutation answers with what changed AND the project's progress computed
@@ -25,6 +26,15 @@ type extra struct {
 type withExtras struct {
 	item   any
 	extras []extra
+}
+
+// ETag is the item's own (response.Versioned): the extras never change which
+// version of the item the answer describes.
+func (w withExtras) ETag() string {
+	if v, ok := w.item.(response.Versioned); ok {
+		return v.ETag()
+	}
+	return ""
 }
 
 func (w withExtras) MarshalJSON() ([]byte, error) {

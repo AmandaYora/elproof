@@ -15,6 +15,10 @@ import (
 func FromError(w http.ResponseWriter, err error) {
 	status := apperror.HTTPStatus(err)
 	if appErr, ok := apperror.As(err); ok {
+		if appErr.Data != nil {
+			ErrorWithData(w, status, appErr.Message, appErr.Payload(), appErr.Data)
+			return
+		}
 		Error(w, status, appErr.Message, appErr.Payload())
 		return
 	}

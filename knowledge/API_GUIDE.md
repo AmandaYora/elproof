@@ -33,6 +33,16 @@ Validation errors map to `{success:false, message, errors: {field: [messages]}}`
 field, matching what Zod-shaped forms on the frontend can render directly under each input).
 Domain errors (not found, forbidden, conflict) map to standard HTTP status with a flat `message`.
 
+## Editing: partial PATCH, `If-Match`, explicit state (ADR-0036)
+
+* `PATCH` on a project, milestone, project vendor, vendor milestone, kendala, the three payments and a document changes **only the keys present**; `null` clears
+  only nullable fields; `{}` is a 422 on `errors.body`.
+* Every item and list item of those resources carries `updatedAt` (RFC 3339, microseconds, UTC) and item responses set `ETag`. A PATCH may send
+  `If-Match: "<updatedAt>"`: the write is a compare-and-set, and a stale version is a **409** `{ errors: { _conflict: ["stale"] }, data: { current } }` with nothing written.
+  Without the header the write is last-write-wins (Tahap 9 decides on 428). Any write to a row bumps its version, so reload an item after something else changed it.
+* State is set, never flipped: `PATCH /projects/{id}` `{isArchived}`, `PATCH …/evidence/{id}` `{isClientVisible}`, `PATCH /vendors|venues|vendor-categories|clients|staff/{id}` `{isActive}`
+  alone. Saying the state it already has is a 200 and writes nothing. The old `POST …/toggle-*` routes are gone (platform-console toggles remain).
+
 ## Full endpoint list
 
 See [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md) — kept in sync with the implemented backend

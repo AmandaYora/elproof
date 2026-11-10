@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/utils"
@@ -17,7 +18,7 @@ func NewMySQLIssueRepository(db *sql.DB) *MySQLIssueRepository {
 }
 
 const issueColumns = `id, project_id, IFNULL(project_vendor_id, 0), vendor_milestone_id, title, description, impact, found_date, status,
-	resolution_plan, pic_staff_id, target_resolution_date, resolved_date, resolution_notes, is_client_visible`
+	resolution_plan, pic_staff_id, target_resolution_date, resolved_date, resolution_notes, is_client_visible, updated_at`
 
 func scanIssue(scan func(dest ...interface{}) error) (*domain.VendorIssue, error) {
 	var i domain.VendorIssue
@@ -26,7 +27,7 @@ func scanIssue(scan func(dest ...interface{}) error) (*domain.VendorIssue, error
 	var resolutionPlan, resolutionNotes sql.NullString
 	var targetResolutionDate, resolvedDate sql.NullTime
 	err := scan(&i.ID, &i.ProjectID, &i.ProjectVendorID, &vendorMilestoneID, &i.Title, &i.Description, &impact, &i.FoundDate, &status,
-		&resolutionPlan, &i.PICStaffID, &targetResolutionDate, &resolvedDate, &resolutionNotes, &i.IsClientVisible)
+		&resolutionPlan, &i.PICStaffID, &targetResolutionDate, &resolvedDate, &resolutionNotes, &i.IsClientVisible, &i.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -116,21 +117,23 @@ func (r *MySQLIssueRepository) Create(ctx context.Context, issue *domain.VendorI
 	return nil
 }
 
-// Update overwrites every editable field (PLAN.md "Retire the standalone
-// Kendala tab") — previously this only ever wrote status/resolved_date/
-// resolution_notes; a full overwrite is needed now that issues can be
-// edited (vendor, milestone, impact, etc.), not just status-changed. The
-// frontend's "quick status change" dropdown now calls this same method with
-// every existing field spread plus the new status, mirroring how vendor
-// milestone updates already work.
-func (r *MySQLIssueRepository) Update(ctx context.Context, issue *domain.VendorIssue) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE vendor_issues SET project_vendor_id = ?, vendor_milestone_id = ?, title = ?, description = ?, impact = ?,
-		 found_date = ?, target_resolution_date = ?, pic_staff_id = ?, resolution_plan = ?, status = ?, resolved_date = ?,
-		 resolution_notes = ?, is_client_visible = ? WHERE id = ?`,
-		nullableID(issue.ProjectVendorID), issue.VendorMilestoneID, issue.Title, issue.Description, string(issue.Impact),
-		issue.FoundDate, issue.TargetResolutionDate, issue.PICStaffID, issue.ResolutionPlan, string(issue.Status),
-		issue.ResolvedDate, issue.ResolutionNotes, issue.IsClientVisible, issue.ID,
-	)
-	return err
+var issuePatchColumns = map[string]column[domain.VendorIssue]{
+	"projectVendorId":      col("project_vendor_id", func(i *domain.VendorIssue) any { return nullableID(i.ProjectVendorID) }),
+	"vendorMilestoneId":    col("vendor_milestone_id", func(i *domain.VendorIssue) any { return i.VendorMilestoneID }),
+	"title":                col("title", func(i *domain.VendorIssue) any { return i.Title }),
+	"description":          col("description", func(i *domain.VendorIssue) any { return i.Description }),
+	"impact":               col("impact", func(i *domain.VendorIssue) any { return string(i.Impact) }),
+	"foundDate":            col("found_date", func(i *domain.VendorIssue) any { return i.FoundDate }),
+	"status":               col("status", func(i *domain.VendorIssue) any { return string(i.Status) }),
+	"resolutionPlan":       col("resolution_plan", func(i *domain.VendorIssue) any { return i.ResolutionPlan }),
+	"picStaffId":           col("pic_staff_id", func(i *domain.VendorIssue) any { return i.PICStaffID }),
+	"targetResolutionDate": col("target_resolution_date", func(i *domain.VendorIssue) any { return i.TargetResolutionDate }),
+	"resolvedDate":         col("resolved_date", func(i *domain.VendorIssue) any { return i.ResolvedDate }),
+	"isClientVisible":      col("is_client_visible", func(i *domain.VendorIssue) any { return i.IsClientVisible }),
+}
+
+// Patch writes the changed fields of a kendala of the project (see patchRow).
+func (r *MySQLIssueRepository) Patch(ctx context.Context, issue *domain.VendorIssue, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "vendor_issues", issuePatchColumns, issue, changed,
+		"project_id = ? AND id = ? AND "+liveIssueWhere, []any{issue.ProjectID, issue.ID}, expected)
 }

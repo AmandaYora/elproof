@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 
@@ -22,7 +23,7 @@ func NewMySQLEvidenceRepository(db *sql.DB) *MySQLEvidenceRepository {
 // client_hidden is computed: the file hangs off a kendala that is not shared with
 // the client, so no client may see it (domain.Evidence.ClientHidden).
 const evidenceColumns = `id, project_id, name, type, storage_path, file_name, document_date, uploaded_at,
-	description, uploaded_by_staff_id, related_kind, related_id, is_client_visible,
+	description, uploaded_by_staff_id, related_kind, related_id, is_client_visible, updated_at,
 	(related_kind = 'issue' AND related_id IN (SELECT id FROM vendor_issues WHERE is_client_visible = FALSE)) AS client_hidden`
 
 func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error) {
@@ -31,7 +32,7 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 	var documentDate sql.NullTime
 	var description sql.NullString
 	err := scan(&e.ID, &e.ProjectID, &e.Name, &evidenceType, &e.StoragePath, &e.FileName, &documentDate, &e.UploadedAt,
-		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID, &e.IsClientVisible, &e.ClientHidden)
+		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID, &e.IsClientVisible, &e.UpdatedAt, &e.ClientHidden)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -193,12 +194,15 @@ func (r *MySQLEvidenceRepository) ExistsByStoragePath(ctx context.Context, stora
 	return err == nil, err
 }
 
-func (r *MySQLEvidenceRepository) SetClientVisible(ctx context.Context, projectID, id int64, visible bool) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE evidence SET is_client_visible = ? WHERE project_id = ? AND id = ?`,
-		visible, projectID, id,
-	)
-	return err
+var evidencePatchColumns = map[string]column[domain.Evidence]{
+	"isClientVisible": col("is_client_visible", func(e *domain.Evidence) any { return e.IsClientVisible }),
+}
+
+// SetClientVisible writes e.IsClientVisible (the merged row) as a compare-and-set
+// when expected is given; see patchRow.
+func (r *MySQLEvidenceRepository) SetClientVisible(ctx context.Context, e *domain.Evidence, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "evidence", evidencePatchColumns, e, []string{"isClientVisible"},
+		"project_id = ? AND id = ?", []any{e.ProjectID, e.ID}, expected)
 }
 
 func (r *MySQLEvidenceRepository) DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error {

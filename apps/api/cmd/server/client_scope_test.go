@@ -73,7 +73,7 @@ func TestClientPortalAllowed(t *testing.T) {
 		"/api/v1/projects/0",
 		"/api/v1/projects/12/evidence/x/file",
 		"/api/v1/projects/12/evidence/x/link",
-		"/api/v1/projects/12/evidence/7/toggle-client-visible",
+		"/api/v1/projects/12/evidence/7",
 		"/api/v1/projects/12/vendors/4/milestones",
 		"/api/v2/projects/me",
 		"/other",
@@ -85,7 +85,9 @@ func TestClientPortalAllowed(t *testing.T) {
 	}
 
 	for _, m := range []string{http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete} {
-		for _, p := range []string{"/api/v1/projects/12/issues", "/api/v1/projects/12/client-payments/3/verify", "/api/v1/projects/me/home"} {
+		for _, p := range []string{"/api/v1/projects/12/issues", "/api/v1/projects/12/client-payments/3/verify", "/api/v1/projects/me/home",
+			// The explicit-state writes (archive a project, show a document) are staff writes too.
+			"/api/v1/projects/12", "/api/v1/projects/12/evidence/7"} {
 			if clientPortalAllowed(m, p) {
 				t.Errorf("%s %s must be denied for a client", m, p)
 			}

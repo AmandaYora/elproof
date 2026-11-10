@@ -44,6 +44,10 @@ type VendorIssue struct {
 	// Client Portal (list, home counts and actions, progress condition, proof
 	// files). Rows from before this field existed are visible.
 	IsClientVisible bool
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }
 
 // HasVendor reports whether the kendala is about one vendor engagement.

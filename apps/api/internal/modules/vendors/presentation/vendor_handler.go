@@ -134,7 +134,7 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 }
 
 // Bulk activates or deactivates up to 100 vendors in one transaction (POST
-// /vendors/bulk {ids, action}). It needs what the single toggle needs
+// /vendors/bulk {ids, action}). It needs what a single state change needs
 // (vendor.manage). Ids that are not this workspace's are reported as notFound.
 func (h *VendorHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireStaffTenant(w, r)
@@ -318,8 +318,19 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 		if !requirePermission(w, r, "vendor.manage") {
 			return
 		}
+		// {"isActive": true|false} on its own is the explicit active state (ADR-0036);
+		// any other body is the ordinary edit.
+		sp, err := httpx.ReadStatePatch(r, "isActive")
+		if err != nil {
+			httpx.WriteStatePatchError(w, err)
+			return
+		}
+		if sp.IsState {
+			h.setActive(w, r, tenantID, id, sp.Value)
+			return
+		}
 		var body vendorInputBody
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.Unmarshal(sp.Body, &body); err != nil {
 			response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 			return
 		}
@@ -329,21 +340,6 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.OK(w, "Vendor berhasil diperbarui", toVendorResponse(*vendor))
-	case len(rest) == 1 && rest[0] == "toggle-active" && r.Method == http.MethodPost:
-		if !requirePermission(w, r, "vendor.manage") {
-			return
-		}
-		current, err := h.vendors.Get(r.Context(), tenantID, id)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		vendor, err := h.vendors.SetActive(r.Context(), tenantID, id, !current.IsActive)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		response.OK(w, "Status vendor diperbarui", toVendorResponse(*vendor))
 	case len(rest) == 1 && rest[0] == "project-history" && r.Method == http.MethodGet:
 		if !requirePermission(w, r, "vendor.view") {
 			return
@@ -385,6 +381,27 @@ type deleteImpactResponse struct {
 type deleteImpactProjectRef struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// setActive sets a vendor's active state to exactly `want` (PATCH {"isActive":
+// ...}, ADR-0036). Setting the state the vendor already has is a 200 with the
+// vendor as it is and no write.
+func (h *VendorHandler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id int64, want bool) {
+	current, err := h.vendors.Get(r.Context(), tenantID, id)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if want == current.IsActive {
+		response.OK(w, "Status vendor diperbarui", toVendorResponse(*current))
+		return
+	}
+	vendor, err := h.vendors.SetActive(r.Context(), tenantID, id, want)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Status vendor diperbarui", toVendorResponse(*vendor))
 }
 
 // deleteImpact backs the hard-delete confirmation dialog (PLAN.md) -- names

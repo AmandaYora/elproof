@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"elproof/internal/modules/projects/domain"
@@ -15,7 +16,9 @@ type VendorEngagementRepository interface {
 	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.ProjectVendor, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectVendor, error)
 	Create(ctx context.Context, pv *domain.ProjectVendor) error
-	Update(ctx context.Context, pv *domain.ProjectVendor) error
+	// Patch writes the changed fields of a live engagement (compare-and-set on
+	// updated_at when expected is given; see infrastructure.patchRow).
+	Patch(ctx context.Context, pv *domain.ProjectVendor, changed []string, expected *time.Time) (bool, error)
 	SetStatus(ctx context.Context, projectID, id int64, status domain.EngagementStatus) error
 	// SoftDelete hides a live engagement (deleted_at = at); false when there was none.
 	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
@@ -33,7 +36,9 @@ type VendorMilestoneRepository interface {
 	ListByProjectVendors(ctx context.Context, projectVendorIDs []int64) ([]domain.VendorMilestone, error)
 	FindByID(ctx context.Context, projectVendorID, id int64) (*domain.VendorMilestone, error)
 	Create(ctx context.Context, m *domain.VendorMilestone) error
-	Update(ctx context.Context, m *domain.VendorMilestone) error
+	// Patch writes the changed fields of a vendor milestone (see
+	// VendorEngagementRepository.Patch).
+	Patch(ctx context.Context, m *domain.VendorMilestone, changed []string, expected *time.Time) (bool, error)
 	NextSortOrder(ctx context.Context, projectVendorID int64) (int, error)
 }
 
@@ -95,31 +100,104 @@ func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, a
 	return pv, nil
 }
 
-func (s *VendorEngagementService) Update(ctx context.Context, projectID, id int64, actorStaffID int64, input VendorEngagementInput) (*domain.ProjectVendor, error) {
+// VendorEngagementPatch is what PATCH /projects/{id}/vendors/{pvid} sent
+// (ADR-0036). BookingDate, DueDate, EventStartTime and EventEndTime may be null
+// (clear); Notes null clears to "".
+type VendorEngagementPatch struct {
+	VendorID, CategoryID, ContractValue, DPAmount, PICStaffID Opt[int64]
+	Scope, Notes                                              Opt[string]
+	PricingTier                                               Opt[domain.VendorPricingTier]
+	EngagementStatus                                          Opt[domain.EngagementStatus]
+	BookingDate, DueDate, EventDate                           Opt[time.Time]
+	EventStartTime, EventEndTime                              Opt[string]
+}
+
+var hhmm = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+
+func validEngagementStatus(s domain.EngagementStatus) bool {
+	switch s {
+	case domain.EngagementPlanned, domain.EngagementNegotiation, domain.EngagementBooked, domain.EngagementDPPaid,
+		domain.EngagementInProgress, domain.EngagementFullyPaid, domain.EngagementReady, domain.EngagementCompleted, domain.EngagementCancelled:
+		return true
+	}
+	return false
+}
+
+func validPricingTier(t domain.VendorPricingTier) bool {
+	return t == domain.PricingTierAkad || t == domain.PricingTierAkadResepsi || t == domain.PricingTierResepsi
+}
+
+// Patch changes the fields of a vendor engagement that were sent, and only
+// those; fields left out keep their value. A patch that changes nothing writes
+// nothing; with `expected` the write is a compare-and-set on updated_at (a stale
+// one is a 409 carrying the current engagement). The caller has already checked
+// that the vendor, category and PIC named in the patch are this workspace's.
+func (s *VendorEngagementService) Patch(ctx context.Context, projectID, id int64, actorStaffID int64, patch VendorEngagementPatch, expected *time.Time) (*domain.ProjectVendor, error) {
 	pv, err := s.Get(ctx, projectID, id)
 	if err != nil {
 		return nil, err
 	}
-	pv.VendorID = input.VendorID
-	pv.CategoryID = input.CategoryID
-	pv.Scope = input.Scope
-	pv.ContractValue = input.ContractValue
-	pv.PricingTier = input.PricingTier
-	pv.EngagementStatus = input.EngagementStatus
-	pv.BookingDate = input.BookingDate
-	pv.EventDate = input.EventDate
-	pv.EventStartTime = input.EventStartTime
-	pv.EventEndTime = input.EventEndTime
-	pv.DPAmount = input.DPAmount
-	pv.DueDate = input.DueDate
-	pv.PICStaffID = input.PICStaffID
-	pv.Notes = input.Notes
-	if err := s.repo.Update(ctx, pv); err != nil {
+	fe := newFieldErrors()
+	requiredText(fe, "scope", "Lingkup pekerjaan wajib diisi", patch.Scope)
+	if patch.ContractValue.Present() && (patch.ContractValue.Value() < 0 || patch.ContractValue.Value() > domain.MaxMoney) {
+		fe.add("Nilai kontrak harus 0 atau lebih dan wajar", "contractValue")
+	}
+	if patch.DPAmount.Present() && (patch.DPAmount.Value() < 0 || patch.DPAmount.Value() > domain.MaxMoney) {
+		fe.add("Nominal DP harus 0 atau lebih dan wajar", "dpAmount")
+	}
+	if patch.PricingTier.Present() && !validPricingTier(patch.PricingTier.Value()) {
+		fe.add("Paket harga tidak valid", "pricingTier")
+	}
+	if patch.EngagementStatus.Present() && !validEngagementStatus(patch.EngagementStatus.Value()) {
+		fe.add("Status kerja sama tidak valid", "engagementStatus")
+	}
+	for _, f := range []struct {
+		o   Opt[string]
+		key string
+	}{{patch.EventStartTime, "eventStartTime"}, {patch.EventEndTime, "eventEndTime"}} {
+		if f.o.Present() && !f.o.IsNull() && !hhmm.MatchString(f.o.Value()) {
+			fe.add("Gunakan format HH:MM", f.key)
+		}
+	}
+	if err := fe.err(); err != nil {
 		return nil, err
 	}
-	s.activity.Record(ctx, &projectID, domain.ActivityVendorStatusChanged, actorStaffID, "project_vendor", formatID(pv.ID), pv.Scope,
-		"Informasi kerja sama vendor diperbarui")
-	return pv, nil
+
+	loaded := *pv
+	var ch changeSet
+	setVal(&ch, "vendorId", "vendor", &pv.VendorID, patch.VendorID)
+	setVal(&ch, "categoryId", "kategori", &pv.CategoryID, patch.CategoryID)
+	setVal(&ch, "scope", "lingkup", &pv.Scope, patch.Scope)
+	setVal(&ch, "contractValue", "nilai kontrak", &pv.ContractValue, patch.ContractValue)
+	setVal(&ch, "pricingTier", "paket harga", &pv.PricingTier, patch.PricingTier)
+	setVal(&ch, "engagementStatus", "status", &pv.EngagementStatus, patch.EngagementStatus)
+	setNullableDate(&ch, "bookingDate", "tanggal booking", &pv.BookingDate, patch.BookingDate)
+	setDate(&ch, "eventDate", "tanggal acara", &pv.EventDate, patch.EventDate)
+	setNullable(&ch, "eventStartTime", "jam mulai", &pv.EventStartTime, patch.EventStartTime)
+	setNullable(&ch, "eventEndTime", "jam selesai", &pv.EventEndTime, patch.EventEndTime)
+	setVal(&ch, "dpAmount", "DP", &pv.DPAmount, patch.DPAmount)
+	setNullableDate(&ch, "dueDate", "jatuh tempo", &pv.DueDate, patch.DueDate)
+	setVal(&ch, "picStaffId", "PIC", &pv.PICStaffID, patch.PICStaffID)
+	setVal(&ch, "notes", "catatan", &pv.Notes, patch.Notes)
+	if !ch.any() {
+		return pv, nil
+	}
+	if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
+		return nil, err
+	}
+	wrote, err := s.repo.Patch(ctx, pv, ch.keys, expected)
+	if err != nil {
+		return nil, err
+	}
+	fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.ProjectVendor, error) {
+		return s.repo.FindByID(ctx, projectID, id)
+	}, func(p *domain.ProjectVendor) time.Time { return p.UpdatedAt }, apperror.NotFound("Kerja sama vendor tidak ditemukan"))
+	if err != nil {
+		return nil, err
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityVendorStatusChanged, actorStaffID, "project_vendor", formatID(fresh.ID), fresh.Scope,
+		"Informasi kerja sama vendor diperbarui: "+ch.summary())
+	return fresh, nil
 }
 
 // ListHistoryForVendor backs the `vendors` module's "Lihat Project" feature
@@ -140,6 +218,10 @@ func (s *VendorEngagementService) Cancel(ctx context.Context, projectID, id int6
 	pv.EngagementStatus = domain.EngagementCancelled
 	s.activity.Record(ctx, &projectID, domain.ActivityVendorStatusChanged, actorStaffID, "project_vendor", formatID(pv.ID), pv.Scope,
 		"Kerja sama vendor dibatalkan")
+	// The version the caller sends back as If-Match is the one after this write, not the one loaded before it (ADR-0036).
+	if fresh, err := s.Get(ctx, projectID, id); err == nil {
+		return fresh, nil
+	}
 	return pv, nil
 }
 
@@ -248,36 +330,58 @@ func (s *VendorEngagementService) CreateMilestone(ctx context.Context, projectID
 	return m, nil
 }
 
-type VendorMilestoneUpdateInput struct {
-	Status        domain.MilestoneStatus
-	TargetDate    time.Time
-	CompletedDate *time.Time
-	PICStaffID    int64
-	Description   string
-	Notes         string
+// VendorMilestonePatch is what PATCH .../vendors/{pvid}/milestones/{mid} sent
+// (ADR-0036). CompletedDate may be null (clear); Description and Notes null clear to "".
+type VendorMilestonePatch struct {
+	Status                    Opt[domain.MilestoneStatus]
+	TargetDate, CompletedDate Opt[time.Time]
+	PICStaffID                Opt[int64]
+	Description, Notes        Opt[string]
 }
 
-func (s *VendorEngagementService) UpdateMilestone(ctx context.Context, projectID, projectVendorID, milestoneID int64, actorStaffID int64, input VendorMilestoneUpdateInput) (*domain.VendorMilestone, error) {
+// PatchMilestone changes the fields of a vendor milestone that were sent, and only
+// those. A patch that changes nothing writes nothing; with `expected` the write is
+// a compare-and-set on the milestone's updated_at (a stale one is a 409).
+func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID, projectVendorID, milestoneID int64, actorStaffID int64, patch VendorMilestonePatch, expected *time.Time) (*domain.VendorMilestone, error) {
 	if _, err := s.Get(ctx, projectID, projectVendorID); err != nil {
 		return nil, err
 	}
+	missing := apperror.NotFound("Timeline vendor tidak ditemukan")
 	m, err := s.milestones.FindByID(ctx, projectVendorID, milestoneID)
 	if err != nil {
 		return nil, err
 	}
 	if m == nil {
-		return nil, apperror.NotFound("Timeline vendor tidak ditemukan")
+		return nil, missing
 	}
-	m.Status = input.Status
-	m.TargetDate = input.TargetDate
-	m.CompletedDate = input.CompletedDate
-	m.PICStaffID = input.PICStaffID
-	m.Description = input.Description
-	m.Notes = input.Notes
-	if err := s.milestones.Update(ctx, m); err != nil {
+	if patch.Status.Present() && !domain.IsValidMilestoneStatus(patch.Status.Value()) {
+		return nil, apperror.Validation("Status timeline tidak valid", map[string][]string{"status": {"Status timeline tidak valid"}})
+	}
+	loaded := *m
+	var ch changeSet
+	setVal(&ch, "status", "status", &m.Status, patch.Status)
+	setDate(&ch, "targetDate", "tanggal target", &m.TargetDate, patch.TargetDate)
+	setNullableDate(&ch, "completedDate", "tanggal selesai", &m.CompletedDate, patch.CompletedDate)
+	setVal(&ch, "picStaffId", "PIC", &m.PICStaffID, patch.PICStaffID)
+	setVal(&ch, "description", "deskripsi", &m.Description, patch.Description)
+	setVal(&ch, "notes", "catatan", &m.Notes, patch.Notes)
+	if !ch.any() {
+		return m, nil
+	}
+	if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
 		return nil, err
 	}
-	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(m.ID), m.Name,
-		"Timeline vendor diperbarui")
-	return m, nil
+	wrote, err := s.milestones.Patch(ctx, m, ch.keys, expected)
+	if err != nil {
+		return nil, err
+	}
+	fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.VendorMilestone, error) {
+		return s.milestones.FindByID(ctx, projectVendorID, milestoneID)
+	}, func(m *domain.VendorMilestone) time.Time { return m.UpdatedAt }, missing)
+	if err != nil {
+		return nil, err
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(fresh.ID), fresh.Name,
+		"Timeline vendor diperbarui: "+ch.summary())
+	return fresh, nil
 }

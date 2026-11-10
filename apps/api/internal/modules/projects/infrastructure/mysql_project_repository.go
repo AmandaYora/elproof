@@ -324,15 +324,29 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 	return nil
 }
 
-func (r *MySQLProjectRepository) Update(ctx context.Context, p *domain.Project) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE projects SET name = ?, bride_name = ?, groom_name = ?, event_date = ?, venue = ?, venue_id = ?, venue_rental_price = ?,
-		 venue_charge = ?, prep_start_date = ?, package_name = ?, contract_value = ?, pic_staff_id = ?, pic_sales_staff_id = ?, description = ?
-		 WHERE tenant_id = ? AND id = ?`,
-		p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.VenueRentalPrice,
-		p.VenueCharge, p.PrepStartDate, p.PackageName, p.ContractValue, p.PICStaffID, p.PICSalesStaffID, p.Description, p.TenantID, p.ID,
-	)
-	return err
+// projectPatchColumns maps each patchable field of a project to its column.
+var projectPatchColumns = map[string]column[domain.Project]{
+	"name":             col("name", func(p *domain.Project) any { return p.Name }),
+	"brideName":        col("bride_name", func(p *domain.Project) any { return p.BrideName }),
+	"groomName":        col("groom_name", func(p *domain.Project) any { return p.GroomName }),
+	"eventDate":        col("event_date", func(p *domain.Project) any { return p.EventDate }),
+	"venue":            col("venue", func(p *domain.Project) any { return p.Venue }),
+	"venueId":          col("venue_id", func(p *domain.Project) any { return p.VenueID }),
+	"venueRentalPrice": col("venue_rental_price", func(p *domain.Project) any { return p.VenueRentalPrice }),
+	"venueCharge":      col("venue_charge", func(p *domain.Project) any { return p.VenueCharge }),
+	"prepStartDate":    col("prep_start_date", func(p *domain.Project) any { return p.PrepStartDate }),
+	"packageName":      col("package_name", func(p *domain.Project) any { return p.PackageName }),
+	"contractValue":    col("contract_value", func(p *domain.Project) any { return p.ContractValue }),
+	"picStaffId":       col("pic_staff_id", func(p *domain.Project) any { return p.PICStaffID }),
+	"picSalesStaffId":  col("pic_sales_staff_id", func(p *domain.Project) any { return p.PICSalesStaffID }),
+	"description":      col("description", func(p *domain.Project) any { return p.Description }),
+	"isArchived":       col("is_archived", func(p *domain.Project) any { return p.IsArchived }),
+}
+
+// Patch writes the changed fields of p in one statement; see patchRow for the
+// compare-and-set meaning of expected and of the result.
+func (r *MySQLProjectRepository) Patch(ctx context.Context, p *domain.Project, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "projects", projectPatchColumns, p, changed, "tenant_id = ? AND id = ?", []any{p.TenantID, p.ID}, expected)
 }
 
 // ChangeStatus moves a project from one status to another only if it is still
@@ -346,11 +360,6 @@ func (r *MySQLProjectRepository) ChangeStatus(ctx context.Context, tenantID, id 
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
-}
-
-func (r *MySQLProjectRepository) SetArchived(ctx context.Context, tenantID, id int64, archived bool) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx, `UPDATE projects SET is_archived = ? WHERE tenant_id = ? AND id = ?`, archived, tenantID, id)
-	return err
 }
 
 // DeleteCascade permanently removes a project and every row across this
@@ -419,13 +428,13 @@ func NewMySQLMilestoneRepository(db *sql.DB) *MySQLMilestoneRepository {
 	return &MySQLMilestoneRepository{db: db}
 }
 
-const milestoneColumns = `id, project_id, sort_order, name, status, target_date, completed_date`
+const milestoneColumns = `id, project_id, sort_order, name, status, target_date, completed_date, updated_at`
 
 func scanMilestone(scan func(dest ...interface{}) error) (*domain.ProjectMilestone, error) {
 	var m domain.ProjectMilestone
 	var status string
 	var completedDate sql.NullTime
-	err := scan(&m.ID, &m.ProjectID, &m.SortOrder, &m.Name, &status, &m.TargetDate, &completedDate)
+	err := scan(&m.ID, &m.ProjectID, &m.SortOrder, &m.Name, &status, &m.TargetDate, &completedDate, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -503,12 +512,15 @@ func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.Project
 	return nil
 }
 
-func (r *MySQLMilestoneRepository) Update(ctx context.Context, m *domain.ProjectMilestone) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE project_milestones SET name = ?, status = ?, target_date = ?, completed_date = ? WHERE id = ?`,
-		m.Name, string(m.Status), m.TargetDate, m.CompletedDate, m.ID,
-	)
-	return err
+var milestonePatchColumns = map[string]column[domain.ProjectMilestone]{
+	"status":        col("status", func(m *domain.ProjectMilestone) any { return string(m.Status) }),
+	"targetDate":    col("target_date", func(m *domain.ProjectMilestone) any { return m.TargetDate }),
+	"completedDate": col("completed_date", func(m *domain.ProjectMilestone) any { return m.CompletedDate }),
+}
+
+// Patch writes the changed fields of a project milestone (see patchRow).
+func (r *MySQLMilestoneRepository) Patch(ctx context.Context, m *domain.ProjectMilestone, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "project_milestones", milestonePatchColumns, m, changed, "project_id = ? AND id = ?", []any{m.ProjectID, m.ID}, expected)
 }
 
 func (r *MySQLMilestoneRepository) NextSortOrder(ctx context.Context, projectID int64) (int, error) {

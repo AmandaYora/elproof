@@ -17,14 +17,14 @@ func NewMySQLVenuePaymentRepository(db *sql.DB) *MySQLVenuePaymentRepository {
 	return &MySQLVenuePaymentRepository{db: db}
 }
 
-const venuePaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes, deleted_at`
+const venuePaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes, deleted_at, updated_at`
 
 func scanVenuePayment(scan func(dest ...interface{}) error) (*domain.VenuePayment, error) {
 	var p domain.VenuePayment
 	var paymentType string
 	var notes sql.NullString
 	var deletedAt sql.NullTime
-	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes, &deletedAt)
+	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes, &deletedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -119,11 +119,17 @@ func (r *MySQLVenuePaymentRepository) Create(ctx context.Context, p *domain.Venu
 	return nil
 }
 
-func (r *MySQLVenuePaymentRepository) Update(ctx context.Context, projectID, id int64, p domain.VenuePayment) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE venue_payments SET type = ?, amount = ?, payment_date = ?, method = ?, reference_number = ?, notes = ?
-		 WHERE project_id = ? AND id = ?`,
-		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, projectID, id,
-	)
-	return err
+var venuePaymentPatchColumns = map[string]column[domain.VenuePayment]{
+	"type":            col("type", func(p *domain.VenuePayment) any { return string(p.Type) }),
+	"amount":          col("amount", func(p *domain.VenuePayment) any { return p.Amount }),
+	"paymentDate":     col("payment_date", func(p *domain.VenuePayment) any { return p.PaymentDate }),
+	"method":          col("method", func(p *domain.VenuePayment) any { return p.Method }),
+	"referenceNumber": col("reference_number", func(p *domain.VenuePayment) any { return p.ReferenceNumber }),
+	"notes":           col("notes", func(p *domain.VenuePayment) any { return p.Notes }),
+}
+
+// Patch writes the changed fields of a live venue payment (see patchRow).
+func (r *MySQLVenuePaymentRepository) Patch(ctx context.Context, p *domain.VenuePayment, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "venue_payments", venuePaymentPatchColumns, p, changed,
+		"project_id = ? AND id = ? AND deleted_at IS NULL", []any{p.ProjectID, p.ID}, expected)
 }

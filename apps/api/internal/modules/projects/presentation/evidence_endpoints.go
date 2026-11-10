@@ -92,19 +92,36 @@ func (h *Handler) uploadEvidence(w http.ResponseWriter, r *http.Request, claims 
 	response.Created(w, "Evidence berhasil diunggah", h.mutated(r.Context(), claims.tenantID, projectID, h.evidenceResponseFor(r.Context(), claims.tenantID, *e)))
 }
 
-// toggleEvidenceClientVisible flips a general-kind document's client
-// visibility without re-uploading the file — see
-// EvidenceService.ToggleClientVisible for why this is rejected for every
-// other RelatedKind.
-func (h *Handler) toggleEvidenceClientVisible(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, evidenceIDRaw string) {
+// updateEvidence is PATCH /projects/{id}/evidence/{eid} with {"isClientVisible":
+// true|false} (project.edit): the explicit client-visibility state
+// (ADR-0036). Setting the state the document already has is a 200 with the
+// document unchanged and no write. It applies to general documents and timeline
+// attachments only (422 `relatedKind` otherwise). An optional If-Match makes the
+// write a compare-and-set (409 with data.current when the document changed).
+func (h *Handler) updateEvidence(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, evidenceIDRaw string) {
 	evidenceID, err := parseInt64(evidenceIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	e, err := h.evidence.ToggleClientVisible(r.Context(), projectID, evidenceID)
-	if err != nil {
+	expected, ok := ifMatch(w, r)
+	if !ok {
+		return
+	}
+	pr, ok := newPatchReader(w, r)
+	if !ok {
+		return
+	}
+	visible := pr.boolean("isClientVisible")
+	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
+		return
+	}
+	e, err := h.evidence.SetClientVisible(r.Context(), projectID, evidenceID, visible.Value(), expected)
+	if err != nil {
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.evidenceResponseFor(r.Context(), claims.tenantID, *cur.(*domain.Evidence)), nil
+		})
 		return
 	}
 	response.OK(w, "Visibilitas dokumen diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, h.evidenceResponseFor(r.Context(), claims.tenantID, *e)))

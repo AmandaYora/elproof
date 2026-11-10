@@ -338,7 +338,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 		clientWithLinkResponse{Client: resp, AccessLink: toAccessLinkResponse(link)})
 }
 
-// Item only ever dispatches write actions (update/delete/toggle-active/
+// Item only ever dispatches write actions (update/delete/set-active/
 // reset-credential/replace-representative — no GET case exists here), so
 // the whole function is gated in one place — Owner/Admin unconditionally, or
 // a Sales staff member scoped to this client's own project (see
@@ -384,8 +384,6 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.delete(w, r, tenantID, id)
 	case restoring:
 		h.restore(w, r, tenantID, id)
-	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
-		h.toggleActive(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "access-link" && r.Method == http.MethodPost:
 		h.accessLink(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "replace-representative" && r.Method == http.MethodPost:
@@ -404,8 +402,19 @@ type contactBody struct {
 }
 
 func (h *Handler) updateContact(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	// {"isActive": true|false} on its own is the explicit active state (ADR-0036);
+	// any other body is the ordinary contact edit.
+	sp, err := httpx.ReadStatePatch(r, "isActive")
+	if err != nil {
+		httpx.WriteStatePatchError(w, err)
+		return
+	}
+	if sp.IsState {
+		h.setActive(w, r, tenantID, id, sp.Value)
+		return
+	}
 	var body contactBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(sp.Body, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
@@ -453,13 +462,21 @@ func (h *Handler) restore(w http.ResponseWriter, r *http.Request, tenantID, id i
 	response.OK(w, "Client dipulihkan", h.withLoginStatus(r, *c))
 }
 
-func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+// setActive sets a client's active state to exactly `want` (PATCH {"isActive":
+// ...}, ADR-0036), with the effects of the transition (a deactivated client cannot
+// sign in; activating counts against the trial quota). Setting the state the client
+// already has is a 200 with the client as it is and no write.
+func (h *Handler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id int64, want bool) {
 	current, err := h.clients.Get(r.Context(), tenantID, id)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	c, err := h.clients.SetActive(r.Context(), tenantID, id, !current.IsActive)
+	if want == current.IsActive {
+		response.OK(w, "Status client diperbarui", toClientResponse(*current))
+		return
+	}
+	c, err := h.clients.SetActive(r.Context(), tenantID, id, want)
 	if err != nil {
 		writeAppError(w, err)
 		return

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,13 +53,13 @@ func (m *memEvidence) Create(_ context.Context, e *domain.Evidence) error {
 	m.rows = append(m.rows, *e)
 	return nil
 }
-func (m *memEvidence) SetClientVisible(_ context.Context, projectID, id int64, v bool) error {
+func (m *memEvidence) SetClientVisible(_ context.Context, e *domain.Evidence, _ *time.Time) (bool, error) {
 	for i := range m.rows {
-		if m.rows[i].ID == id {
-			m.rows[i].IsClientVisible = v
+		if m.rows[i].ID == e.ID {
+			m.rows[i].IsClientVisible = e.IsClientVisible
 		}
 	}
-	return nil
+	return true, nil
 }
 
 type memActivity struct{ entries []domain.ActivityLogEntry }
@@ -165,24 +166,27 @@ func TestEditClearsVerificationAndLogsIt(t *testing.T) {
 	if _, err := f.svc.Verify(context.Background(), 10, 1, 5, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	in := ClientPaymentInput{Type: domain.PaymentDP, Amount: 1000, PaymentDate: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Method: "Transfer", ReferenceNumber: "R", Notes: "catatan"}
 
 	// A note-only edit keeps the verification.
-	p, err := f.svc.Update(context.Background(), 1, 10, 1, 5, in)
+	p, err := f.svc.Patch(context.Background(), 1, 10, 1, 5, PaymentPatch{Notes: Some("catatan")}, nil)
 	if err != nil || !p.IsVerified() {
 		t.Fatalf("note-only edit must keep the verification: %+v %v", p, err)
 	}
 
-	in.Amount = 2000
-	p, err = f.svc.Update(context.Background(), 1, 10, 1, 5, in)
+	logged := len(f.activity.entries)
+	p, err = f.svc.Patch(context.Background(), 1, 10, 1, 5, PaymentPatch{Amount: Some(int64(2000))}, nil)
 	if err != nil || p.IsVerified() || p.VerifiedByStaffID != 0 {
 		t.Fatalf("changing the amount must clear the verification: %+v %v", p, err)
 	}
 	if f.payments.rows[0].IsVerified() {
 		t.Error("the stored row must be cleared too")
 	}
-	if f.lastActivity() != "Verifikasi pembayaran client dibatalkan karena data pembayaran diubah" {
-		t.Errorf("activity = %q", f.lastActivity())
+	// One activity entry names what changed and that the verification went with it.
+	if len(f.activity.entries) != logged+1 {
+		t.Fatalf("a PATCH logs exactly one entry, got %d new", len(f.activity.entries)-logged)
+	}
+	if got := f.lastActivity(); !strings.Contains(got, "nominal") || !strings.Contains(got, "Verifikasi pembayaran dibatalkan karena data pembayaran diubah") {
+		t.Errorf("activity = %q", got)
 	}
 }
 
@@ -243,15 +247,19 @@ func TestMilestoneEvidenceCanBeFlaggedClientVisible(t *testing.T) {
 	_ = f.files.Create(ctx, &milestone)
 	_ = f.files.Create(ctx, &payment)
 
-	e, err := f.evidence.ToggleClientVisible(ctx, 10, milestone.ID)
+	e, err := f.evidence.SetClientVisible(ctx, 10, milestone.ID, true, nil)
 	if err != nil || !e.IsClientVisible {
 		t.Fatalf("staff must be able to flag a timeline attachment: %+v %v", e, err)
 	}
-	e, err = f.evidence.ToggleClientVisible(ctx, 10, milestone.ID)
-	if err != nil || e.IsClientVisible {
-		t.Fatalf("the flag toggles back: %+v %v", e, err)
+	e, err = f.evidence.SetClientVisible(ctx, 10, milestone.ID, true, nil)
+	if err != nil || !e.IsClientVisible {
+		t.Fatalf("setting the state it already has is not an error and keeps the flag: %+v %v", e, err)
 	}
-	if _, err := f.evidence.ToggleClientVisible(ctx, 10, payment.ID); err == nil {
+	e, err = f.evidence.SetClientVisible(ctx, 10, milestone.ID, false, nil)
+	if err != nil || e.IsClientVisible {
+		t.Fatalf("the flag can be cleared explicitly: %+v %v", e, err)
+	}
+	if _, err := f.evidence.SetClientVisible(ctx, 10, payment.ID, true, nil); err == nil {
 		t.Error("a payment proof has no visibility flag")
 	}
 }

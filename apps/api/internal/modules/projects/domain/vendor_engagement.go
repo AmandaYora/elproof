@@ -60,6 +60,10 @@ type ProjectVendor struct {
 	// DeletedAt is set while the engagement waits in the "deleted" state (soft
 	// delete, ADR-0034). Its milestones, payments and kendala are hidden with it.
 	DeletedAt *time.Time
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }
 
 // IsUnconfirmed: the vendor has not been booked yet (still Planned or in
@@ -91,4 +95,8 @@ type VendorMilestone struct {
 	CompletedDate   *time.Time
 	PICStaffID      int64
 	Notes           string
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }

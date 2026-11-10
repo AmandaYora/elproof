@@ -44,7 +44,7 @@ func requireStaffTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 // needs on top of requireStaffTenant — confirmed role rule: a Wedding
 // Planner keeps read access (list/get/attachment-download) so the vendor-
 // and venue-pickers inside their own project keep working, but every
-// mutation (create/update/toggle-active/upload/template/import) is
+// mutation (create/update/set-active/upload/template/import) is
 // Owner/Admin only. Assumes requireStaffTenant already ran and succeeded
 // (so claims is guaranteed present) — called only from write branches below.
 // (role checks: requirePermission in vendor_category_handler.go, ADR-0026)
@@ -254,7 +254,7 @@ func (h *VenueHandler) create(w http.ResponseWriter, r *http.Request, tenantID i
 }
 
 // Bulk activates or deactivates up to 100 venues in one transaction (POST
-// /venues/bulk {ids, action}). It needs what the single toggle needs
+// /venues/bulk {ids, action}). It needs what a single state change needs
 // (vendor.manage). Ids that are not this workspace's are reported as notFound.
 func (h *VenueHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireStaffTenant(w, r)
@@ -319,11 +319,6 @@ func (h *VenueHandler) Item(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.update(w, r, tenantID, id)
-	case len(rest) == 1 && rest[0] == "toggle-active" && r.Method == http.MethodPost:
-		if !requirePermission(w, r, "vendor.manage") {
-			return
-		}
-		h.toggleActive(w, r, tenantID, id)
 	case len(rest) == 1 && rest[0] == "attachment" && r.Method == http.MethodPut:
 		if !requirePermission(w, r, "vendor.manage") {
 			return
@@ -382,8 +377,19 @@ func (h *VenueHandler) get(w http.ResponseWriter, r *http.Request, tenantID, id 
 }
 
 func (h *VenueHandler) update(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	// {"isActive": true|false} on its own is the explicit active state (ADR-0036);
+	// any other body is the ordinary edit.
+	sp, err := httpx.ReadStatePatch(r, "isActive")
+	if err != nil {
+		httpx.WriteStatePatchError(w, err)
+		return
+	}
+	if sp.IsState {
+		h.setActive(w, r, tenantID, id, sp.Value)
+		return
+	}
 	var body venueInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(sp.Body, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
@@ -395,13 +401,18 @@ func (h *VenueHandler) update(w http.ResponseWriter, r *http.Request, tenantID, 
 	response.OK(w, "Venue berhasil diperbarui", toVenueResponse(*venue))
 }
 
-func (h *VenueHandler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+// setActive sets a venue's active state (ADR-0036); see VendorHandler.setActive.
+func (h *VenueHandler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id int64, want bool) {
 	current, err := h.venues.Get(r.Context(), tenantID, id)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	venue, err := h.venues.SetActive(r.Context(), tenantID, id, !current.IsActive)
+	if want == current.IsActive {
+		response.OK(w, "Status venue diperbarui", toVenueResponse(*current))
+		return
+	}
+	venue, err := h.venues.SetActive(r.Context(), tenantID, id, want)
 	if err != nil {
 		writeAppError(w, err)
 		return

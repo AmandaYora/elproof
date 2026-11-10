@@ -13,7 +13,8 @@ type ClientPaymentRepository interface {
 	ListByProject(ctx context.Context, projectID int64) ([]domain.ClientPayment, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ClientPayment, error)
 	Create(ctx context.Context, p *domain.ClientPayment) error
-	Update(ctx context.Context, projectID, id int64, p domain.ClientPayment) error
+	// Patch writes the changed fields of a live payment (see PaymentRepository.Patch).
+	Patch(ctx context.Context, p *domain.ClientPayment, changed []string, expected *time.Time) (bool, error)
 	// SoftDelete hides a live payment (deleted_at = at); false when there was none.
 	SoftDelete(ctx context.Context, projectID, id int64, at time.Time) (bool, error)
 	// FindDeletedByID is the restore lookup: the payment while it waits in the
@@ -115,33 +116,68 @@ func (s *ClientPaymentService) Create(ctx context.Context, tenantID, projectID i
 	return p, nil
 }
 
-// Update is an unconditional full-field overwrite -- see PaymentService.Update.
-func (s *ClientPaymentService) Update(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, input ClientPaymentInput) (*domain.ClientPayment, error) {
-	p, err := s.repo.FindByID(ctx, projectID, id)
+// Patch changes the fields of a client payment that were sent, and only those; see
+// PaymentService.Patch (overpayment rule on the merged type and amount against the
+// contract, project lock, no-op writes nothing, compare-and-set with `expected`).
+// Changing what was paid (type, amount, date, method or reference number)
+// invalidates a verification (ADR-0032): it is cleared in the same write and named
+// in the same single activity entry; changing only the note keeps it.
+func (s *ClientPaymentService) Patch(ctx context.Context, tenantID, projectID, id int64, actorStaffID int64, patch PaymentPatch, expected *time.Time) (*domain.ClientPayment, error) {
+	if err := checkPaymentPatch(patch); err != nil {
+		return nil, err
+	}
+	var out *domain.ClientPayment
+	err := inLockedTx(ctx, s.proof, projectID, func(ctx context.Context) error {
+		p, err := s.repo.FindByID(ctx, projectID, id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return apperror.NotFound("Pembayaran tidak ditemukan")
+		}
+		loaded := *p
+		var ch changeSet
+		applyPayment(&ch, patch, &p.Type, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &p.Notes)
+		if !ch.any() {
+			out = p
+			return nil
+		}
+		if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
+			return err
+		}
+		if ch.moneyChanged() {
+			if err := s.checkChange(ctx, tenantID, projectID, id, &domain.PaymentLine{Type: p.Type, Amount: p.Amount}); err != nil {
+				return err
+			}
+		}
+		cleared := false
+		if ch.has("type") || ch.has("amount") || ch.has("paymentDate") || ch.has("method") || ch.has("referenceNumber") {
+			if cleared = p.ClearVerification(); cleared {
+				ch.note("verification", "")
+			}
+		}
+		wrote, err := s.repo.Patch(ctx, p, ch.keys, expected)
+		if err != nil {
+			return err
+		}
+		fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.ClientPayment, error) {
+			return s.repo.FindByID(ctx, projectID, id)
+		}, func(p *domain.ClientPayment) time.Time { return p.UpdatedAt }, apperror.NotFound("Pembayaran tidak ditemukan"))
+		if err != nil {
+			return err
+		}
+		out = fresh
+		desc := "Pembayaran client diperbarui: " + ch.summary()
+		if cleared {
+			desc += ". Verifikasi pembayaran dibatalkan karena data pembayaran diubah"
+		}
+		s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "client_payment", formatID(fresh.ID), string(fresh.Type), desc)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if p == nil {
-		return nil, apperror.NotFound("Pembayaran tidak ditemukan")
-	}
-	if err := checkAmount(input.Amount); err != nil {
-		return nil, err
-	}
-	if err := s.checkChange(ctx, tenantID, projectID, id, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
-		return nil, err
-	}
-	// Changing what was paid invalidates a verification (ADR-0032).
-	cleared := p.ApplyEdit(input.Type, input.Amount, input.PaymentDate, input.Method, input.ReferenceNumber, input.Notes)
-	if err := s.repo.Update(ctx, projectID, id, *p); err != nil {
-		return nil, err
-	}
-	s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran client diperbarui")
-	if cleared {
-		s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-			"Verifikasi pembayaran client dibatalkan karena data pembayaran diubah")
-	}
-	return p, nil
+	return out, nil
 }
 
 // errVerifyNeedsEvidence is the 422 returned when a payment with no proof file
@@ -185,6 +221,10 @@ func (s *ClientPaymentService) Verify(ctx context.Context, projectID, id, actorS
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
 		"Pembayaran client diverifikasi")
+	// The version after this write, not the one loaded before it (ADR-0036).
+	if fresh, err := s.repo.FindByID(ctx, projectID, id); err == nil && fresh != nil {
+		return fresh, nil
+	}
 	return p, nil
 }
 

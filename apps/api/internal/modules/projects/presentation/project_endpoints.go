@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -388,25 +389,63 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	response.OK(w, "ok", resp)
 }
 
+// projectItem is a project as GET /projects/{id} shows it to staff: the row, its
+// PIC's name and its progress. A failure to compute the progress leaves that key
+// out (the answer must not fail after the write committed).
+func (h *Handler) projectItem(ctx context.Context, tenantID int64, p domain.Project) projectResponse {
+	resp := toProjectResponse(p)
+	resp.PICName = h.projects.ResolvePICName(ctx, tenantID, p.PICStaffID)
+	if progress, err := h.projects.ComputeProgress(ctx, tenantID, p.ID, time.Now()); err == nil {
+		pr := toProgressResponse(*progress)
+		resp.Progress = &pr
+	}
+	return resp
+}
+
+// updateProject is PATCH /projects/{id}: a partial update (ADR-0036). Only the
+// fields present in the body change; `isArchived` is the explicit archive state
+// (the project.archive permission), everything else needs project.edit. An empty
+// body is a 422 on `body`; an optional If-Match makes the write a compare-and-set
+// (409 with data.current when the project changed meanwhile). The answer is the
+// project with its new updatedAt, and the ETag header carries the same version.
 func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
-	var body projectInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	input, badDates := toProjectInput(body)
-	if badDates != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", badDates)
+	pr, ok := newPatchReader(w, r)
+	if !ok {
 		return
 	}
-	p, err := h.projects.Update(r.Context(), claims.tenantID, projectID, claims.actor(), input)
-	if err != nil {
+	patch := application.ProjectPatch{
+		Name: pr.text("name", false), BrideName: pr.text("brideName", false), GroomName: pr.text("groomName", false),
+		EventDate: pr.date("eventDate", false), Venue: pr.text("venue", true), PrepStartDate: pr.date("prepStartDate", false),
+		PackageName: pr.text("packageName", false), ContractValue: pr.integer("contractValue", false),
+		PICStaffID: pr.integer("picStaffId", false), PICSalesStaffID: pr.integer("picSalesStaffId", true),
+		Description: pr.text("description", true),
+		VenueID:     pr.integer("venueId", true), VenueRentalPrice: pr.integer("venueRentalPrice", true), VenueCharge: pr.integer("venueCharge", true),
+		IsArchived: pr.boolean("isArchived"),
+	}
+	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	resp := toProjectResponse(*p)
-	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
-	response.OK(w, "Project berhasil diperbarui", resp)
+	if patch.HasDetails() && !claims.can("project.edit") {
+		forbiddenPermission(w, "Peran Anda tidak memiliki izin untuk aksi ini")
+		return
+	}
+	if patch.IsArchived.Present() && !claims.can("project.archive") {
+		forbiddenPermission(w, "Peran Anda tidak memiliki izin untuk aksi ini")
+		return
+	}
+	p, err := h.projects.Patch(r.Context(), claims.tenantID, projectID, claims.actor(), patch, expected)
+	if err != nil {
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.projectItem(r.Context(), claims.tenantID, *cur.(*domain.Project)), nil
+		})
+		return
+	}
+	response.OK(w, "Project berhasil diperbarui", h.projectItem(r.Context(), claims.tenantID, *p))
 }
 
 // getProjectVenue backs GET /projects/{id}/venue (ADR-0016) -- reachable by
@@ -437,25 +476,6 @@ func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims s
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
 	response.OK(w, "Project dibatalkan", resp)
-}
-
-// toggleArchiveProject is a single toggle (flips the current is_archived
-// state), same convention as vendors'/staff's toggle-active — no body, no
-// separate archive/unarchive endpoints. See ADR-0013.
-func (h *Handler) toggleArchiveProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
-	current, err := h.projects.Get(r.Context(), claims.tenantID, projectID)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	p, err := h.projects.SetArchived(r.Context(), claims.tenantID, projectID, claims.staffID, !current.IsArchived)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	resp := toProjectResponse(*p)
-	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
-	response.OK(w, "Status arsip project diperbarui", resp)
 }
 
 // deleteProject is the hard-delete endpoint (ADR-0013) — Owner-only, checked
@@ -562,36 +582,59 @@ func (h *Handler) createMilestone(w http.ResponseWriter, r *http.Request, claims
 	response.Created(w, "Timeline berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toMilestoneResponse(*m)))
 }
 
-type milestoneUpdateBody struct {
-	Status        string `json:"status"`
-	TargetDate    string `json:"targetDate"`
-	CompletedDate string `json:"completedDate"`
+// milestoneItem is a project milestone as GET /projects/{id}/milestones lists it
+// (with the proof files the caller may see).
+func (h *Handler) milestoneItem(ctx context.Context, claims staffClaims, projectID int64, m domain.ProjectMilestone) (milestoneResponse, error) {
+	resp := toMilestoneResponse(m)
+	evidences, err := h.evidence.List(ctx, projectID)
+	if err != nil {
+		return resp, err
+	}
+	resp.Evidence = indexEvidence(evidences, claims.isClient, claims.can).refs(domain.RelatedProjectMilestone, m.ID)
+	return resp, nil
 }
 
+// updateMilestone is PATCH /projects/{id}/milestones/{mid}: a partial update
+// (status, targetDate, completedDate; completedDate may be null). See updateProject
+// for the body, If-Match and 409 rules.
 func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
 		return
 	}
-	var body milestoneUpdateBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	targetDate, err := parseDate(body.TargetDate)
+	pr, ok := newPatchReader(w, r)
+	if !ok {
+		return
+	}
+	status := pr.text("status", false)
+	patch := application.MilestonePatch{
+		TargetDate: pr.date("targetDate", false), CompletedDate: pr.date("completedDate", true),
+	}
+	if status.Present() {
+		patch.Status = application.Some(domain.MilestoneStatus(status.Value()))
+	}
+	if err := pr.finish(); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	m, err := h.projects.PatchMilestone(r.Context(), claims.tenantID, projectID, milestoneID, claims.staffID, patch, expected)
 	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"targetDate": {"Gunakan format YYYY-MM-DD"}})
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.milestoneItem(r.Context(), claims, projectID, *cur.(*domain.ProjectMilestone))
+		})
 		return
 	}
-	m, err := h.projects.UpdateMilestone(r.Context(), claims.tenantID, projectID, milestoneID, claims.staffID, application.MilestoneUpdateInput{
-		Status: domain.MilestoneStatus(body.Status), TargetDate: targetDate, CompletedDate: parseOptionalDate(body.CompletedDate),
-	})
+	item, err := h.milestoneItem(r.Context(), claims, projectID, *m)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Timeline berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toMilestoneResponse(*m)))
+	response.OK(w, "Timeline berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, item))
 }
 
 type milestoneReorderBody struct {

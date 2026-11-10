@@ -39,7 +39,9 @@ type EvidenceRepository interface {
 	ListClientVisibleGeneral(ctx context.Context, projectID int64) ([]domain.Evidence, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.Evidence, error)
 	Create(ctx context.Context, e *domain.Evidence) error
-	SetClientVisible(ctx context.Context, projectID, id int64, visible bool) error
+	// SetClientVisible writes e.IsClientVisible (compare-and-set on updated_at when
+	// expected is given; see infrastructure.patchRow).
+	SetClientVisible(ctx context.Context, e *domain.Evidence, expected *time.Time) (bool, error)
 	// DeleteByRelated hard-deletes every evidence row for one related_kind+
 	// related_id pair — backs DeleteForRelated below.
 	DeleteByRelated(ctx context.Context, kind domain.EvidenceRelatedKind, relatedID int64) error
@@ -163,12 +165,15 @@ func (s *EvidenceService) ListClientDocuments(ctx context.Context, projectID int
 	return s.repo.ListClientVisibleGeneral(ctx, projectID)
 }
 
-// ToggleClientVisible flips a document's client visibility without needing to
-// re-upload the file. It applies to `general` documents and to timeline
-// (`projectMilestone`) attachments, the two kinds staff decide on one by one
-// (ADR-0032); it is rejected for any other RelatedKind, whose visibility
-// follows the thing it hangs off (the field means nothing there).
-func (s *EvidenceService) ToggleClientVisible(ctx context.Context, projectID, id int64) (*domain.Evidence, error) {
+// SetClientVisible sets whether a client sees a document, to exactly `visible`
+// (ADR-0036). It applies to `general` documents and to
+// timeline (`projectMilestone`) attachments, the two kinds staff decide on one by
+// one (ADR-0032); it is rejected for any other RelatedKind, whose visibility
+// follows the thing it hangs off (the field means nothing there). Setting the
+// state it already has is not an error and not a write: the file comes back as it
+// is. With `expected` the write is a compare-and-set on the file's updated_at (a
+// stale one is a 409 carrying the current file).
+func (s *EvidenceService) SetClientVisible(ctx context.Context, projectID, id int64, visible bool, expected *time.Time) (*domain.Evidence, error) {
 	e, err := s.repo.FindByID(ctx, projectID, id)
 	if err != nil {
 		return nil, err
@@ -181,12 +186,17 @@ func (s *EvidenceService) ToggleClientVisible(ctx context.Context, projectID, id
 			"relatedKind": {"Visibilitas lampiran ini mengikuti data yang dilampirinya dan tidak dapat diubah"},
 		})
 	}
-	newVisible := !e.IsClientVisible
-	if err := s.repo.SetClientVisible(ctx, projectID, id, newVisible); err != nil {
+	if e.IsClientVisible == visible {
+		return e, nil
+	}
+	e.IsClientVisible = visible
+	wrote, err := s.repo.SetClientVisible(ctx, e, expected)
+	if err != nil {
 		return nil, err
 	}
-	e.IsClientVisible = newVisible
-	return e, nil
+	return finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.Evidence, error) {
+		return s.repo.FindByID(ctx, projectID, id)
+	}, func(e *domain.Evidence) time.Time { return e.UpdatedAt }, apperror.NotFound("Evidence tidak ditemukan"))
 }
 
 // ListByProjects backs ComputeProgressBatch — see EvidenceRepository.

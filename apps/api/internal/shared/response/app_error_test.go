@@ -67,3 +67,29 @@ func TestFromErrorShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestStaleConflictCarriesTheCurrentItem(t *testing.T) {
+	rec := httptest.NewRecorder()
+	FromError(rec, apperror.Stale(nil).WithData(map[string]any{"current": map[string]any{"id": 7, "updatedAt": "2026-11-10T08:15:30.123456Z"}}))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status %d", rec.Code)
+	}
+	body := decode(t, rec)
+	if body["success"] != false || body["message"] != "Data ini sudah diubah orang lain. Muat ulang untuk melihat versi terbaru." {
+		t.Errorf("envelope: %v", body)
+	}
+	errs, _ := body["errors"].(map[string]any)
+	if c, _ := errs["_conflict"].([]any); len(c) != 1 || c[0] != "stale" {
+		t.Errorf("errors = %v", body["errors"])
+	}
+	cur := body["data"].(map[string]any)["current"].(map[string]any)
+	if cur["id"] != float64(7) || cur["updatedAt"] != "2026-11-10T08:15:30.123456Z" {
+		t.Errorf("data.current = %v", cur)
+	}
+	// A plain conflict keeps its old shape: no data key at all.
+	rec = httptest.NewRecorder()
+	FromError(rec, apperror.Conflict("bentrok").WithCode("x"))
+	if _, has := decode(t, rec)["data"]; has {
+		t.Error("an ordinary conflict has no data")
+	}
+}

@@ -22,6 +22,7 @@ func (f fakeContracts) EngagementContractValue(context.Context, int64, int64) (i
 type fakeClientPayments struct {
 	rows    []domain.ClientPayment
 	created int
+	patches int // how many Patch writes reached the repository
 }
 
 // live is what a repository returns: rows that are not deleted.
@@ -50,13 +51,14 @@ func (f *fakeClientPayments) Create(context.Context, *domain.ClientPayment) erro
 	f.created++
 	return nil
 }
-func (f *fakeClientPayments) Update(_ context.Context, _, id int64, p domain.ClientPayment) error {
+func (f *fakeClientPayments) Patch(_ context.Context, p *domain.ClientPayment, _ []string, _ *time.Time) (bool, error) {
+	f.patches++
 	for i := range f.rows {
-		if f.rows[i].ID == id {
-			f.rows[i] = p
+		if f.rows[i].ID == p.ID {
+			f.rows[i] = *p
 		}
 	}
-	return nil
+	return true, nil
 }
 func (f *fakeClientPayments) SoftDelete(_ context.Context, _, id int64, at time.Time) (bool, error) {
 	for i := range f.rows {
@@ -133,9 +135,7 @@ func TestClientPaymentRefusesOverpayment(t *testing.T) {
 
 	// Editing payment 1 from 60 to 100 million leaves no room problem
 	// (itself excluded), but 100,000,001 does.
-	_, err = svc.Update(context.Background(), 1, 10, 1, 5, ClientPaymentInput{
-		Type: domain.PaymentDP, Amount: 100_000_001, PaymentDate: time.Now(),
-	})
+	_, err = svc.Patch(context.Background(), 1, 10, 1, 5, PaymentPatch{Amount: Some(int64(100_000_001))}, nil)
 	if codeOf(err) != "payment_exceeds_contract" {
 		t.Fatalf("Update past the contract: got %v", err)
 	}

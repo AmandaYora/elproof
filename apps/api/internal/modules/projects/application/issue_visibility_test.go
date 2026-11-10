@@ -30,13 +30,13 @@ func (f *fakeIssues) FindByID(_ context.Context, _, id int64) (*domain.VendorIss
 	}
 	return nil, nil
 }
-func (f *fakeIssues) Update(_ context.Context, i *domain.VendorIssue) error {
+func (f *fakeIssues) Patch(_ context.Context, i *domain.VendorIssue, _ []string, _ *time.Time) (bool, error) {
 	for k := range f.rows {
 		if f.rows[k].ID == i.ID {
 			f.rows[k] = *i
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func yes(b bool) *bool { return &b }
@@ -71,16 +71,16 @@ func TestAKendalaWithoutAVendorWorksAndDefaultsToShared(t *testing.T) {
 	}
 }
 
-func TestIssueUpdateKeepsVisibilityUnlessSent(t *testing.T) {
+func TestIssuePatchKeepsVisibilityUnlessSent(t *testing.T) {
 	repo := &fakeIssues{rows: []domain.VendorIssue{{ID: 1, ProjectID: 5, Title: "x", IsClientVisible: false, Status: domain.IssueOpen}}}
 	svc := &IssueService{repo: repo, engagements: onePV{byProject: map[int64]map[int64]bool{}}}
-	upd := IssueUpdateInput{Title: "y", Impact: domain.ImpactLow, Status: domain.IssueOpen, FoundDate: time.Now()}
-	got, err := svc.Update(context.Background(), 5, 1, 9, upd, time.Now())
+	upd := IssuePatch{Title: Some("y"), Impact: Some(domain.ImpactLow)}
+	got, err := svc.Patch(context.Background(), 5, 1, 9, upd, time.Now(), nil)
 	if err != nil || got.IsClientVisible {
 		t.Fatalf("omitted keeps hidden: %+v %v", got, err)
 	}
-	upd.IsClientVisible = yes(true)
-	if got, err = svc.Update(context.Background(), 5, 1, 9, upd, time.Now()); err != nil || !got.IsClientVisible {
+	upd.IsClientVisible = Some(true)
+	if got, err = svc.Patch(context.Background(), 5, 1, 9, upd, time.Now(), nil); err != nil || !got.IsClientVisible {
 		t.Fatalf("sent true shares it: %+v %v", got, err)
 	}
 }

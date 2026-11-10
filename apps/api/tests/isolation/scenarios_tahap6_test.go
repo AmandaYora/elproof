@@ -426,7 +426,7 @@ func TestTahap6(t *testing.T) {
 		xVendors = append(xVendors, id)
 		vendorCat[id] = catName[xCat[v.cat]]
 		if !v.active {
-			s.mustOK("deactivate vendor", s.do(x.token, "POST", fmt.Sprintf("/api/v1/vendors/%d/toggle-active", id), nil))
+			s.mustOK("deactivate vendor", s.do(x.token, "PATCH", fmt.Sprintf("/api/v1/vendors/%d", id), map[string]any{"isActive": false}))
 		}
 	}
 
@@ -448,7 +448,7 @@ func TestTahap6(t *testing.T) {
 		id := s.venueWith(x, v.name+" "+x.marker, v.city, v.cap, v.rental)
 		xVenues = append(xVenues, id)
 		if !v.active {
-			s.mustOK("deactivate venue", s.do(x.token, "POST", fmt.Sprintf("/api/v1/venues/%d/toggle-active", id), nil))
+			s.mustOK("deactivate venue", s.do(x.token, "PATCH", fmt.Sprintf("/api/v1/venues/%d", id), map[string]any{"isActive": false}))
 		}
 	}
 
@@ -519,7 +519,7 @@ func TestTahap6(t *testing.T) {
 	mkClient("Banu", "Bride", pa, true)
 	mkClient("Eko", "Groom", ps, false)
 	mkClient("Fajar", "Bride", po, true)
-	s.mustOK("deactivate Banu", s.do(x.token, "POST", fmt.Sprintf("/api/v1/clients/%d/toggle-active", clientIDs["Banu"]), nil))
+	s.mustOK("deactivate Banu", s.do(x.token, "PATCH", fmt.Sprintf("/api/v1/clients/%d", clientIDs["Banu"]), map[string]any{"isActive": false}))
 	// "none": the person has no login at all (links and sessions go first, they point at the login).
 	for _, q := range []string{
 		`DELETE FROM auth_tokens WHERE credential_id IN (SELECT id FROM credentials WHERE principal_type = 'client' AND principal_id = ?)`,
@@ -1082,14 +1082,14 @@ func TestTahap6(t *testing.T) {
 		if got := ids(rows(s.mustOK("old role param", s.do(x.token, "GET", fmt.Sprintf("/api/v1/staff?role=%d", wpRole), nil)), "data")); !reflect.DeepEqual(got, []int64{wpID}) {
 			t.Errorf("role (the older name): %v", got)
 		}
-		s.mustOK("deactivate planner", s.do(x.token, "POST", fmt.Sprintf("/api/v1/staff/%d/toggle-active", wpID), nil))
+		s.mustOK("deactivate planner", s.do(x.token, "PATCH", fmt.Sprintf("/api/v1/staff/%d", wpID), map[string]any{"isActive": false}))
 		if got := ids(rows(s.mustOK("inactive staff", s.do(x.token, "GET", "/api/v1/staff?isActive=false", nil)), "data")); !reflect.DeepEqual(got, []int64{wpID}) {
 			t.Errorf("staff isActive=false: %v", got)
 		}
 		if got := rows(s.mustOK("active staff", s.do(x.token, "GET", "/api/v1/staff?isActive=true&limit=100", nil)), "data"); len(got) != 3 {
 			t.Errorf("staff isActive=true: %d", len(got))
 		}
-		s.mustOK("reactivate planner", s.do(x.token, "POST", fmt.Sprintf("/api/v1/staff/%d/toggle-active", wpID), nil))
+		s.mustOK("reactivate planner", s.do(x.token, "PATCH", fmt.Sprintf("/api/v1/staff/%d", wpID), map[string]any{"isActive": true}))
 		// Ordered by the role's name: Admin, Owner, Sales, Wedding Planner.
 		var roleNames []string
 		for _, m := range rows(s.mustOK("by role name", s.do(x.token, "GET", "/api/v1/staff?sort=roleName:asc&limit=100", nil)), "data") {
@@ -1459,7 +1459,7 @@ func TestTahap6(t *testing.T) {
 					}
 				}
 
-				// Permissions: the toggle's permission (vendor.manage). A planner has none, a client neither.
+				// Permissions: the permission of a single state change (vendor.manage). A planner has none, a client neither.
 				for label, tok := range map[string]string{"Wedding Planner": wpTok, "Sales": salesTok} {
 					routesCovered++
 					if r := s.do(tok, "POST", c.path, map[string]any{"ids": []int64{a}, "action": "deactivate"}); r.status != http.StatusForbidden {
@@ -1487,7 +1487,7 @@ func TestTahap6(t *testing.T) {
 				if v, _ := state(a); !v {
 					t.Errorf("a forbidden request changed row %d", a)
 				}
-				// Admin holds vendor.manage, like the toggle.
+				// Admin holds vendor.manage, like a single state change.
 				routesCovered++
 				if r := s.do(adminTok, "POST", c.path, map[string]any{"ids": []int64{a}, "action": "activate"}); r.status != http.StatusOK {
 					t.Errorf("Admin (vendor.manage): %s", r)

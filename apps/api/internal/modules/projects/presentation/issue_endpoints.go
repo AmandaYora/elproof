@@ -123,53 +123,56 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request, claims sta
 	response.Created(w, "Kendala berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, h.issueResponseFor(r.Context(), claims.tenantID, projectID, *issue)))
 }
 
-// issueUpdateBody is issueInputBody's shape plus Status -- a full overwrite,
-// not a partial patch (PLAN.md "Retire the standalone Kendala tab"). The
-// frontend's quick status-change dropdown sends this same shape with every
-// other field spread from the existing issue and only Status changed.
-type issueUpdateBody struct {
-	ProjectVendorID      int64  `json:"projectVendorId"`
-	VendorMilestoneID    *int64 `json:"vendorMilestoneId"`
-	Title                string `json:"title"`
-	Description          string `json:"description"`
-	Impact               string `json:"impact"`
-	FoundDate            string `json:"foundDate"`
-	Status               string `json:"status"`
-	ResolutionPlan       string `json:"resolutionPlan"`
-	PICStaffID           int64  `json:"picStaffId"`
-	TargetResolutionDate string `json:"targetResolutionDate"`
-	// IsClientVisible: omitted keeps what the kendala has now.
-	IsClientVisible *bool `json:"isClientVisible"`
-}
-
+// updateIssue is PATCH /projects/{id}/issues/{iid}: a partial update (ADR-0036) of
+// projectVendorId (null or 0: a kendala about the event in general),
+// vendorMilestoneId (nullable), title, description, impact, foundDate, status,
+// resolutionPlan (null clears), picStaffId, targetResolutionDate (nullable) and
+// isClientVisible. Only the fields present change; a status change to
+// Resolved/Closed stamps resolvedDate once. See updateProject for the body,
+// If-Match and 409 rules.
 func (h *Handler) updateIssue(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, issueIDRaw string) {
 	issueID, err := parseInt64(issueIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	var body issueUpdateBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	foundDate, err := parseDate(body.FoundDate)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"foundDate": {"Gunakan format YYYY-MM-DD"}})
+	pr, ok := newPatchReader(w, r)
+	if !ok {
 		return
 	}
-	if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", body.PICStaffID); err != nil {
+	impact, status := pr.text("impact", false), pr.text("status", false)
+	patch := application.IssuePatch{
+		ProjectVendorID: pr.integer("projectVendorId", true), VendorMilestoneID: pr.integer("vendorMilestoneId", true),
+		PICStaffID: pr.integer("picStaffId", false),
+		Title:      pr.text("title", false), Description: pr.text("description", false), ResolutionPlan: pr.text("resolutionPlan", true),
+		FoundDate: pr.date("foundDate", false), TargetResolutionDate: pr.date("targetResolutionDate", true),
+		IsClientVisible: pr.boolean("isClientVisible"),
+	}
+	if impact.Present() {
+		patch.Impact = application.Some(domain.IssueImpact(impact.Value()))
+	}
+	if status.Present() {
+		patch.Status = application.Some(domain.IssueStatus(status.Value()))
+	}
+	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	issue, err := h.issues.Update(r.Context(), projectID, issueID, claims.staffID, application.IssueUpdateInput{
-		ProjectVendorID: body.ProjectVendorID, VendorMilestoneID: body.VendorMilestoneID, Title: body.Title, Description: body.Description,
-		Impact: domain.IssueImpact(body.Impact), FoundDate: foundDate, Status: domain.IssueStatus(body.Status), ResolutionPlan: body.ResolutionPlan,
-		PICStaffID: body.PICStaffID, TargetResolutionDate: parseOptionalDate(body.TargetResolutionDate),
-		IsClientVisible: body.IsClientVisible,
-	}, time.Now())
+	if patch.PICStaffID.Present() {
+		if err := h.refs.Staff(r.Context(), claims.tenantID, "picStaffId", patch.PICStaffID.Value()); err != nil {
+			writeAppError(w, err)
+			return
+		}
+	}
+	issue, err := h.issues.Patch(r.Context(), projectID, issueID, claims.staffID, patch, time.Now(), expected)
 	if err != nil {
-		writeAppError(w, err)
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.issueResponseFor(r.Context(), claims.tenantID, projectID, *cur.(*domain.VendorIssue)), nil
+		})
 		return
 	}
 	response.OK(w, "Kendala berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, h.issueResponseFor(r.Context(), claims.tenantID, projectID, *issue)))

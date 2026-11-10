@@ -75,6 +75,10 @@ type VendorPayment struct {
 	ReferenceNumber string
 	Notes           string
 	DeletedAt       *time.Time
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }
 
 // PaymentEvidenceStatus cross-references a project's (or, for the
@@ -147,6 +151,10 @@ type ClientPayment struct {
 	// DeletedAt is set while the payment waits in the "deleted" state (soft
 	// delete, ADR-0034); only restore lookups ever see such a row.
 	DeletedAt *time.Time
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }
 
 // ErrVerifyNeedsEvidence is returned by Verify when no proof is attached.
@@ -210,6 +218,10 @@ type VenuePayment struct {
 	ReferenceNumber string
 	Notes           string
 	DeletedAt       *time.Time
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }
 
 // PaymentLine is the part of a payment the overpayment rule needs, shared by

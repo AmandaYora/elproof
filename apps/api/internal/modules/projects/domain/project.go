@@ -76,6 +76,16 @@ const (
 	MilestoneCancelled  MilestoneStatus = "Cancelled"
 )
 
+// IsValidMilestoneStatus reports whether s is a known milestone status (the
+// column is an enum).
+func IsValidMilestoneStatus(s MilestoneStatus) bool {
+	switch s {
+	case MilestoneNotStarted, MilestoneInProgress, MilestoneCompleted, MilestoneBlocked, MilestoneCancelled:
+		return true
+	}
+	return false
+}
+
 type ProjectMilestone struct {
 	ID            int64
 	ProjectID     int64
@@ -84,4 +94,8 @@ type ProjectMilestone struct {
 	Status        MilestoneStatus
 	TargetDate    time.Time
 	CompletedDate *time.Time
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }

@@ -159,8 +159,6 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.replacePaymentTerms(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "closing-checklist" && r.Method == http.MethodGet:
 		h.closingChecklist(w, r, claims, projectID)
-	case len(rest) == 1 && rest[0] == "toggle-archive" && r.Method == http.MethodPost:
-		h.toggleArchiveProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "duplicate" && r.Method == http.MethodPost:
 		h.duplicateProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodGet:
@@ -235,8 +233,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.downloadEvidence(w, r, projectID, rest[1], claims.isClient)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "link" && r.Method == http.MethodGet:
 		h.linkEvidence(w, r, projectID, rest[1], claims.isClient)
-	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "toggle-client-visible" && r.Method == http.MethodPost:
-		h.toggleEvidenceClientVisible(w, r, claims, projectID, rest[1])
+	case len(rest) == 2 && rest[0] == "evidence" && r.Method == http.MethodPatch:
+		h.updateEvidence(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "evidence" && r.Method == http.MethodDelete:
 		h.deleteEvidence(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "uploads" && r.Method == http.MethodPost:
@@ -311,11 +309,15 @@ func staffWritePermission(method string, rest []string) (perm string, alt string
 		if method == http.MethodDelete {
 			return "project.delete", ""
 		}
+		// PATCH carries the project's details (project.edit) and/or its explicit
+		// archive state (project.archive); updateProject checks each field against
+		// its own permission, so either one lets the request in here.
+		if method == http.MethodPatch {
+			return "project.edit", "project.archive"
+		}
 		return "project.edit", ""
 	}
 	switch rest[0] {
-	case "toggle-archive":
-		return "project.archive", ""
 	case "duplicate":
 		return "project.duplicate", ""
 	case "payments", "client-payments", "venue-payments", "payment-terms":
@@ -331,9 +333,9 @@ func staffWritePermission(method string, rest []string) (perm string, alt string
 		// has finance.record but not project.edit.
 		return "project.edit", "finance.record"
 	case "evidence":
-		// Showing a document to the client is a project decision, not a
-		// finance one.
-		if len(rest) == 3 && rest[2] == "toggle-client-visible" {
+		// Showing a document to the client (PATCH .../evidence/{eid}) is a
+		// project decision, not a finance one.
+		if len(rest) == 2 && method == http.MethodPatch {
 			return "project.edit", ""
 		}
 		// Payment proofs are uploaded here too.

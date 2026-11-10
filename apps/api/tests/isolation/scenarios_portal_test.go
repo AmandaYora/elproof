@@ -263,14 +263,14 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 		}
 		hidden("before flagging")
 
-		// Staff see it in the step, and can flag it with the existing toggle.
+		// Staff see it in the step, and can flag it with the explicit visibility state.
 		sm := s.mustOK("staff milestones", s.do(w.b.token, "GET", s.projectsPath(P, "/milestones"), nil))
 		if m := rowByID(rows(sm, "data"), p.Milestone); m == nil || len(evidenceIDs(m)) != 1 {
 			t.Fatalf("staff should see the step's attachment: %s", sm)
 		}
-		tg := s.mustOK("toggle", s.do(w.b.token, "POST", s.projectsPath(P, fmt.Sprintf("/evidence/%d/toggle-client-visible", p.EvUnflagged)), nil))
+		tg := s.mustOK("flag", s.do(w.b.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/evidence/%d", p.EvUnflagged)), map[string]any{"isClientVisible": true}))
 		if tg.dig("data", "isClientVisible") != true {
-			t.Fatalf("toggle did not flag the attachment: %s", tg)
+			t.Fatalf("flagging did not flag the attachment: %s", tg)
 		}
 		ms := s.mustOK("milestones after", s.do(p.brideToken, "GET", s.projectsPath(P, "/milestones"), nil))
 		if m := rowByID(rows(ms, "data"), p.Milestone); m == nil || len(evidenceIDs(m)) != 1 || evidenceIDs(m)[0] != p.EvUnflagged {
@@ -294,11 +294,11 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 			t.Errorf("the home should show the flagged attachment as proof of the finished step: %s", h)
 		}
 		// Other tenants' staff cannot flag it.
-		if r := s.do(w.a.token, "POST", s.projectsPath(P, fmt.Sprintf("/evidence/%d/toggle-client-visible", p.EvUnflagged)), nil); r.status != http.StatusNotFound && r.status != http.StatusForbidden {
-			t.Errorf("A's staff toggling B's attachment: %s", r)
+		if r := s.do(w.a.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/evidence/%d", p.EvUnflagged)), map[string]any{"isClientVisible": true}); r.status != http.StatusNotFound && r.status != http.StatusForbidden {
+			t.Errorf("A's staff flagging B's attachment: %s", r)
 		}
 		// Unflag again: invisible again, files closed again.
-		s.mustOK("untoggle", s.do(w.b.token, "POST", s.projectsPath(P, fmt.Sprintf("/evidence/%d/toggle-client-visible", p.EvUnflagged)), nil))
+		s.mustOK("unflag", s.do(w.b.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/evidence/%d", p.EvUnflagged)), map[string]any{"isClientVisible": false}))
 		hidden("after unflagging")
 	})
 

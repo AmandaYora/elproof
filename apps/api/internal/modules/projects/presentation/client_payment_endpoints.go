@@ -132,30 +132,34 @@ func (h *Handler) createClientPaymentNow(w http.ResponseWriter, r *http.Request,
 	}))
 }
 
-// updateClientPayment is a full-field overwrite, no role-gate — see
-// updatePayment's doc comment.
+// updateClientPayment is PATCH /projects/{id}/client-payments/{pid}: a partial
+// update (type, amount, paymentDate, method, referenceNumber, notes). Changing
+// what was paid clears a verification. See updatePayment and updateProject for the
+// body, If-Match and 409 rules.
 func (h *Handler) updateClientPayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	paymentID, err := parseInt64(paymentIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	var body clientPaymentInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	paymentDate, err := parseDate(body.PaymentDate)
-	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
+	pr, ok := newPatchReader(w, r)
+	if !ok {
 		return
 	}
-	p, err := h.clientPayments.Update(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, application.ClientPaymentInput{
-		Type: domain.PaymentType(body.Type), Amount: body.Amount,
-		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
-	})
-	if err != nil {
+	patch := readPaymentPatch(pr)
+	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
+		return
+	}
+	p, err := h.clientPayments.Patch(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, patch, expected)
+	if err != nil {
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.oneClientPaymentResponse(r.Context(), claims, projectID, *cur.(*domain.ClientPayment))
+		})
 		return
 	}
 	resp, err := h.oneClientPaymentResponse(r.Context(), claims, projectID, *p)

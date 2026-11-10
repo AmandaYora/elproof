@@ -159,6 +159,25 @@ func (h *VendorCategoryHandler) create(w http.ResponseWriter, r *http.Request, t
 	response.Created(w, "Kategori vendor berhasil dibuat", toVendorCategoryResponse(*category))
 }
 
+// setActive sets a category's active state (ADR-0036); see VendorHandler.setActive.
+func (h *VendorCategoryHandler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id int64, want bool) {
+	current, err := h.categories.Get(r.Context(), tenantID, id)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if want == current.IsActive {
+		response.OK(w, "Status kategori vendor diperbarui", toVendorCategoryResponse(*current))
+		return
+	}
+	category, err := h.categories.SetActive(r.Context(), tenantID, id, want)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Status kategori vendor diperbarui", toVendorCategoryResponse(*category))
+}
+
 func (h *VendorCategoryHandler) Item(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := requireTenant(w, r)
 	if !ok {
@@ -180,8 +199,19 @@ func (h *VendorCategoryHandler) Item(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case len(segments) == 1 && r.Method == http.MethodPatch:
+		// {"isActive": true|false} on its own is the explicit active state (ADR-0036);
+		// any other body is the ordinary edit.
+		sp, err := httpx.ReadStatePatch(r, "isActive")
+		if err != nil {
+			httpx.WriteStatePatchError(w, err)
+			return
+		}
+		if sp.IsState {
+			h.setActive(w, r, tenantID, id, sp.Value)
+			return
+		}
 		var body vendorCategoryInputBody
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.Unmarshal(sp.Body, &body); err != nil {
 			response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 			return
 		}
@@ -191,18 +221,6 @@ func (h *VendorCategoryHandler) Item(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.OK(w, "Kategori vendor berhasil diperbarui", toVendorCategoryResponse(*category))
-	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
-		current, err := h.categories.Get(r.Context(), tenantID, id)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		category, err := h.categories.SetActive(r.Context(), tenantID, id, !current.IsActive)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		response.OK(w, "Status kategori vendor diperbarui", toVendorCategoryResponse(*category))
 	case len(segments) == 1 && r.Method == http.MethodDelete:
 		if err := h.categories.Delete(r.Context(), tenantID, id); err != nil {
 			writeAppError(w, err)

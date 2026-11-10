@@ -34,10 +34,11 @@ type ProjectRepository interface {
 	ListByStaffPIC(ctx context.Context, tenantID, staffID int64) ([]domain.ProjectRef, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
-	Update(ctx context.Context, p *domain.Project) error
+	// Patch writes the changed fields (domain field keys) of p in one statement; with
+	// expected it is a compare-and-set on updated_at (see infrastructure.patchRow).
+	Patch(ctx context.Context, p *domain.Project, changed []string, expected *time.Time) (bool, error)
 	// ChangeStatus is conditional on the current status (see the MySQL implementation).
 	ChangeStatus(ctx context.Context, tenantID, id int64, from, to domain.ProjectStatus) (bool, error)
-	SetArchived(ctx context.Context, tenantID, id int64, archived bool) error
 	// DeleteCascade permanently removes the project and every same-module row
 	// referencing it — see the infrastructure implementation's doc comment
 	// (ADR-0013) for the exact deletion order and why it matters.
@@ -108,7 +109,8 @@ type MilestoneRepository interface {
 	ListByProjects(ctx context.Context, projectIDs []int64) ([]domain.ProjectMilestone, error)
 	FindByID(ctx context.Context, projectID, id int64) (*domain.ProjectMilestone, error)
 	Create(ctx context.Context, m *domain.ProjectMilestone) error
-	Update(ctx context.Context, m *domain.ProjectMilestone) error
+	// Patch writes the changed fields of a milestone (see ProjectRepository.Patch).
+	Patch(ctx context.Context, m *domain.ProjectMilestone, changed []string, expected *time.Time) (bool, error)
 	NextSortOrder(ctx context.Context, projectID int64) (int, error)
 	Reorder(ctx context.Context, projectID int64, orderedIDs []int64) error
 }
@@ -622,95 +624,246 @@ func (s *ProjectService) checkPICs(ctx context.Context, tenantID int64, ids ...i
 	return nil
 }
 
-// Update rejects a Wedding Planner ("Staff" role) reassigning PICStaffID —
-// confirmed role rule: only Owner/Admin assign or reassign who a project's
-// PIC is, even on a project the Wedding Planner already manages day to day.
-// callerRole == "" (or any non-"Staff"/"Sales" value) skips both checks
-// entirely, so Owner/Admin keep reassigning freely exactly as before. A
-// Sales caller may NOT move PICSalesStaffID to someone else (their own PIC
-// Sales slot is immutable from their side), but MAY freely change
-// PICStaffID -- that's the handover mechanism (PLAN.md
-// revisi-timeline-vendor-role-sales); reaching this method at all as Sales
-// already implies resolveProjectAccess confirmed they own this project.
-func (s *ProjectService) Update(ctx context.Context, tenantID, id int64, actor ProjectActor, input ProjectInput) (*domain.Project, error) {
-	actorStaffID := actor.StaffID
+// ProjectPatch is what PATCH /projects/{id} sent: only the fields present are
+// changed (ADR-0036). Status is deliberately not here: it changes only through
+// Transition / Cancel, so editing a project's details can never skip a step of its
+// life (FLOW-IDEAL 2.4).
+type ProjectPatch struct {
+	Name, BrideName, GroomName, Venue, PackageName, Description Opt[string]
+	EventDate, PrepStartDate                                    Opt[time.Time]
+	ContractValue                                               Opt[int64]
+	// PICStaffID / PICSalesStaffID: 0 means "none"; PICSalesStaffID may be null.
+	PICStaffID, PICSalesStaffID Opt[int64]
+	// VenueID: null or 0 detaches the venue (and clears its cost snapshot), a
+	// positive id attaches that venue. VenueRentalPrice/VenueCharge: the cost
+	// snapshot of the attached venue (null clears).
+	VenueID, VenueRentalPrice, VenueCharge Opt[int64]
+	// IsArchived is the explicit archive state.
+	IsArchived Opt[bool]
+}
+
+// HasDetails reports whether the patch touches anything besides the archive state
+// (which has its own permission).
+func (p ProjectPatch) HasDetails() bool {
+	return p.Name.Present() || p.BrideName.Present() || p.GroomName.Present() || p.Venue.Present() || p.PackageName.Present() ||
+		p.Description.Present() || p.EventDate.Present() || p.PrepStartDate.Present() || p.ContractValue.Present() ||
+		p.PICStaffID.Present() || p.PICSalesStaffID.Present() || p.VenueID.Present() || p.VenueRentalPrice.Present() || p.VenueCharge.Present()
+}
+
+// Patch changes the fields of a project that were sent, and only those. The
+// business rules are judged on the merged result: a Wedding Planner ("Staff" role)
+// still cannot reassign a PIC (only Owner/Admin assign who a project's PIC is, and
+// a Sales caller keeps handover through PICStaffID), a PIC that changes must be
+// this workspace's staff, a venue is attached or detached with its cost snapshot,
+// and un-archiving counts against the trial cap. A patch that changes nothing
+// writes nothing and answers with the project as it is. With `expected` the write
+// is a compare-and-set on updated_at: a stale version is a 409 (apperror.Stale)
+// carrying the current project.
+func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor ProjectActor, patch ProjectPatch, expected *time.Time) (*domain.Project, error) {
 	p, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	if !actor.CanAssignPIC && (input.PICStaffID != p.PICStaffID || input.PICSalesStaffID != p.PICSalesStaffID) {
-		return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC project").WithCode("forbidden_permission")
+	fe := newFieldErrors()
+	requiredText(fe, "name", "Nama project wajib diisi", patch.Name)
+	requiredText(fe, "brideName", "Nama pengantin wanita wajib diisi", patch.BrideName)
+	requiredText(fe, "groomName", "Nama pengantin pria wajib diisi", patch.GroomName)
+	requiredText(fe, "packageName", "Nama paket wajib diisi", patch.PackageName)
+	if patch.ContractValue.Present() && (patch.ContractValue.Value() < 0 || patch.ContractValue.Value() > domain.MaxMoney) {
+		fe.add("Nilai kontrak harus 0 atau lebih dan wajar", "contractValue")
 	}
-	// Only a PIC that changes is looked up: a PIC whose staff row was deleted
-	// since must not make every later edit of the project fail.
-	if input.PICStaffID != p.PICStaffID || input.PICSalesStaffID != p.PICSalesStaffID {
-		var changed []int64
-		if input.PICStaffID != p.PICStaffID {
-			changed = append(changed, input.PICStaffID)
+	for _, f := range []struct {
+		o   Opt[int64]
+		key string
+		msg string
+	}{
+		{patch.VenueRentalPrice, "venueRentalPrice", "Harga sewa venue harus 0 atau lebih dan wajar"},
+		{patch.VenueCharge, "venueCharge", "Biaya tambahan venue harus 0 atau lebih dan wajar"},
+	} {
+		if f.o.Present() && !f.o.IsNull() && (f.o.Value() < 0 || f.o.Value() > domain.MaxMoney) {
+			fe.add(f.msg, f.key)
 		}
-		if input.PICSalesStaffID != p.PICSalesStaffID {
-			changed = append(changed, input.PICSalesStaffID)
+	}
+	if patch.PICStaffID.Present() && patch.PICStaffID.Value() < 0 {
+		fe.add("Staf tidak ditemukan", "picStaffId")
+	}
+	if patch.PICSalesStaffID.Present() && patch.PICSalesStaffID.Value() < 0 {
+		fe.add("Staf tidak ditemukan", "picSalesStaffId")
+	}
+	if err := fe.err(); err != nil {
+		return nil, err
+	}
+
+	wasArchived := p.IsArchived
+	loaded := *p
+	var ch changeSet
+	setVal(&ch, "name", "nama", &p.Name, patch.Name)
+	setVal(&ch, "brideName", "nama pengantin wanita", &p.BrideName, patch.BrideName)
+	setVal(&ch, "groomName", "nama pengantin pria", &p.GroomName, patch.GroomName)
+	setDate(&ch, "eventDate", "tanggal acara", &p.EventDate, patch.EventDate)
+	setDate(&ch, "prepStartDate", "mulai persiapan", &p.PrepStartDate, patch.PrepStartDate)
+	setVal(&ch, "packageName", "paket", &p.PackageName, patch.PackageName)
+	setVal(&ch, "contractValue", "nilai kontrak", &p.ContractValue, patch.ContractValue)
+	setVal(&ch, "description", "deskripsi", &p.Description, patch.Description)
+	setVal(&ch, "venue", "venue", &p.Venue, patch.Venue)
+	setVal(&ch, "picStaffId", "PIC", &p.PICStaffID, patch.PICStaffID)
+	setVal(&ch, "picSalesStaffId", "PIC Sales", &p.PICSalesStaffID, orZero(patch.PICSalesStaffID))
+	setVal(&ch, "isArchived", "status arsip", &p.IsArchived, patch.IsArchived)
+	if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
+		return nil, err
+	}
+
+	// Only a PIC that changes is looked up: a PIC whose staff row was deleted since
+	// must not make every later edit of the project fail.
+	if ch.has("picStaffId") || ch.has("picSalesStaffId") {
+		if !actor.CanAssignPIC {
+			return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC project").WithCode("forbidden_permission")
+		}
+		var changed []int64
+		if ch.has("picStaffId") {
+			changed = append(changed, p.PICStaffID)
+		}
+		if ch.has("picSalesStaffId") {
+			changed = append(changed, p.PICSalesStaffID)
 		}
 		if err := s.checkPICs(ctx, tenantID, changed...); err != nil {
 			return nil, err
 		}
 	}
-	// Status is deliberately not taken from the input: it changes only through
-	// Transition / Cancel, so editing a project's details can never skip a
-	// step of its life (FLOW-IDEAL 2.4).
-	p.Name = input.Name
-	p.BrideName = input.BrideName
-	p.GroomName = input.GroomName
-	p.EventDate = input.EventDate
-	p.Venue = input.Venue
-	p.PrepStartDate = input.PrepStartDate
-	p.PackageName = input.PackageName
-	p.ContractValue = input.ContractValue
-	p.PICStaffID = input.PICStaffID
-	p.PICSalesStaffID = input.PICSalesStaffID
-	p.Description = input.Description
-	if input.VenueID != nil {
-		if *input.VenueID == 0 {
-			// Detach always force-clears the cost snapshot too, regardless of
-			// whatever the request body happened to send for these two
-			// fields -- there is no cost without a venue.
-			p.VenueID = nil
-			p.VenueRentalPrice = nil
-			p.VenueCharge = nil
-		} else {
-			// Same venue as before: keep the lenient behaviour below (a venue
-			// deleted since must not make every later edit fail). A different
-			// one is being attached now and must be this workspace's own.
-			sameVenue := p.VenueID != nil && *p.VenueID == *input.VenueID
-			p.VenueID = input.VenueID
-			p.VenueRentalPrice = input.VenueRentalPrice
-			p.VenueCharge = input.VenueCharge
-			// One place for the venue: while one is attached from the
-			// directory, the project's venue text IS its name, so the two can
-			// never disagree (PLAN.md Fase 4c "venue tunggal"). If the venue
-			// cannot be resolved, the old text stays.
-			if s.venues != nil {
-				summary, err := s.venues.GetVenueSummary(ctx, tenantID, *input.VenueID)
-				switch {
-				case err == nil:
-					if summary.Name != "" {
-						p.Venue = summary.Name
-					}
-				case !sameVenue:
-					if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
-						return nil, apperror.Validation("Venue tidak ditemukan", map[string][]string{"venueId": {"Venue tidak ditemukan"}})
-					}
-					return nil, err
-				}
-			}
-		}
-	}
-	if err := s.repo.Update(ctx, p); err != nil {
+	if err := s.patchVenue(ctx, tenantID, p, patch, &ch); err != nil {
 		return nil, err
 	}
-	s.activity.Record(ctx, &p.ID, domain.ActivityProjectUpdated, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Informasi project diperbarui")
-	return p, nil
+	if wasArchived && !p.IsArchived && isActiveProject(p.Status, false) {
+		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
+			return nil, err
+		}
+	}
+	if !ch.any() {
+		return p, nil
+	}
+
+	wrote, err := s.repo.Patch(ctx, p, ch.keys, expected)
+	if err != nil {
+		return nil, err
+	}
+	fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.Project, error) {
+		return s.repo.FindByID(ctx, tenantID, id)
+	}, func(p *domain.Project) time.Time { return p.UpdatedAt }, apperror.NotFound("Project tidak ditemukan"))
+	if err != nil {
+		return nil, err
+	}
+	if len(ch.keys) == 1 && ch.has("isArchived") {
+		action := "diarsipkan"
+		if !fresh.IsArchived {
+			action = "dipulihkan dari arsip"
+		}
+		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectStatusChanged, actor.StaffID, "project", formatID(fresh.ID), fresh.Name, "Project "+action)
+	} else {
+		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectUpdated, actor.StaffID, "project", formatID(fresh.ID), fresh.Name,
+			"Informasi project diperbarui: "+ch.summary())
+	}
+	return fresh, nil
+}
+
+// orZero reads an optional id where null means "none" (0).
+func orZero(o Opt[int64]) Opt[int64] {
+	if o.IsNull() {
+		return Some(int64(0))
+	}
+	return o
+}
+
+// patchVenue applies the venue part of a project patch onto the merged project:
+// attach, change or detach the directory venue, and the cost snapshot that rides
+// with it. The rules are the ones the full edit had; what a patch adds is that a
+// venue attached without prices snapshots the venue's current ones (as create
+// does), and prices sent for a project with no venue are refused.
+func (s *ProjectService) patchVenue(ctx context.Context, tenantID int64, p *domain.Project, patch ProjectPatch, ch *changeSet) error {
+	venueSent := patch.VenueID.Present()
+	detach := venueSent && (patch.VenueID.IsNull() || patch.VenueID.Value() == 0)
+	switch {
+	case detach:
+		// Detach always force-clears the cost snapshot too, whatever the request
+		// sent for those two fields: there is no cost without a venue.
+		if p.VenueID != nil {
+			p.VenueID = nil
+			ch.note("venueId", "venue")
+		}
+		if p.VenueRentalPrice != nil {
+			p.VenueRentalPrice = nil
+			ch.note("venueRentalPrice", "harga sewa venue")
+		}
+		if p.VenueCharge != nil {
+			p.VenueCharge = nil
+			ch.note("venueCharge", "biaya venue")
+		}
+		return nil
+	case venueSent:
+		venueID := patch.VenueID.Value()
+		if venueID < 0 {
+			return apperror.Validation("Venue tidak ditemukan", map[string][]string{"venueId": {"Venue tidak ditemukan"}})
+		}
+		sameVenue := p.VenueID != nil && *p.VenueID == venueID
+		if !sameVenue && s.venues != nil {
+			// A different venue is being attached now and must be this workspace's own.
+			info, err := s.venues.GetVenueForAttach(ctx, tenantID, venueID)
+			if err != nil {
+				if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
+					return apperror.Validation("Venue tidak ditemukan", map[string][]string{"venueId": {"Venue tidak ditemukan"}})
+				}
+				return err
+			}
+			id := venueID
+			p.VenueID = &id
+			ch.note("venueId", "venue")
+			if !patch.VenueRentalPrice.Present() {
+				v := info.RentalPrice
+				p.VenueRentalPrice = &v
+				ch.note("venueRentalPrice", "harga sewa venue")
+			}
+			if !patch.VenueCharge.Present() {
+				v := info.Charge
+				p.VenueCharge = &v
+				ch.note("venueCharge", "biaya venue")
+			}
+			// One place for the venue: while one is attached from the directory, the
+			// project's venue text IS its name, so the two can never disagree.
+			if info.Name != "" && p.Venue != info.Name {
+				p.Venue = info.Name
+				ch.note("venue", "venue")
+			}
+		} else if sameVenue && s.venues != nil {
+			// Same venue as before: lenient (a venue deleted since must not make every
+			// later edit fail); the text follows the venue's name while it resolves.
+			if summary, err := s.venues.GetVenueSummary(ctx, tenantID, venueID); err == nil && summary.Name != "" && p.Venue != summary.Name {
+				p.Venue = summary.Name
+				ch.note("venue", "venue")
+			}
+		} else if !sameVenue {
+			id := venueID
+			p.VenueID = &id
+			ch.note("venueId", "venue")
+		}
+	}
+	if patch.VenueRentalPrice.Present() || patch.VenueCharge.Present() {
+		if p.VenueID == nil {
+			if (patch.VenueRentalPrice.Present() && !patch.VenueRentalPrice.IsNull()) || (patch.VenueCharge.Present() && !patch.VenueCharge.IsNull()) {
+				return apperror.Validation("Pilih venue lebih dulu", map[string][]string{"venueId": {"Pilih venue lebih dulu sebelum mengisi biayanya"}})
+			}
+			return nil // clearing a snapshot that is already empty
+		}
+		setNullable(ch, "venueRentalPrice", "harga sewa venue", &p.VenueRentalPrice, patch.VenueRentalPrice)
+		setNullable(ch, "venueCharge", "biaya venue", &p.VenueCharge, patch.VenueCharge)
+	}
+	// The venue text follows the directory venue's name while one is attached, so a
+	// patch of just the text cannot make the two disagree.
+	if patch.Venue.Present() && !venueSent && p.VenueID != nil && s.venues != nil {
+		if summary, err := s.venues.GetVenueSummary(ctx, tenantID, *p.VenueID); err == nil && summary.Name != "" && p.Venue != summary.Name {
+			p.Venue = summary.Name
+			ch.note("venue", "venue")
+		}
+	}
+	return nil
 }
 
 // projectStatusLabel is the Indonesian name shown in the activity log.
@@ -766,7 +919,7 @@ func (s *ProjectService) Transition(ctx context.Context, tenantID, id, actorStaf
 	p.Status = next
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
 		fmt.Sprintf("Status project diubah: %s → %s", projectStatusLabel(from), projectStatusLabel(next)))
-	return p, nil
+	return s.afterWrite(ctx, tenantID, p), nil
 }
 
 func (s *ProjectService) Cancel(ctx context.Context, tenantID, id, actorStaffID int64) (*domain.Project, error) {
@@ -791,38 +944,24 @@ func (s *ProjectService) Cancel(ctx context.Context, tenantID, id, actorStaffID 
 	p.Status = domain.StatusCancelled
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
 		"Project dibatalkan")
-	return p, nil
+	return s.afterWrite(ctx, tenantID, p), nil
+}
+
+// afterWrite is the project as the database holds it now. The object this request loaded carries the version from before its own
+// write, and the answer's updatedAt/ETag is what the caller sends back as If-Match next time (ADR-0036): the stale one would make
+// a person's next edit collide with their own status change. If the re-read fails the change has landed anyway, so the answer
+// falls back to the object in hand rather than turning a success into an error.
+func (s *ProjectService) afterWrite(ctx context.Context, tenantID int64, p *domain.Project) *domain.Project {
+	if fresh, err := s.Get(ctx, tenantID, p.ID); err == nil {
+		return fresh
+	}
+	return p
 }
 
 // errStatusMoved: someone else changed the project's status between this
 // request reading it and writing it.
 func errStatusMoved() error {
 	return apperror.Conflict("Status project baru saja diubah orang lain. Muat ulang halaman untuk melihat status terbaru.").WithCode("invalid_status_transition")
-}
-
-// SetArchived toggles a project's archive flag — reversible, orthogonal to
-// Status (see ADR-0013). No restriction on which status can be archived.
-func (s *ProjectService) SetArchived(ctx context.Context, tenantID, id, actorStaffID int64, archived bool) (*domain.Project, error) {
-	p, err := s.Get(ctx, tenantID, id)
-	if err != nil {
-		return nil, err
-	}
-	if !archived && p.IsArchived && isActiveProject(p.Status, false) {
-		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
-			return nil, err
-		}
-	}
-	if err := s.repo.SetArchived(ctx, tenantID, id, archived); err != nil {
-		return nil, err
-	}
-	p.IsArchived = archived
-	action := "diarsipkan"
-	if !archived {
-		action = "dipulihkan dari arsip"
-	}
-	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Project "+action)
-	return p, nil
 }
 
 // Delete permanently removes a project and every row across this module
@@ -1009,37 +1148,58 @@ func (s *ProjectService) CreateMilestone(ctx context.Context, tenantID, projectI
 	return m, nil
 }
 
-type MilestoneUpdateInput struct {
-	Status        domain.MilestoneStatus
-	TargetDate    time.Time
-	CompletedDate *time.Time
+// MilestonePatch is what PATCH /projects/{id}/milestones/{mid} sent (ADR-0036).
+type MilestonePatch struct {
+	Status Opt[domain.MilestoneStatus]
+	// TargetDate is required (cannot be null); CompletedDate may be null (clear it).
+	TargetDate    Opt[time.Time]
+	CompletedDate Opt[time.Time]
 }
 
-// UpdateMilestone lets the WO managing this project correct its own
-// schedule — Status, TargetDate, and CompletedDate are all set directly from
-// client input (no more server-side auto-stamping of CompletedDate), mirroring
-// VendorEngagementService.UpdateMilestone's shape for the sibling
-// vendor-milestone entity.
-func (s *ProjectService) UpdateMilestone(ctx context.Context, tenantID, projectID, milestoneID int64, actorStaffID int64, input MilestoneUpdateInput) (*domain.ProjectMilestone, error) {
+// PatchMilestone lets the WO managing this project correct one step of its own
+// schedule. Status, TargetDate and CompletedDate are set directly from what was
+// sent (no server-side auto-stamping of CompletedDate); fields left out keep their
+// value. A patch that changes nothing writes nothing; with `expected` the write is
+// a compare-and-set on the milestone's updated_at (a stale one is a 409).
+func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID, milestoneID int64, actorStaffID int64, patch MilestonePatch, expected *time.Time) (*domain.ProjectMilestone, error) {
 	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
 		return nil, err
 	}
+	missing := apperror.NotFound("Timeline tidak ditemukan")
 	m, err := s.milestones.FindByID(ctx, projectID, milestoneID)
 	if err != nil {
 		return nil, err
 	}
 	if m == nil {
-		return nil, apperror.NotFound("Timeline tidak ditemukan")
+		return nil, missing
 	}
-	m.Status = input.Status
-	m.TargetDate = input.TargetDate
-	m.CompletedDate = input.CompletedDate
-	if err := s.milestones.Update(ctx, m); err != nil {
+	if patch.Status.Present() && !domain.IsValidMilestoneStatus(patch.Status.Value()) {
+		return nil, apperror.Validation("Status timeline tidak valid", map[string][]string{"status": {"Status timeline tidak valid"}})
+	}
+	loaded := *m
+	var ch changeSet
+	setVal(&ch, "status", "status", &m.Status, patch.Status)
+	setDate(&ch, "targetDate", "tanggal target", &m.TargetDate, patch.TargetDate)
+	setNullableDate(&ch, "completedDate", "tanggal selesai", &m.CompletedDate, patch.CompletedDate)
+	if !ch.any() {
+		return m, nil
+	}
+	if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
 		return nil, err
 	}
-	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(m.ID), m.Name,
-		"Timeline project diperbarui: "+m.Name)
-	return m, nil
+	wrote, err := s.milestones.Patch(ctx, m, ch.keys, expected)
+	if err != nil {
+		return nil, err
+	}
+	fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.ProjectMilestone, error) {
+		return s.milestones.FindByID(ctx, projectID, milestoneID)
+	}, func(m *domain.ProjectMilestone) time.Time { return m.UpdatedAt }, missing)
+	if err != nil {
+		return nil, err
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(fresh.ID), fresh.Name,
+		"Timeline project diperbarui: "+fresh.Name+" ("+ch.summary()+")")
+	return fresh, nil
 }
 
 // ReorderMilestones rewrites every milestone's SortOrder for this project to

@@ -5,6 +5,7 @@ import (
 
 	"elproof/internal/modules/projects/domain"
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
+	"elproof/internal/shared/etag"
 )
 
 const dateLayout = "2006-01-02"
@@ -47,6 +48,9 @@ type projectResponse struct {
 	Description string            `json:"description"`
 	IsArchived  bool              `json:"isArchived"`
 	Progress    *progressResponse `json:"progress,omitempty"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func toProjectResponse(p domain.Project) projectResponse {
@@ -57,6 +61,7 @@ func toProjectResponse(p domain.Project) projectResponse {
 		PrepStartDate: p.PrepStartDate.Format(dateLayout),
 		PackageName:   p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
 		PICStaffID: p.PICStaffID, PICSalesStaffID: p.PICSalesStaffID, Description: p.Description, IsArchived: p.IsArchived,
+		UpdatedAt: etag.Format(p.UpdatedAt),
 	}
 }
 
@@ -131,13 +136,16 @@ type milestoneResponse struct {
 	// Evidence is filled by GET /projects/{id}/milestones (all attachments for
 	// staff, only the ones the client may see for a client); `[]` elsewhere.
 	Evidence []evidenceRefResponse `json:"evidence"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 	return milestoneResponse{
 		ID: m.ID, SortOrder: m.SortOrder, Name: m.Name, Status: string(m.Status),
 		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate),
-		Evidence: []evidenceRefResponse{},
+		Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(m.UpdatedAt),
 	}
 }
 
@@ -175,6 +183,9 @@ type projectVendorResponse struct {
 	// create/update/cancel responses, which have no batch to draw from and
 	// whose callers already re-fetch the vendor section afterward anyway.
 	Milestones []vendorMilestoneResponse `json:"milestones,omitempty"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // toProjectVendorResponse takes paidAmount explicitly rather than reading it
@@ -189,7 +200,7 @@ func toProjectVendorResponse(pv domain.ProjectVendor, paidAmount int64) projectV
 		PricingTier: string(pv.PricingTier), EngagementStatus: string(pv.EngagementStatus), BookingDate: formatDatePtr(pv.BookingDate),
 		EventDate: pv.EventDate.Format(dateLayout), EventStartTime: pv.EventStartTime, EventEndTime: pv.EventEndTime,
 		DPAmount: pv.DPAmount, PaidAmount: paidAmount,
-		DueDate: formatDatePtr(pv.DueDate), PICStaffID: pv.PICStaffID, Notes: pv.Notes,
+		DueDate: formatDatePtr(pv.DueDate), PICStaffID: pv.PICStaffID, Notes: pv.Notes, UpdatedAt: etag.Format(pv.UpdatedAt),
 	}
 }
 
@@ -206,13 +217,16 @@ type vendorMilestoneResponse struct {
 	// Evidence is filled inside GET /projects/{id}/vendors (client: only what
 	// portal.vendor.view allows); `[]` elsewhere.
 	Evidence []evidenceRefResponse `json:"evidence"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func toVendorMilestoneResponse(m domain.VendorMilestone) vendorMilestoneResponse {
 	return vendorMilestoneResponse{
 		ID: m.ID, SortOrder: m.SortOrder, Name: m.Name, Description: m.Description, Status: string(m.Status),
 		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate),
-		PICStaffID: m.PICStaffID, Notes: m.Notes, Evidence: []evidenceRefResponse{},
+		PICStaffID: m.PICStaffID, Notes: m.Notes, Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(m.UpdatedAt),
 	}
 }
 
@@ -228,6 +242,9 @@ type paymentResponse struct {
 	EvidenceComplete bool   `json:"evidenceComplete"`
 	// Evidence: the payment's proof files (invoice and/or transfer proof).
 	Evidence []evidenceRefResponse `json:"evidence"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // toPaymentResponse takes evidenceComplete explicitly rather than reading
@@ -241,7 +258,7 @@ func toPaymentResponse(p domain.VendorPayment, evidenceComplete bool) paymentRes
 	return paymentResponse{
 		ID: p.ID, ProjectVendorID: p.ProjectVendorID, Type: string(p.Type), Amount: p.Amount,
 		PaymentDate: p.PaymentDate.Format(dateLayout), Method: p.Method, ReferenceNumber: p.ReferenceNumber,
-		Notes: p.Notes, EvidenceComplete: evidenceComplete, Evidence: []evidenceRefResponse{},
+		Notes: p.Notes, EvidenceComplete: evidenceComplete, Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(p.UpdatedAt),
 	}
 }
 
@@ -268,13 +285,16 @@ type clientPaymentResponse struct {
 	VerifiedBy *personRef `json:"verifiedBy"`
 	// Evidence: the payment's proof files (client: only what it may see).
 	Evidence []evidenceRefResponse `json:"evidence"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func toClientPaymentResponse(p domain.ClientPayment, evidenceComplete bool) clientPaymentResponse {
 	return clientPaymentResponse{
 		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
 		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
-		VerifiedAt: formatTimePtr(p.VerifiedAt), Evidence: []evidenceRefResponse{},
+		VerifiedAt: formatTimePtr(p.VerifiedAt), Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(p.UpdatedAt),
 	}
 }
 
@@ -289,6 +309,9 @@ type venuePaymentResponse struct {
 	EvidenceComplete bool   `json:"evidenceComplete"`
 	// Evidence: the payment's proof files (invoice and/or transfer proof).
 	Evidence []evidenceRefResponse `json:"evidence"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // toVenuePaymentResponse takes evidenceComplete explicitly for the same
@@ -298,7 +321,7 @@ func toVenuePaymentResponse(p domain.VenuePayment, evidenceComplete bool) venueP
 	return venuePaymentResponse{
 		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
 		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
-		Evidence: []evidenceRefResponse{},
+		Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(p.UpdatedAt),
 	}
 }
 
@@ -360,6 +383,9 @@ type issueResponse struct {
 	VendorName          string                `json:"vendorName"`
 	VendorMilestoneName string                `json:"vendorMilestoneName"`
 	Evidence            []evidenceRefResponse `json:"evidence"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func toIssueResponse(i domain.VendorIssue) issueResponse {
@@ -373,7 +399,7 @@ func toIssueResponse(i domain.VendorIssue) issueResponse {
 		Impact: string(i.Impact), FoundDate: i.FoundDate.Format(dateLayout), Status: string(i.Status),
 		ResolutionPlan: i.ResolutionPlan, PICStaffID: i.PICStaffID,
 		TargetResolutionDate: formatDatePtr(i.TargetResolutionDate), ResolvedDate: formatDatePtr(i.ResolvedDate),
-		ResolutionNotes: i.ResolutionNotes,
+		ResolutionNotes: i.ResolutionNotes, UpdatedAt: etag.Format(i.UpdatedAt),
 	}
 }
 
@@ -391,6 +417,9 @@ type evidenceResponse struct {
 	RelatedKind     string `json:"relatedKind"`
 	RelatedID       int64  `json:"relatedId"`
 	IsClientVisible bool   `json:"isClientVisible"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func toEvidenceResponse(e domain.Evidence) evidenceResponse {
@@ -398,7 +427,7 @@ func toEvidenceResponse(e domain.Evidence) evidenceResponse {
 		ID: e.ID, Name: e.Name, Type: string(e.Type), FileName: e.FileName,
 		DocumentDate: formatDatePtr(e.DocumentDate), UploadedAt: e.UploadedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Description: e.Description, UploadedBy: e.UploadedByStaffID, RelatedKind: string(e.RelatedKind), RelatedID: e.RelatedID,
-		IsClientVisible: e.IsClientVisible,
+		IsClientVisible: e.IsClientVisible, UpdatedAt: etag.Format(e.UpdatedAt),
 	}
 }
 
@@ -447,3 +476,23 @@ func toActivityResponse(a domain.ActivityLogEntry) activityResponse {
 		CreatedAt: a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
+
+// quotedVersion is the ETag header value of an item's `updatedAt`. Every item that
+// carries one implements response.Versioned with it, so OK and Created set the
+// ETag header on their own.
+func quotedVersion(updatedAt string) string {
+	if updatedAt == "" {
+		return ""
+	}
+	return `"` + updatedAt + `"`
+}
+
+func (r projectResponse) ETag() string         { return quotedVersion(r.UpdatedAt) }
+func (r milestoneResponse) ETag() string       { return quotedVersion(r.UpdatedAt) }
+func (r projectVendorResponse) ETag() string   { return quotedVersion(r.UpdatedAt) }
+func (r vendorMilestoneResponse) ETag() string { return quotedVersion(r.UpdatedAt) }
+func (r paymentResponse) ETag() string         { return quotedVersion(r.UpdatedAt) }
+func (r clientPaymentResponse) ETag() string   { return quotedVersion(r.UpdatedAt) }
+func (r venuePaymentResponse) ETag() string    { return quotedVersion(r.UpdatedAt) }
+func (r issueResponse) ETag() string           { return quotedVersion(r.UpdatedAt) }
+func (r evidenceResponse) ETag() string        { return quotedVersion(r.UpdatedAt) }

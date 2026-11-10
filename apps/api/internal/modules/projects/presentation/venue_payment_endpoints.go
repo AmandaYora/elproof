@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -84,40 +85,52 @@ func (h *Handler) createVenuePaymentNow(w http.ResponseWriter, r *http.Request, 
 	response.Created(w, "Pembayaran venue berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, venuePaymentCreatedResponse{venuePaymentResponse: resp, LedgerSummary: toLedgerSummary(created.Ledger)}))
 }
 
-// updateVenuePayment is a full-field overwrite, no role-gate — see
-// updatePayment's doc comment.
+// venuePaymentItem is a venue payment as GET /projects/{id}/venue-payments lists it.
+func (h *Handler) venuePaymentItem(ctx context.Context, projectID int64, p domain.VenuePayment) (venuePaymentResponse, error) {
+	evidences, err := h.evidence.List(ctx, projectID)
+	if err != nil {
+		return venuePaymentResponse{}, err
+	}
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
+	resp := toVenuePaymentResponse(p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
+	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedVenuePayment, p.ID)
+	return resp, nil
+}
+
+// updateVenuePayment is PATCH /projects/{id}/venue-payments/{pid}: a partial
+// update (type, amount, paymentDate, method, referenceNumber, notes). See
+// updatePayment and updateProject for the body, If-Match and 409 rules.
 func (h *Handler) updateVenuePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	paymentID, err := parseInt64(paymentIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	var body venuePaymentInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	paymentDate, err := parseDate(body.PaymentDate)
+	pr, ok := newPatchReader(w, r)
+	if !ok {
+		return
+	}
+	patch := readPaymentPatch(pr)
+	if err := pr.finish(); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	p, err := h.venuePayments.Patch(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, patch, expected)
 	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.venuePaymentItem(r.Context(), projectID, *cur.(*domain.VenuePayment))
+		})
 		return
 	}
-	p, err := h.venuePayments.Update(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, application.VenuePaymentInput{
-		Type: domain.PaymentType(body.Type), Amount: body.Amount,
-		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
-	})
+	resp, err := h.venuePaymentItem(r.Context(), projectID, *p)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	evidences, err := h.evidence.List(r.Context(), projectID)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
-	resp := toVenuePaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
-	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedVenuePayment, p.ID)
 	ledger, err := h.venuePayments.LedgerSummary(r.Context(), claims.tenantID, projectID)
 	if err != nil {
 		writeAppError(w, err)

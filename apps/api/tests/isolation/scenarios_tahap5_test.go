@@ -1114,7 +1114,7 @@ func TestTahap5(t *testing.T) {
 		pay("venue payment", "/venue-payments",
 			map[string]any{"type": "DP", "amount": 500_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-N"},
 			map[string]any{"type": "DP", "amount": 600_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-N"})
-		// evidence: upload, toggle, delete (incomplete proof changes the progress of a vendor payment)
+		// evidence: upload, set visibility, delete (incomplete proof changes the progress of a vendor payment)
 		vpay := s.mustOK("vp", s.do(tn.token, "POST", proj(Pf, "/payments"), map[string]any{"projectVendorId": EV, "type": "DP", "amount": 100_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-V2"})).id("data", "id")
 		up := s.do(tn.token, "POST", proj(Pf, "/evidence"), map[string]any{
 			"name": "bukti", "type": "Transfer Proof", "fileName": "b.pdf", "mimeType": "application/pdf", "base64Data": pdf, "relatedKind": "payment", "relatedId": vpay,
@@ -1127,10 +1127,10 @@ func TestTahap5(t *testing.T) {
 			"name": "foto", "type": "Photo", "fileName": "f.pdf", "mimeType": "application/pdf", "base64Data": pdf, "relatedKind": "projectMilestone", "relatedId": mid,
 		})
 		s.mustOK("milestone photo", msUp)
-		tg := s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/evidence/%d/toggle-client-visible", msUp.id("data", "id"))), nil)
-		s.progressMatches(t, tn, Pf, "evidence toggle", tg)
+		tg := s.do(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/evidence/%d", msUp.id("data", "id"))), map[string]any{"isClientVisible": true})
+		s.progressMatches(t, tn, Pf, "evidence visibility", tg)
 		if tg.dig("data", "isClientVisible") != true {
-			t.Errorf("toggle: %s", tg)
+			t.Errorf("visibility: %s", tg)
 		}
 		ed := s.do(tn.token, "DELETE", proj(Pf, fmt.Sprintf("/evidence/%d", up.id("data", "id"))), nil)
 		s.progressMatches(t, tn, Pf, "evidence delete", ed)

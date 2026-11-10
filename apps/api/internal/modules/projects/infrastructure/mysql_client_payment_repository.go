@@ -17,7 +17,7 @@ func NewMySQLClientPaymentRepository(db *sql.DB) *MySQLClientPaymentRepository {
 }
 
 const clientPaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes,
-	IFNULL(recorded_by_staff_id, 0), verified_at, IFNULL(verified_by_staff_id, 0), deleted_at`
+	IFNULL(recorded_by_staff_id, 0), verified_at, IFNULL(verified_by_staff_id, 0), deleted_at, updated_at`
 
 func scanClientPayment(scan func(dest ...interface{}) error) (*domain.ClientPayment, error) {
 	var p domain.ClientPayment
@@ -25,7 +25,7 @@ func scanClientPayment(scan func(dest ...interface{}) error) (*domain.ClientPaym
 	var notes sql.NullString
 	var verifiedAt, deletedAt sql.NullTime
 	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes,
-		&p.RecordedByStaffID, &verifiedAt, &p.VerifiedByStaffID, &deletedAt)
+		&p.RecordedByStaffID, &verifiedAt, &p.VerifiedByStaffID, &deletedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -99,15 +99,24 @@ func (r *MySQLClientPaymentRepository) Create(ctx context.Context, p *domain.Cli
 	return nil
 }
 
-func (r *MySQLClientPaymentRepository) Update(ctx context.Context, projectID, id int64, p domain.ClientPayment) error {
-	_, err := conn(ctx, r.db).ExecContext(ctx,
-		`UPDATE client_payments SET type = ?, amount = ?, payment_date = ?, method = ?, reference_number = ?, notes = ?,
-		 verified_at = ?, verified_by_staff_id = ?
-		 WHERE project_id = ? AND id = ?`,
-		string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes,
-		p.VerifiedAt, nullableID(p.VerifiedByStaffID), projectID, id,
-	)
-	return err
+var clientPaymentPatchColumns = map[string]column[domain.ClientPayment]{
+	"type":            col("type", func(p *domain.ClientPayment) any { return string(p.Type) }),
+	"amount":          col("amount", func(p *domain.ClientPayment) any { return p.Amount }),
+	"paymentDate":     col("payment_date", func(p *domain.ClientPayment) any { return p.PaymentDate }),
+	"method":          col("method", func(p *domain.ClientPayment) any { return p.Method }),
+	"referenceNumber": col("reference_number", func(p *domain.ClientPayment) any { return p.ReferenceNumber }),
+	"notes":           col("notes", func(p *domain.ClientPayment) any { return p.Notes }),
+	// "verification" is written together with a material change: it clears both columns.
+	"verification": {
+		names:  []string{"verified_at", "verified_by_staff_id"},
+		values: func(p *domain.ClientPayment) []any { return []any{p.VerifiedAt, nullableID(p.VerifiedByStaffID)} },
+	},
+}
+
+// Patch writes the changed fields of a live client payment (see patchRow).
+func (r *MySQLClientPaymentRepository) Patch(ctx context.Context, p *domain.ClientPayment, changed []string, expected *time.Time) (bool, error) {
+	return patchRow(ctx, conn(ctx, r.db), "client_payments", clientPaymentPatchColumns, p, changed,
+		"project_id = ? AND id = ? AND deleted_at IS NULL", []any{p.ProjectID, p.ID}, expected)
 }
 
 // SetVerification records the verification only when the payment is not yet

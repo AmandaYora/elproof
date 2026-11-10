@@ -97,6 +97,10 @@ type Evidence struct {
 	// = 0). Such a file is never visible to a client, whatever else the rule
 	// below says.
 	ClientHidden bool
+
+	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
+	// the ETag / `updatedAt` of ADR-0036.
+	UpdatedAt time.Time
 }
 
 // ClientCanSeeEvidence is the per-document visibility rule for a `client`

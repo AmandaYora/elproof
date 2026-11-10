@@ -31,6 +31,9 @@ type AppError struct {
 	// "trial_limit_reached") the frontend can react to without parsing
 	// the human message. Sent as errors.code.
 	Code string
+	// Data is an optional payload sent next to the error (as `data`). Only a
+	// stale-version conflict uses it: the current item (see Stale).
+	Data any
 }
 
 // WithCode returns a copy of e carrying a machine-readable code.
@@ -54,6 +57,9 @@ func (e *AppError) Details() any {
 // machine-readable reason, so a form can show the fields and still react to
 // the code); for other kinds `{code}` or nothing.
 func (e *AppError) Payload() any {
+	if e.Kind == KindConflict && len(e.Fields) > 0 {
+		return e.Fields
+	}
 	if e.Kind != KindValidation {
 		return e.Details()
 	}
@@ -86,6 +92,33 @@ func Forbidden(message string) *AppError {
 
 func Conflict(message string) *AppError {
 	return &AppError{Kind: KindConflict, Message: message}
+}
+
+// StaleMessage is the message of the 409 answered when a write carried an
+// If-Match that is no longer the row's version (ADR-0036).
+const StaleMessage = "Data ini sudah diubah orang lain. Muat ulang untuk melihat versi terbaru."
+
+// Stale is the 409 for a write whose If-Match is out of date. errors is
+// {"_conflict": ["stale"]} and `data.current` is the row as it is now: current is
+// whatever the service holds (the handler swaps it for the response shape with
+// WithData before it is sent).
+func Stale(current any) *AppError {
+	return &AppError{Kind: KindConflict, Message: StaleMessage, Fields: map[string][]string{"_conflict": {"stale"}}, Data: current}
+}
+
+// IsStale reports whether err is a Stale conflict and returns its payload.
+func IsStale(err error) (current any, ok bool) {
+	if ae, isApp := As(err); isApp && ae.Kind == KindConflict && ae.Data != nil && len(ae.Fields["_conflict"]) > 0 {
+		return ae.Data, true
+	}
+	return nil, false
+}
+
+// WithData returns a copy of e carrying another payload.
+func (e *AppError) WithData(data any) *AppError {
+	c := *e
+	c.Data = data
+	return &c
 }
 
 func RateLimited(message string) *AppError {

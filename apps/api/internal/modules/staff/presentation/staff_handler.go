@@ -287,8 +287,6 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(segments) == 1 && r.Method == http.MethodPatch:
 		h.update(w, r, tenantID, id)
-	case len(segments) == 2 && segments[1] == "toggle-active" && r.Method == http.MethodPost:
-		h.toggleActive(w, r, tenantID, id)
 	case len(segments) == 2 && segments[1] == "invite" && r.Method == http.MethodPost:
 		inv, err := h.staff.Reinvite(r.Context(), tenantID, id)
 		if err != nil {
@@ -339,8 +337,19 @@ func (h *Handler) deleteImpact(w http.ResponseWriter, r *http.Request, tenantID,
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+	// {"isActive": true|false} on its own is the explicit active state (ADR-0036);
+	// any other body is the ordinary edit.
+	sp, err := httpx.ReadStatePatch(r, "isActive")
+	if err != nil {
+		httpx.WriteStatePatchError(w, err)
+		return
+	}
+	if sp.IsState {
+		h.setActive(w, r, tenantID, id, sp.Value)
+		return
+	}
 	var body staffInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(sp.Body, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
@@ -356,13 +365,22 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, tenantID, id in
 	response.OK(w, "Pengguna berhasil diperbarui", toStaffResponse(*member))
 }
 
-func (h *Handler) toggleActive(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
+// setActive sets a staff member's active state to exactly `want` (PATCH
+// {"isActive": ...}, ADR-0036), with the effects of the transition (a deactivated
+// member loses their sessions and cannot sign in; the Owner cannot be deactivated;
+// activating counts against the trial quota). Setting the state the member already
+// has is a 200 with the member as they are and no write.
+func (h *Handler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id int64, want bool) {
 	current, err := h.staff.Get(r.Context(), tenantID, id)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	member, err := h.staff.SetActive(r.Context(), tenantID, id, !current.IsActive)
+	if want == current.IsActive {
+		response.OK(w, "Status pengguna diperbarui", toStaffResponse(*current))
+		return
+	}
+	member, err := h.staff.SetActive(r.Context(), tenantID, id, want)
 	if err != nil {
 		writeAppError(w, err)
 		return

@@ -130,7 +130,7 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "project delete", method: "DELETE", path: proj(P, "")},
 		{name: "project cancel", method: "POST", path: proj(P, "/cancel"), body: map[string]any{}, control: true, controlPath: proj(SAC, "/cancel")},
 		{name: "project transition", method: "POST", path: proj(P, "/transition"), body: map[string]any{"action": "no_such_action"}, control: true},
-		{name: "project toggle-archive", method: "POST", path: proj(P, "/toggle-archive"), control: true, controlPath: proj(SAC, "/toggle-archive")},
+		{name: "project archive state", method: "PATCH", path: proj(P, ""), body: map[string]any{"isArchived": true}, control: true, controlPath: proj(SAC, "")},
 		{name: "project duplicate", method: "POST", path: proj(P, "/duplicate"), body: map[string]any{"name": "Salinan " + b.marker, "eventDate": day(200)}, control: true},
 		{name: "payment-terms get", method: "GET", path: proj(P, "/payment-terms"), control: true},
 		{name: "payment-terms put", method: "PUT", path: proj(P, "/payment-terms"), body: map[string]any{"terms": []map[string]any{{"label": "Termin " + b.marker, "amount": 1000000, "dueDate": day(30)}}}, control: true},
@@ -178,7 +178,7 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "evidence file", method: "GET", path: proj(P, fmt.Sprintf("/evidence/%d/file", w.EvidenceInternal)), control: true},
 		{name: "evidence link", method: "GET", path: proj(P, fmt.Sprintf("/evidence/%d/link", w.EvidenceInternal)), control: true},
 		{name: "evidence link (download)", method: "GET", path: proj(P, fmt.Sprintf("/evidence/%d/link?disposition=attachment", w.EvidenceInternal)), control: true},
-		{name: "evidence toggle-client-visible", method: "POST", path: proj(P, fmt.Sprintf("/evidence/%d/toggle-client-visible", w.EvidenceInternal))},
+		{name: "evidence client visibility", method: "PATCH", path: proj(P, fmt.Sprintf("/evidence/%d", w.EvidenceInternal)), body: map[string]any{"isClientVisible": true}},
 		{name: "upload create", method: "POST", path: proj(P, "/uploads"), body: map[string]any{"fileName": "a.pdf", "mimeType": "application/pdf", "size": 10}, control: true},
 		{name: "upload put", method: "PUT", path: proj(P, "/uploads/abc.def"), control: true},
 		{name: "documents", method: "GET", path: proj(P, "/documents"), control: true},
@@ -189,7 +189,7 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 
 		// ---- vendors, venues, categories ----
 		{name: "vendor update", method: "PATCH", path: fmt.Sprintf("/api/v1/vendors/%d", w.Vendor), body: vendorBodyB, control: true},
-		{name: "vendor toggle-active", method: "POST", path: fmt.Sprintf("/api/v1/vendors/%d/toggle-active", w.Vendor)},
+		{name: "vendor active state", method: "PATCH", path: fmt.Sprintf("/api/v1/vendors/%d", w.Vendor), body: map[string]any{"isActive": false}},
 		{name: "vendor project-history", method: "GET", path: fmt.Sprintf("/api/v1/vendors/%d/project-history", w.Vendor), control: true},
 		{name: "vendor attachment put", method: "PUT", path: fmt.Sprintf("/api/v1/vendors/%d/attachment", w.Vendor), body: file, control: true},
 		{name: "vendor attachment get", method: "GET", path: fmt.Sprintf("/api/v1/vendors/%d/attachment", w.Vendor)},
@@ -197,23 +197,23 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "vendor delete", method: "DELETE", path: fmt.Sprintf("/api/v1/vendors/%d", w.Vendor)},
 		{name: "venue get", method: "GET", path: fmt.Sprintf("/api/v1/venues/%d", w.Venue), control: true},
 		{name: "venue update", method: "PATCH", path: fmt.Sprintf("/api/v1/venues/%d", w.Venue), body: venueBodyB, control: true},
-		{name: "venue toggle-active", method: "POST", path: fmt.Sprintf("/api/v1/venues/%d/toggle-active", w.Venue)},
+		{name: "venue active state", method: "PATCH", path: fmt.Sprintf("/api/v1/venues/%d", w.Venue), body: map[string]any{"isActive": false}},
 		{name: "venue attachment put", method: "PUT", path: fmt.Sprintf("/api/v1/venues/%d/attachment", w.Venue), body: file, control: true},
 		{name: "venue attachment get", method: "GET", path: fmt.Sprintf("/api/v1/venues/%d/attachment", w.Venue)},
 		{name: "venue delete-impact", method: "GET", path: fmt.Sprintf("/api/v1/venues/%d/delete-impact", w.Venue), control: true},
 		{name: "venue delete", method: "DELETE", path: fmt.Sprintf("/api/v1/venues/%d", w.Venue)},
 		{name: "category update", method: "PATCH", path: fmt.Sprintf("/api/v1/vendor-categories/%d", w.Category), body: map[string]any{"name": "Kategori " + b.marker, "description": "Rahasia " + b.marker}, control: true},
-		{name: "category toggle-active", method: "POST", path: fmt.Sprintf("/api/v1/vendor-categories/%d/toggle-active", w.Category)},
+		{name: "category active state", method: "PATCH", path: fmt.Sprintf("/api/v1/vendor-categories/%d", w.Category), body: map[string]any{"isActive": false}},
 		{name: "category delete", method: "DELETE", path: fmt.Sprintf("/api/v1/vendor-categories/%d", w.Category)},
 
 		// ---- clients, staff, roles, templates ----
 		{name: "client update", method: "PATCH", path: fmt.Sprintf("/api/v1/clients/%d", w.Client), body: map[string]any{"name": "Klien " + b.marker, "phone": "081298765432", "relationNote": "x", "role": "Bride"}, control: true},
 		{name: "client delete", method: "DELETE", path: fmt.Sprintf("/api/v1/clients/%d", w.Client)},
-		{name: "client toggle-active", method: "POST", path: fmt.Sprintf("/api/v1/clients/%d/toggle-active", w.Client)},
+		{name: "client active state", method: "PATCH", path: fmt.Sprintf("/api/v1/clients/%d", w.Client), body: map[string]any{"isActive": false}},
 		{name: "client access-link", method: "POST", path: fmt.Sprintf("/api/v1/clients/%d/access-link", w.Client)},
 		{name: "client replace-representative", method: "POST", path: fmt.Sprintf("/api/v1/clients/%d/replace-representative", w.Client), body: map[string]any{}},
 		{name: "staff update", method: "PATCH", path: fmt.Sprintf("/api/v1/staff/%d", w.Staff2), body: map[string]any{"name": "Staf " + b.marker, "title": "Koordinator", "roleId": w.Role, "email": "staf@example.com", "phone": "081234567890"}, control: true},
-		{name: "staff toggle-active", method: "POST", path: fmt.Sprintf("/api/v1/staff/%d/toggle-active", w.Staff2)},
+		{name: "staff active state", method: "PATCH", path: fmt.Sprintf("/api/v1/staff/%d", w.Staff2), body: map[string]any{"isActive": false}},
 		{name: "staff invite", method: "POST", path: fmt.Sprintf("/api/v1/staff/%d/invite", w.Staff2)},
 		{name: "staff delete-impact", method: "GET", path: fmt.Sprintf("/api/v1/staff/%d/delete-impact", w.Staff2), control: true},
 		{name: "staff delete", method: "DELETE", path: fmt.Sprintf("/api/v1/staff/%d", w.Staff2)},
@@ -325,7 +325,7 @@ func (w *world) mixedIDs(t *testing.T, s *stack) {
 		{name: "A project + B evidence delete", method: "DELETE", path: ap(fmt.Sprintf("/evidence/%d", w.EvidenceVisible))},
 		{name: "A project + B evidence file", method: "GET", path: ap(fmt.Sprintf("/evidence/%d/file", w.EvidenceVisible))},
 		{name: "A project + B evidence link", method: "GET", path: ap(fmt.Sprintf("/evidence/%d/link", w.EvidenceVisible))},
-		{name: "A project + B evidence toggle", method: "POST", path: ap(fmt.Sprintf("/evidence/%d/toggle-client-visible", w.EvidenceVisible))},
+		{name: "A project + B evidence client visibility", method: "PATCH", path: ap(fmt.Sprintf("/evidence/%d", w.EvidenceVisible)), body: map[string]any{"isClientVisible": false}},
 	}
 	for _, a := range cases {
 		a := a

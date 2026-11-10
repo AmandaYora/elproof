@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -87,40 +88,69 @@ func (h *Handler) createPaymentNow(w http.ResponseWriter, r *http.Request, claim
 	response.Created(w, "Pembayaran berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, paymentCreatedResponse{paymentResponse: resp, LedgerSummary: toLedgerSummary(created.Ledger)}))
 }
 
-// updatePayment is a full-field overwrite, no role-gate -- same convention
-// as updateProject/updateVendorEngagement/updateIssue (PLAN.md §2.3).
+// readPaymentPatch reads the body of a PATCH on a client, vendor or venue payment:
+// type, amount, paymentDate, method, referenceNumber and notes (null clears the
+// note); a vendor payment's engagement is not patchable.
+func readPaymentPatch(pr *patchReader) application.PaymentPatch {
+	t := pr.text("type", false)
+	patch := application.PaymentPatch{
+		Amount: pr.integer("amount", false), PaymentDate: pr.date("paymentDate", false),
+		Method: pr.text("method", false), ReferenceNumber: pr.text("referenceNumber", false), Notes: pr.text("notes", true),
+	}
+	if t.Present() {
+		patch.Type = application.Some(domain.PaymentType(t.Value()))
+	}
+	return patch
+}
+
+// paymentItem is a vendor payment as GET /projects/{id}/payments lists it (with
+// its proof files and whether the evidence is complete).
+func (h *Handler) paymentItem(ctx context.Context, projectID int64, p domain.VendorPayment) (paymentResponse, error) {
+	evidences, err := h.evidence.List(ctx, projectID)
+	if err != nil {
+		return paymentResponse{}, err
+	}
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
+	resp := toPaymentResponse(p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
+	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedPayment, p.ID)
+	return resp, nil
+}
+
+// updatePayment is PATCH /projects/{id}/payments/{pid}: a partial update (type,
+// amount, paymentDate, method, referenceNumber, notes), no role-gate beyond
+// finance.record. The overpayment rule is judged on the merged result. See
+// updateProject for the body, If-Match and 409 rules.
 func (h *Handler) updatePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	paymentID, err := parseInt64(paymentIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	var body paymentInputBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+	expected, ok := ifMatch(w, r)
+	if !ok {
 		return
 	}
-	paymentDate, err := parseDate(body.PaymentDate)
+	pr, ok := newPatchReader(w, r)
+	if !ok {
+		return
+	}
+	patch := readPaymentPatch(pr)
+	if err := pr.finish(); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	p, err := h.payments.Patch(r.Context(), projectID, paymentID, claims.staffID, patch, expected)
 	if err != nil {
-		response.Error(w, http.StatusUnprocessableEntity, "Format tanggal tidak valid", map[string][]string{"paymentDate": {"Gunakan format YYYY-MM-DD"}})
+		writePatchError(w, err, func(cur any) (any, error) {
+			return h.paymentItem(r.Context(), projectID, *cur.(*domain.VendorPayment))
+		})
 		return
 	}
-	p, err := h.payments.Update(r.Context(), projectID, paymentID, claims.staffID, application.PaymentInput{
-		Type: domain.PaymentType(body.Type), Amount: body.Amount,
-		PaymentDate: paymentDate, Method: body.Method, ReferenceNumber: body.ReferenceNumber, Notes: body.Notes,
-	})
+	resp, err := h.paymentItem(r.Context(), projectID, *p)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	evidences, err := h.evidence.List(r.Context(), projectID)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
-	resp := toPaymentResponse(*p, domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof))
-	resp.Evidence = indexEvidence(evidences, false, nil).refs(domain.RelatedPayment, p.ID)
 	ledger, err := h.payments.LedgerSummary(r.Context(), projectID, p.ProjectVendorID)
 	if err != nil {
 		writeAppError(w, err)
