@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (9 Nov 2026): **Tahap 0–5 dikerjakan dan dikomit; Tahap 6 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (10 Nov 2026): **Tahap 0–6 dikerjakan dan dikomit; Tahap 7 dikerjakan, belum dikomit** (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -305,6 +305,27 @@ detail, ⌘K memakai `Command` di atas pencarian global server yang sudah ada, b
 Sapu bahasa: semua teks UI mengikuti DESIGN.md §7 (tombol kata kerja + objek, galat apa + cara memperbaiki).
 **Selesai bila:** perilaku peran/izin identik; target sentuh diuji di HP nyata; banner sesi dukungan tetap teratas
 (z-index 70); tidak ada istilah di luar glosarium (pemeriksaan otomatis teks).
+
+*Tahap 7 (10 Nov 2026).* Hanya web; API tidak berubah. **Menu:** satu `AppSidebar` netral (`shared/layouts/nav/`) dipakai WO dan Platform: rel ikon di komputer
+(`Ctrl/Cmd+B`, pilihan diingat), `Sheet` di HP yang menutup setelah pindah halaman, kelompok **Direktori** (Vendor, Venue) dan **Pengaturan** yang terbuka sendiri bila
+halaman di dalamnya aktif (`aria-expanded`/`aria-controls`), izin per butir tetap lewat `visibleSections(grants)`. **Breadcrumb** (`Proyek › nama`, `Tenant › nama`) di dua halaman detail.
+**⌘K** memakai `Command` di atas pencarian server yang ada (proyek, vendor, klien, masing-masing satu panggilan; satu jenis yang gagal atau tak boleh dibaca tidak menyembunyikan
+yang lain), Platform hanya mencari halaman. Banner sesi dukungan `z-70`. **Bahasa:** `apps/web/scripts/check-ui-terms.mjs` (AST, hanya teks yang dibaca orang: JSX, label,
+placeholder, toast, pesan galat; tanpa huruf besar-kecil; `// ui-terms-ok` untuk pengecualian) menjadi tolok ukur sapuan ~60 berkas dan dijalankan sebagai tes
+(`terms.spec.ts`) dan `npm run check:terms`; tab proyek "Timeline" → "Jadwal", "Evidence" → "Dokumen/bukti", "Staf" → "anggota tim", jenis dokumen kini berlabel
+Indonesia lewat `evidenceTypeLabel` (nilai enum ke API tetap). **Aksesibilitas:** axe 68 halaman **0 pelanggaran** (sebelumnya 10 serius): baris vendor dipisah menjadi tombol
+buka-tutup dan tombol aksi bernama yang bersaudara (dulu `span role=button` di dalam `button`, tanpa nama dan tanpa papan ketik), daftar definisi Profil usaha, tombol mata kata
+sandi 32 px. **Performa:** menu, palet, dan tooltip rel sempat menaikkan berkas entri 146 → 204 KB gzip karena `AppLayout` dimuat eager; sheet HP, dialog palet (cmdk), dan
+tooltip rel kini dimuat saat dipakai, entri kembali 146,6 KB dan LCP setara Tahap 6. Tes: `nav.spec.ts` (menu, `Ctrl+B`, sheet HP, breadcrumb, ⌘K, baris vendor), `terms.spec.ts`;
+potret desktop/mobile diperbarui untuk seluruh halaman (menu dan topbar baru); 226 tes lulus.
+**Belum / berbeda:** (1) **target sentuh belum diuji di HP nyata** (iOS dan Android): hanya emulasi 375 px dan axe `target-size`; dan banner sesi dukungan `z-70` belum diuji di
+e2e karena butuh sesi "lihat sebagai". (2) Butir **Keuangan** tidak ada di menu: E13 (keuangan lintas proyek) belum dikerjakan. (3) Halaman hukum (`TermsPage`, `PrivacyPage`,
+`RefundPolicyPage`, `DataProcessingPage`) dan prosa panjang `FaqPage` tidak disapu: pemeriksa tidak membaca template literal, dan istilah terdefinisi (Tenant, Workspace, Owner,
+Staff, Client) bagian dari teks hukum; keputusannya milik pemilik produk. `AuditLogPage` masih berjudul "Audit Log". (4) **Teks riwayat aktivitas disimpan API dalam bahasa campur**
+("Evidence diunggah", "Pembayaran client dicatat"); baris lama tetap begitu walau teks di Go diganti, jadi perlu keputusan: ganti teks baru saja atau migrasi data. Beberapa judul
+modal masih Title Case ("Tambah Bukti Booked"). (5) Hanya satu judul Title Case yang saya perbaiki ("Perlu ditindaklanjuti"); pemeriksa belum menilai huruf besar-kecil, jadi masih ada yang tersisa. (6) Palet ⌘K di
+Platform tidak mencari tenant (menunggu endpoint pencarian ringan di console). (7) Ctrl+K pertama di sesi memuat ~19 KB gzip; sebelum itu terpasang, palet baru tampil setelah
+unduhan selesai (tidak ada penanda memuat).
 
 ### Tahap 8 — Layar khusus dan edit aman
 API: **E9** (PATCH parsial, toggle eksplisit, `If-Match` → 409, hapus jalur toggle lama). UI: EvidenceViewer dan
