@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (9 Nov 2026): **Tahap 0–4 dikerjakan dan dikomit; Tahap 5 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (9 Nov 2026): **Tahap 0–5 dikerjakan dan dikomit; Tahap 6 dikerjakan, belum dikomit** (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -285,6 +285,18 @@ urutan default, empat keadaan seragam, `Pagination` dengan total, filter/urutan/
 bilah aksi massal, kartu HP. Mulai dari Platform Console (Tenant, Tagihan, Audit Log) lalu WO (Proyek, Klien, Vendor,
 Venue, Tim). **Selesai bila:** tidak ada daftar yang memuat `all=true` untuk menyaring di browser (kecuali pemilih
 kecil yang dibatasi); **uji kegunaan putaran 3** dengan 5 staf WO.
+
+*Tahap 6 (10 Nov 2026).* API (ADR-0035): `?sort=field:asc|desc` dengan daftar putih per endpoint dan pemecah seri id (422 bila salah; `meta.sort`), filter dan kolom turunan
+(proyek: `remaining`, `nextDueDate`, `picStaffId`, `eventFrom/To`; klien: daftar datar berhalaman dengan `projectName`, `projectEventDate`, `loginStatus`; vendor/venue/tim:
+`isActive`, `categoryName`/`roleName`), E14 (`tenantName`, `search`, `from`, `to` di transaksi; sort tenant dan audit log, indeks `action`), `POST /vendors/bulk` dan
+`/venues/bulk`. UI: kit `shared/data-table` (`DataTable`: header urut dengan `aria-sort`, rupiah rata kanan tabular, dua kepadatan 40/32 px, header lengket, empat keadaan
+seragam, total di kaki, seleksi + bilah massal, kartu di HP; `useListState`: halaman, urutan, pencarian, dan filter di URL; tampilan tersimpan di peramban) dan 8 daftar
+dipindah: Proyek (kartu menjadi tabel), Klien (datar, tanpa memuat semua proyek dan klien), Vendor, Venue, Tim, Tenant, Tagihan (tanpa panggilan `/tenants/names`), Audit Log.
+Tes: `lists.spec.ts` (urutan lewat papan ketik, URL, "Reset filter", rupiah, tidak ada `all=true`), `tahap6.spec.ts` (aksi massal, project `mutating`); 40 potret diperbarui; axe tidak berubah.
+**Belum:** (1) **uji kegunaan putaran 3** dengan 5 staf WO (manusia). (2) Pemilih kecil (proyek/staf, `limit=100`) masih ada di filter Klien dan Proyek. (3) Klien yang
+diurutkan menurut proyek atau status masuk diurut di memori server (O(klien satu tenant), tercatat di ADR); urut transaksi menurut `tenantName` juga. (4) Aksi massal tidak
+tercatat di log aktivitas (toggle tunggal pun tidak). (5) `ProjectCard` tidak terpakai lagi. (6) Daftar Tenant/Klien masih LCP ±3 dtk di profil lab (tidak diukur ulang
+terpisah sebelum/sesudah). (7) Filter `Select` kini punya nama aksesibel lewat `aria-label` baru pada `Combobox`.
 
 ### Tahap 7 — Layout, navigasi, dan bahasa
 `Sidebar` shadcn netral untuk WO dan Platform (D13; Sheet di HP, `Cmd/Ctrl+B`), menu sesuai FLOW-IDEAL §2.2 dengan

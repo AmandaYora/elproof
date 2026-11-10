@@ -1,33 +1,33 @@
 {
   "profile": "mobile 375x812, Android Chrome UA, CPU 4x, 1.6 Mbps / 150 ms RTT, cold cache, production build via vite preview (gzip), fonts served from the local cache",
   "bundle": {
-    "totalJsRaw": 1741232,
-    "totalJsGzip": 602685,
+    "totalJsRaw": 1767535,
+    "totalJsGzip": 616263,
     "chunks": [
       {
-        "file": "index-DDJ9idaY.js",
-        "raw": 450167,
-        "gzip": 149561
+        "file": "index-DE3VUrpR.js",
+        "raw": 450680,
+        "gzip": 149698
       },
       {
-        "file": "ProjectMilestoneTabPage-C1gnRT75.js",
-        "raw": 270537,
-        "gzip": 89397
+        "file": "ProjectMilestoneTabPage-BpcdlTSi.js",
+        "raw": 270637,
+        "gzip": 89438
       },
       {
-        "file": "ProjectDetailLayout-Dh5Hb2r6.js",
-        "raw": 63795,
-        "gzip": 21938
+        "file": "ProjectDetailLayout-m7F7vPzr.js",
+        "raw": 60843,
+        "gzip": 20925
       },
       {
-        "file": "DialogTitle-Dy5At2mk.js",
-        "raw": 56801,
-        "gzip": 19583
+        "file": "useScrollLock-B48kFFs-.js",
+        "raw": 50401,
+        "gzip": 17580
       },
       {
-        "file": "usePositioner-CvT2Gytk.js",
-        "raw": 40644,
-        "gzip": 15106
+        "file": "usePositioner-B5ib_XBc.js",
+        "raw": 38931,
+        "gzip": 14572
       },
       {
         "file": "types-B4jcjfVQ.js",
@@ -35,384 +35,399 @@
         "gzip": 12447
       },
       {
-        "file": "MfaSetupPage-RHaEuqQx.js",
-        "raw": 31115,
-        "gzip": 12206
+        "file": "MfaSetupPage-cw0pE0Ys.js",
+        "raw": 31148,
+        "gzip": 12218
       },
       {
-        "file": "index-BmPwTbZw.js",
+        "file": "index-QjTtyh93.js",
         "raw": 35169,
-        "gzip": 9873
+        "gzip": 9872
       },
       {
-        "file": "ProjectVendorTabPage-DNdehpyx.js",
-        "raw": 36811,
-        "gzip": 9753
+        "file": "ProjectVendorTabPage-L-zqwpra.js",
+        "raw": 36911,
+        "gzip": 9794
       },
       {
-        "file": "DashboardPage-BH-CUi0T.js",
-        "raw": 27865,
-        "gzip": 7782
+        "file": "useSavedViews-Z-gZ6tvd.js",
+        "raw": 22037,
+        "gzip": 8189
       },
       {
-        "file": "TenantDetailPage-DgEhpm1N.js",
-        "raw": 22788,
-        "gzip": 7243
+        "file": "DashboardPage-Ro9y3NHP.js",
+        "raw": 27929,
+        "gzip": 7810
       },
       {
-        "file": "VendorListPage-BWU6Xg9r.js",
-        "raw": 17387,
-        "gzip": 5645
+        "file": "TenantDetailPage-zqsBw9V4.js",
+        "raw": 22857,
+        "gzip": 7269
       },
       {
-        "file": "IconActionButton-CXK1bT_f.js",
-        "raw": 14610,
-        "gzip": 5480
+        "file": "VendorListPage-h6GzXgQX.js",
+        "raw": 17884,
+        "gzip": 6202
       },
       {
-        "file": "PembayaranClientTabPage-Dr8m9f2i.js",
-        "raw": 15297,
-        "gzip": 5393
+        "file": "VenueListPage-BfWjAmyh.js",
+        "raw": 16260,
+        "gzip": 5769
       },
       {
-        "file": "VenueListPage-a4dGnfTD.js",
-        "raw": 15821,
-        "gzip": 5266
+        "file": "IconActionButton-ByYzix9S.js",
+        "raw": 14651,
+        "gzip": 5490
       },
       {
-        "file": "PlatformUserListPage-CZugaRsu.js",
-        "raw": 16581,
-        "gzip": 5188
+        "file": "PembayaranClientTabPage-Dz7r31oL.js",
+        "raw": 15397,
+        "gzip": 5439
       },
       {
-        "file": "HomeTabPage-f91N63B8.js",
+        "file": "PlatformUserListPage-CCQeC_8K.js",
+        "raw": 16684,
+        "gzip": 5233
+      },
+      {
+        "file": "SubscriptionPage-Bi9OuDC4.js",
+        "raw": 16169,
+        "gzip": 5033
+      },
+      {
+        "file": "HomeTabPage-DX7d9kVo.js",
         "raw": 15638,
-        "gzip": 5015
+        "gzip": 5008
       },
       {
-        "file": "SubscriptionPage-xCYJM0Bk.js",
-        "raw": 16133,
-        "gzip": 5011
+        "file": "useTenantActions-DtnCVV7Q.js",
+        "raw": 12838,
+        "gzip": 4980
       },
       {
-        "file": "useTenantActions-RqrC0IWn.js",
-        "raw": 12800,
-        "gzip": 4964
+        "file": "UserListPage-sxtA83R1.js",
+        "raw": 12580,
+        "gzip": 4841
       },
       {
-        "file": "UserListPage-VKf7wKwa.js",
-        "raw": 12861,
-        "gzip": 4525
+        "file": "ClientListPage-CNjbu-Og.js",
+        "raw": 11893,
+        "gzip": 4635
       },
       {
-        "file": "AppListPage-CaQnjqAo.js",
-        "raw": 13713,
-        "gzip": 4415
+        "file": "AppListPage-DNj3bcLr.js",
+        "raw": 13813,
+        "gzip": 4463
       },
       {
-        "file": "PlanListPage-BPB_ycZ_.js",
-        "raw": 11891,
-        "gzip": 4213
+        "file": "PlanListPage-BXrL_mJX.js",
+        "raw": 11991,
+        "gzip": 4259
       },
       {
-        "file": "ClientListPage-ufsnmQbT.js",
-        "raw": 11358,
-        "gzip": 4199
+        "file": "BusinessProfilePage-BKaUB5Xe.js",
+        "raw": 11851,
+        "gzip": 4156
       },
       {
-        "file": "BusinessProfilePage-BatV8Si2.js",
-        "raw": 11787,
-        "gzip": 4124
+        "file": "useProjectStore-B9wQu-41.js",
+        "raw": 18599,
+        "gzip": 4147
       },
       {
-        "file": "useProjectStore-BTaHgDkV.js",
-        "raw": 18428,
-        "gzip": 4102
+        "file": "RolesPage-C5XQ7te4.js",
+        "raw": 11281,
+        "gzip": 4087
       },
       {
-        "file": "RolesPage-UGSb3X-b.js",
-        "raw": 11212,
-        "gzip": 4049
-      },
-      {
-        "file": "HomePage-BoEgw3z6.js",
+        "file": "HomePage-CyE-6Y_Y.js",
         "raw": 14884,
-        "gzip": 4013
+        "gzip": 4012
       },
       {
-        "file": "ProjectCreatePage-BNB1jkJX.js",
-        "raw": 10345,
-        "gzip": 3815
+        "file": "ProjectCreatePage-CMwXbn82.js",
+        "raw": 10378,
+        "gzip": 3832
       },
       {
-        "file": "LoginPage-DOK6hl1R.js",
-        "raw": 10060,
-        "gzip": 3641
+        "file": "LoginPage-CqizMxpb.js",
+        "raw": 10093,
+        "gzip": 3657
       },
       {
-        "file": "ProjectClientTabPage-4alXUgHI.js",
-        "raw": 12097,
-        "gzip": 3539
+        "file": "ProjectClientTabPage-BwTR-Bys.js",
+        "raw": 12199,
+        "gzip": 3583
       },
       {
-        "file": "PembayaranVenueTabPage-Dp2if0hU.js",
-        "raw": 9762,
-        "gzip": 3513
+        "file": "PembayaranVenueTabPage-CAJbubDI.js",
+        "raw": 9857,
+        "gzip": 3556
       },
       {
-        "file": "PembayaranVendorTabPage-BFeSU3z3.js",
-        "raw": 9377,
-        "gzip": 3452
+        "file": "PembayaranVendorTabPage-CWMOy8rr.js",
+        "raw": 9472,
+        "gzip": 3497
       },
       {
-        "file": "TenantListPage-CDeQ65AL.js",
-        "raw": 9501,
-        "gzip": 3395
+        "file": "TenantListPage-D1cupMku.js",
+        "raw": 8500,
+        "gzip": 3409
       },
       {
-        "file": "PlatformDashboardPage-C7DILJvY.js",
+        "file": "PlatformDashboardPage-DjhGl0oG.js",
         "raw": 9936,
-        "gzip": 3392
+        "gzip": 3385
       },
       {
-        "file": "AnnouncementsPage-BMIl8VrE.js",
-        "raw": 8715,
-        "gzip": 3328
+        "file": "AnnouncementsPage-D3RWM2ky.js",
+        "raw": 8815,
+        "gzip": 3373
       },
       {
-        "file": "AboutPage-ZI5MZ_wS.js",
+        "file": "AboutPage-EYknUJKt.js",
         "raw": 10953,
-        "gzip": 3272
+        "gzip": 3274
       },
       {
-        "file": "ClientPortalLayout-ZdA6wjGr.js",
+        "file": "ClientPortalLayout-tAS6jwGo.js",
         "raw": 8273,
-        "gzip": 3182
+        "gzip": 3183
       },
       {
-        "file": "ImportBulkModal-DlALU-4J.js",
+        "file": "MilestoneTemplateListPage-COJM9Nww.js",
+        "raw": 8602,
+        "gzip": 3116
+      },
+      {
+        "file": "ImportBulkModal-CTfUHzqT.js",
         "raw": 8752,
-        "gzip": 3102
+        "gzip": 3100
       },
       {
-        "file": "MilestoneTemplateListPage-GRl2PGgD.js",
-        "raw": 8502,
-        "gzip": 3073
+        "file": "VendorCategoryListPage-C8QkLTaE.js",
+        "raw": 8741,
+        "gzip": 3065
       },
       {
-        "file": "VendorCategoryListPage-0DEAhTJF.js",
-        "raw": 8639,
-        "gzip": 3012
+        "file": "RecordPaymentDrawer-CGG49cj_.js",
+        "raw": 7428,
+        "gzip": 2890
       },
       {
-        "file": "RecordPaymentDrawer-eA3ZdhQK.js",
-        "raw": 7395,
-        "gzip": 2875
+        "file": "PlatformLayout-BxeV45fH.js",
+        "raw": 7648,
+        "gzip": 2833
       },
       {
-        "file": "PlatformLayout-Z91BtJwY.js",
-        "raw": 7642,
+        "file": "ProjectEvidenceTabPage-B9dlq8at.js",
+        "raw": 8227,
         "gzip": 2829
       },
       {
-        "file": "ProjectEvidenceTabPage-Hw5a_RMQ.js",
-        "raw": 8132,
-        "gzip": 2784
+        "file": "DialogTitle-D1xb59BO.js",
+        "raw": 6910,
+        "gzip": 2735
       },
       {
-        "file": "InvitationPage-C4_hUAkG.js",
-        "raw": 6484,
-        "gzip": 2713
+        "file": "GatewayConfigPage-D8odQVp_.js",
+        "raw": 7668,
+        "gzip": 2735
       },
       {
-        "file": "GatewayConfigPage-3k7zLnqv.js",
-        "raw": 7599,
-        "gzip": 2700
+        "file": "InvitationPage-JqBNCM86.js",
+        "raw": 6517,
+        "gzip": 2731
       },
       {
-        "file": "FaqPage-B3atT-W0.js",
+        "file": "FaqPage-30Z23KOO.js",
         "raw": 6206,
-        "gzip": 2636
+        "gzip": 2639
       },
       {
-        "file": "Input-BONeVhxc.js",
-        "raw": 6479,
-        "gzip": 2624
+        "file": "ProjectVenueTabPage-BRCHSG-R.js",
+        "raw": 7886,
+        "gzip": 2634
       },
       {
-        "file": "ProjectVenueTabPage-CgtISD8i.js",
-        "raw": 7822,
-        "gzip": 2606
+        "file": "WorkspaceSetupPage-CAglHSIX.js",
+        "raw": 6263,
+        "gzip": 2576
       },
       {
-        "file": "RefundPolicyPage-BB37omC5.js",
+        "file": "RefundPolicyPage-D0u6kjIK.js",
         "raw": 6194,
-        "gzip": 2569
+        "gzip": 2573
       },
       {
-        "file": "AuditLogPage-Ct0T_09m.js",
-        "raw": 6603,
-        "gzip": 2568
+        "file": "AuditLogPage-Ct7UYgIT.js",
+        "raw": 6190,
+        "gzip": 2546
       },
       {
-        "file": "WorkspaceSetupPage-CXnEPeOM.js",
-        "raw": 6230,
-        "gzip": 2556
-      },
-      {
-        "file": "TermsPage-BHnPVk4E.js",
+        "file": "TermsPage-OXRrl1P4.js",
         "raw": 5885,
-        "gzip": 2522
+        "gzip": 2524
       },
       {
-        "file": "ProjectListPage-B90teiko.js",
-        "raw": 5857,
-        "gzip": 2320
+        "file": "ProjectListPage-BEAFhPa8.js",
+        "raw": 5737,
+        "gzip": 2304
       },
       {
-        "file": "VendorTabPage-bb3slbUf.js",
+        "file": "VendorTabPage-CkdiWEBY.js",
         "raw": 6509,
-        "gzip": 2308
+        "gzip": 2301
       },
       {
-        "file": "ContactPage-snn3MYDG.js",
+        "file": "ContactPage-Bdlm0Q15.js",
         "raw": 7101,
-        "gzip": 2209
+        "gzip": 2208
       },
       {
-        "file": "ProjectIssuesTabPage-BQIHZ4_a.js",
-        "raw": 4970,
-        "gzip": 2155
+        "file": "ProjectIssuesTabPage-ygo7UzSY.js",
+        "raw": 5034,
+        "gzip": 2184
       },
       {
-        "file": "IssueFormModal-DX7MMVHu.js",
-        "raw": 6094,
-        "gzip": 2109
+        "file": "input-4qnwS9C6.js",
+        "raw": 4947,
+        "gzip": 2158
       },
       {
-        "file": "MarketingLayout-lXqQgneX.js",
+        "file": "IssueFormModal-B8k-5bK2.js",
+        "raw": 6127,
+        "gzip": 2122
+      },
+      {
+        "file": "PrivacyPage-DDavs83r.js",
+        "raw": 4590,
+        "gzip": 2105
+      },
+      {
+        "file": "MarketingLayout-CY9SwwCw.js",
         "raw": 6824,
         "gzip": 2102
       },
       {
-        "file": "PrivacyPage-nzTBIPfE.js",
-        "raw": 4590,
-        "gzip": 2102
+        "file": "CompleteProfileModal-CiOs8iTS.js",
+        "raw": 4544,
+        "gzip": 2039
       },
       {
-        "file": "CompleteProfileModal-Bd5P8xxJ.js",
-        "raw": 4511,
-        "gzip": 2027
+        "file": "EvidenceUploadModal-CmEkGjP9.js",
+        "raw": 4695,
+        "gzip": 1981
       },
       {
-        "file": "EvidenceUploadModal-Cuu1U37_.js",
-        "raw": 4662,
-        "gzip": 1969
-      },
-      {
-        "file": "EvidenceViewerModal-BvOYXkkR.js",
+        "file": "EvidenceViewerModal-Bko8XhFx.js",
         "raw": 4376,
-        "gzip": 1948
+        "gzip": 1945
       },
       {
-        "file": "SubscriptionPolicyPage-B7uQIGCg.js",
-        "raw": 4315,
-        "gzip": 1925
+        "file": "SubscriptionPolicyPage-Bs59orqK.js",
+        "raw": 4348,
+        "gzip": 1939
       },
       {
-        "file": "PembayaranTabPage-DFETBY02.js",
+        "file": "PembayaranTabPage-CF_gXjvZ.js",
         "raw": 5025,
-        "gzip": 1886
+        "gzip": 1885
       },
       {
-        "file": "SubscriptionReceiptPage-dz2KmPn6.js",
+        "file": "Combobox-C5qV-Yzy.js",
+        "raw": 4379,
+        "gzip": 1866
+      },
+      {
+        "file": "SubscriptionReceiptPage-BtRq9392.js",
         "raw": 4568,
-        "gzip": 1826
-      },
-      {
-        "file": "Combobox-CVvyx34S.js",
-        "raw": 4275,
         "gzip": 1820
       },
       {
-        "file": "FormErrorSummary-DkwCuySo.js",
+        "file": "PlatformTransactionsPage-BdW9RX-3.js",
+        "raw": 4005,
+        "gzip": 1819
+      },
+      {
+        "file": "FormErrorSummary-Dj_ZPYeu.js",
         "raw": 3789,
         "gzip": 1796
       },
       {
-        "file": "DataRequestsPage-CMZkUtJD.js",
-        "raw": 3810,
-        "gzip": 1725
+        "file": "DataRequestsPage-CQ_J24nb.js",
+        "raw": 3874,
+        "gzip": 1755
       },
       {
-        "file": "AccessLinkDialog-D-s0UZ21.js",
+        "file": "AccessLinkDialog-C5O8NtX-.js",
         "raw": 3663,
-        "gzip": 1663
+        "gzip": 1662
       },
       {
-        "file": "LoginSlidesPage-Bj39eW2I.js",
+        "file": "LoginSlidesPage-fd__htFU.js",
         "raw": 3272,
-        "gzip": 1610
+        "gzip": 1605
       },
       {
-        "file": "SignupPage-BVHmMy25.js",
+        "file": "ToolbarRootContext-Cv7D0GXh.js",
+        "raw": 3417,
+        "gzip": 1575
+      },
+      {
+        "file": "SignupPage-BYLFT054.js",
         "raw": 3223,
-        "gzip": 1552
+        "gzip": 1551
       },
       {
-        "file": "PlatformTransactionsPage-CShbItQ1.js",
-        "raw": 3872,
-        "gzip": 1518
+        "file": "DokumenTabPage-BhG166i-.js",
+        "raw": 3538,
+        "gzip": 1508
       },
       {
-        "file": "DokumenTabPage-BNep1whv.js",
-        "raw": 3502,
-        "gzip": 1490
-      },
-      {
-        "file": "ProjectSummaryTabPage-D5X67AMi.js",
-        "raw": 3716,
+        "file": "PortalRoleSelect-BBtK6tsF.js",
+        "raw": 3540,
         "gzip": 1478
       },
       {
-        "file": "DataProcessingPage-r7JnIvnn.js",
+        "file": "ProjectSummaryTabPage-CwWoHW8w.js",
+        "raw": 3716,
+        "gzip": 1477
+      },
+      {
+        "file": "DataProcessingPage-fszWRPCI.js",
         "raw": 3170,
         "gzip": 1444
       },
       {
-        "file": "PortalRoleSelect-DuQGAfTe.js",
-        "raw": 3386,
-        "gzip": 1422
+        "file": "ConfirmDialog-Bc7Xl_GC.js",
+        "raw": 3660,
+        "gzip": 1434
       },
       {
-        "file": "ConfirmDialog-C0kn0XBv.js",
-        "raw": 3633,
-        "gzip": 1421
-      },
-      {
-        "file": "legal-CWt5yCFm.js",
+        "file": "legal-BnMFvQ8C.js",
         "raw": 3298,
-        "gzip": 1366
+        "gzip": 1367
       },
       {
-        "file": "MoreTabPage-CsIfu41m.js",
+        "file": "MoreTabPage-Gqsj-6wt.js",
         "raw": 3592,
-        "gzip": 1362
+        "gzip": 1357
       },
       {
-        "file": "Drawer-yZh-as-S.js",
-        "raw": 3782,
-        "gzip": 1295
+        "file": "Drawer-BA4xhH7Z.js",
+        "raw": 3777,
+        "gzip": 1290
       },
       {
-        "file": "PaymentTermsEditor-q1ZzxD6e.js",
-        "raw": 2661,
-        "gzip": 1274
+        "file": "PaymentTermsEditor-C_EIahPQ.js",
+        "raw": 2694,
+        "gzip": 1287
       },
       {
-        "file": "CompleteDataRequestModal-BvOM7er3.js",
+        "file": "CompleteDataRequestModal-CHqtSvfp.js",
         "raw": 2519,
-        "gzip": 1255
+        "gzip": 1259
       },
       {
         "file": "console.schema-BJR80OWn.js",
@@ -420,79 +435,89 @@
         "gzip": 1151
       },
       {
-        "file": "KendalaTabPage-cT-cYDUW.js",
+        "file": "KendalaTabPage-B9VzoHj8.js",
         "raw": 2272,
-        "gzip": 1102
+        "gzip": 1099
       },
       {
-        "file": "TimelineTabPage-CT4IJqyi.js",
+        "file": "TimelineTabPage-CExjOCgY.js",
         "raw": 2491,
-        "gzip": 1061
+        "gzip": 1060
       },
       {
-        "file": "IssueCard-DE1qyjQW.js",
+        "file": "IssueCard-B2UE_lxZ.js",
         "raw": 2511,
-        "gzip": 968
+        "gzip": 969
       },
       {
-        "file": "usePlatformAdminStore-B-SjyIb5.js",
-        "raw": 3108,
-        "gzip": 962
+        "file": "usePlatformAdminStore-BrajH0An.js",
+        "raw": 3140,
+        "gzip": 950
       },
       {
-        "file": "ProofStamp-DO0VWxYV.js",
+        "file": "ProofStamp-DIbUjJfc.js",
         "raw": 1582,
         "gzip": 933
       },
       {
-        "file": "ProofSeal-DGYmRO-K.js",
+        "file": "ProofSeal-iaHzEqbq.js",
         "raw": 1889,
-        "gzip": 928
+        "gzip": 927
       },
       {
-        "file": "MilestoneRail-DptPC-O-.js",
+        "file": "useFocus-BL0v0Ij9.js",
+        "raw": 1877,
+        "gzip": 914
+      },
+      {
+        "file": "MilestoneRail-DVFmdGhO.js",
         "raw": 1654,
-        "gzip": 852
+        "gzip": 851
       },
       {
-        "file": "useConsoleStore-DtPf7bbE.js",
-        "raw": 2569,
-        "gzip": 850
-      },
-      {
-        "file": "Modal-DzRytyQ_.js",
+        "file": "Modal-12DS0pKu.js",
         "raw": 1558,
         "gzip": 842
       },
       {
-        "file": "ProjectActivityTabPage-B42gN27c.js",
+        "file": "ProjectActivityTabPage-CcC3iT7-.js",
         "raw": 1707,
-        "gzip": 839
+        "gzip": 836
       },
       {
-        "file": "Badge-BA6_ouBq.js",
+        "file": "Badge-CsJTwUWT.js",
         "raw": 1604,
-        "gzip": 838
+        "gzip": 834
       },
       {
-        "file": "useVendorStore-CdQLFuqj.js",
-        "raw": 2166,
-        "gzip": 777
+        "file": "Input-CEJOKANi.js",
+        "raw": 1625,
+        "gzip": 793
       },
       {
-        "file": "sonner-B1yKqsXL.js",
+        "file": "useVendorStore-DVgZxwXC.js",
+        "raw": 2193,
+        "gzip": 784
+      },
+      {
+        "file": "sonner-CQGohtJb.js",
         "raw": 1454,
-        "gzip": 773
+        "gzip": 771
       },
       {
-        "file": "MilestoneRail-DojIyB_-.js",
+        "file": "useConsoleStore-BvWj4aEg.js",
+        "raw": 2369,
+        "gzip": 761
+      },
+      {
+        "file": "MilestoneRail-Cu3ib14A.js",
         "raw": 2138,
-        "gzip": 747
+        "gzip": 748
       },
       {
-        "file": "dialog-Cw7ETFg3.js",
-        "raw": 1775,
-        "gzip": 744
+        "file": "dialog-CxIn9Pcg.js",
+        "raw": 1770,
+        "gzip": 736
       },
       {
         "file": "access-link-OyBvFKtg.js",
@@ -500,14 +525,14 @@
         "gzip": 723
       },
       {
-        "file": "Pagination-BrtLLSgR.js",
+        "file": "Pagination-DqCJCNTg.js",
         "raw": 1380,
-        "gzip": 715
+        "gzip": 719
       },
       {
-        "file": "GoogleSignInButton-Bff3vfqV.js",
+        "file": "GoogleSignInButton-DA3x-gQn.js",
         "raw": 1384,
-        "gzip": 700
+        "gzip": 701
       },
       {
         "file": "labels-CCNRgeQw.js",
@@ -515,24 +540,24 @@
         "gzip": 699
       },
       {
-        "file": "useVenueStore-CLF0dE1U.js",
-        "raw": 1750,
-        "gzip": 670
+        "file": "useVenueStore-DhYlssw7.js",
+        "raw": 1798,
+        "gzip": 689
       },
       {
-        "file": "reason-parts-CehshkFT.js",
+        "file": "reason-parts-DSH2wPzV.js",
         "raw": 1147,
-        "gzip": 632
+        "gzip": 633
       },
       {
-        "file": "LoginPhotoSlider-Df1KI_2j.js",
+        "file": "LoginPhotoSlider-CmL1L9nR.js",
         "raw": 1033,
         "gzip": 628
       },
       {
-        "file": "ProgressMeter-CBm9fySb.js",
+        "file": "ProgressMeter-CkpESE9N.js",
         "raw": 1063,
-        "gzip": 606
+        "gzip": 607
       },
       {
         "file": "image-compression-CbvIzHL2.js",
@@ -540,72 +565,77 @@
         "gzip": 605
       },
       {
-        "file": "smartphone-DgyMeREA.js",
+        "file": "smartphone-CBfax4nP.js",
         "raw": 1336,
-        "gzip": 597
+        "gzip": 598
       },
       {
-        "file": "useProofViewer-CFtvGZGu.js",
-        "raw": 958,
-        "gzip": 563
+        "file": "useProofViewer-2Xr1PnHd.js",
+        "raw": 996,
+        "gzip": 584
       },
       {
-        "file": "useStaffStore-Cp-Ew9bc.js",
-        "raw": 1379,
-        "gzip": 562
-      },
-      {
-        "file": "CurrencyInput-dgM0PJ6a.js",
+        "file": "CurrencyInput-DUiuoFNZ.js",
         "raw": 947,
         "gzip": 552
       },
       {
-        "file": "handshake-DD5My0jG.js",
+        "file": "handshake-CS-GR0x2.js",
         "raw": 1153,
-        "gzip": 545
+        "gzip": 546
       },
       {
-        "file": "AuthSplitLayout-BEWX4QeI.js",
+        "file": "AuthSplitLayout-RR7yogqo.js",
         "raw": 1064,
-        "gzip": 543
+        "gzip": 542
       },
       {
-        "file": "dates-0dW8L37i.js",
+        "file": "useStaffStore-CCjwl44T.js",
+        "raw": 1335,
+        "gzip": 535
+      },
+      {
+        "file": "dates-B1arCZz8.js",
         "raw": 916,
-        "gzip": 461
+        "gzip": 462
       },
       {
-        "file": "usePageMeta-SflV1G0G.js",
+        "file": "usePageMeta-OLG0ZFJD.js",
         "raw": 724,
-        "gzip": 431
+        "gzip": 432
       },
       {
-        "file": "useClientHomeStore-BjEtfc8g.js",
+        "file": "useClientHomeStore-UVveHuYm.js",
         "raw": 714,
         "gzip": 428
       },
       {
-        "file": "pwa-GnsY2t22.js",
+        "file": "pwa-DgDuXYxi.js",
         "raw": 691,
-        "gzip": 418
+        "gzip": 419
       },
       {
-        "file": "Card-C7IcKhD4.js",
+        "file": "Card-CtaMHpfb.js",
         "raw": 893,
-        "gzip": 416
+        "gzip": 417
       },
       {
-        "file": "Reveal-BSInxtbz.js",
+        "file": "Reveal-BDSk_3K7.js",
         "raw": 703,
-        "gzip": 413
+        "gzip": 414
       },
       {
-        "file": "StatusBadges-DTs4oQDs.js",
+        "file": "StatusBadges-CzMOxtcp.js",
         "raw": 1014,
-        "gzip": 411
+        "gzip": 414
       },
       {
-        "file": "user-x-Cz7XggEY.js",
+        "file": "DialogRoot-B5cfvok6.js",
+        "raw": 596,
+        "gzip": 409
+      },
+      {
+        "file": "user-x-BxEV_0dm.js",
         "raw": 855,
         "gzip": 393
       },
@@ -615,24 +645,24 @@
         "gzip": 391
       },
       {
-        "file": "useVendorCategoryStore-poSAFbBB.js",
-        "raw": 923,
-        "gzip": 390
-      },
-      {
         "file": "status-BZyOmsA4.js",
         "raw": 783,
         "gzip": 389
       },
       {
-        "file": "DialogRoot-D0XLGhV5.js",
-        "raw": 557,
-        "gzip": 387
+        "file": "useVendorCategoryStore-Dqrc7JZr.js",
+        "raw": 923,
+        "gzip": 388
       },
       {
-        "file": "TabNav-DMbqGlxM.js",
+        "file": "TabNav-r6sb-tjB.js",
         "raw": 549,
         "gzip": 385
+      },
+      {
+        "file": "eye-off-CZ1Aubvp.js",
+        "raw": 602,
+        "gzip": 382
       },
       {
         "file": "project.schema-jfb2C79y.js",
@@ -640,209 +670,209 @@
         "gzip": 382
       },
       {
-        "file": "eye-off-Ba9YQtIF.js",
-        "raw": 602,
+        "file": "Skeleton-Cld2FwQv.js",
+        "raw": 702,
         "gzip": 381
       },
       {
-        "file": "useAppsStore-BsYKgdb8.js",
+        "file": "useAppsStore-DBxqtI3N.js",
         "raw": 793,
-        "gzip": 380
+        "gzip": 381
       },
       {
-        "file": "Skeleton-CkVRVGv5.js",
-        "raw": 695,
-        "gzip": 376
-      },
-      {
-        "file": "useSubscriptionPlanStore-CocrNQl7.js",
+        "file": "useSubscriptionPlanStore-CM755hAZ.js",
         "raw": 707,
-        "gzip": 374
+        "gzip": 377
       },
       {
-        "file": "key-round-CF66aOty.js",
+        "file": "key-round-CkuRS6-v.js",
         "raw": 527,
-        "gzip": 363
+        "gzip": 362
       },
       {
-        "file": "phone-D0K9RrZf.js",
+        "file": "phone-Ff74gUBy.js",
         "raw": 567,
+        "gzip": 361
+      },
+      {
+        "file": "useRolesStore-BZxmAACE.js",
+        "raw": 778,
         "gzip": 360
       },
       {
-        "file": "useRolesStore-BszoQ179.js",
-        "raw": 778,
+        "file": "image-plus-qZbCcl0h.js",
+        "raw": 535,
         "gzip": 359
       },
       {
-        "file": "CardList-Dgpm4XiC.js",
+        "file": "CardList-CczKHlSN.js",
         "raw": 586,
-        "gzip": 358
+        "gzip": 357
       },
       {
-        "file": "image-plus-ChEdfCTV.js",
-        "raw": 535,
-        "gzip": 358
-      },
-      {
-        "file": "trash-2-D5hYfCr_.js",
+        "file": "trash-2-p94b720o.js",
         "raw": 530,
-        "gzip": 353
+        "gzip": 356
       },
       {
-        "file": "file-lock-2-CV1Dsi3j.js",
+        "file": "file-lock-2-DnjtVb-E.js",
         "raw": 503,
-        "gzip": 352
+        "gzip": 351
       },
       {
-        "file": "LoadError-BJOD_biA.js",
+        "file": "LoadError-BTIBSs1F.js",
         "raw": 486,
         "gzip": 350
       },
       {
-        "file": "Table-D2B8GMCy.js",
+        "file": "Table-B_z7wNi3.js",
         "raw": 832,
         "gzip": 350
       },
       {
-        "file": "scroll-text-CQ_ziTH4.js",
+        "file": "scroll-text-MmoyFHth.js",
         "raw": 521,
         "gzip": 336
       },
       {
-        "file": "pencil-BSqJ2Bhb.js",
+        "file": "pencil-o9puSecu.js",
         "raw": 449,
+        "gzip": 331
+      },
+      {
+        "file": "map-pin-BBsa6XaB.js",
+        "raw": 431,
         "gzip": 330
       },
       {
-        "file": "map-pin-BNUi77GO.js",
-        "raw": 431,
-        "gzip": 329
-      },
-      {
-        "file": "download-DHJ29LCK.js",
+        "file": "download-D6hz_fUt.js",
         "raw": 435,
         "gzip": 324
       },
       {
-        "file": "file-text-B9TGDLVp.js",
+        "file": "file-text-CHlg2ftD.js",
         "raw": 505,
         "gzip": 322
       },
       {
-        "file": "arrow-up-DN0QGpO6.js",
+        "file": "arrow-up-CQRHaQke.js",
         "raw": 617,
-        "gzip": 316
+        "gzip": 317
       },
       {
-        "file": "receipt-C2FkJPGG.js",
-        "raw": 465,
+        "file": "copy-DHPNs-Hl.js",
+        "raw": 409,
         "gzip": 315
       },
       {
-        "file": "copy-CgkAB8CZ.js",
-        "raw": 409,
+        "file": "receipt-DtS6GHWx.js",
+        "raw": 465,
         "gzip": 314
       },
       {
-        "file": "download-CWFv3k78.js",
+        "file": "wallet-CISJuu-y.js",
+        "raw": 459,
+        "gzip": 313
+      },
+      {
+        "file": "download-BO5JBJAN.js",
         "raw": 394,
         "gzip": 312
       },
       {
-        "file": "wallet-BKqBZrWo.js",
-        "raw": 459,
-        "gzip": 312
-      },
-      {
-        "file": "external-link-Cgj65Lv7.js",
+        "file": "external-link-ClspRk4n.js",
         "raw": 423,
-        "gzip": 305
+        "gzip": 304
       },
       {
-        "file": "circle-alert-B_hLOI8q.js",
+        "file": "circle-alert-BCplPB8T.js",
         "raw": 422,
-        "gzip": 296
+        "gzip": 297
       },
       {
-        "file": "capabilities-Dg8eiQtq.js",
+        "file": "capabilities-By52BjZ3.js",
         "raw": 464,
-        "gzip": 294
+        "gzip": 295
       },
       {
-        "file": "megaphone-B-qFF_VJ.js",
+        "file": "megaphone-BSzgpdqr.js",
         "raw": 365,
+        "gzip": 288
+      },
+      {
+        "file": "api-error-D90L27bC.js",
+        "raw": 457,
         "gzip": 287
       },
       {
-        "file": "api-error-DI3h-rAr.js",
-        "raw": 457,
+        "file": "EmptyState-DS6RlTsr.js",
+        "raw": 493,
         "gzip": 286
       },
       {
-        "file": "EmptyState-DVKaO3qi.js",
-        "raw": 493,
-        "gzip": 285
-      },
-      {
-        "file": "ProjectPaymentsTabPage-DB4NVYlb.js",
+        "file": "ProjectPaymentsTabPage-L4qiZFW6.js",
         "raw": 389,
         "gzip": 281
       },
       {
-        "file": "circle-check-CMR0XpJz.js",
-        "raw": 350,
-        "gzip": 276
-      },
-      {
-        "file": "proof-owVPCsVb.js",
+        "file": "proof-B_k06Nej.js",
         "raw": 349,
-        "gzip": 276
+        "gzip": 279
       },
       {
-        "file": "ban-BoDi-6rV.js",
+        "file": "circle-check-C87LVZtm.js",
+        "raw": 350,
+        "gzip": 277
+      },
+      {
+        "file": "ban-BJZfyNL5.js",
         "raw": 347,
-        "gzip": 274
+        "gzip": 275
       },
       {
-        "file": "ellipsis-DyMTBR43.js",
+        "file": "ellipsis-C9QJDrT2.js",
         "raw": 399,
-        "gzip": 271
+        "gzip": 272
       },
       {
-        "file": "arrow-right-BUgKnUTg.js",
+        "file": "arrow-right-C21ezFe6.js",
+        "raw": 337,
+        "gzip": 269
+      },
+      {
+        "file": "arrow-left-BNKBLb2p.js",
         "raw": 337,
         "gzip": 268
       },
       {
-        "file": "arrow-left-eqJmhmSx.js",
-        "raw": 337,
-        "gzip": 267
-      },
-      {
-        "file": "arrow-up-right-2AozmP4w.js",
+        "file": "arrow-up-right-hfazsZv5.js",
         "raw": 338,
         "gzip": 265
       },
       {
-        "file": "message-circle-pNHCCPfU.js",
+        "file": "message-circle-dL-iR4YB.js",
         "raw": 320,
-        "gzip": 263
+        "gzip": 265
       },
       {
-        "file": "usePagination-DkVHj7Nd.js",
+        "file": "usePagination-BUiRStGv.js",
         "raw": 366,
-        "gzip": 263
+        "gzip": 264
       },
       {
-        "file": "plus-OWskXMWW.js",
+        "file": "plus-Cd8S2E06.js",
         "raw": 326,
-        "gzip": 257
+        "gzip": 258
       },
       {
-        "file": "chevron-right-Cotr8R5Z.js",
+        "file": "chevron-right-Bs9CmREc.js",
         "raw": 302,
         "gzip": 250
+      },
+      {
+        "file": "check-CHdvJpyt.js",
+        "raw": 297,
+        "gzip": 248
       },
       {
         "file": "login.schema-CgdUCF8m.js",
@@ -850,14 +880,14 @@
         "gzip": 248
       },
       {
-        "file": "check-BPE1mZ8h.js",
-        "raw": 297,
-        "gzip": 247
+        "file": "undo-delete-B495zaOQ.js",
+        "raw": 353,
+        "gzip": 248
       },
       {
-        "file": "undo-delete-B5MQdf5s.js",
-        "raw": 353,
-        "gzip": 245
+        "file": "useLoad-CveaU3WV.js",
+        "raw": 304,
+        "gzip": 234
       },
       {
         "file": "contact-DD79ESfk.js",
@@ -865,19 +895,14 @@
         "gzip": 233
       },
       {
-        "file": "useLoad-BfVxIBUY.js",
-        "raw": 304,
-        "gzip": 233
-      },
-      {
-        "file": "selectors-CjA9ztXN.js",
+        "file": "selectors-DRcTV3GQ.js",
         "raw": 274,
         "gzip": 216
       },
       {
-        "file": "TenantStatusBadge-BYAXH8xH.js",
+        "file": "TenantStatusBadge-C_BI8Vww.js",
         "raw": 209,
-        "gzip": 177
+        "gzip": 178
       },
       {
         "file": "pagination-DWoMeGYC.js",
@@ -900,13 +925,13 @@
       "apiBytes": 0,
       "apiRequests": [],
       "jsChunks": 12,
-      "jsTransfer": 164311,
-      "jsGzip": 159397,
-      "lcpMs": 1904,
+      "jsTransfer": 164442,
+      "jsGzip": 159537,
+      "lcpMs": 1924,
       "cls": 0.424,
-      "tbtMs": 25,
+      "tbtMs": 26,
       "longTasks": 1,
-      "networkIdleMs": 3152,
+      "networkIdleMs": 3160,
       "inpLikeMs": null
     },
     {
@@ -917,38 +942,37 @@
       "apiBytes": 1428,
       "apiRequests": [
         "GET /api/v1/platform-admins/1 (211 B)",
-        "GET /api/v1/platform/trends?… (795 B)",
-        "GET /api/v1/platform/metrics (422 B)"
+        "GET /api/v1/platform/metrics (422 B)",
+        "GET /api/v1/platform/trends?… (795 B)"
       ],
       "jsChunks": 21,
-      "jsTransfer": 181346,
-      "jsGzip": 172464,
-      "lcpMs": 2672,
+      "jsTransfer": 181371,
+      "jsGzip": 172499,
+      "lcpMs": 2644,
       "cls": 0.127,
-      "tbtMs": 24,
+      "tbtMs": 22,
       "longTasks": 1,
-      "networkIdleMs": 3148,
+      "networkIdleMs": 3151,
       "inpLikeMs": 48
     },
     {
       "id": "platform-tagihan",
       "label": "Tagihan Platform",
       "route": "/platform/transaksi",
-      "apiCalls": 3,
-      "apiBytes": 571,
+      "apiCalls": 2,
+      "apiBytes": 563,
       "apiRequests": [
         "GET /api/v1/platform-admins/1 (211 B)",
-        "GET /api/v1/subscription-transactions?… (301 B)",
-        "GET /api/v1/tenants/names?… (59 B)"
+        "GET /api/v1/subscription-transactions?… (352 B)"
       ],
-      "jsChunks": 27,
-      "jsTransfer": 186263,
-      "jsGzip": 174846,
-      "lcpMs": 2420,
+      "jsChunks": 33,
+      "jsTransfer": 232416,
+      "jsGzip": 219461,
+      "lcpMs": 2648,
       "cls": 0.044,
-      "tbtMs": 23,
+      "tbtMs": 22,
       "longTasks": 1,
-      "networkIdleMs": 3264,
+      "networkIdleMs": 3349,
       "inpLikeMs": null
     },
     {
@@ -956,20 +980,20 @@
       "label": "Daftar Tenant",
       "route": "/platform/tenant",
       "apiCalls": 3,
-      "apiBytes": 2362,
+      "apiBytes": 2386,
       "apiRequests": [
         "GET /api/v1/platform-admins/1 (211 B)",
         "GET /api/v1/plans?… (392 B)",
-        "GET /api/v1/tenants?… (1759 B)"
+        "GET /api/v1/tenants?… (1783 B)"
       ],
-      "jsChunks": 53,
-      "jsTransfer": 269689,
-      "jsGzip": 248535,
-      "lcpMs": 3204,
+      "jsChunks": 58,
+      "jsTransfer": 282181,
+      "jsGzip": 259922,
+      "lcpMs": 3356,
       "cls": 0.044,
-      "tbtMs": 25,
+      "tbtMs": 22,
       "longTasks": 1,
-      "networkIdleMs": 3936,
+      "networkIdleMs": 4093,
       "inpLikeMs": null
     },
     {
@@ -977,21 +1001,21 @@
       "label": "Detail Tenant",
       "route": "/platform/tenant/1/langganan",
       "apiCalls": 4,
-      "apiBytes": 1902,
+      "apiBytes": 1926,
       "apiRequests": [
         "GET /api/v1/platform-admins/1 (211 B)",
         "GET /api/v1/plans?… (392 B)",
-        "GET /api/v1/subscription-transactions?… (98 B)",
+        "GET /api/v1/subscription-transactions?… (122 B)",
         "GET /api/v1/console/tenants/1/overview (1201 B)"
       ],
-      "jsChunks": 49,
-      "jsTransfer": 252807,
-      "jsGzip": 233224,
-      "lcpMs": 3320,
+      "jsChunks": 51,
+      "jsTransfer": 254628,
+      "jsGzip": 234451,
+      "lcpMs": 3328,
       "cls": 0.125,
       "tbtMs": 22,
       "longTasks": 1,
-      "networkIdleMs": 3756,
+      "networkIdleMs": 3764,
       "inpLikeMs": null
     },
     {
@@ -1007,14 +1031,14 @@
         "GET /api/v1/projects/1/milestones (941 B)"
       ],
       "jsChunks": 24,
-      "jsTransfer": 186473,
-      "jsGzip": 176413,
-      "lcpMs": 2424,
+      "jsTransfer": 186632,
+      "jsGzip": 176577,
+      "lcpMs": 2416,
       "cls": 0,
-      "tbtMs": 22,
+      "tbtMs": 23,
       "longTasks": 1,
-      "networkIdleMs": 3401,
-      "inpLikeMs": 368
+      "networkIdleMs": 3394,
+      "inpLikeMs": 360
     },
     {
       "id": "portal-jadwal",
@@ -1029,13 +1053,13 @@
         "GET /api/v1/projects/1/milestones (941 B)"
       ],
       "jsChunks": 21,
-      "jsTransfer": 183740,
-      "jsGzip": 175267,
+      "jsTransfer": 183957,
+      "jsGzip": 175477,
       "lcpMs": 2312,
       "cls": 0,
-      "tbtMs": 25,
+      "tbtMs": 23,
       "longTasks": 1,
-      "networkIdleMs": 2982,
+      "networkIdleMs": 2983,
       "inpLikeMs": null
     },
     {
@@ -1051,13 +1075,13 @@
         "GET /api/v1/projects/1/issues (535 B)"
       ],
       "jsChunks": 24,
-      "jsTransfer": 187385,
-      "jsGzip": 176879,
-      "lcpMs": 2348,
+      "jsTransfer": 187598,
+      "jsGzip": 177088,
+      "lcpMs": 2352,
       "cls": 0,
-      "tbtMs": 23,
+      "tbtMs": 22,
       "longTasks": 1,
-      "networkIdleMs": 3010,
+      "networkIdleMs": 3015,
       "inpLikeMs": null
     },
     {
@@ -1074,13 +1098,13 @@
         "GET /api/v1/projects/1/client-payments (400 B)"
       ],
       "jsChunks": 23,
-      "jsTransfer": 186324,
-      "jsGzip": 177102,
-      "lcpMs": 2316,
+      "jsTransfer": 186538,
+      "jsGzip": 177312,
+      "lcpMs": 2320,
       "cls": 0,
-      "tbtMs": 26,
+      "tbtMs": 24,
       "longTasks": 1,
-      "networkIdleMs": 2980,
+      "networkIdleMs": 2979,
       "inpLikeMs": null
     },
     {
@@ -1098,13 +1122,13 @@
         "GET /api/v1/projects/1/vendors (1008 B)"
       ],
       "jsChunks": 28,
-      "jsTransfer": 192308,
-      "jsGzip": 180446,
-      "lcpMs": 2404,
+      "jsTransfer": 192515,
+      "jsGzip": 180652,
+      "lcpMs": 2408,
       "cls": 0,
-      "tbtMs": 25,
+      "tbtMs": 22,
       "longTasks": 1,
-      "networkIdleMs": 3074,
+      "networkIdleMs": 3066,
       "inpLikeMs": null
     },
     {
@@ -1121,14 +1145,14 @@
         "GET /api/v1/dashboard (5522 B)",
         "GET /api/v1/tenants/me/onboarding (237 B)"
       ],
-      "jsChunks": 31,
-      "jsTransfer": 233256,
-      "jsGzip": 220202,
-      "lcpMs": 2788,
+      "jsChunks": 33,
+      "jsTransfer": 235165,
+      "jsGzip": 221508,
+      "lcpMs": 2836,
       "cls": 0.442,
-      "tbtMs": 24,
+      "tbtMs": 25,
       "longTasks": 1,
-      "networkIdleMs": 3424,
+      "networkIdleMs": 3474,
       "inpLikeMs": 56
     },
     {
@@ -1136,46 +1160,47 @@
       "label": "Daftar Client",
       "route": "/clients",
       "apiCalls": 6,
-      "apiBytes": 4219,
+      "apiBytes": 4633,
       "apiRequests": [
         "GET /api/v1/access/me (518 B)",
-        "GET /api/v1/tenants/me/branding (110 B)",
         "GET /api/v1/tenants/me/subscription (200 B)",
+        "GET /api/v1/tenants/me/branding (110 B)",
         "GET /api/v1/announcements/active (306 B)",
-        "GET /api/v1/clients?… (546 B)",
-        "GET /api/v1/projects?… (2539 B)"
+        "GET /api/v1/clients?… (756 B)",
+        "GET /api/v1/projects?… (2743 B)"
       ],
-      "jsChunks": 39,
-      "jsTransfer": 256841,
-      "jsGzip": 241479,
-      "lcpMs": 2780,
-      "cls": 0.098,
-      "tbtMs": 21,
+      "jsChunks": 44,
+      "jsTransfer": 269529,
+      "jsGzip": 252968,
+      "lcpMs": 2952,
+      "cls": 0.054,
+      "tbtMs": 24,
       "longTasks": 1,
-      "networkIdleMs": 3468,
+      "networkIdleMs": 3658,
       "inpLikeMs": null
     },
     {
       "id": "wo-proyek",
       "label": "Daftar Project",
       "route": "/projects",
-      "apiCalls": 5,
-      "apiBytes": 3728,
+      "apiCalls": 6,
+      "apiBytes": 4092,
       "apiRequests": [
         "GET /api/v1/access/me (518 B)",
         "GET /api/v1/tenants/me/branding (110 B)",
         "GET /api/v1/tenants/me/subscription (200 B)",
         "GET /api/v1/announcements/active (306 B)",
-        "GET /api/v1/projects?… (2594 B)"
+        "GET /api/v1/staff/summary (210 B)",
+        "GET /api/v1/projects?… (2748 B)"
       ],
-      "jsChunks": 28,
-      "jsTransfer": 201112,
-      "jsGzip": 189462,
-      "lcpMs": 2384,
+      "jsChunks": 34,
+      "jsTransfer": 247917,
+      "jsGzip": 234103,
+      "lcpMs": 2704,
       "cls": 0.098,
       "tbtMs": 23,
       "longTasks": 1,
-      "networkIdleMs": 3089,
+      "networkIdleMs": 3430,
       "inpLikeMs": null
     },
     {
@@ -1193,14 +1218,14 @@
         "GET /api/v1/projects/1/issues (547 B)",
         "GET /api/v1/projects/1/vendors (1102 B)"
       ],
-      "jsChunks": 46,
-      "jsTransfer": 277862,
-      "jsGzip": 258747,
+      "jsChunks": 50,
+      "jsTransfer": 281349,
+      "jsGzip": 261037,
       "lcpMs": 1548,
       "cls": 0.24,
-      "tbtMs": 26,
+      "tbtMs": 28,
       "longTasks": 2,
-      "networkIdleMs": 4081,
+      "networkIdleMs": 4216,
       "inpLikeMs": null
     },
     {
@@ -1220,14 +1245,14 @@
         "GET /api/v1/projects/1/evidence (913 B)",
         "GET /api/v1/projects/1/payment-terms (392 B)"
       ],
-      "jsChunks": 60,
-      "jsTransfer": 301236,
-      "jsGzip": 276684,
-      "lcpMs": 1524,
+      "jsChunks": 64,
+      "jsTransfer": 304760,
+      "jsGzip": 279017,
+      "lcpMs": 1536,
       "cls": 0.196,
-      "tbtMs": 24,
+      "tbtMs": 31,
       "longTasks": 2,
-      "networkIdleMs": 4717,
+      "networkIdleMs": 4810,
       "inpLikeMs": null
     },
     {
@@ -1243,14 +1268,14 @@
         "GET /api/v1/announcements/active (306 B)",
         "GET /api/v1/projects/1/overview (2574 B)"
       ],
-      "jsChunks": 43,
-      "jsTransfer": 273247,
-      "jsGzip": 255323,
-      "lcpMs": 1548,
+      "jsChunks": 47,
+      "jsTransfer": 276692,
+      "jsGzip": 257568,
+      "lcpMs": 1540,
       "cls": 0.24,
-      "tbtMs": 24,
+      "tbtMs": 27,
       "longTasks": 2,
-      "networkIdleMs": 3779,
+      "networkIdleMs": 3879,
       "inpLikeMs": null
     },
     {
@@ -1268,14 +1293,14 @@
         "GET /api/v1/projects/1/issues (547 B)",
         "GET /api/v1/projects/1/vendors (1102 B)"
       ],
-      "jsChunks": 56,
-      "jsTransfer": 302057,
-      "jsGzip": 279149,
+      "jsChunks": 60,
+      "jsTransfer": 305588,
+      "jsGzip": 281480,
       "lcpMs": 1532,
       "cls": 0.24,
       "tbtMs": 27,
       "longTasks": 2,
-      "networkIdleMs": 4298,
+      "networkIdleMs": 4416,
       "inpLikeMs": null
     },
     {
@@ -1283,23 +1308,23 @@
       "label": "Daftar Vendor",
       "route": "/vendors",
       "apiCalls": 6,
-      "apiBytes": 3275,
+      "apiBytes": 3395,
       "apiRequests": [
         "GET /api/v1/access/me (518 B)",
         "GET /api/v1/tenants/me/branding (110 B)",
         "GET /api/v1/tenants/me/subscription (200 B)",
         "GET /api/v1/announcements/active (306 B)",
         "GET /api/v1/vendor-categories?… (972 B)",
-        "GET /api/v1/vendors?… (1169 B)"
+        "GET /api/v1/vendors?… (1289 B)"
       ],
-      "jsChunks": 40,
-      "jsTransfer": 255567,
-      "jsGzip": 239451,
-      "lcpMs": 1540,
+      "jsChunks": 45,
+      "jsTransfer": 268540,
+      "jsGzip": 251353,
+      "lcpMs": 1544,
       "cls": 0.098,
-      "tbtMs": 22,
-      "longTasks": 1,
-      "networkIdleMs": 3498,
+      "tbtMs": 28,
+      "longTasks": 2,
+      "networkIdleMs": 3641,
       "inpLikeMs": null
     }
   ]
