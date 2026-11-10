@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const planSchema = z.object({
+  // Every plan belongs to exactly one App (ADR-0040); ElProof's own App sells to WO tenants.
+  appId: z.string().min(1, "Pilih aplikasi pemilik paket"),
   name: z.string().trim().min(2, "Isi nama paket, minimal 2 karakter"),
   durationMonths: z.coerce
     .number({ invalid_type_error: "Isi durasi dengan angka" })

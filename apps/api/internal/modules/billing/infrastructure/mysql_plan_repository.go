@@ -3,13 +3,9 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
-
 	"elproof/internal/modules/billing/domain"
-	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/pagination"
 )
 
@@ -21,293 +17,64 @@ func NewMySQLPlanRepository(db *sql.DB) *MySQLPlanRepository {
 	return &MySQLPlanRepository{db: db}
 }
 
-func (r *MySQLPlanRepository) List(ctx context.Context) ([]domain.Plan, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, name, duration_months, price, is_active, created_at, updated_at FROM subscription_plans ORDER BY id`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+const planColumns = `id, app_id, name, duration_months, price, is_active, created_at, updated_at`
 
-	var plans []domain.Plan
-	for rows.Next() {
-		var p domain.Plan
-		if err := rows.Scan(&p.ID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
-		}
-		plans = append(plans, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	featuresByPlan, err := r.loadFeatures(ctx)
-	if err != nil {
-		return nil, err
-	}
-	appIDsByPlan, err := r.loadAppIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range plans {
-		plans[i].Features = featuresByPlan[plans[i].ID]
-		plans[i].AppIDs = appIDsByPlan[plans[i].ID]
-	}
-	return plans, nil
-}
-
-// ListPaginated backs the real `GET /plans` list page (Platform Console's
-// plan management table) — List above stays as-is for the many "resolve my
-// current plan"/"pick a plan" consumers (e.g. SubscriptionPage) that need the
-// full set in one call.
-func (r *MySQLPlanRepository) ListPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM subscription_plans`
-	listQuery := `SELECT id, name, duration_months, price, is_active, created_at, updated_at FROM subscription_plans`
+// planFilter builds the WHERE clause shared by the list and its COUNT, so the
+// paginated total never drifts from the rows served. appID "" = every App.
+func planFilter(appID, search string) (string, []interface{}) {
+	var conditions []string
 	var args []interface{}
+	if appID != "" {
+		conditions = append(conditions, "app_id = ?")
+		args = append(args, appID)
+	}
 	if search != "" {
-		countQuery += ` WHERE name LIKE ?`
-		listQuery += ` WHERE name LIKE ?`
+		conditions = append(conditions, "name LIKE ?")
 		args = append(args, "%"+search+"%")
 	}
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(conditions, " AND "), args
+}
+
+// List returns the plans of one App (appID) or of every App (appID ""),
+// ordered by id, with their features.
+func (r *MySQLPlanRepository) List(ctx context.Context, appID string) ([]domain.Plan, error) {
+	where, args := planFilter(appID, "")
+	plans, err := r.query(ctx, `SELECT `+planColumns+` FROM subscription_plans`+where+` ORDER BY id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	return plans, r.attachFeatures(ctx, plans)
+}
+
+// ListPaginated backs the paginated `GET /plans` — same filter as List plus a
+// name search.
+func (r *MySQLPlanRepository) ListPaginated(ctx context.Context, params pagination.Params, search, appID string) ([]domain.Plan, int64, error) {
+	where, args := planFilter(appID, search)
 
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subscription_plans`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-
-	listQuery += ` ORDER BY id LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var plans []domain.Plan
-	for rows.Next() {
-		var p domain.Plan
-		if err := rows.Scan(&p.ID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, 0, err
-		}
-		plans = append(plans, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-
-	featuresByPlan, err := r.loadFeatures(ctx)
+	plans, err := r.query(ctx, `SELECT `+planColumns+` FROM subscription_plans`+where+` ORDER BY id LIMIT ? OFFSET ?`,
+		append(append([]interface{}{}, args...), params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}
-	appIDsByPlan, err := r.loadAppIDs(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	for i := range plans {
-		plans[i].Features = featuresByPlan[plans[i].ID]
-		plans[i].AppIDs = appIDsByPlan[plans[i].ID]
-	}
-	return plans, total, nil
-}
-
-// ListForApp returns every plan mapped to appID via subscription_plan_apps
-// (D3) — including non-active ones, with their `active` flag, since the
-// consumer side already knows how to filter and needs the flag to mark a
-// tenant's currently-active plan (A3). AppIDs is intentionally left nil:
-// this path serves an `app` principal, which has no business knowing what
-// other apps a plan is mapped to.
-func (r *MySQLPlanRepository) ListForApp(ctx context.Context, appID string) ([]domain.Plan, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT sp.id, sp.name, sp.duration_months, sp.price, sp.is_active, sp.created_at, sp.updated_at
-		 FROM subscription_plans sp
-		 JOIN subscription_plan_apps spa ON spa.plan_id = sp.id
-		 WHERE spa.app_id = ?
-		 ORDER BY sp.price ASC, sp.id ASC`,
-		appID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var plans []domain.Plan
-	for rows.Next() {
-		var p domain.Plan
-		if err := rows.Scan(&p.ID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
-		}
-		plans = append(plans, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	featuresByPlan, err := r.loadFeatures(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range plans {
-		plans[i].Features = featuresByPlan[plans[i].ID]
-	}
-	return plans, nil
-}
-
-// ListPublic returns plans with NO row in subscription_plan_apps — ElProof's
-// own catalog (demo/internal), visible to any principal that isn't
-// platform_admin (D3/A12). AppIDs is left nil: for a public plan it's
-// always empty anyway.
-func (r *MySQLPlanRepository) ListPublic(ctx context.Context) ([]domain.Plan, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, name, duration_months, price, is_active, created_at, updated_at FROM subscription_plans sp
-		 WHERE NOT EXISTS (SELECT 1 FROM subscription_plan_apps spa WHERE spa.plan_id = sp.id)
-		 ORDER BY id`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var plans []domain.Plan
-	for rows.Next() {
-		var p domain.Plan
-		if err := rows.Scan(&p.ID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
-		}
-		plans = append(plans, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	featuresByPlan, err := r.loadFeatures(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range plans {
-		plans[i].Features = featuresByPlan[plans[i].ID]
-	}
-	return plans, nil
-}
-
-// ListPublicPaginated is ListPaginated scoped to the public catalog (D3).
-// Conditions are collected into a slice and joined with AND rather than
-// string-concatenated onto an assumed `WHERE name LIKE ?` — ListPaginated's
-// own conditional WHERE is exactly the trap this avoids (task 3.3). COUNT(*)
-// reuses the identical condition list so the paginated total never drifts
-// from what the data query actually returns.
-func (r *MySQLPlanRepository) ListPublicPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
-	conditions := []string{"NOT EXISTS (SELECT 1 FROM subscription_plan_apps spa WHERE spa.plan_id = sp.id)"}
-	var args []interface{}
-	if search != "" {
-		conditions = append(conditions, "sp.name LIKE ?")
-		args = append(args, "%"+search+"%")
-	}
-	whereClause := " WHERE " + strings.Join(conditions, " AND ")
-
-	var total int64
-	countQuery := `SELECT COUNT(*) FROM subscription_plans sp` + whereClause
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	listQuery := `SELECT sp.id, sp.name, sp.duration_months, sp.price, sp.is_active, sp.created_at, sp.updated_at FROM subscription_plans sp` +
-		whereClause + ` ORDER BY sp.id LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(append([]interface{}{}, args...), params.Limit, params.Offset())...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var plans []domain.Plan
-	for rows.Next() {
-		var p domain.Plan
-		if err := rows.Scan(&p.ID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, 0, err
-		}
-		plans = append(plans, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-
-	featuresByPlan, err := r.loadFeatures(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	for i := range plans {
-		plans[i].Features = featuresByPlan[plans[i].ID]
-	}
-	return plans, total, nil
-}
-
-// ListPlanIDsForApp returns the raw plan_id set mapped to appID — backs both
-// the app-plan management GET (task 7.3) and the cross-App purchase guard
-// (StartSubscriptionCharge, A18/R1).
-func (r *MySQLPlanRepository) ListPlanIDsForApp(ctx context.Context, appID string) ([]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT plan_id FROM subscription_plan_apps WHERE app_id = ? ORDER BY plan_id`, appID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	ids := make([]int64, 0)
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-// ReplaceAppPlans replaces the entire mapping set for appID in one
-// transaction — the same DELETE-then-INSERT replace-set pattern Update
-// already uses for plan_features (T8). planIDs may be empty (= revoke every
-// mapping, a valid state).
-func (r *MySQLPlanRepository) ReplaceAppPlans(ctx context.Context, appID string, planIDs []int64) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(ctx, `DELETE FROM subscription_plan_apps WHERE app_id = ?`, appID); err != nil {
-		return err
-	}
-	for _, planID := range planIDs {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO subscription_plan_apps (plan_id, app_id) VALUES (?, ?)`,
-			planID, appID,
-		); err != nil {
-			// FK violation (1452) means a planID in the payload doesn't
-			// exist — a client-side mistake, not a server failure, so it
-			// maps to a validation error (422) instead of bubbling up as
-			// a raw 500 (task 7.4).
-			var mysqlErr *mysql.MySQLError
-			if errors.As(err, &mysqlErr) && mysqlErr.Number == 1452 {
-				return apperror.Validation("Salah satu plan_id tidak ditemukan", nil)
-			}
-			return err
-		}
-	}
-	return tx.Commit()
+	return plans, total, r.attachFeatures(ctx, plans)
 }
 
 func (r *MySQLPlanRepository) FindByID(ctx context.Context, id int64) (*domain.Plan, error) {
-	row := r.db.QueryRowContext(ctx,
-		`SELECT id, name, duration_months, price, is_active, created_at, updated_at FROM subscription_plans WHERE id = ? LIMIT 1`,
-		id,
-	)
-	var p domain.Plan
-	err := row.Scan(&p.ID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	plans, err := r.query(ctx, `SELECT `+planColumns+` FROM subscription_plans WHERE id = ? LIMIT 1`, id)
 	if err != nil {
 		return nil, err
 	}
-
+	if len(plans) == 0 {
+		return nil, nil
+	}
+	p := plans[0]
 	features, err := r.loadFeaturesForPlan(ctx, id)
 	if err != nil {
 		return nil, err
@@ -324,8 +91,8 @@ func (r *MySQLPlanRepository) Create(ctx context.Context, plan *domain.Plan) err
 	defer tx.Rollback()
 
 	result, err := tx.ExecContext(ctx,
-		`INSERT INTO subscription_plans (name, duration_months, price, is_active) VALUES (?, ?, ?, ?)`,
-		plan.Name, plan.DurationMonths, plan.Price, plan.IsActive,
+		`INSERT INTO subscription_plans (app_id, name, duration_months, price, is_active) VALUES (?, ?, ?, ?, ?)`,
+		plan.AppID, plan.Name, plan.DurationMonths, plan.Price, plan.IsActive,
 	)
 	if err != nil {
 		return err
@@ -350,8 +117,8 @@ func (r *MySQLPlanRepository) Update(ctx context.Context, plan *domain.Plan) err
 	defer tx.Rollback()
 
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE subscription_plans SET name = ?, duration_months = ?, price = ? WHERE id = ?`,
-		plan.Name, plan.DurationMonths, plan.Price, plan.ID,
+		`UPDATE subscription_plans SET app_id = ?, name = ?, duration_months = ?, price = ? WHERE id = ?`,
+		plan.AppID, plan.Name, plan.DurationMonths, plan.Price, plan.ID,
 	); err != nil {
 		return err
 	}
@@ -368,6 +135,24 @@ func (r *MySQLPlanRepository) Update(ctx context.Context, plan *domain.Plan) err
 func (r *MySQLPlanRepository) SetActive(ctx context.Context, id int64, isActive bool) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE subscription_plans SET is_active = ? WHERE id = ?`, isActive, id)
 	return err
+}
+
+func (r *MySQLPlanRepository) query(ctx context.Context, q string, args ...interface{}) ([]domain.Plan, error) {
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var plans []domain.Plan
+	for rows.Next() {
+		var p domain.Plan
+		if err := rows.Scan(&p.ID, &p.AppID, &p.Name, &p.DurationMonths, &p.Price, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		plans = append(plans, p)
+	}
+	return plans, rows.Err()
 }
 
 func insertFeatures(ctx context.Context, tx *sql.Tx, planID int64, features []string) error {
@@ -402,44 +187,41 @@ func (r *MySQLPlanRepository) loadFeaturesForPlan(ctx context.Context, planID in
 	return features, rows.Err()
 }
 
-func (r *MySQLPlanRepository) loadFeatures(ctx context.Context) (map[int64][]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT plan_id, label FROM plan_features ORDER BY plan_id, sort_order`)
+// attachFeatures loads the features of the given plans in one query (not one
+// per row) and sets them in place.
+func (r *MySQLPlanRepository) attachFeatures(ctx context.Context, plans []domain.Plan) error {
+	if len(plans) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(plans))
+	args := make([]interface{}, len(plans))
+	for i, p := range plans {
+		placeholders[i] = "?"
+		args[i] = p.ID
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT plan_id, label FROM plan_features WHERE plan_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY plan_id, sort_order`,
+		args...,
+	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
-	result := make(map[int64][]string)
+	byPlan := make(map[int64][]string)
 	for rows.Next() {
 		var planID int64
 		var label string
 		if err := rows.Scan(&planID, &label); err != nil {
-			return nil, err
+			return err
 		}
-		result[planID] = append(result[planID], label)
+		byPlan[planID] = append(byPlan[planID], label)
 	}
-	return result, rows.Err()
-}
-
-// loadAppIDs mirrors loadFeatures — one query for every plan's app mapping,
-// so List/ListPaginated don't run a per-row query. Called only from those
-// two (the platform_admin path, D12/A23); ListForApp/ListPublic*
-// deliberately never call it.
-func (r *MySQLPlanRepository) loadAppIDs(ctx context.Context) (map[int64][]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT plan_id, app_id FROM subscription_plan_apps ORDER BY plan_id, app_id`)
-	if err != nil {
-		return nil, err
+	if err := rows.Err(); err != nil {
+		return err
 	}
-	defer rows.Close()
-
-	result := make(map[int64][]string)
-	for rows.Next() {
-		var planID int64
-		var appID string
-		if err := rows.Scan(&planID, &appID); err != nil {
-			return nil, err
-		}
-		result[planID] = append(result[planID], appID)
+	for i := range plans {
+		plans[i].Features = byPlan[plans[i].ID]
 	}
-	return result, rows.Err()
+	return nil
 }

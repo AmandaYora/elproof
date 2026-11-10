@@ -1,5 +1,17 @@
 # PLAN.md — Katalog Paket Terisolasi per App Eksternal (`GET /external/subscription-plans`)
 
+> **Revisi 3 — paket per aplikasi (T-20261110-16, ADR-0040, 2026-11-10).** Model pemetaan
+> banyak-ke-banyak di dokumen ini **sudah diganti**: setiap paket kini milik tepat SATU aplikasi
+> (`subscription_plans.app_id`, migrasi `000073`), dipilih di form Tambah/Ubah Paket. Yang gugur:
+> D3 ("paket tanpa pemetaan = publik"), D12/A23/A31 (`appIds`), A1/A2/A8/A11/A14/A26 sebagian
+> (tabel `subscription_plan_apps` dan `GET`/`PUT /app-plans` dihapus), serta bagian Paket di D13/§9
+> (tab Paket berisi centang → daftar paket milik aplikasi itu + "Tambah paket"; halaman Paket →
+> satu seksi per aplikasi dan saringan per aplikasi di server, `?appId=`). Katalog ElProof untuk
+> tenant WO = paket milik App internal `platform-billing`. Tetap berlaku: D4, D7, D9, A3, A4, A16–A20,
+> A24, A25 (katalog eksternal, endpoint charge langganan, ledger). Penjaga baru: tagihan/aktivasi
+> langganan tenant WO menolak paket milik aplikasi lain (`billing.Contracts.GetTenantPlan`), dan
+> charge langganan App menolak paket App lain. Rincian keputusan: `knowledge/decisions/ADR-0040-plan-owned-by-one-app.md`.
+
 > Repo ini: **ElProof** (`AmandaYora/elproof`) — sisi **penyedia**.
 > Konsumen pertama: jwswedding (`AmandaYora/jwswedding`), yang sisi kliennya sudah diimplementasikan
 > dan terblokir karena endpoint ini 404.

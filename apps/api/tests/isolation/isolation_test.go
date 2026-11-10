@@ -258,7 +258,7 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "platform admin reset-password", method: "POST", path: "/api/v1/platform-admins/1/reset-password", body: map[string]any{"password": "Password-baru-123"}, platform: true},
 		{name: "audit log", method: "GET", path: "/api/v1/audit-log", platform: true},
 		{name: "audit log export", method: "GET", path: "/api/v1/audit-log/export", platform: true},
-		{name: "plans write", method: "POST", path: "/api/v1/plans", body: map[string]any{"name": "x", "durationMonths": 1, "price": 1, "features": []string{"x"}}, platform: true},
+		{name: "plans write", method: "POST", path: "/api/v1/plans", body: map[string]any{"appId": "platform-billing", "name": "x", "durationMonths": 1, "price": 1, "features": []string{"x"}}, platform: true},
 		{name: "trial limits write", method: "PUT", path: "/api/v1/trial-limits", body: map[string]any{"maxStaff": 99}, platform: true},
 		{name: "payment gateway config", method: "GET", path: "/api/v1/payment/gateway-config", platform: true},
 		{name: "payment apps", method: "GET", path: "/api/v1/payment/apps", platform: true},

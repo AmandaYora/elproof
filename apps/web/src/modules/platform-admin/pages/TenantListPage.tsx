@@ -24,6 +24,7 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { downloadFile } from "@/shared/lib/download";
 import { toast } from "@/shared/stores/useToastStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { ELPROOF_APP_ID } from "@/shared/data/subscriptionPlans";
 import { API } from "@/shared/services/api-endpoints";
 
 const SOURCE_LABEL = { self_service: "Daftar mandiri", platform: "Dibuat tim ElProof" } as const;
@@ -233,7 +234,7 @@ export default function TenantListPage() {
         </Select>
         <Select className="w-52" aria-label="Paket" value={list.filters.planId || "Semua"} onChange={(e) => list.setFilter("planId", e.target.value === "Semua" ? "" : e.target.value)}>
           <option value="Semua">Semua paket</option>
-          {actions.plans.map((p) => (
+          {actions.plans.filter((p) => p.appId === ELPROOF_APP_ID).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>

@@ -16,20 +16,20 @@ import (
 	"elproof/internal/shared/pagination"
 )
 
-// stubPublicPlanRepo implements application.PlanRepository; only ListPublic
-// is exercised. The handler is wired to a real *application.PlanService so
-// these tests also lock ListPublicActive's filter and ordering.
+// stubPublicPlanRepo implements application.PlanRepository; only List is
+// exercised. The handler is wired to a real *application.PlanService so these
+// tests also lock ListPublicActive's App scope, filter and ordering.
 type stubPublicPlanRepo struct {
-	public []domain.Plan
-	err    error
+	public    []domain.Plan
+	err       error
+	lastAppID string
 }
 
-func (s *stubPublicPlanRepo) ListPublic(ctx context.Context) ([]domain.Plan, error) {
+func (s *stubPublicPlanRepo) List(ctx context.Context, appID string) ([]domain.Plan, error) {
+	s.lastAppID = appID
 	return s.public, s.err
 }
-
-func (s *stubPublicPlanRepo) List(ctx context.Context) ([]domain.Plan, error) { return nil, nil }
-func (s *stubPublicPlanRepo) ListPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
+func (s *stubPublicPlanRepo) ListPaginated(ctx context.Context, params pagination.Params, search, appID string) ([]domain.Plan, int64, error) {
 	return nil, 0, nil
 }
 func (s *stubPublicPlanRepo) FindByID(ctx context.Context, id int64) (*domain.Plan, error) {
@@ -38,18 +38,6 @@ func (s *stubPublicPlanRepo) FindByID(ctx context.Context, id int64) (*domain.Pl
 func (s *stubPublicPlanRepo) Create(ctx context.Context, plan *domain.Plan) error { return nil }
 func (s *stubPublicPlanRepo) Update(ctx context.Context, plan *domain.Plan) error { return nil }
 func (s *stubPublicPlanRepo) SetActive(ctx context.Context, id int64, isActive bool) error {
-	return nil
-}
-func (s *stubPublicPlanRepo) ListForApp(ctx context.Context, appID string) ([]domain.Plan, error) {
-	return nil, nil
-}
-func (s *stubPublicPlanRepo) ListPublicPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error) {
-	return nil, 0, nil
-}
-func (s *stubPublicPlanRepo) ListPlanIDsForApp(ctx context.Context, appID string) ([]int64, error) {
-	return nil, nil
-}
-func (s *stubPublicPlanRepo) ReplaceAppPlans(ctx context.Context, appID string, planIDs []int64) error {
 	return nil
 }
 
@@ -103,7 +91,7 @@ func TestPublicPlans_FieldDanFeaturesNil(t *testing.T) {
 	now := time.Now()
 	w := servePublicPlans(t, &stubPublicPlanRepo{public: []domain.Plan{
 		{ID: 7, Name: "Dasar", DurationMonths: 3, Price: 300000, Features: nil, IsActive: true,
-			CreatedAt: now, UpdatedAt: now, AppIDs: []string{"tidak-boleh-bocor"}},
+			CreatedAt: now, UpdatedAt: now, AppID: "tidak-boleh-bocor"},
 	}})
 
 	env := decodePublicPlans(t, w)
@@ -146,6 +134,14 @@ func TestPublicPlans_UrutDurasiLaluHarga(t *testing.T) {
 	}
 	if string(env.Data[1]["features"]) != `["a"]` {
 		t.Fatalf("features = %s, want [\"a\"]", env.Data[1]["features"])
+	}
+}
+
+func TestPublicPlans_HanyaKatalogElProof(t *testing.T) {
+	repo := &stubPublicPlanRepo{}
+	servePublicPlans(t, repo)
+	if repo.lastAppID != application.TenantPlansApp {
+		t.Fatalf("beranda publik membaca paket App %q, want hanya katalog ElProof %q", repo.lastAppID, application.TenantPlansApp)
 	}
 }
 

@@ -43,6 +43,8 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Every App's plans: a tenant's plan is named by id lookup, and a plan moved to another App
+    // must still show its name. Only the pickers narrow to ElProof's own plans (ADR-0040).
     void fetchPlans().catch(() => undefined);
   }, [fetchPlans]);
 

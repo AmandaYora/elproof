@@ -16,7 +16,7 @@ func TestPlatformAdminAllowed(t *testing.T) {
 		freeze     = req{http.MethodPost, "/api/v1/tenants/4/toggle-suspension"}
 		activate   = req{http.MethodPost, "/api/v1/tenants/4/activate-subscription"}
 		createPlan = req{http.MethodPost, "/api/v1/plans"}
-		mapPlans   = req{http.MethodPut, "/api/v1/app-plans"}
+		editPlan   = req{http.MethodPatch, "/api/v1/plans/3"}
 		trialCaps  = req{http.MethodPut, "/api/v1/trial-limits"}
 		newAdmin   = req{http.MethodPost, "/api/v1/platform-admins"}
 		gateway    = req{http.MethodPut, "/api/v1/payment/gateway-config"}
@@ -40,10 +40,10 @@ func TestPlatformAdminAllowed(t *testing.T) {
 		names       = req{http.MethodGet, "/api/v1/tenants/names"}
 	)
 	matrix := map[string]map[req]bool{
-		roleSuperAdmin: {slide: true, trends: true, names: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: true, reqWrite: true, reqComplete: true, impersonate: true, endSession: true, announce: true, policyWrite: true, register: true, editTenant: true, resetOwner: true, freeze: true, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: true, gateway: true, appSecret: true, readAny: true},
-		roleBilling:    {slide: false, trends: true, names: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: false, reqWrite: false, reqComplete: false, impersonate: false, endSession: false, announce: false, policyWrite: false, register: false, editTenant: false, resetOwner: false, freeze: false, activate: true, createPlan: true, mapPlans: true, trialCaps: true, newAdmin: false, gateway: false, appSecret: false, readAny: true},
-		roleSupport:    {slide: false, trends: true, names: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: true, reqWrite: true, reqComplete: true, impersonate: true, endSession: true, announce: false, policyWrite: false, register: true, editTenant: true, resetOwner: true, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
-		roleReadOnly:   {slide: false, trends: true, names: true, export: false, overview: false, notesRead: false, openReqs: false, policyRead: true, noteWrite: false, reqWrite: false, reqComplete: false, impersonate: false, endSession: false, announce: false, policyWrite: false, register: false, editTenant: false, resetOwner: false, freeze: false, activate: false, createPlan: false, mapPlans: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleSuperAdmin: {slide: true, trends: true, names: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: true, reqWrite: true, reqComplete: true, impersonate: true, endSession: true, announce: true, policyWrite: true, register: true, editTenant: true, resetOwner: true, freeze: true, activate: true, createPlan: true, editPlan: true, trialCaps: true, newAdmin: true, gateway: true, appSecret: true, readAny: true},
+		roleBilling:    {slide: false, trends: true, names: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: false, reqWrite: false, reqComplete: false, impersonate: false, endSession: false, announce: false, policyWrite: false, register: false, editTenant: false, resetOwner: false, freeze: false, activate: true, createPlan: true, editPlan: true, trialCaps: true, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleSupport:    {slide: false, trends: true, names: true, export: true, overview: true, notesRead: true, openReqs: true, policyRead: true, noteWrite: true, reqWrite: true, reqComplete: true, impersonate: true, endSession: true, announce: false, policyWrite: false, register: true, editTenant: true, resetOwner: true, freeze: false, activate: false, createPlan: false, editPlan: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
+		roleReadOnly:   {slide: false, trends: true, names: true, export: false, overview: false, notesRead: false, openReqs: false, policyRead: true, noteWrite: false, reqWrite: false, reqComplete: false, impersonate: false, endSession: false, announce: false, policyWrite: false, register: false, editTenant: false, resetOwner: false, freeze: false, activate: false, createPlan: false, editPlan: false, trialCaps: false, newAdmin: false, gateway: false, appSecret: false, readAny: true},
 		"":             {register: false, freeze: false, readAny: true},
 	}
 	for role, cases := range matrix {

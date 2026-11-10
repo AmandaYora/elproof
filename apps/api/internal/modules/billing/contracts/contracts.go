@@ -45,7 +45,12 @@ type RecordTransactionInput struct {
 // activation, and self-service payment — `platform` owns the resulting
 // tenant-status update, `billing` only owns its own tables. See ADR-0008.
 type Contracts interface {
+	// GetPlan reads any plan (e.g. to name the plan a tenant already has).
 	GetPlan(ctx context.Context, id int64) (*Plan, error)
+	// GetTenantPlan reads a plan a WO tenant may be subscribed to: only a plan
+	// of ElProof's own catalog. Any other plan — one sold by another App —
+	// answers 422 on planId, exactly like a plan that does not exist.
+	GetTenantPlan(ctx context.Context, id int64) (*Plan, error)
 	// ListPlans lists the plan catalog (the Platform Console orders its tenant
 	// list by plan name, which this module owns).
 	ListPlans(ctx context.Context) ([]Plan, error)
@@ -74,7 +79,7 @@ func New(plans *application.PlanService, transactions *application.TransactionSe
 }
 
 func (c *impl) ListPlans(ctx context.Context) ([]Plan, error) {
-	plans, err := c.plans.List(ctx)
+	plans, err := c.plans.List(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +92,14 @@ func (c *impl) ListPlans(ctx context.Context) ([]Plan, error) {
 
 func (c *impl) GetPlan(ctx context.Context, id int64) (*Plan, error) {
 	plan, err := c.plans.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &Plan{ID: plan.ID, Name: plan.Name, DurationMonths: plan.DurationMonths, Price: plan.Price}, nil
+}
+
+func (c *impl) GetTenantPlan(ctx context.Context, id int64) (*Plan, error) {
+	plan, err := c.plans.GetTenantPlan(ctx, id)
 	if err != nil {
 		return nil, err
 	}

@@ -44,9 +44,10 @@ func Run(ctx context.Context, db *sql.DB) error {
 
 	adminRepo := platforminfra.NewMySQLPlatformAdminRepository(db)
 
-	// --- The one subscription plan ---
+	// --- The one subscription plan: ElProof's own, for WO tenants ---
 	plan, err := planService.Create(ctx, billingapp.PlanInput{
-		Name: "Paket 1 Tahun", DurationMonths: 12, Price: 2_000_000,
+		AppID: billingapp.TenantPlansApp,
+		Name:  "Paket 1 Tahun", DurationMonths: 12, Price: 2_000_000,
 		Features: []string{
 			"Akses penuh aplikasi ElProof untuk seluruh tim WO Console",
 			"Kelola project, vendor, dan client tanpa batas",
@@ -87,11 +88,10 @@ func truncateAll(db *sql.DB) {
 		"TRUNCATE TABLE credentials",
 		"TRUNCATE TABLE subscription_transactions",
 		"TRUNCATE TABLE plan_features",
-		// Both FK-reference subscription_plans.id — truncated before it so no
+		// FK-references subscription_plans.id — truncated before it so no
 		// orphaned row survives pointing at a plan this reseed is about to
 		// delete (docs/plan/external-subscription-plans/PLAN.md).
 		"TRUNCATE TABLE subscription_app_charges",
-		"TRUNCATE TABLE subscription_plan_apps",
 		"TRUNCATE TABLE subscription_plans",
 		"TRUNCATE TABLE staff_members",
 		"TRUNCATE TABLE platform_admins",

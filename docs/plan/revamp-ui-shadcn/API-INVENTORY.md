@@ -70,8 +70,8 @@
 | 38 | GET | `/subscription-transactions/{id}` | billing | platform, staff | yes | receipt page |
 | 39 | GET | `/external/subscription-plans` | billing | external (app) | no | external integration |
 | 40 | POST | `/external/subscriptions/charges` | billing | external (app) | no | external integration |
-| 41 | GET | `/app-plans` | billing | platform | yes | PUT: Billing / Super Admin |
-| 42 | PUT | `/app-plans` | billing | platform | yes | PUT: Billing / Super Admin |
+| 41 | GET | ~~`/app-plans`~~ (removed, ADR-0040: `/plans?appId=`) | billing | platform | yes | — |
+| 42 | PUT | ~~`/app-plans`~~ (removed, ADR-0040: `appId` on `POST`/`PATCH /plans`) | billing | platform | yes | — |
 | 43 | GET | `/app-subscriptions` | billing | platform | yes |  |
 | 44 | GET | `/tenants` | platform | platform | yes |  |
 | 45 | POST | `/tenants` | platform | platform | yes | Support / Super Admin |

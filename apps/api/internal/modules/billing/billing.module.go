@@ -22,7 +22,6 @@ type Module struct {
 	planHandler                 *presentation.PlanHandler
 	transactionHandler          *presentation.TransactionHandler
 	externalPlanHandler         *presentation.ExternalPlanHandler
-	appPlanHandler              *presentation.AppPlanHandler
 	externalSubscriptionHandler *presentation.ExternalSubscriptionHandler
 	appSubscriptionHandler      *presentation.AppSubscriptionHandler
 	publicPlanHandler           *presentation.PublicPlanHandler
@@ -30,9 +29,9 @@ type Module struct {
 	contracts                   contracts.Contracts
 }
 
-// NewModule takes two dependencies from `payment` now: AppRegistry (Fase
-// 5/7, checking App status for this module's own external/console
-// endpoints) and Client (Fase 8, creating subscription charges) — the same
+// NewModule takes two dependencies from `payment` now: AppRegistry (checking
+// App status for this module's external endpoints, and that a plan's owning
+// App exists — ADR-0040) and Client (Fase 8, creating subscription charges) — the same
 // direct-contracts-injection pattern `platform` already uses for
 // payment.Client (main.go:210, A5).
 func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClient paymentcontracts.Client) *Module {
@@ -50,10 +49,9 @@ func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClie
 
 	return &Module{
 		transactionService:          transactionService,
-		planHandler:                 presentation.NewPlanHandler(planService),
+		planHandler:                 presentation.NewPlanHandler(planService, appRegistry),
 		transactionHandler:          presentation.NewTransactionHandler(transactionService),
 		externalPlanHandler:         presentation.NewExternalPlanHandler(planService, appRegistry),
-		appPlanHandler:              presentation.NewAppPlanHandler(planService, appRegistry),
 		externalSubscriptionHandler: presentation.NewExternalSubscriptionHandler(subscriptionService, appRegistry),
 		appSubscriptionHandler:      presentation.NewAppSubscriptionHandler(appChargeRepo),
 		publicPlanHandler:           presentation.NewPublicPlanHandler(planService),
@@ -113,9 +111,8 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/external/subscription-plans", authed(http.HandlerFunc(m.externalPlanHandler.List)))
 	mux.Handle("/api/v1/external/subscriptions/charges", authed(http.HandlerFunc(m.externalSubscriptionHandler.CreateCharge)))
 
-	// CONSOLE: /app-plans serves both GET and PUT on one handler, so
-	// httpx.Method doesn't fit — same reasoning as /api/v1/plans above.
-	// /app-subscriptions is GET-only, so httpx.Method applies.
-	mux.Handle("/api/v1/app-plans", authed(http.HandlerFunc(m.appPlanHandler.Collection)))
+	// CONSOLE: /app-subscriptions is GET-only, so httpx.Method applies. A
+	// plan's App is a field of the plan itself (ADR-0040), managed through
+	// /api/v1/plans — there is no separate mapping endpoint any more.
 	mux.Handle("/api/v1/app-subscriptions", authed(httpx.Method(http.MethodGet, m.appSubscriptionHandler.List)))
 }

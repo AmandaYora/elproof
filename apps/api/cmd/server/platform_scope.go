@@ -102,7 +102,7 @@ func platformWriteAction(method, path string) string {
 	}
 	s = s[2:]
 	switch {
-	case s[0] == "plans", s[0] == "app-plans", s[0] == "trial-limits":
+	case s[0] == "plans", s[0] == "trial-limits":
 		return "plans" // pricing & trial caps are Billing's job
 	case s[0] == "tenants" && len(s) == 1 && method == http.MethodPost:
 		return "tenant-manage" // register a tenant

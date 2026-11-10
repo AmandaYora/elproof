@@ -9,7 +9,7 @@ gateway, yet "Super Admin" and "Support" had identical power, there was no secon
 of who did what, and manual activation recorded neither a reason nor the acting admin.
 
 ## Decision
-- **Roles** (`platform_admins.role`): Super Admin (everything), Billing (plans, plan↔App mapping,
+- **Roles** (`platform_admins.role`): Super Admin (everything), Billing (plans and their owning App — ADR-0040,
   manual activation), Support (register/edit tenants, reset Owner credential), Read-only (view).
   Enforced centrally in `cmd/server/platform_scope.go` for every module's routes; reads are open
   to all roles, unknown writes default to Super Admin only.

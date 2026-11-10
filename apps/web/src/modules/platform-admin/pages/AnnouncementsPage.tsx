@@ -11,6 +11,7 @@ import { toast } from "@/shared/stores/useToastStore";
 import { formatDateTime } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
+import { ELPROOF_APP_ID } from "@/shared/data/subscriptionPlans";
 import type { Announcement } from "@/modules/platform-admin/data/console.types";
 import { useConsoleStore, type AnnouncementInput } from "@/modules/platform-admin/stores/useConsoleStore";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
@@ -44,6 +45,7 @@ export default function AnnouncementsPage() {
     fetchAnnouncements()
       .then(() => setLoaded(true))
       .catch(() => setFailed(true));
+    // Every App's plans for naming an old audience; the picker offers ElProof's own only (ADR-0040).
     void fetchPlans().catch(() => undefined);
   }, [fetchAnnouncements, fetchPlans]);
 
@@ -137,7 +139,7 @@ export default function AnnouncementsPage() {
         open={editing !== undefined}
         onClose={() => setEditing(undefined)}
         initial={editing ?? undefined}
-        plans={plans}
+        plans={plans.filter((p) => p.appId === ELPROOF_APP_ID)}
         onSubmit={handleSubmit}
       />
 

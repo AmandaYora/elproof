@@ -2,17 +2,19 @@ import { useEffect, useRef } from "react";
 import { Plus, X } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
-import { Input, Field } from "@/shared/components/ui/Input";
+import { Input, Field, Select } from "@/shared/components/ui/Input";
 import { planSchema, type PlanFormValues } from "@/modules/platform-admin/schemas/plan.schema";
-import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
+import { appLabel, ELPROOF_APP_ID, type SubscriptionPlan } from "@/shared/data/subscriptionPlans";
+import type { PaymentApp } from "@/modules/platform-admin/stores/useAppsStore";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
-const FIELD_LABELS: Record<string, string> = { name: "Nama paket", durationMonths: "Durasi", price: "Harga", features: "Fitur paket" };
+const FIELD_LABELS: Record<string, string> = { appId: "Aplikasi", name: "Nama paket", durationMonths: "Durasi", price: "Harga", features: "Fitur paket" };
 
-function toFormValues(plan?: SubscriptionPlan): PlanFormValues {
-  if (!plan) return { name: "", durationMonths: 12, price: 0, features: [""] };
+function toFormValues(plan: SubscriptionPlan | undefined, defaultAppId: string): PlanFormValues {
+  if (!plan) return { appId: defaultAppId, name: "", durationMonths: 12, price: 0, features: [""] };
   return {
+    appId: plan.appId,
     name: plan.name,
     durationMonths: plan.durationMonths,
     price: plan.price,
@@ -26,17 +28,30 @@ interface PlanFormModalProps {
   /** Saves, then closes the modal. Throw to keep it open: the message is shown inside it, a 422 on its fields. */
   onSubmit: (values: PlanFormValues) => Promise<void>;
   initialPlan?: SubscriptionPlan;
+  /** The Apps a plan can belong to (Manajemen Aplikasi). */
+  apps: PaymentApp[];
+  /** App chosen for a new plan; "" makes the person pick one. */
+  defaultAppId?: string;
+  /** Fixes the App (adding a plan from that App's own detail): shown, not editable. */
+  lockApp?: boolean;
 }
 
-export function PlanFormModal({ open, onClose, onSubmit, initialPlan }: PlanFormModalProps) {
-  const form = useZodForm({ schema: planSchema, initial: toFormValues(initialPlan) });
+export function PlanFormModal({ open, onClose, onSubmit, initialPlan, apps, defaultAppId = "", lockApp = false }: PlanFormModalProps) {
+  const form = useZodForm({ schema: planSchema, initial: toFormValues(initialPlan, defaultAppId) });
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
 
   // The modal stays mounted while closed: start clean each time it opens.
   useEffect(() => {
-    form.reset(toFormValues(initialPlan));
-  }, [initialPlan, open]);
+    form.reset(toFormValues(initialPlan, defaultAppId));
+  }, [initialPlan, open, defaultAppId]);
+
+  // ElProof's own App first, then the external ones as Manajemen Aplikasi lists them.
+  const appOptions = [
+    { appId: ELPROOF_APP_ID, label: appLabel(undefined, ELPROOF_APP_ID) },
+    ...apps.filter((a) => a.appId !== ELPROOF_APP_ID).map((a) => ({ appId: a.appId, label: a.isActive ? a.name : `${a.name} (nonaktif)` })),
+  ];
+  const lockedLabel = appLabel(apps.find((a) => a.appId === values.appId), values.appId);
 
   function setFeature(index: number, value: string) {
     set("features", values.features.map((f, i) => (i === index ? value : f)));
@@ -62,7 +77,7 @@ export function PlanFormModal({ open, onClose, onSubmit, initialPlan }: PlanForm
       onClose={onClose}
       busy={form.submitting}
       title={initialPlan ? "Ubah Paket Langganan" : "Tambah Paket Langganan"}
-      description="Paket ini akan tersedia untuk dipilih saat registrasi tenant atau aktivasi langganan."
+      description="Setiap paket milik satu aplikasi. Hanya aplikasi itu yang melihat dan menjual paket ini; paket ElProof untuk tenant WO."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={form.submitting}>
@@ -76,6 +91,19 @@ export function PlanFormModal({ open, onClose, onSubmit, initialPlan }: PlanForm
     >
       <form id="plan-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
+        <Field label="Aplikasi" required name="appId" error={errors.appId}>
+          {lockApp ? (
+            <p className="rounded-md border border-border bg-surface-muted px-3 py-2 text-[13.5px] font-medium text-text-primary">{lockedLabel}</p>
+          ) : (
+            <Select value={values.appId} onChange={(e) => set("appId", e.target.value)} aria-label="Aplikasi" placeholder="Pilih aplikasi...">
+              {appOptions.map((o) => (
+                <option key={o.appId} value={o.appId}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
         <Field label="Nama Paket" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Paket 1 Tahun" />
         </Field>

@@ -579,7 +579,7 @@ func (s *TenantService) ActivateSubscription(ctx context.Context, tenantID int64
 	if err != nil {
 		return nil, err
 	}
-	plan, err := s.billing.GetPlan(ctx, input.PlanID)
+	plan, err := s.billing.GetTenantPlan(ctx, input.PlanID)
 	if err != nil {
 		return nil, err
 	}
@@ -644,7 +644,7 @@ func (s *TenantService) Pay(ctx context.Context, tenantID int64, planID int64) (
 	if err != nil {
 		return nil, err
 	}
-	plan, err := s.billing.GetPlan(ctx, planID)
+	plan, err := s.billing.GetTenantPlan(ctx, planID)
 	if err != nil {
 		return nil, err
 	}

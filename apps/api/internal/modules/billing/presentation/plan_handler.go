@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"elproof/internal/modules/billing/application"
 	"elproof/internal/modules/billing/domain"
+	paymentcontracts "elproof/internal/modules/payment/contracts"
+	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/httpx"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
@@ -19,10 +22,8 @@ import (
 // for tests without a database (A34/task 6.7). *application.PlanService
 // satisfies it implicitly; billing.module.go's wiring is unchanged.
 type planLister interface {
-	List(ctx context.Context) ([]domain.Plan, error)
-	ListPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error)
-	ListPublic(ctx context.Context) ([]domain.Plan, error)
-	ListPublicPaginated(ctx context.Context, params pagination.Params, search string) ([]domain.Plan, int64, error)
+	List(ctx context.Context, appID string) ([]domain.Plan, error)
+	ListPaginated(ctx context.Context, params pagination.Params, search, appID string) ([]domain.Plan, int64, error)
 	Get(ctx context.Context, id int64) (*domain.Plan, error)
 	Create(ctx context.Context, input application.PlanInput) (*domain.Plan, error)
 	Update(ctx context.Context, id int64, input application.PlanInput) (*domain.Plan, error)
@@ -31,39 +32,38 @@ type planLister interface {
 
 type PlanHandler struct {
 	plans planLister
+	apps  paymentcontracts.AppRegistry
 }
 
-func NewPlanHandler(plans planLister) *PlanHandler {
-	return &PlanHandler{plans: plans}
+func NewPlanHandler(plans planLister, apps paymentcontracts.AppRegistry) *PlanHandler {
+	return &PlanHandler{plans: plans, apps: apps}
 }
 
 type planResponse struct {
-	ID             int64    `json:"id"`
+	ID int64 `json:"id"`
+	// AppID is the one App that sells this plan (ADR-0040) — ElProof's own
+	// internal App for the WO tenant catalog.
+	AppID          string   `json:"appId"`
 	Name           string   `json:"name"`
 	DurationMonths int      `json:"durationMonths"`
 	Price          int64    `json:"price"`
 	Features       []string `json:"features"`
 	IsActive       bool     `json:"isActive"`
-	// AppIDs is populated only when the caller is platform_admin (D12) —
-	// [] otherwise. A non-empty value marks a plan as private to those
-	// apps (D3); this is the field that lets Platform Console tell public
-	// and private plans apart (T16).
-	AppIDs []string `json:"appIds"`
 }
 
 func toPlanResponseValue(p domain.Plan) planResponse {
-	appIDs := p.AppIDs
-	if appIDs == nil {
-		appIDs = make([]string, 0)
+	features := p.Features
+	if features == nil {
+		features = make([]string, 0)
 	}
 	return planResponse{
 		ID:             p.ID,
+		AppID:          p.AppID,
 		Name:           p.Name,
 		DurationMonths: p.DurationMonths,
 		Price:          p.Price,
-		Features:       p.Features,
+		Features:       features,
 		IsActive:       p.IsActive,
-		AppIDs:         appIDs,
 	}
 }
 
@@ -76,6 +76,7 @@ func toPlanResponses(plans []domain.Plan) []planResponse {
 }
 
 type planInputBody struct {
+	AppID          string   `json:"appId"`
 	Name           string   `json:"name"`
 	DurationMonths int      `json:"durationMonths"`
 	Price          int64    `json:"price"`
@@ -119,27 +120,25 @@ func (h *PlanHandler) Item(w http.ResponseWriter, r *http.Request) {
 	response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 }
 
-// list is NOT an access-denying guard — every principal may call it, same
-// as today. The claim is only used to pick the data source (D3/A12):
-// platform_admin sees every plan (including private ones, since it's the
-// only principal that manages the mapping); anyone else — including no
-// claim at all (6.3, the safe default) — sees only plans with no App
-// mapping. This branching is applied to BOTH the all=true and paginated
-// branches (6.2): fixing only one just moves the leak (T9) to the other door.
-func (h *PlanHandler) list(w http.ResponseWriter, r *http.Request) {
+// listAppID picks whose plans a list call returns. It is NOT an access-
+// denying guard — every principal may list plans. platform_admin sees every
+// App's plans, or one App's with `?appId=`; anyone else — including no claim
+// at all, the safe default — always gets ElProof's own catalog, whatever
+// `appId` they send. Used by BOTH the all=true and paginated branches: a leak
+// through either door is still a leak.
+func listAppID(r *http.Request) string {
 	claims, ok := middleware.FromContext(r.Context())
-	isPlatformAdmin := ok && claims.PrincipalType == "platform_admin"
+	if ok && claims.PrincipalType == "platform_admin" {
+		return r.URL.Query().Get("appId")
+	}
+	return application.TenantPlansApp
+}
+
+func (h *PlanHandler) list(w http.ResponseWriter, r *http.Request) {
+	appID := listAppID(r)
 
 	if r.URL.Query().Get("all") == "true" {
-		var (
-			plans []domain.Plan
-			err   error
-		)
-		if isPlatformAdmin {
-			plans, err = h.plans.List(r.Context())
-		} else {
-			plans, err = h.plans.ListPublic(r.Context())
-		}
+		plans, err := h.plans.List(r.Context(), appID)
 		if err != nil {
 			writeAppError(w, err)
 			return
@@ -149,17 +148,7 @@ func (h *PlanHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := pagination.FromRequest(r)
-	search := r.URL.Query().Get("search")
-	var (
-		plans []domain.Plan
-		total int64
-		err   error
-	)
-	if isPlatformAdmin {
-		plans, total, err = h.plans.ListPaginated(r.Context(), params, search)
-	} else {
-		plans, total, err = h.plans.ListPublicPaginated(r.Context(), params, search)
-	}
+	plans, total, err := h.plans.ListPaginated(r.Context(), params, r.URL.Query().Get("search"), appID)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -176,8 +165,11 @@ func (h *PlanHandler) create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	if !h.requireKnownApp(w, r, body.AppID) {
+		return
+	}
 	plan, err := h.plans.Create(r.Context(), application.PlanInput{
-		Name: body.Name, DurationMonths: body.DurationMonths, Price: body.Price, Features: body.Features,
+		AppID: body.AppID, Name: body.Name, DurationMonths: body.DurationMonths, Price: body.Price, Features: body.Features,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -195,8 +187,11 @@ func (h *PlanHandler) update(w http.ResponseWriter, r *http.Request, id int64) {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	if !h.requireKnownApp(w, r, body.AppID) {
+		return
+	}
 	plan, err := h.plans.Update(r.Context(), id, application.PlanInput{
-		Name: body.Name, DurationMonths: body.DurationMonths, Price: body.Price, Features: body.Features,
+		AppID: body.AppID, Name: body.Name, DurationMonths: body.DurationMonths, Price: body.Price, Features: body.Features,
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -215,6 +210,37 @@ func (h *PlanHandler) toggleActive(w http.ResponseWriter, r *http.Request, id in
 		return
 	}
 	response.OK(w, "Status paket diperbarui", toPlanResponseValue(*plan))
+}
+
+// requireKnownApp answers 422 on appId unless it names an App of the
+// registry: app_id is a primitive ID with no FK to payment_apps, so this is
+// the only guard against a typo producing a plan nobody can ever see. An
+// empty appId is left to the service (same 422). ElProof's own App is always
+// known — it is bootstrapped at every start, and `api seed` empties the
+// registry until then. A deactivated App may still own plans.
+//
+// Registry IDs are lower case ("app_<hex>", "platform-billing") and the
+// registry lookup ignores case, so an ID in any other case is refused here:
+// the stored app_id is always byte-identical to the registry's.
+func (h *PlanHandler) requireKnownApp(w http.ResponseWriter, r *http.Request, appID string) bool {
+	if appID == "" || appID == application.TenantPlansApp {
+		return true
+	}
+	unknown := apperror.Validation("Aplikasi tidak ditemukan", map[string][]string{"appId": {"Pilih aplikasi yang terdaftar"}})
+	if appID != strings.ToLower(appID) {
+		writeAppError(w, unknown)
+		return false
+	}
+	exists, err := h.apps.AppExists(r.Context(), appID)
+	if err != nil {
+		writeAppError(w, err)
+		return false
+	}
+	if !exists {
+		writeAppError(w, unknown)
+		return false
+	}
+	return true
 }
 
 func requirePlatformAdmin(w http.ResponseWriter, r *http.Request) bool {
