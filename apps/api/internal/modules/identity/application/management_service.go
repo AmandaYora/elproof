@@ -319,13 +319,45 @@ func (s *ManagementService) LoginStatus(ctx context.Context, principalType domai
 	if err != nil || cred == nil {
 		return "none", err
 	}
+	return loginStatusOf(cred), nil
+}
+
+// loginStatusOf: "inactive" (switched off), "invited" (no way to sign in yet) or "active".
+func loginStatusOf(cred *domain.Credential) string {
 	switch {
 	case !cred.IsActive:
-		return "inactive", nil
+		return "inactive"
 	case cred.PasswordHash == "" && cred.GoogleSub == "":
-		return "invited", nil
+		return "invited"
 	}
-	return "active", nil
+	return "active"
+}
+
+// loginStatusBatch is how many principals one query looks up.
+const loginStatusBatch = 500
+
+// LoginStatuses is LoginStatus for many principals of one workspace, in one
+// query per 500 ids instead of one per principal. Every requested id has an
+// entry: a principal with no login (or one of another workspace) is "none".
+func (s *ManagementService) LoginStatuses(ctx context.Context, principalType domain.PrincipalType, tenantID int64, principalIDs []string) (map[string]string, error) {
+	out := make(map[string]string, len(principalIDs))
+	for _, id := range principalIDs {
+		out[id] = "none"
+	}
+	for start := 0; start < len(principalIDs); start += loginStatusBatch {
+		end := start + loginStatusBatch
+		if end > len(principalIDs) {
+			end = len(principalIDs)
+		}
+		creds, err := s.credentials.ListByPrincipals(ctx, principalType, tenantID, principalIDs[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range creds {
+			out[c.PrincipalID] = loginStatusOf(c)
+		}
+	}
+	return out, nil
 }
 
 // DeleteCredential removes a principal's login entirely (sessions and links

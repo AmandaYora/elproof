@@ -52,34 +52,55 @@ func (r *MySQLStaffRepository) List(ctx context.Context, tenantID int64) ([]doma
 	return members, rows.Err()
 }
 
+// staffSortColumns is the sort whitelist of GET /staff's own columns (ADR-0035).
+// roleName is the role's CURRENT name, which `access` owns: the application layer
+// adds it as a column ranked by name (pagination.RankedCol).
+var staffSortColumns = map[string]pagination.SortColumn{
+	"name":      pagination.Col("name"),
+	"title":     pagination.Col("title"),
+	"isActive":  pagination.Col("is_active"),
+	"createdAt": pagination.Col("created_at"),
+}
+
+// ListSortSpec returns the SQL-orderable columns of the list.
+func (r *MySQLStaffRepository) ListSortSpec() map[string]pagination.SortColumn {
+	return staffSortColumns
+}
+
+func staffWhere(tenantID int64, f domain.StaffListFilter) (string, []interface{}) {
+	where := ` WHERE tenant_id = ?`
+	args := []interface{}{tenantID}
+	if f.Search != "" {
+		where += ` AND (name LIKE ? OR email LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
+		args = append(args, like, like)
+	}
+	if f.RoleID > 0 {
+		// Filter by workspace role id (Pengguna page's role filter).
+		where += ` AND role_id = ?`
+		args = append(args, f.RoleID)
+	}
+	if f.IsActive != nil {
+		where += ` AND is_active = ?`
+		args = append(args, *f.IsActive)
+	}
+	return where, args
+}
+
 // ListPaginated backs the real `GET /staff` list page (table + server
 // pagination) — List above stays as-is for the many PIC/staff dropdown
 // pickers across the app that need the full roster in one call (see
 // ADR/Fase 7 implementation note on why both exist).
-func (r *MySQLStaffRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, role string) ([]domain.StaffMember, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM staff_members WHERE tenant_id = ?`
-	listQuery := `SELECT ` + staffColumns + ` FROM staff_members WHERE tenant_id = ?`
-	args := []interface{}{tenantID}
-	if search != "" {
-		countQuery += ` AND (name LIKE ? OR email LIKE ?)`
-		listQuery += ` AND (name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(search) + "%"
-		args = append(args, like, like)
-	}
-	if role != "" {
-		// Filter by workspace role id (Pengguna page's role filter).
-		countQuery += ` AND role_id = ?`
-		listQuery += ` AND role_id = ?`
-		args = append(args, role)
-	}
-
+func (r *MySQLStaffRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.StaffListFilter, sort pagination.Sort) ([]domain.StaffMember, int64, error) {
+	where, args := staffWhere(tenantID, f)
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM staff_members`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	listQuery += ` ORDER BY id LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+staffColumns+` FROM staff_members`+where+sort.OrderBy("id")+` LIMIT ? OFFSET ?`,
+		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}

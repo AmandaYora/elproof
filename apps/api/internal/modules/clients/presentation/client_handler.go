@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"elproof/internal/modules/clients/application"
 	"elproof/internal/modules/clients/domain"
+	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/httpx"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
@@ -38,6 +40,10 @@ type clientResponse struct {
 	// AccessRoleID / AccessRoleName: the portal role (what they see).
 	AccessRoleID   int64  `json:"accessRoleId"`
 	AccessRoleName string `json:"accessRoleName,omitempty"`
+	// ProjectName / ProjectEventDate name the client's project; only the
+	// paginated list (GET /clients?page=…) fills them, one batch lookup per page.
+	ProjectName      string `json:"projectName,omitempty"`
+	ProjectEventDate string `json:"projectEventDate,omitempty"`
 }
 
 type accessLinkResponse struct {
@@ -149,10 +155,24 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// pagedListParams are the parameters that turn `GET /clients?projectId=` from the
+// project tab's plain array into the paginated list filtered to that project.
+var pagedListParams = []string{"page", "limit", "sort", "q", "role", "loginStatus"}
+
+func wantsPagedList(r *http.Request) bool {
+	q := r.URL.Query()
+	for _, key := range pagedListParams {
+		if _, ok := q[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 	projectIDRaw := r.URL.Query().Get("projectId")
 
-	if projectIDRaw != "" {
+	if projectIDRaw != "" && !wantsPagedList(r) {
 		projectID, err := strconv.ParseInt(projectIDRaw, 10, 64)
 		if err != nil {
 			response.Error(w, http.StatusBadRequest, "projectId tidak valid", nil)
@@ -182,6 +202,28 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		return
 	}
 
+	if projectIDRaw != "" {
+		// The paginated list narrowed to one project: the same access rule as the
+		// project tab's array (a role limited to its own projects must be PIC or
+		// PIC Sales of it); nobody gets another workspace's clients (every query
+		// carries the tenant).
+		projectID, err := strconv.ParseInt(projectIDRaw, 10, 64)
+		if err != nil || projectID < 1 {
+			writeAppError(w, apperror.Validation("Filter client tidak valid", map[string][]string{"projectId": {"Project tidak valid"}}))
+			return
+		}
+		if !middleware.GrantsFrom(r.Context()).AllProjects {
+			claims, _ := middleware.FromContext(r.Context())
+			staffID, _ := strconv.ParseInt(claims.PrincipalID, 10, 64)
+			if err := h.clients.VerifyAssignedProject(r.Context(), tenantID, projectID, staffID); err != nil {
+				writeAppError(w, err)
+				return
+			}
+		}
+		h.listPage(w, r, tenantID, &projectID)
+		return
+	}
+
 	// No projectId filter — list every client for the tenant. `all=true` is
 	// used by WO Console's global search, which matches names across all
 	// projects in one shot; otherwise this is the tenant-wide Client list
@@ -203,19 +245,63 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		response.OK(w, "ok", result)
 		return
 	}
+	h.listPage(w, r, tenantID, nil)
+}
 
+// listPage answers the paginated, filterable, sortable client list:
+// ?page&limit&sort&q (or search)&role&loginStatus, plus projectId when the caller
+// narrowed it (and has been checked).
+func (h *Handler) listPage(w http.ResponseWriter, r *http.Request, tenantID int64, projectID *int64) {
 	params := pagination.FromRequest(r)
-	search := r.URL.Query().Get("search")
-	list, total, err := h.clients.ListByTenantPaginated(r.Context(), tenantID, params, search)
+	filter, err := clientListFilter(r, projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	result := make([]clientResponse, 0, len(list))
-	for _, c := range list {
-		result = append(result, h.withLoginStatus(r, c))
+	columns, defaultSort := h.clients.ClientSortSpec()
+	sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
-	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+	page, err := h.clients.ListPage(r.Context(), tenantID, params, filter, sort)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	names := h.clients.RoleNames(r.Context(), tenantID)
+	result := make([]clientResponse, 0, len(page.Rows))
+	for _, row := range page.Rows {
+		resp := toClientResponse(row.Client)
+		resp.LoginStatus = row.LoginStatus
+		if names != nil {
+			resp.AccessRoleName = names[row.Client.AccessRoleID]
+		}
+		resp.ProjectName = row.ProjectName
+		if row.ProjectEventDate != nil {
+			resp.ProjectEventDate = row.ProjectEventDate.Format("2006-01-02")
+		}
+		result = append(result, resp)
+	}
+	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, page.Total).WithSort(sort))
+}
+
+// clientListFilter reads q/search, role and loginStatus; an unknown role or
+// loginStatus is a 422 under its own key.
+func clientListFilter(r *http.Request, projectID *int64) (domain.ListFilter, error) {
+	q := r.URL.Query()
+	f := domain.ListFilter{Search: pagination.SearchFromRequest(r), Role: q.Get("role"), LoginStatus: q.Get("loginStatus"), ProjectID: projectID}
+	bad := map[string][]string{}
+	if f.Role != "" && !domain.IsClientRole(f.Role) {
+		bad["role"] = []string{"Hubungan harus salah satu dari: Bride, Groom, Family Representative"}
+	}
+	if f.LoginStatus != "" && !domain.IsLoginStatus(f.LoginStatus) {
+		bad["loginStatus"] = []string{"Status akses harus salah satu dari: " + strings.Join(domain.LoginStatuses, ", ")}
+	}
+	if len(bad) > 0 {
+		return f, apperror.Validation("Filter client tidak valid", bad)
+	}
+	return f, nil
 }
 
 type createClientBody struct {

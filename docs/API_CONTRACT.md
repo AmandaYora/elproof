@@ -6,7 +6,8 @@
 
 Envelope reminder — success: `{ "success": true, "message": "...", "data": ... }`; error:
 `{ "success": false, "message": "...", "errors": {...} }`; paginated lists additionally return
-`meta: { page, limit, total, total_pages }`.
+`meta: { page, limit, total, total_pages }` (plus `sort: "field:dir"` on the lists that accept `?sort=`, see
+**Tahap 6** below).
 
 **Pagination — Fase 7, applies to every `GET` list endpoint marked "paginated" below:** default
 response is paginated (`?page=`/`?limit=`, default `page=1`/`limit=10`, `limit` capped at 100).
@@ -58,7 +59,7 @@ is unaffected, this is additive.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/tenants` | **paginated** (Fase 7); `?search=` matches business/owner name + email; `?status=` filters `subscriptionStatus`; `?planId=` and `?source=self_service|platform` (Fase 6) |
+| GET | `/tenants` | **paginated** (Fase 7); `?search=` matches business/owner name + email; `?status=` filters `subscriptionStatus`; `?planId=` and `?source=self_service|platform` (Fase 6); `?sort=` (Tahap 6) |
 | POST | `/tenants` | orchestrates `staff.CreateOwner` + `identity.CreateCredential` — see ADR-0008. No `planId` in the body and no transaction recorded: the tenant starts unbound to any plan (`planId: null`, `subscriptionStatus: pending_payment`); the first transaction row it ever gets comes from whichever real subscription event happens first — the Owner's own `/subscriptions/pay` or the Platform Console's `/activate-subscription` below — never a placeholder created here |
 | GET | `/tenants/{id}` | |
 | PATCH | `/tenants/{id}` | body now also accepts `brandColorPreset` (see `MODULE_PLATFORM.md` §6) — empty string leaves the tenant's current preset unchanged rather than rejecting the whole update; a non-empty value not in the fixed 20-key set is rejected (422). |
@@ -109,7 +110,7 @@ needs Support or Super Admin; announcements, policy, audit log and login photos 
 | POST | `/console/support-sessions/{id}/end` | only the admin who started it |
 | GET/PUT/DELETE | `/tenants/me/support-access` | **Owner side** (`business_profile.manage`): GET status + history, PUT grants 24 hours, DELETE withdraws consent |
 | PUT | `/console/login-slides/{index}` | Super Admin. Body `{mimeType: image/jpeg|image/png, base64Data}`, ≤ 6 MB decoded; replaces one of the three login photos |
-| GET | `/audit-log` | **Super Admin**, paginated; filters `actorType`, `actorId`, `tenantId`, `outcome=ok|failed`, `q`, `from`, `to` (WIB days) |
+| GET | `/audit-log` | **Super Admin**, paginated; filters `actorType`, `actorId`, `tenantId`, `outcome=ok|failed`, `action` (exact label, Tahap 6), `q` or `search` (substring of action or path), `from`, `to` (WIB days); `?sort=` — see Tahap 6 |
 | GET | `/audit-log/export` | **Super Admin**, same filters, CSV (max 10 000 rows); writes its own audit record |
 
 Fase 7 additions for the console (any platform role may read them):
@@ -129,7 +130,7 @@ Fase 7 additions for the console (any platform role may read them):
 | POST | `/plans` | platform_admin only |
 | PATCH | `/plans/{id}` | platform_admin only |
 | POST | `/plans/{id}/toggle-active` | platform_admin only |
-| GET | `/subscription-transactions` | platform_admin: all tenants (optional `?tenantId=`); staff: forced to own tenant from JWT regardless of query; **paginated** (Fase 7), `?status=` filters transaction status (now includes `pending`, added Fase 9) |
+| GET | `/subscription-transactions` | platform_admin: all tenants (optional `?tenantId=`); staff: forced to own tenant from JWT regardless of query; **paginated** (Fase 7), `?status=` filters transaction status (now includes `pending`, added Fase 9). **Tahap 6 (E14):** rows carry `tenantName`; `?search=` (or `q`) matches the payment reference or the tenant's name, `?from=`/`?to=` bound `createdAt` (WIB days, inclusive), `?sort=` — see Tahap 6 |
 | GET | `/external/subscription-plans` | `app` principal only. Every plan mapped to the calling App (isolated per App — App A never sees App B's plans), including non-active ones with an `active` flag. Response: `{id, name, durationMonths, price, active, features}` — note `active`, not `isActive` (deliberately different from `/plans` above), and `features` always present, never `null`. No mapping → `200` with `data: []`, not `404`. |
 | GET, PUT | `/app-plans` | `platform_admin` only. `?appId=` query on `GET` → `{appId, planIds}`; `PUT` body `{appId, planIds}` **replaces the entire mapping set** (not a delta) — Platform Console's "Kelola Paket" tab inside `AppDetailModal` uses this, never SQL by hand. `appId` not found in the App registry → `422` (no FK exists between this table and `payment_apps`, since that would be a cross-module FK). |
 | POST | `/external/subscriptions/charges` | `app` principal only. The correct way for an external App to buy/renew an ElProof subscription — as opposed to `payment`'s `/external/payments/charges` (general-purpose, amount supplied by caller). Body `{orderRef, planId, customerName?, customerEmail?, customerPhone?}` — **no `amount`**, the price comes from the catalog server-side. `planId` not mapped to the calling App → `422` (the real guard against buying another App's plan — `planId` is guessable, the catalog endpoint alone isn't sufficient). Response shape identical to `payment`'s own charge response. Status polling reuses `payment`'s existing `GET /external/payments/charges/{orderRef}/status` unchanged — not duplicated here. |
@@ -151,7 +152,7 @@ routes are — `billing` receives `payment.contracts.AppRegistry`/`Client` at co
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/staff` | Owner-only; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role; response includes `username` |
+| GET | `/staff` | Owner-only; **paginated** (Fase 7); `?search=` matches name + email; `?role=` filters exact role; response includes `username`. **Tahap 6:** `?roleId=` (same filter), `?isActive=`, `?sort=`, items carry `roleName` |
 | GET | `/staff/summary` | any staff role (`requireTenant`, not `requireOwnerTenant`) — `[{id, name, title}]` only, deliberately excludes `username`/`email`/`phone`/`isActive`. Backs every PIC picker/"assigned to" label across the `projects` module (project PIC, vendor-engagement PIC, milestone PIC, issue PIC, activity actor) — needed by every role, not just Owner |
 | POST | `/staff` | body `{name, title, role, username, password, email, phone}` — rejects `role=Owner` (422); provisions a real login credential via `identity.CreateCredential` in the same call (mirrors `clients`' `POST /clients`), rolling back (deleting) the just-inserted row if that fails, e.g. username or email already taken by *any* principal on the platform (neither is tenant-scoped) |
 | PATCH | `/staff/{id}` | body `{name, title, role, email, phone}` — no `username` (immutable after creation). Rejects assigning `role=Owner` to a non-Owner row (403). For a row that's already `role=Owner`: rejected (403) unless the caller's own JWT principal id equals `{id}` — i.e. the Owner may edit their own name/title/contact details, but no other staff member (even Admin) may touch the Owner's row; even the Owner can't change their own role away from `Owner` this way |
@@ -164,7 +165,7 @@ a real `projects` row to reference)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/clients` | tenant-scoped; `?projectId=` filters to one project (unpaginated — small, bounded per-project list). Omit `projectId` to list every client for the tenant instead (added Fase 5, powers `GlobalSearch` via `?all=true`) — this tenant-wide mode is **paginated** (Fase 7), `?search=` matches name + email; response includes `username` |
+| GET | `/clients` | tenant-scoped; `?projectId=` filters to one project (unpaginated — small, bounded per-project list). Omit `projectId` to list every client for the tenant instead (added Fase 5, powers `GlobalSearch` via `?all=true`) — this tenant-wide mode is **paginated** (Fase 7), `?search=` matches name + email; response includes `username` **Tahap 6 (E11):** `?page&limit&sort&q&role&loginStatus&projectId` — the flat paginated list with `projectName`/`projectEventDate`; `?all=true` and `?projectId=` alone keep their shapes (see *Tahap 6* below). |
 | POST | `/clients` | body `{projectId, role, relationNote, name, phone, email, username, password}` — validates `projectId` via `projects.Contracts.ProjectExists`, provisions a real login credential in the same call; if `identity.CreateCredential` fails (e.g. username or email already taken by *any* principal on the platform — neither is tenant-scoped), the just-inserted `clients` row is rolled back (deleted) rather than left orphaned with no working credential |
 | PATCH | `/clients/{id}` | contact edit (`{name, phone, email}`) — no `username` (immutable after creation) |
 | POST | `/clients/{id}/toggle-active` | |
@@ -181,12 +182,13 @@ so the vendor/venue pickers inside their own project keep working — but every 
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/vendor-categories` | tenant-scoped, open to any staff role; **paginated** (Fase 7) view is Owner-only, `?all=true` (picker/display use) stays open to any role; `?search=` matches category name **Staff only: a `client` principal gets 403** (closed by E6 — it listed every category of the workspace; the portal reads `categoryName` inside `GET /projects/{id}/vendors` instead, ADR-0032) |
+| GET | `/vendor-categories` | tenant-scoped, open to any staff role; **paginated** (Fase 7) view is Owner-only, `?all=true` (picker/display use) stays open to any role; `?search=` matches category name **Staff only: a `client` principal gets 403** (closed by E6 — it listed every category of the workspace; the portal reads `categoryName` inside `GET /projects/{id}/vendors` instead, ADR-0032) **Tahap 6:** `?sort=name|createdAt`. |
 | POST | `/vendor-categories` | Owner-only |
 | PATCH | `/vendor-categories/{id}` | Owner-only |
 | POST | `/vendor-categories/{id}/toggle-active` | Owner-only |
 | DELETE | `/vendor-categories/{id}` | Owner-only — **hard delete, no `delete-impact` counterpart** (blocked, not informed-consent): `409` if any vendor still references it (`vendors.category_id` is a real, same-module, `NOT NULL` FK) with a count in the message; see ADR-0018 |
-| GET | `/vendors` | `?categoryId=`, `?city=` (exact match against the fixed 128-entry city enum) filters; **paginated** (Fase 7); `?search=` matches name + PIC + email |
+| GET | `/vendors` | `?categoryId=`, `?city=` (exact match against the fixed 128-entry city enum) filters; **paginated** (Fase 7); `?search=` matches name + PIC + email. **Tahap 6:** `?isActive=true\|false`, `?sort=`, items carry `categoryName` |
+| POST | `/vendors/bulk` | **Tahap 6 (E13).** body `{ids[1–100], action: activate\|deactivate}`, needs `vendor.manage` (the toggle's permission); one transaction, ids of other workspaces → `notFound`; answers `{updated, unchanged[], notFound[]}`. Details under *Tahap 6* below |
 | POST | `/vendors` | Owner/Admin only. Body now also accepts `socialMedia`, `city`, `priceAkad`, `priceAkadResepsi` (migration `000023`) — `email`/`address` are no longer mandatory; validates `categoryId` belongs to the same tenant (422 if not) |
 | PATCH | `/vendors/{id}` | Owner/Admin only; same body/`categoryId` validation as create |
 | POST | `/vendors/{id}/toggle-active` | Owner/Admin only |
@@ -208,7 +210,8 @@ download route is reachable by a `client` principal too (see below).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/venues` | any staff role; `?city=` (exact match against the fixed 128-entry city enum) filter; **paginated** (Fase 7); `?search=` |
+| GET | `/venues` | any staff role; `?city=` (exact match against the fixed 128-entry city enum) filter; **paginated** (Fase 7); `?search=`. **Tahap 6:** `?isActive=true\|false`, `?sort=` |
+| POST | `/venues/bulk` | **Tahap 6 (E13).** same as `/vendors/bulk` for venues (`vendor.manage`) |
 | POST | `/venues` | Owner/Admin only. Body `{name, picName, phonePic, phoneVenue, email, address, city, rentalPrice, charge, capacity, facilities, socialMedia, notes}` |
 | GET | `/venues/{id}` | any staff role — full record (rental price, charge, PIC contact included); the Client Portal never calls this directly, only the public-safe `GET /projects/{id}/venue` below |
 | PATCH | `/venues/{id}` | Owner/Admin only |
@@ -233,7 +236,7 @@ field name (`orderedIds`, activity type `milestone_updated`), and response shape
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/projects` | staff-only; **paginated** (Fase 7); `?search=` matches name + bride/groom name + venue, `?status=` filters exact status; includes `progress` for every row (one batched computation per page, `toProjectResponsesWithProgress`). `?archived=true` switches to the archived-only view — the two are disjoint, never merged (ADR-0013); omitted/`false` shows only non-archived projects. Note `GET /projects?all=true` (the full-roster/dashboard consumer) is **not** archive-filtered — it always includes archived projects, a deliberate scope boundary (see ADR-0013). **Wedding Planner** (`role="Staff"`): both paginated and `all=true` results are silently scoped to only projects where `picStaffId` equals the caller — never a 403, just a narrower result set (see ADR-0017). |
+| GET | `/projects` | staff-only; **paginated** (Fase 7); `?search=` matches name + bride/groom name + venue, `?status=` filters exact status; includes `progress` for every row (one batched computation per page, `toProjectResponsesWithProgress`). `?archived=true` switches to the archived-only view — the two are disjoint, never merged (ADR-0013); omitted/`false` shows only non-archived projects. Note `GET /projects?all=true` (the full-roster/dashboard consumer) is **not** archive-filtered — it always includes archived projects, a deliberate scope boundary (see ADR-0013). **Wedding Planner** (`role="Staff"`): both paginated and `all=true` results are silently scoped to only projects where `picStaffId` equals the caller — never a 403, just a narrower result set (see ADR-0017). **Tahap 6 (E11):** `?picStaffId=`, `?eventFrom=`, `?eventTo=`, `?sort=`; items carry `remaining` and `nextDueDate` (see *Tahap 6* below). |
 | POST | `/projects` | **Owner/Admin only** (403 for `role="Staff"`) — a Wedding Planner only ever operates within a project already assigned to them, never creates one (ADR-0017). **E7 (ADR-0033): one call creates the project, its default milestones, its venue and its payment schedule in one transaction** — see "Tahap 4" below for the extra body fields (`venueId`, `venueRentalPrice`, `venueCharge`, `terms`), the extra response fields (`terms`, `venueSummary`), the all-errors-at-once 422, and the optional `Idempotency-Key` header. A date that is not `YYYY-MM-DD` is now reported under its own key (`eventDate` / `prepStartDate`; before, any bad date was reported as `eventDate`) on create, update and duplicate |
 | GET | `/projects/me` | **client-only** (Fase 6) — resolves and returns the calling client's own single project (same shape as `GET /projects/{id}`, `progress` included); the Client Portal's entry point, since a client never learns its own project id any other way (mirrors `GET /tenants/me` from Fase 2). Handled as a special `"me"` segment inside the same dispatcher as `/projects/{id}/...`, not a separate route — see implementation note. |
 | GET | `/projects/me/home` | **client-only, GET** (E5, ADR-0032) — the whole Client Portal "Beranda" in one call (replaces ~9). Same project resolution and the same 403/404 answers as `GET /projects/me` (403 for staff, 403 for a client with no project). Each section exists only when the client's portal role may see it (**absent, never `null`**) and nothing is computed for a section the role cannot see. `data`: `project {id, name, brideName, groomName, eventDate (YYYY-MM-DD), venue, packageName, status, picName, picPhone}` (client redaction, **no** `contractValue`), `countdown {daysToEvent}` (event date minus today in Asia/Jakarta, negative after the event), `progress {overallPercent, condition}` (`portal.timeline.view`), `finance {contractValue, paid, remaining, nextTerm {id, label, amount, dueDate, status, remaining} \| null, overdueCount}` (`portal.finance.view`; `paid` = DP+Termin+Pelunasan−Refund, `remaining` = contract − paid and never negative, `nextTerm` = earliest installment that is not paid), `payTo {bankName, accountNumber, accountHolder}` (`portal.finance.view` **and** the WO filled in bank name + number in *Data usaha*), `contact {whatsapp}` (the WO's number from `tenants/me/contact`, absent when empty), `actions [{kind: "pay_term"\|"open_issues", title, detail, dueDate?, amount?, target: "pembayaran"\|"kendala"}]` (always an array, max 3, most urgent first: installments past due oldest first, then installments due within 7 days, then the open-issues count; `pay_term` needs finance and a project that is not cancelled, `open_issues` needs `portal.issues.view`; `dueDate`/`amount` only on `pay_term`, `amount` = what is still owed on that installment), `openIssueCount` (`portal.issues.view`; `0` is sent as `0`), `recentUpdates [{kind: "milestone_done"\|"payment_verified"\|"issue_resolved", title, at (RFC 3339, Asia/Jakarta), proof {evidenceId, type, fileName} \| null, verifiedBy?}]` (always an array, newest first, max 5; sources: completed steps (timeline permission; a step's date has no time of day, so it counts as the start of that day), verified payments (finance; `verifiedBy` = verifier's name, `proof` = the payment's earliest file), resolved issues (issues permission); `proof` is the earliest file of that item that the client may see, `null` otherwise), `pic {name, phone}`. Never contains the Sales PIC, venue commercial terms, the booking date, vendor money, staff ids, `recordedBy` or internal notes |
@@ -374,6 +377,105 @@ All additive except the deletes (soft now) and `GET /activity` (now a page). Exi
 }
 ```
 `cashFlow` has exactly 8 entries, the first being the week (Monday–Sunday) that contains today; `weekStart` is that Monday. `expectedIn` = what the clients still owe on payment-schedule installments due that week (each project's real payments allocated over its schedule, oldest first); `expectedOut` = what is still owed on non-cancelled vendor engagements with a due date (`contractValue − DP − Termin − Pelunasan + Refund`, never negative) by due date; anything already overdue counts in week 1, anything beyond week 8 is left out. `vendorPaymentsDue` — those same unpaid vendor balances that are overdue or due within 30 days, nearest first, at most 10. `unconfirmedVendors` — engagements still `Planned`/`Negotiation` whose event is 0–30 days away, soonest event first, at most 10. **`cashFlow` and `vendorPaymentsDue` need `dashboard.revenue.view`: without it the keys are absent and nothing money-related is computed; `unconfirmedVendors` is always present.**
+
+### Tahap 6 (E11, E13 bulk, E14) — sorting, filters, derived columns, bulk activate/deactivate (ADR-0035)
+
+All additive: with none of the new parameters every list answers in the order it had (`ORDER BY id` lists now read `createdAt:asc`, the same
+order), and `?all=true` and the older shapes are untouched.
+
+**`?sort=field:asc|desc`** on every paginated list below. One column; `field` alone means ascending; the direction word is case-insensitive, the
+field name exact. The field must be in the endpoint's whitelist (table below) or the answer is **422** with a single message under `errors.sort`:
+
+```json
+{ "success": false, "message": "Parameter urutan tidak valid",
+  "errors": { "sort": ["Urutkan menurut salah satu dari: contractValue, createdAt, eventDate, name, nextDueDate, remaining, status"] } }
+```
+
+A bad direction (`name:up`) answers `"Arah urutan harus asc atau desc"`; two `sort` parameters, a comma list, `field:asc;DROP …`, a backquoted name,
+`1` … are all just "not in the whitelist" (nothing of the value reaches the SQL). The primary key is always the last sort key, in the same direction,
+so equal values page in a stable order. A column that may be empty (`priceAkad`, `city`, `nextDueDate`, `trialEndsAt` …) puts its empty values **last in
+both directions**. The effective sort is echoed in `meta.sort`; the three other keys are unchanged:
+
+```json
+{ "success": true, "message": "ok", "data": [ … ],
+  "meta": { "page": 1, "limit": 10, "total": 37, "total_pages": 4, "sort": "remaining:desc" } }
+```
+
+**`q`** is the common name of the free-text search; `search` (what every list accepted first) stays and means the same; `q` wins when both are sent.
+Boolean filters (`isActive`) take exactly `true` or `false` (422 under their key otherwise); dates are `YYYY-MM-DD` (422 under their key otherwise).
+
+| Endpoint | Whitelist (`?sort=`) | Default | New filters / fields |
+|---|---|---|---|
+| `GET /projects` | `name`, `eventDate`, `status`, `contractValue`, `remaining`, `nextDueDate`, `createdAt` | `eventDate:desc` | `picStaffId`, `eventFrom`, `eventTo` (both inclusive, on `eventDate`; `eventTo` before `eventFrom` → 422 `eventTo`); items gain `remaining`, `nextDueDate` |
+| `GET /clients` | `name`, `role`, `projectName`, `projectEventDate`, `loginStatus`, `createdAt` | `createdAt:asc` | `role` (`Bride`/`Groom`/`Family Representative`), `loginStatus` (`active`/`invited`/`inactive`/`none`), `projectId`, `q`; items gain `projectName`, `projectEventDate` |
+| `GET /vendors` | `name`, `categoryName`, `city`, `priceAkad`, `isActive`, `createdAt` | `createdAt:asc` | `isActive`; items gain `categoryName` |
+| `GET /venues` | `name`, `city`, `capacity`, `rentalPrice`, `isActive`, `createdAt` | `createdAt:asc` | `isActive` |
+| `GET /staff` | `name`, `title`, `roleName`, `isActive`, `createdAt` | `createdAt:asc` | `isActive`, `roleId` (the older `role=<id>` still works); items gain `roleName` (the role's current name, the same as `role`) |
+| `GET /vendor-categories` | `name`, `createdAt` | `createdAt:asc` | — |
+| `GET /subscription-transactions` | `createdAt`, `amount`, `status`, `tenantName` | `createdAt:desc` | `search`/`q`, `from`, `to` (see its row); items gain `tenantName` |
+| `GET /tenants` | `name`, `status`, `createdAt`, `trialEndsAt`, `planName` | `createdAt:desc` | the existing `search`/`status`/`planId`/`source`; `q` as an alias of `search` |
+| `GET /audit-log` | `createdAt`, `action`, `actor` | `createdAt:desc` | `action` (exact label), `search` as an alias of `q` |
+
+Notes on single columns: `status` of a project or a transaction sorts in the order of its enum (project: Draft, Preparation, Ready, Completed, Cancelled;
+transaction: unpaid, pending, paid, expired, granted, cancelled), not alphabetically; `role` of a client likewise (Bride, Groom, Family Representative); tenant
+`status` is the stored status the hourly sweeper keeps current; tenant `createdAt` is the registration date (`joinedAt`); `actor` orders by actor type, role,
+then the actor id as a number; `planName` and `roleName` order by the plan's/role's current name (those names live in `billing`/`access`, so the SQL ranks the
+ids by name), `tenantName`, `projectName`, `projectEventDate` and `loginStatus` order after the other module's data has been read (see ADR-0035).
+
+**`GET /projects` items — `remaining` and `nextDueDate`.** `remaining` is what the client still owes on the contract: `contractValue` minus the payments applied
+to it (DP + Termin + Pelunasan − Refund; a Tambahan is outside the contract; a soft-deleted payment is not counted), never negative — the very rule of
+`GET /projects/{id}/overview` (`finance.remaining`). `nextDueDate` is the due date of the earliest installment of the payment schedule that is not fully paid
+(the schedule is allocated earliest due date first, then id), or `null` when there is no schedule or everything is paid; the date is the installment's own, whether
+or not it is already overdue. Both are computed for the page with two batched queries and, when sorted, by an SQL expression of the same rule (the integration
+suite checks the order against the displayed values). Scope is unchanged: a Wedding Planner / Sales role still sees only projects where the person is PIC or PIC Sales,
+and every new filter is ANDed with that scope (`?picStaffId=` of someone else gives the planner nothing). `?all=true` does not carry the two columns.
+
+```json
+{ "id": 12, "name": "Pernikahan Sari & Budi", "brideName": "Sari", "groomName": "Budi", "eventDate": "2026-12-20", "venue": "Gedung Mawar", "venueId": null,
+  "venueRentalPrice": null, "venueCharge": null, "prepStartDate": "2026-10-11", "packageName": "Paket Gold", "contractValue": 100000000, "status": "Preparation",
+  "picStaffId": 3, "picSalesStaffId": 0, "picName": "", "description": "", "isArchived": false, "progress": { "…": "as before" },
+  "remaining": 70000000, "nextDueDate": "2027-01-09" }
+```
+
+**`GET /clients` — the flat, paginated list.** `?page&limit&sort&q&role&loginStatus&projectId`. `loginStatus` is what the list already derived from `identity`:
+`active` (can sign in), `invited` (no password yet), `inactive` (switched off), `none` (no login at all); an unknown `role` or `loginStatus` is a 422 under its key.
+Items add `projectName` and `projectEventDate` (from one batched `projects` lookup per page). **Compatibility:** `?all=true` is unchanged (plain array, owner-wide);
+`?projectId=` **alone** (none of `page`, `limit`, `sort`, `q`, `role`, `loginStatus`) is unchanged too (the project tab's plain array, same access rule: a role limited to
+its own projects must be PIC or PIC Sales of that project). With any of those parameters `projectId` is a filter on the paginated list, with the same access rule. Without
+`projectId` the list is the tenant-wide one, still `client.manage` with every-project scope (403 `forbidden_permission` for a Wedding Planner or Sales). A project id of
+another workspace lists nothing.
+
+```json
+{ "id": 4, "projectId": 12, "role": "Bride", "username": "sari.4", "relationNote": "", "name": "Sari", "phone": "0812…", "email": "", "isActive": true,
+  "lastCredentialResetAt": null, "loginStatus": "invited", "accessRoleId": 6, "accessRoleName": "Pengantin",
+  "projectName": "Pernikahan Sari & Budi", "projectEventDate": "2026-12-20" }
+```
+
+**`GET /vendors` item** gains `"categoryName": "Katering"` (last key); **`GET /staff` item** gains `"roleName": "Wedding Planner"`;
+**`GET /subscription-transactions` item** gains `"tenantName"`:
+
+```json
+{ "id": 31, "tenantId": 7, "type": "renewal", "amount": 2000000, "paymentMethod": "QRIS", "paymentReference": "ELP-ABC123", "status": "paid",
+  "createdAt": "2026-02-10T23:59:00+07:00", "paidAt": null, "tenantName": "WO Melati" }
+```
+
+`tenantName` is `""` when the tenant no longer resolves. `GET /subscription-transactions/{id}` carries it too. `GET /tenants/names` is unchanged. `search` matches the payment
+reference (substring) **or** any tenant whose business name contains the text (a workspace's own Owner is still confined to their own tenant, whatever they search); `from`/`to`
+are Indonesian calendar days on `createdAt`, both inclusive (`from` after `to` → 422 `to`; a malformed date → 422 on its key); a name search resolves at most 1000 tenants.
+
+**`POST /vendors/bulk` and `POST /venues/bulk`** — body `{"ids": [12, 13, 13, 99], "action": "activate" | "deactivate"}`. Needs what the single `toggle-active` of that
+resource needs (`vendor.manage`; 403 otherwise, 401 without a token, 405 for another method). `ids`: 1 to 100 positive integers as sent (duplicates are removed, order
+kept; more than 100 as sent is refused). Everything is read, decided and written in **one transaction** scoped to the caller's workspace; ids that are not this workspace's
+(another workspace's, or nonexistent) are reported as `notFound`, indistinguishable from each other and never touched:
+
+```json
+{ "success": true, "message": "Status vendor diperbarui",
+  "data": { "updated": 2, "unchanged": [13], "notFound": [99] } }
+```
+
+`updated` is the number of rows changed; `unchanged` lists the ids already in the requested state; both lists keep the request's order and are `[]` when empty. Validation is a
+422 with per-field keys, all problems at once: `{"errors": {"ids": ["Pilih 1 sampai 100 data"], "action": ["Aksi harus activate atau deactivate"]}}`; a body that is not
+JSON is a 400. The single toggle writes no activity record, so neither does this (the `vendors` module has no activity log).
 
 ## `milestone-templates` (tenant-scoped, "Pengaturan → Timeline Default") — every route Owner-only
 

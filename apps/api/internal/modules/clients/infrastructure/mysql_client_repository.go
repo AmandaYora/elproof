@@ -79,26 +79,56 @@ func (r *MySQLClientRepository) ListByTenant(ctx context.Context, tenantID int64
 	return list, rows.Err()
 }
 
-// ListByTenantPaginated backs the real `GET /clients` list page (no
-// projectId filter) — ListByTenant above stays as-is for global search.
-func (r *MySQLClientRepository) ListByTenantPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Client, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND deleted_at IS NULL`
-	listQuery := `SELECT ` + clientColumns + ` FROM clients WHERE tenant_id = ? AND deleted_at IS NULL`
+// clientSortColumns is the whitelist of the columns this module can order by in
+// SQL. projectName, projectEventDate and loginStatus are owned by other modules
+// and ordered in memory (domain.NeedsMemoryPaging); they are listed by
+// ClientSortFields for the whitelist the endpoint accepts.
+var clientSortColumns = map[string]pagination.SortColumn{
+	"name":      pagination.Col("name"),
+	"role":      pagination.Col("role"),
+	"createdAt": pagination.Col("created_at"),
+}
+
+// ListSortSpec is the whitelist (SQL columns) of GET /clients' own columns; the
+// application layer adds the three cross-module fields.
+func (r *MySQLClientRepository) ListSortSpec() map[string]pagination.SortColumn {
+	return clientSortColumns
+}
+
+// clientWhere builds the shared WHERE of the paginated list (the loginStatus
+// filter is not SQL: it is applied by the service).
+func clientWhere(tenantID int64, f domain.ListFilter) (string, []interface{}) {
+	where := ` WHERE tenant_id = ? AND deleted_at IS NULL`
 	args := []interface{}{tenantID}
-	if search != "" {
-		countQuery += ` AND (name LIKE ? OR email LIKE ?)`
-		listQuery += ` AND (name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(search) + "%"
+	if f.Search != "" {
+		where += ` AND (name LIKE ? OR email LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like)
 	}
+	if f.Role != "" {
+		where += ` AND role = ?`
+		args = append(args, f.Role)
+	}
+	if f.ProjectID != nil {
+		where += ` AND project_id = ?`
+		args = append(args, *f.ProjectID)
+	}
+	return where, args
+}
 
+// ListByTenantPaginated backs the real `GET /clients` list page — ListByTenant
+// above stays as-is for global search. Filtering and ordering are SQL; sort is
+// one of the columns of clientSortColumns.
+func (r *MySQLClientRepository) ListByTenantPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.ListFilter, sort pagination.Sort) ([]domain.Client, int64, error) {
+	where, args := clientWhere(tenantID, f)
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM clients`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	listQuery += ` ORDER BY id LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+clientColumns+` FROM clients`+where+sort.OrderBy("id")+` LIMIT ? OFFSET ?`,
+		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -113,6 +143,27 @@ func (r *MySQLClientRepository) ListByTenantPaginated(ctx context.Context, tenan
 		list = append(list, *c)
 	}
 	return list, total, rows.Err()
+}
+
+// ListAllFiltered returns every live client of the tenant matching the SQL
+// filters, in id order — the base of the in-memory paging used when the order or
+// a filter depends on another module's data.
+func (r *MySQLClientRepository) ListAllFiltered(ctx context.Context, tenantID int64, f domain.ListFilter) ([]domain.Client, error) {
+	where, args := clientWhere(tenantID, f)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+clientColumns+` FROM clients`+where+` ORDER BY id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []domain.Client
+	for rows.Next() {
+		c, err := scanClient(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *c)
+	}
+	return list, rows.Err()
 }
 
 func (r *MySQLClientRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Client, error) {

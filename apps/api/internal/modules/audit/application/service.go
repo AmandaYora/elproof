@@ -15,7 +15,9 @@ import (
 
 type Repository interface {
 	Insert(ctx context.Context, e *domain.Entry) error
-	ListPaginated(ctx context.Context, params pagination.Params, f domain.Filter) ([]domain.Entry, int64, error)
+	ListPaginated(ctx context.Context, params pagination.Params, f domain.Filter, sort pagination.Sort) ([]domain.Entry, int64, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the default order.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
 	// ListAll returns up to `limit` matches, newest first (CSV export).
 	ListAll(ctx context.Context, f domain.Filter, limit int) ([]domain.Entry, error)
 }
@@ -70,8 +72,13 @@ func tenantOf(rec middleware.AuditRecord) *int64 {
 	return nil
 }
 
-func (s *Service) List(ctx context.Context, params pagination.Params, f domain.Filter) ([]domain.Entry, int64, error) {
-	return s.repo.ListPaginated(ctx, params, f)
+func (s *Service) List(ctx context.Context, params pagination.Params, f domain.Filter, sort pagination.Sort) ([]domain.Entry, int64, error) {
+	return s.repo.ListPaginated(ctx, params, f, sort)
+}
+
+// ListSortSpec is the sort whitelist and default of the audit list.
+func (s *Service) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
 }
 
 // ExportLimit caps one CSV export; narrow the filter (dates) for more.

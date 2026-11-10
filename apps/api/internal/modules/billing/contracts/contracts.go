@@ -46,6 +46,9 @@ type RecordTransactionInput struct {
 // tenant-status update, `billing` only owns its own tables. See ADR-0008.
 type Contracts interface {
 	GetPlan(ctx context.Context, id int64) (*Plan, error)
+	// ListPlans lists the plan catalog (the Platform Console orders its tenant
+	// list by plan name, which this module owns).
+	ListPlans(ctx context.Context) ([]Plan, error)
 	RecordTransaction(ctx context.Context, input RecordTransactionInput) error
 	UpdateTransactionStatus(ctx context.Context, paymentReference string, status TransactionStatus) error
 	// PaidSince lists paid (never granted) subscription transactions since a
@@ -68,6 +71,18 @@ type impl struct {
 
 func New(plans *application.PlanService, transactions *application.TransactionService) Contracts {
 	return &impl{plans: plans, transactions: transactions}
+}
+
+func (c *impl) ListPlans(ctx context.Context) ([]Plan, error) {
+	plans, err := c.plans.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Plan, 0, len(plans))
+	for _, p := range plans {
+		out = append(out, Plan{ID: p.ID, Name: p.Name, DurationMonths: p.DurationMonths, Price: p.Price})
+	}
+	return out, nil
 }
 
 func (c *impl) GetPlan(ctx context.Context, id int64) (*Plan, error) {

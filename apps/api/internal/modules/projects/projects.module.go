@@ -82,6 +82,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	venuePaymentService.SetProofSupport(proofSupport)
 	clientPaymentService.SetAtomicSupport(proofSupport, paymentTermRepo)
 	projectService.SetAtomicSupport(txManager, paymentTermRepo)
+	projectService.SetListMoney(infrastructure.NewMySQLListMoneyRepository(db))
 
 	references := application.NewReferences(staff)
 	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)

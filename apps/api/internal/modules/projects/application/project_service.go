@@ -21,7 +21,13 @@ type ProjectRepository interface {
 	// instead of List's entire unbounded tenant history. See the
 	// infrastructure implementation's doc comment for `since`'s exact meaning.
 	ListForDashboard(ctx context.Context, tenantID int64, since time.Time) ([]domain.Project, error)
-	ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, filter domain.ProjectListFilter, sort pagination.Sort) ([]domain.Project, int64, error)
+	// ListLabels names a set of the tenant's projects (id, name, event date) in
+	// one query; ids of other tenants or that do not exist are absent.
+	ListLabels(ctx context.Context, tenantID int64, ids []int64) ([]domain.ProjectLabel, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the
+	// default order of ListPaginated.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
 	// ListByVenueID/ListByStaffPIC back the hard-delete "impact" endpoints
 	// (PLAN.md) -- see their infrastructure implementations' doc comments.
 	ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error)
@@ -125,6 +131,8 @@ type ProjectService struct {
 	// tx/terms back CreateAtomic (wired by SetAtomicSupport).
 	tx    Transactor
 	terms PaymentTermRepository
+	// listMoney backs the derived columns of the list (SetListMoney).
+	listMoney ListMoneySource
 }
 
 // SetAtomicSupport wires what creating a project with its venue and payment
@@ -282,8 +290,67 @@ func (s *ProjectService) ListForDashboard(ctx context.Context, tenantID int64, s
 // result into two disjoint views (active vs. archived), never merged, so
 // archived projects stay genuinely out of the way of day-to-day work (see
 // ADR-0013) rather than just visually deprioritized in a mixed list.
-func (s *ProjectService) ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, picStaffID, picSalesStaffID, params, search, status, showArchived)
+func (s *ProjectService) ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, filter domain.ProjectListFilter, sort pagination.Sort) ([]domain.Project, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, picStaffID, picSalesStaffID, params, filter, sort)
+}
+
+// Labels names the tenant's projects among ids (id -> label); an id that is not
+// the tenant's (or does not exist) is simply absent.
+func (s *ProjectService) Labels(ctx context.Context, tenantID int64, ids []int64) (map[int64]domain.ProjectLabel, error) {
+	out := make(map[int64]domain.ProjectLabel, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	list, err := s.repo.ListLabels(ctx, tenantID, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range list {
+		out[l.ID] = l
+	}
+	return out, nil
+}
+
+// ListSortSpec is the sort whitelist and default of the paginated list.
+func (s *ProjectService) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
+}
+
+// ListMoneySource is where a page of the list reads the raw numbers behind its
+// derived columns (see infrastructure.MySQLListMoneyRepository).
+type ListMoneySource interface {
+	PaymentLinesByProjects(ctx context.Context, projectIDs []int64) (map[int64][]domain.PaymentLine, error)
+	TermsByProjects(ctx context.Context, projectIDs []int64) (map[int64][]domain.PaymentTerm, error)
+}
+
+// SetListMoney wires the source of the list's derived columns.
+func (s *ProjectService) SetListMoney(src ListMoneySource) { s.listMoney = src }
+
+// ListMoney derives `remaining` and `nextDueDate` for every project of a page
+// with the domain rules (ComputeListMoney): two queries for the whole page.
+// Without a source it answers nothing (the callers then show no derived
+// columns), never a wrong number.
+func (s *ProjectService) ListMoney(ctx context.Context, projects []domain.Project) (map[int64]domain.ListMoney, error) {
+	out := make(map[int64]domain.ListMoney, len(projects))
+	if s.listMoney == nil || len(projects) == 0 {
+		return out, nil
+	}
+	ids := make([]int64, len(projects))
+	for i, p := range projects {
+		ids[i] = p.ID
+	}
+	lines, err := s.listMoney.PaymentLinesByProjects(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	terms, err := s.listMoney.TermsByProjects(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range projects {
+		out[p.ID] = domain.ComputeListMoney(p.ContractValue, lines[p.ID], terms[p.ID])
+	}
+	return out, nil
 }
 
 func (s *ProjectService) Get(ctx context.Context, tenantID, id int64) (*domain.Project, error) {

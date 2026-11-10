@@ -119,3 +119,33 @@ func (s *TenantService) TenantNames(ctx context.Context, ids []int64) (map[int64
 	}
 	return s.repo.NamesByIDs(ctx, ids)
 }
+
+// namesBatch is how many ids one query resolves for the bulk lookup below.
+const namesBatch = 500
+
+// TenantNamesFor resolves business names for any number of tenants, in batches
+// (billing's transaction list orders by tenant name, which needs the name of every
+// tenant that has a transaction). Unknown ids are simply absent.
+func (s *TenantService) TenantNamesFor(ctx context.Context, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(ids))
+	for start := 0; start < len(ids); start += namesBatch {
+		end := start + namesBatch
+		if end > len(ids) {
+			end = len(ids)
+		}
+		names, err := s.repo.NamesByIDs(ctx, ids[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for id, name := range names {
+			out[id] = name
+		}
+	}
+	return out, nil
+}
+
+// SearchTenantIDs returns the ids of up to limit tenants whose business name
+// contains text (billing's transaction search by tenant name).
+func (s *TenantService) SearchTenantIDs(ctx context.Context, text string, limit int) ([]int64, error) {
+	return s.repo.SearchIDsByName(ctx, text, limit)
+}

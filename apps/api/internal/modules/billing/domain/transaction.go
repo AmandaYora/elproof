@@ -45,3 +45,15 @@ type Transaction struct {
 	CreatedAt        time.Time
 	PaidAt           *time.Time
 }
+
+// TransactionFilter narrows the subscription-transaction list.
+type TransactionFilter struct {
+	Status string
+	// Search matches the payment reference or the tenant's name; the name lives
+	// in `platform`, so the application layer turns it into TenantIDs.
+	Search string
+	// TenantIDs are the tenants whose name matched Search (nil when Search is empty).
+	TenantIDs []int64
+	// From is inclusive, To exclusive (the instant after the last picked day); zero = unbounded.
+	From, To time.Time
+}

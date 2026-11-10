@@ -48,9 +48,20 @@ func (r *MySQLVendorCategoryRepository) List(ctx context.Context, tenantID int64
 	return categories, rows.Err()
 }
 
+// vendorCategorySortColumns is the sort whitelist of GET /vendor-categories.
+var vendorCategorySortColumns = map[string]pagination.SortColumn{
+	"name":      pagination.Col("name"),
+	"createdAt": pagination.Col("created_at"),
+}
+
+// ListSortSpec is the whitelist and the default order (today's: oldest first).
+func (r *MySQLVendorCategoryRepository) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return vendorCategorySortColumns, pagination.By("createdAt", false)
+}
+
 // ListPaginated backs the real `GET /vendor-categories` list page — List
 // above stays as-is for the category-picker dropdowns that need the full list.
-func (r *MySQLVendorCategoryRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.VendorCategory, int64, error) {
+func (r *MySQLVendorCategoryRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string, sort pagination.Sort) ([]domain.VendorCategory, int64, error) {
 	countQuery := `SELECT COUNT(*) FROM vendor_categories WHERE tenant_id = ?`
 	listQuery := `SELECT ` + vendorCategoryColumns + ` FROM vendor_categories WHERE tenant_id = ?`
 	args := []interface{}{tenantID}
@@ -65,7 +76,7 @@ func (r *MySQLVendorCategoryRepository) ListPaginated(ctx context.Context, tenan
 		return nil, 0, err
 	}
 
-	listQuery += ` ORDER BY id LIMIT ? OFFSET ?`
+	listQuery += sort.OrderBy("id") + ` LIMIT ? OFFSET ?`
 	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err

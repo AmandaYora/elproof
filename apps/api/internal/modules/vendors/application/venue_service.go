@@ -40,7 +40,11 @@ var allowedVenueAttachmentMimeTypes = map[string]bool{
 
 type VenueRepository interface {
 	List(ctx context.Context, tenantID int64) ([]domain.Venue, error)
-	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, city string) ([]domain.Venue, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VenueListFilter, sort pagination.Sort) ([]domain.Venue, int64, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the default order.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
+	// BulkSetActive flips is_active of several venues of the tenant in one transaction.
+	BulkSetActive(ctx context.Context, tenantID int64, ids []int64, active bool) (domain.BulkResult, error)
 	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
 	ListFiltered(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Venue, error)
@@ -78,8 +82,19 @@ func (s *VenueService) List(ctx context.Context, tenantID int64) ([]domain.Venue
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *VenueService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, city string) ([]domain.Venue, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, params, search, city)
+func (s *VenueService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VenueListFilter, sort pagination.Sort) ([]domain.Venue, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, params, f, sort)
+}
+
+// ListSortSpec is the sort whitelist and default of the paginated list.
+func (s *VenueService) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
+}
+
+// BulkSetActive activates or deactivates up to MaxBulkIDs venues of the tenant
+// at once, atomically; ids that are not the tenant's come back as notFound.
+func (s *VenueService) BulkSetActive(ctx context.Context, tenantID int64, ids []int64, action domain.BulkAction) (domain.BulkResult, error) {
+	return s.repo.BulkSetActive(ctx, tenantID, ids, action.Target())
 }
 
 // Export backs "Export Excel" -- same filters as ListPaginated (so "filter

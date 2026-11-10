@@ -141,6 +141,19 @@ func (m *Module) TenantName(ctx context.Context, tenantID int64) (string, error)
 	return t.BusinessName, nil
 }
 
+// TenantNames implements billing's TenantDirectory (wired in cmd/server): the
+// business names of any number of tenants, for labelling and ordering the
+// subscription-transaction list.
+func (m *Module) TenantNames(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return m.tenantService.TenantNamesFor(ctx, ids)
+}
+
+// SearchTenantIDs implements billing's TenantDirectory: the ids of tenants whose
+// business name contains text, for the transaction list's search box.
+func (m *Module) SearchTenantIDs(ctx context.Context, text string, limit int) ([]int64, error) {
+	return m.tenantService.SearchTenantIDs(ctx, text, limit)
+}
+
 // ApplyWebhookEvent makes *Module itself satisfy
 // `paymentcontracts.WebhookConsumer` — main.go registers this module
 // directly with the payment module's Dispatcher

@@ -111,16 +111,34 @@ func tenantWhere(f domain.TenantFilter) (string, []interface{}) {
 	return ` WHERE ` + strings.Join(conditions, " AND "), args
 }
 
+// tenantSortColumns is the sort whitelist of GET /tenants (ADR-0035). createdAt
+// is the date the workspace registered (the joinedAt the row shows); status is
+// the stored (hourly refreshed) subscription status; planName is replaced by a
+// column ranked by plan name (billing owns the names) in the application layer.
+var tenantSortColumns = map[string]pagination.SortColumn{
+	"name":        pagination.Col("business_name"),
+	"status":      pagination.Col("subscription_status"),
+	"createdAt":   pagination.Col("joined_at"),
+	"trialEndsAt": pagination.NullableCol("trial_ends_at"),
+	"planName":    pagination.NullableCol("plan_id"),
+}
+
+// ListSortSpec is the whitelist and the default order of GET /tenants (today's:
+// newest first).
+func (r *MySQLTenantRepository) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return tenantSortColumns, pagination.By("createdAt", true)
+}
+
 // ListPaginated backs the real `GET /tenants` list page — List above stays
 // for the few callers that need every tenant.
-func (r *MySQLTenantRepository) ListPaginated(ctx context.Context, params pagination.Params, f domain.TenantFilter) ([]domain.Tenant, int64, error) {
+func (r *MySQLTenantRepository) ListPaginated(ctx context.Context, params pagination.Params, f domain.TenantFilter, sort pagination.Sort) ([]domain.Tenant, int64, error) {
 	where, args := tenantWhere(f)
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tenants`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+tenantColumns+` FROM tenants`+where+` ORDER BY joined_at DESC, id DESC LIMIT ? OFFSET ?`,
+		`SELECT `+tenantColumns+` FROM tenants`+where+sort.OrderBy("id")+` LIMIT ? OFFSET ?`,
 		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
@@ -372,6 +390,26 @@ func (r *MySQLTenantRepository) NamesByIDs(ctx context.Context, ids []int64) (ma
 		out[id] = name
 	}
 	return out, rows.Err()
+}
+
+// SearchIDsByName returns the ids of up to limit tenants whose business name
+// contains text (billing's transaction search by tenant name).
+func (r *MySQLTenantRepository) SearchIDsByName(ctx context.Context, text string, limit int) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id FROM tenants WHERE business_name LIKE ? ORDER BY id LIMIT ?`, "%"+utils.EscapeLike(text)+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // SetOnboardingDismissed records that the Owner closed the checklist.

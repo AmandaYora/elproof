@@ -114,8 +114,13 @@ func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		params := pagination.FromRequest(r)
-		search := r.URL.Query().Get("search")
-		categories, total, err := h.categories.ListPaginated(r.Context(), tenantID, params, search)
+		columns, defaultSort := h.categories.ListSortSpec()
+		sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		categories, total, err := h.categories.ListPaginated(r.Context(), tenantID, params, pagination.SearchFromRequest(r), sort)
 		if err != nil {
 			writeAppError(w, err)
 			return
@@ -124,7 +129,7 @@ func (h *VendorCategoryHandler) Collection(w http.ResponseWriter, r *http.Reques
 		for _, c := range categories {
 			result = append(result, toVendorCategoryResponse(c))
 		}
-		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total).WithSort(sort))
 	case http.MethodPost:
 		if !requirePermission(w, r, "vendor.category.manage") {
 			return

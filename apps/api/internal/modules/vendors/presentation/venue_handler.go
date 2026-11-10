@@ -117,9 +117,19 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		params := pagination.FromRequest(r)
-		search := r.URL.Query().Get("search")
-		city := r.URL.Query().Get("city")
-		venues, total, err := h.venues.ListPaginated(r.Context(), tenantID, params, search, city)
+		isActive, err := isActiveFilter(r)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		columns, defaultSort := h.venues.ListSortSpec()
+		sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		filter := domain.VenueListFilter{Search: pagination.SearchFromRequest(r), City: r.URL.Query().Get("city"), IsActive: isActive}
+		venues, total, err := h.venues.ListPaginated(r.Context(), tenantID, params, filter, sort)
 		if err != nil {
 			writeAppError(w, err)
 			return
@@ -128,7 +138,7 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		for _, v := range venues {
 			result = append(result, toVenueResponse(v))
 		}
-		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total).WithSort(sort))
 	case http.MethodPost:
 		if !requirePermission(w, r, "vendor.manage") {
 			return
@@ -241,6 +251,33 @@ func (h *VenueHandler) create(w http.ResponseWriter, r *http.Request, tenantID i
 		return
 	}
 	response.Created(w, "Venue berhasil ditambahkan", toVenueResponse(*venue))
+}
+
+// Bulk activates or deactivates up to 100 venues in one transaction (POST
+// /venues/bulk {ids, action}). It needs what the single toggle needs
+// (vendor.manage). Ids that are not this workspace's are reported as notFound.
+func (h *VenueHandler) Bulk(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := requireStaffTenant(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
+		return
+	}
+	if !requirePermission(w, r, "vendor.manage") {
+		return
+	}
+	ids, action, ok := readBulk(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.venues.BulkSetActive(r.Context(), tenantID, ids, action)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Status venue diperbarui", result)
 }
 
 func (h *VenueHandler) Item(w http.ResponseWriter, r *http.Request) {

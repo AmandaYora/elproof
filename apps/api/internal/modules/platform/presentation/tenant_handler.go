@@ -148,7 +148,13 @@ func (h *TenantHandler) Collection(w http.ResponseWriter, r *http.Request) {
 
 func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 	params := pagination.FromRequest(r)
-	tenants, total, err := h.tenants.ListPaginated(r.Context(), params, tenantFilterFrom(r))
+	columns, defaultSort := h.tenants.ListSortSpec()
+	sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	tenants, total, err := h.tenants.ListPaginated(r.Context(), params, tenantFilterFrom(r), sort)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -157,7 +163,7 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tenants {
 		result = append(result, toTenantResponse(t))
 	}
-	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total).WithSort(sort))
 }
 
 type registerTenantBody struct {
@@ -591,7 +597,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 // filters the list page and the CSV export share).
 func tenantFilterFrom(r *http.Request) domain.TenantFilter {
 	q := r.URL.Query()
-	f := domain.TenantFilter{Search: strings.TrimSpace(q.Get("search")), Status: q.Get("status"), Source: q.Get("source")}
+	f := domain.TenantFilter{Search: pagination.SearchFromRequest(r), Status: q.Get("status"), Source: q.Get("source")}
 	if id, err := strconv.ParseInt(q.Get("planId"), 10, 64); err == nil && id > 0 {
 		f.PlanID = &id
 	}

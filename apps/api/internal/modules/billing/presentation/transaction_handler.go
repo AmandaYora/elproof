@@ -8,6 +8,7 @@ import (
 
 	"elproof/internal/modules/billing/application"
 	"elproof/internal/modules/billing/domain"
+	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/response"
@@ -31,6 +32,9 @@ type transactionResponse struct {
 	Status           string  `json:"status"`
 	CreatedAt        string  `json:"createdAt"`
 	PaidAt           *string `json:"paidAt"`
+	// TenantName is the workspace the transaction belongs to ("" when it cannot
+	// be resolved), so a list needs no second call to /tenants/names.
+	TenantName string `json:"tenantName"`
 }
 
 // wib: every time leaves the API in Western Indonesia Time, whatever the
@@ -89,17 +93,58 @@ func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := pagination.FromRequest(r)
-	status := r.URL.Query().Get("status")
-	transactions, total, err := h.transactions.ListPaginated(r.Context(), tenantID, params, status)
+	filter, err := transactionFilter(r)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	result := make([]transactionResponse, 0, len(transactions))
-	for _, t := range transactions {
-		result = append(result, toTransactionResponse(t))
+	columns, defaultSort := h.transactions.TransactionSortSpec()
+	sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
-	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+	rows, total, err := h.transactions.ListPage(r.Context(), tenantID, params, filter, sort)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	result := make([]transactionResponse, 0, len(rows))
+	for _, row := range rows {
+		resp := toTransactionResponse(row.Transaction)
+		resp.TenantName = row.TenantName
+		result = append(result, resp)
+	}
+	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total).WithSort(sort))
+}
+
+// transactionFilter reads ?status=, ?search= (or q: payment reference or tenant
+// name) and ?from=/?to= (days, YYYY-MM-DD, both inclusive, as Indonesian days).
+func transactionFilter(r *http.Request) (domain.TransactionFilter, error) {
+	q := r.URL.Query()
+	f := domain.TransactionFilter{Status: q.Get("status"), Search: pagination.SearchFromRequest(r)}
+	bad := map[string][]string{}
+	if raw := q.Get("from"); raw != "" {
+		if t, err := time.ParseInLocation("2006-01-02", raw, wib); err != nil {
+			bad["from"] = []string{"Tanggal harus berformat YYYY-MM-DD"}
+		} else {
+			f.From = t
+		}
+	}
+	if raw := q.Get("to"); raw != "" {
+		if t, err := time.ParseInLocation("2006-01-02", raw, wib); err != nil {
+			bad["to"] = []string{"Tanggal harus berformat YYYY-MM-DD"}
+		} else {
+			f.To = t.AddDate(0, 0, 1)
+		}
+	}
+	if !f.From.IsZero() && !f.To.IsZero() && !f.To.After(f.From) {
+		bad["to"] = []string{"Tanggal akhir tidak boleh sebelum tanggal awal"}
+	}
+	if len(bad) > 0 {
+		return f, apperror.Validation("Filter transaksi tidak valid", bad)
+	}
+	return f, nil
 }
 
 // Item is GET /subscription-transactions/{id}: one transaction (the receipt
@@ -134,5 +179,7 @@ func (h *TransactionHandler) Item(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "ok", toTransactionResponse(*t))
+	resp := toTransactionResponse(*t)
+	resp.TenantName = h.transactions.NameOf(r.Context(), *t)
+	response.OK(w, "ok", resp)
 }

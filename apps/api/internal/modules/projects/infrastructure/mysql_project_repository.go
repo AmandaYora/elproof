@@ -3,7 +3,6 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"time"
 
 	"elproof/internal/modules/projects/domain"
@@ -186,41 +185,79 @@ func (r *MySQLProjectRepository) ListForDashboard(ctx context.Context, tenantID 
 	return projects, rows.Err()
 }
 
+// projectSortColumns is the sort whitelist of GET /projects: public name ->
+// fixed SQL (ADR-0035). "remaining" and "nextDueDate" are the derived columns
+// of the list, computed here by the same rules as domain.ComputeListMoney (the
+// integration tests keep the two in step): the applied payments are the live
+// DP/Termin/Pelunasan minus Refund (Tambahan out), floored at 0, and an
+// installment is unpaid while the running total of the schedule (earliest due
+// date, then id) exceeds them.
+var projectSortColumns = map[string]pagination.SortColumn{
+	"name":          pagination.Col("projects.name"),
+	"eventDate":     pagination.Col("projects.event_date"),
+	"status":        pagination.Col("projects.status"),
+	"contractValue": pagination.Col("projects.contract_value"),
+	"createdAt":     pagination.Col("projects.created_at"),
+	"remaining":     pagination.Col(projectRemainingSQL),
+	"nextDueDate":   pagination.NullableCol(projectNextDueSQL),
+}
+
+// ListSortSpec is the whitelist and the default order of GET /projects (today's
+// order: latest event first), for the presentation layer to read ?sort= against.
+func (r *MySQLProjectRepository) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return projectSortColumns, pagination.By("eventDate", true)
+}
+
+const projectAppliedSQL = `GREATEST(COALESCE((SELECT SUM(CASE WHEN cp.type IN ('DP','Termin','Pelunasan') THEN CAST(cp.amount AS SIGNED)
+		WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END)
+	FROM client_payments cp WHERE cp.project_id = projects.id AND cp.deleted_at IS NULL), 0), 0)`
+
+const projectRemainingSQL = `GREATEST(CAST(projects.contract_value AS SIGNED) - ` + projectAppliedSQL + `, 0)`
+
+const projectNextDueSQL = `(SELECT MIN(t.due_date) FROM client_payment_terms t WHERE t.project_id = projects.id AND
+	(SELECT SUM(t2.amount) FROM client_payment_terms t2 WHERE t2.project_id = t.project_id
+	   AND (t2.due_date < t.due_date OR (t2.due_date = t.due_date AND t2.id <= t.id))) > ` + projectAppliedSQL + `)`
+
 // ListPaginated backs the real `GET /projects` list page — List above stays
 // as-is for dashboard/global-search consumers that need the full roster
 // (including archived projects; this method's showArchived split doesn't
-// apply there — see ProjectService.ListPaginated's doc comment).
-func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, search, status string, showArchived bool) ([]domain.Project, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND is_archived = ?`
-	listQuery := `SELECT ` + projectColumns + ` FROM projects WHERE tenant_id = ? AND is_archived = ?`
-	args := []interface{}{tenantID, showArchived}
+// apply there — see ProjectService.ListPaginated's doc comment). The caller's
+// own scope (picStaffID/picSalesStaffID) is always ANDed with the filters.
+func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64, params pagination.Params, f domain.ProjectListFilter, sort pagination.Sort) ([]domain.Project, int64, error) {
+	where := ` WHERE tenant_id = ? AND is_archived = ?`
+	args := []interface{}{tenantID, f.ShowArchived}
 	if cond, condArgs := picFilter(picStaffID, picSalesStaffID); cond != "" {
-		countQuery += cond
-		listQuery += cond
+		where += cond
 		args = append(args, condArgs...)
 	}
-	var conditions []string
-	if search != "" {
-		conditions = append(conditions, `(name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ? OR venue LIKE ?)`)
-		like := "%" + utils.EscapeLike(search) + "%"
+	if f.Search != "" {
+		where += ` AND (name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ? OR venue LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like, like)
 	}
-	if status != "" {
-		conditions = append(conditions, `status = ?`)
-		args = append(args, status)
+	if f.Status != "" {
+		where += ` AND status = ?`
+		args = append(args, f.Status)
 	}
-	if len(conditions) > 0 {
-		where := ` AND ` + strings.Join(conditions, " AND ")
-		countQuery += where
-		listQuery += where
+	if f.PICStaffID != nil {
+		where += ` AND pic_staff_id = ?`
+		args = append(args, *f.PICStaffID)
+	}
+	if f.EventFrom != nil {
+		where += ` AND event_date >= ?`
+		args = append(args, f.EventFrom.Format("2006-01-02"))
+	}
+	if f.EventTo != nil {
+		where += ` AND event_date <= ?`
+		args = append(args, f.EventTo.Format("2006-01-02"))
 	}
 
 	var total int64
-	if err := conn(ctx, r.db).QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := conn(ctx, r.db).QueryRowContext(ctx, `SELECT COUNT(*) FROM projects`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	listQuery += ` ORDER BY event_date DESC, id DESC LIMIT ? OFFSET ?`
+	listQuery := `SELECT ` + projectColumns + ` FROM projects` + where + sort.OrderBy("projects.id") + ` LIMIT ? OFFSET ?`
 	rows, err := conn(ctx, r.db).QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
@@ -236,6 +273,31 @@ func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int
 		projects = append(projects, *p)
 	}
 	return projects, total, rows.Err()
+}
+
+// ListLabels backs contracts.ProjectLabels: id, name and event date of the
+// tenant's projects among ids, in one query (the tenant filter keeps another
+// workspace's ids from resolving).
+func (r *MySQLProjectRepository) ListLabels(ctx context.Context, tenantID int64, ids []int64) ([]domain.ProjectLabel, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := conn(ctx, r.db).QueryContext(ctx,
+		`SELECT id, name, event_date FROM projects WHERE tenant_id = ? AND id IN (`+utils.Placeholders(len(ids))+`)`,
+		append([]interface{}{tenantID}, utils.Int64Args(ids)...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []domain.ProjectLabel
+	for rows.Next() {
+		var l domain.ProjectLabel
+		if err := rows.Scan(&l.ID, &l.Name, &l.EventDate); err != nil {
+			return nil, err
+		}
+		list = append(list, l)
+	}
+	return list, rows.Err()
 }
 
 func (r *MySQLProjectRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error) {

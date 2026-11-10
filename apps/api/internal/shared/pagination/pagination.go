@@ -19,6 +19,15 @@ type Meta struct {
 	Limit      int   `json:"limit"`
 	Total      int64 `json:"total"`
 	TotalPages int   `json:"total_pages"`
+	// Sort is the effective order of the page as "field:dir" ("name:asc"); only
+	// the endpoints that accept ?sort= set it (WithSort), others leave it out.
+	Sort string `json:"sort,omitempty"`
+}
+
+// WithSort returns the meta with the effective sort echoed back.
+func (m Meta) WithSort(s Sort) Meta {
+	m.Sort = s.String()
+	return m
 }
 
 type Params struct {

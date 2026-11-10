@@ -102,6 +102,10 @@ type Contracts interface {
 	ResetSignIn(ctx context.Context, principalType PrincipalType, principalID string, newUsername string) error
 	// LoginStatus: "invited", "active", "inactive" or "none".
 	LoginStatus(ctx context.Context, principalType PrincipalType, principalID string) (string, error)
+	// LoginStatuses is LoginStatus for many principals of one workspace in a
+	// few queries (the clients list). Every id asked for has an entry; a
+	// principal with no login in that workspace is "none".
+	LoginStatuses(ctx context.Context, principalType PrincipalType, tenantID int64, principalIDs []string) (map[string]string, error)
 	// DeleteCredential removes a login with its sessions and links (person
 	// deleted, invitation rolled back); its username and email become free.
 	DeleteCredential(ctx context.Context, principalType PrincipalType, principalID string) error
@@ -228,6 +232,10 @@ func (c *impl) ResetSignIn(ctx context.Context, principalType PrincipalType, pri
 
 func (c *impl) LoginStatus(ctx context.Context, principalType PrincipalType, principalID string) (string, error) {
 	return c.management.LoginStatus(ctx, domain.PrincipalType(principalType), principalID)
+}
+
+func (c *impl) LoginStatuses(ctx context.Context, principalType PrincipalType, tenantID int64, principalIDs []string) (map[string]string, error) {
+	return c.management.LoginStatuses(ctx, domain.PrincipalType(principalType), tenantID, principalIDs)
 }
 
 func (c *impl) DeleteCredential(ctx context.Context, principalType PrincipalType, principalID string) error {

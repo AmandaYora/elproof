@@ -18,6 +18,7 @@ import (
 )
 
 type Module struct {
+	transactionService          *application.TransactionService
 	planHandler                 *presentation.PlanHandler
 	transactionHandler          *presentation.TransactionHandler
 	externalPlanHandler         *presentation.ExternalPlanHandler
@@ -47,6 +48,7 @@ func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClie
 	subscriptionReconciler := application.NewSubscriptionReconciler(appChargeRepo, paymentClient, subscriptionService, 24*time.Hour)
 
 	return &Module{
+		transactionService:          transactionService,
 		planHandler:                 presentation.NewPlanHandler(planService),
 		transactionHandler:          presentation.NewTransactionHandler(transactionService),
 		externalPlanHandler:         presentation.NewExternalPlanHandler(planService, appRegistry),
@@ -60,6 +62,12 @@ func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClie
 
 func (m *Module) Contracts() contracts.Contracts {
 	return m.contracts
+}
+
+// SetTenantDirectory completes the two-phase wiring with `platform` (built after
+// billing): tenant names and the tenant-name search of the transaction list.
+func (m *Module) SetTenantDirectory(d application.TenantDirectory) {
+	m.transactionService.SetTenants(d)
 }
 
 // StartSubscriptionReconciler starts the background safety net for

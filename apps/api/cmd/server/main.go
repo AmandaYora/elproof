@@ -339,6 +339,8 @@ func serve(cfg config.Config) {
 	// (A6) — payment is still built before billing.
 	billingModule := billing.NewModule(db, paymentModule.AppRegistry(), paymentModule.Client())
 	platformModule := platform.NewModule(db, staffModule.Contracts(), identityModule.Contracts(), billingModule.Contracts(), paymentModule.Client(), storageClient)
+	// The transaction list names tenants (and searches by tenant name) through platform.
+	billingModule.SetTenantDirectory(platformModule)
 	liveSupport.SetValidator(platformModule.SupportSessionValidator())
 	// Two-phase wiring (identity is built first): a tenant frozen by the
 	// platform team can neither log in nor refresh, and every request is

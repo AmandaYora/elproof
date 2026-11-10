@@ -11,7 +11,9 @@ import (
 
 type VendorCategoryRepository interface {
 	List(ctx context.Context, tenantID int64) ([]domain.VendorCategory, error)
-	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.VendorCategory, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string, sort pagination.Sort) ([]domain.VendorCategory, int64, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the default order.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.VendorCategory, error)
 	// NamesByIDs resolves several category names in one query.
 	NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
@@ -45,8 +47,13 @@ func (s *VendorCategoryService) List(ctx context.Context, tenantID int64) ([]dom
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *VendorCategoryService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.VendorCategory, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, params, search)
+func (s *VendorCategoryService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string, sort pagination.Sort) ([]domain.VendorCategory, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, params, search, sort)
+}
+
+// ListSortSpec is the sort whitelist and default of the paginated list.
+func (s *VendorCategoryService) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
 }
 
 func (s *VendorCategoryService) Get(ctx context.Context, tenantID, id int64) (*domain.VendorCategory, error) {

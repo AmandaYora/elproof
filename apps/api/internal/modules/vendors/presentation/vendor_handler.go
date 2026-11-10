@@ -46,6 +46,8 @@ type vendorResponse struct {
 	AttachmentIsImage bool    `json:"attachmentIsImage"`
 	IsActive          bool    `json:"isActive"`
 	CreatedAt         string  `json:"createdAt"`
+	// CategoryName names the category; only the paginated list fills it.
+	CategoryName string `json:"categoryName,omitempty"`
 }
 
 func toVendorResponse(v domain.Vendor) vendorResponse {
@@ -95,18 +97,32 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		params := pagination.FromRequest(r)
-		search := r.URL.Query().Get("search")
-		city := r.URL.Query().Get("city")
-		vendors, total, err := h.vendors.ListPaginated(r.Context(), tenantID, categoryID, params, search, city)
+		isActive, err := isActiveFilter(r)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		columns, defaultSort := h.vendors.ListSortSpec()
+		sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		filter := domain.VendorListFilter{
+			CategoryID: categoryID, Search: pagination.SearchFromRequest(r), City: r.URL.Query().Get("city"), IsActive: isActive,
+		}
+		vendors, total, err := h.vendors.ListPaginated(r.Context(), tenantID, params, filter, sort)
 		if err != nil {
 			writeAppError(w, err)
 			return
 		}
 		result := make([]vendorResponse, 0, len(vendors))
 		for _, v := range vendors {
-			result = append(result, toVendorResponse(v))
+			resp := toVendorResponse(v.Vendor)
+			resp.CategoryName = v.CategoryName
+			result = append(result, resp)
 		}
-		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+		response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total).WithSort(sort))
 	case http.MethodPost:
 		if !requirePermission(w, r, "vendor.manage") {
 			return
@@ -115,6 +131,33 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 	}
+}
+
+// Bulk activates or deactivates up to 100 vendors in one transaction (POST
+// /vendors/bulk {ids, action}). It needs what the single toggle needs
+// (vendor.manage). Ids that are not this workspace's are reported as notFound.
+func (h *VendorHandler) Bulk(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := requireStaffTenant(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
+		return
+	}
+	if !requirePermission(w, r, "vendor.manage") {
+		return
+	}
+	ids, action, ok := readBulk(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.vendors.BulkSetActive(r.Context(), tenantID, ids, action)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Status vendor diperbarui", result)
 }
 
 // Export streams every vendor matching the same filters Collection's list

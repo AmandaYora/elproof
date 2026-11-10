@@ -31,8 +31,19 @@ type ProjectRef struct {
 	Name string
 }
 
+// ProjectLabel is what a list in another module shows next to a stored project
+// id: the project's name and event date.
+type ProjectLabel struct {
+	Name      string
+	EventDate time.Time
+}
+
 type Contracts interface {
 	ProjectExists(ctx context.Context, tenantID, projectID int64) (bool, error)
+	// ProjectLabels names several of the tenant's projects in one query (the
+	// clients list shows each client's project). Ids that are not this
+	// tenant's, or do not exist, are absent from the map.
+	ProjectLabels(ctx context.Context, tenantID int64, ids []int64) (map[int64]ProjectLabel, error)
 	// CountActiveProjects counts projects not completed, cancelled or
 	// archived (onboarding checklist / trial usage).
 	CountActiveProjects(ctx context.Context, tenantID int64) (int, error)
@@ -72,6 +83,18 @@ func New(projects *application.ProjectService, vendorEngagements *application.Ve
 
 func (c *impl) ProjectExists(ctx context.Context, tenantID, projectID int64) (bool, error) {
 	return c.projects.ExistsForTenant(ctx, tenantID, projectID)
+}
+
+func (c *impl) ProjectLabels(ctx context.Context, tenantID int64, ids []int64) (map[int64]ProjectLabel, error) {
+	labels, err := c.projects.Labels(ctx, tenantID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]ProjectLabel, len(labels))
+	for id, l := range labels {
+		out[id] = ProjectLabel{Name: l.Name, EventDate: l.EventDate}
+	}
+	return out, nil
 }
 
 func (c *impl) ProjectPICStaffID(ctx context.Context, tenantID, projectID int64) (int64, error) {

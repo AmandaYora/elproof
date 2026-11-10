@@ -29,6 +29,10 @@ type CredentialRepository interface {
 	UpdateUsername(ctx context.Context, credentialID int64, username string) error
 	Delete(ctx context.Context, credentialID int64) error
 	FindByPrincipal(ctx context.Context, principalType domain.PrincipalType, principalID string) (*domain.Credential, error)
+	// ListByPrincipals reads the logins of several principals of one workspace
+	// in one query (tenant_id is part of the filter, so an id of another
+	// workspace never resolves). Principals without a login are absent.
+	ListByPrincipals(ctx context.Context, principalType domain.PrincipalType, tenantID int64, principalIDs []string) ([]*domain.Credential, error)
 	Create(ctx context.Context, cred *domain.Credential) error
 	UpdatePasswordHash(ctx context.Context, principalType domain.PrincipalType, principalID string, passwordHash string) error
 	SetActive(ctx context.Context, principalType domain.PrincipalType, principalID string, isActive bool) error

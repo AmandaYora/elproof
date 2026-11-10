@@ -29,6 +29,9 @@ type Filter struct {
 	TenantID  *int64
 	// Outcome: "ok" (2xx) or "failed" (anything else); "" for both.
 	Outcome string
+	// Action keeps only entries with exactly this action label
+	// ("POST /tenants/{id}/toggle-suspension").
+	Action string
 	// Query matches the action or path (substring).
 	Query string
 	// From is inclusive, To exclusive; zero means unbounded.

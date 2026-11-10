@@ -714,6 +714,23 @@ time, never double-applied.
 * `vendor_issues.project_vendor_id` is NULLable and `vendor_issues.is_client_visible BOOLEAN NOT NULL DEFAULT TRUE` was added (migration `000069`).
 * Down migrations delete what the old shape cannot hold (soft-deleted rows with their evidence, kendala without a vendor); stored objects stay in the bucket.
 
+## Module `audit` — migrations `000049`, `000059`, `000070` (ADR-0035 for the last)
+
+### `audit_log`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| occurred_at | DATETIME(3) | `KEY idx_audit_log_occurred_at` |
+| actor_type, actor_id, actor_role | VARCHAR(30), VARCHAR(64), VARCHAR(50) | `KEY idx_audit_log_actor (actor_type, actor_id, occurred_at)` |
+| tenant_id | BIGINT UNSIGNED NULL | migration `000059`; `KEY idx_audit_log_tenant (tenant_id, occurred_at)` |
+| action | VARCHAR(120) | readable label, e.g. `POST /tenants/{id}/toggle-suspension`. **Migration `000070`:** `KEY idx_audit_log_action (action, id)` — serves the exact `?action=` filter of `GET /audit-log` and `ORDER BY action, id` (Tahap 6 sorting) without sorting the whole append-only table; down drops it |
+| method, path, status_code, ip, user_agent | VARCHAR(10), VARCHAR(255), SMALLINT UNSIGNED, VARCHAR(64), VARCHAR(255) | |
+
+Append-only from the application. No other index was added for Tahap 6: the other sortable columns of the paginated lists (`projects`, `clients`, `vendors`, `venues`,
+`staff_members`, `vendor_categories`) are ordered inside one workspace's rows (`tenant_id` is the leading key of their existing indexes), `remaining` and `nextDueDate` of
+`GET /projects` are correlated sub-selects on the existing `client_payments (project_id)` and `client_payment_terms (project_id, due_date)` keys, and the transaction list
+sorts on `created_at`/`status` (existing composite indexes) or `amount` (a scan, on the Platform Console only).
+
 ## Cross-module reference summary (no SQL FKs across this boundary)
 
 ```

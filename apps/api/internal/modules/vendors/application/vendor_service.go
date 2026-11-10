@@ -35,7 +35,11 @@ var allowedVendorAttachmentMimeTypes = map[string]bool{
 
 type VendorRepository interface {
 	List(ctx context.Context, tenantID int64, categoryID *int64) ([]domain.Vendor, error)
-	ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search, city string) ([]domain.Vendor, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VendorListFilter, sort pagination.Sort) ([]domain.VendorRow, int64, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the default order.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
+	// BulkSetActive flips is_active of several vendors of the tenant in one transaction.
+	BulkSetActive(ctx context.Context, tenantID int64, ids []int64, active bool) (domain.BulkResult, error)
 	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
 	ListFiltered(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Vendor, error)
@@ -76,8 +80,19 @@ func (s *VendorService) List(ctx context.Context, tenantID int64, categoryID *in
 	return s.repo.List(ctx, tenantID, categoryID)
 }
 
-func (s *VendorService) ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search, city string) ([]domain.Vendor, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, categoryID, params, search, city)
+func (s *VendorService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VendorListFilter, sort pagination.Sort) ([]domain.VendorRow, int64, error) {
+	return s.repo.ListPaginated(ctx, tenantID, params, f, sort)
+}
+
+// ListSortSpec is the sort whitelist and default of the paginated list.
+func (s *VendorService) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
+}
+
+// BulkSetActive activates or deactivates up to MaxBulkIDs vendors of the tenant
+// at once, atomically; ids that are not the tenant's come back as notFound.
+func (s *VendorService) BulkSetActive(ctx context.Context, tenantID int64, ids []int64, action domain.BulkAction) (domain.BulkResult, error) {
+	return s.repo.BulkSetActive(ctx, tenantID, ids, action.Target())
 }
 
 // Export backs "Export Excel" -- same filters as ListPaginated (so "filter

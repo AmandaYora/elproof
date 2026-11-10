@@ -143,6 +143,32 @@ func (r *MySQLCredentialRepository) FindByPrincipal(ctx context.Context, princip
 	return scanCredential(row)
 }
 
+func (r *MySQLCredentialRepository) ListByPrincipals(ctx context.Context, principalType domain.PrincipalType, tenantID int64, principalIDs []string) ([]*domain.Credential, error) {
+	if len(principalIDs) == 0 {
+		return nil, nil
+	}
+	args := []interface{}{string(principalType), tenantID}
+	for _, id := range principalIDs {
+		args = append(args, id)
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+credentialColumns+` FROM credentials WHERE principal_type = ? AND tenant_id = ? AND principal_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(principalIDs)), ",")+`)`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var creds []*domain.Credential
+	for rows.Next() {
+		c, err := scanCredentialRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		creds = append(creds, c)
+	}
+	return creds, rows.Err()
+}
+
 func (r *MySQLCredentialRepository) Create(ctx context.Context, cred *domain.Credential) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO credentials (tenant_id, principal_type, principal_id, username, email, google_sub, password_hash, role, role_id, display_name, is_active)

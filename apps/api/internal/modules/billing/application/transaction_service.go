@@ -3,6 +3,8 @@ package application
 import (
 	"context"
 	"elproof/internal/shared/apperror"
+	"sort"
+	"strings"
 	"time"
 
 	"elproof/internal/modules/billing/domain"
@@ -11,7 +13,11 @@ import (
 
 type TransactionRepository interface {
 	List(ctx context.Context, tenantID *int64) ([]domain.Transaction, error)
-	ListPaginated(ctx context.Context, tenantID *int64, params pagination.Params, status string) ([]domain.Transaction, int64, error)
+	ListPaginated(ctx context.Context, tenantID *int64, params pagination.Params, f domain.TransactionFilter, sort pagination.Sort) ([]domain.Transaction, int64, error)
+	// ListAllFiltered returns every match, newest first (ordering by tenant name happens in memory).
+	ListAllFiltered(ctx context.Context, tenantID *int64, f domain.TransactionFilter) ([]domain.Transaction, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the default order.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
 	// FindByID returns one transaction or nil; a non-nil tenantID confines it to that tenant.
 	FindByID(ctx context.Context, tenantID *int64, id int64) (*domain.Transaction, error)
 	// ListPaidSince returns transactions with status "paid" paid at or after `since` (granted ones are not revenue).
@@ -20,9 +26,26 @@ type TransactionRepository interface {
 	UpdateStatusByReference(ctx context.Context, paymentReference string, status domain.TransactionStatus, paidAt *time.Time) error
 }
 
-type TransactionService struct {
-	repo TransactionRepository
+// TenantDirectory is what the transaction list needs from `platform`: the
+// tenants' names (the ledger stores only tenant ids) and the ids of the tenants
+// whose name matches a search. Declared here and wired in cmd/server, so billing
+// never imports platform.
+type TenantDirectory interface {
+	TenantNames(ctx context.Context, ids []int64) (map[int64]string, error)
+	SearchTenantIDs(ctx context.Context, text string, limit int) ([]int64, error)
 }
+
+// maxSearchTenants bounds how many tenants a name search resolves: a search
+// matching more than this many workspaces is too broad to be what was meant.
+const maxSearchTenants = 1000
+
+type TransactionService struct {
+	repo    TransactionRepository
+	tenants TenantDirectory
+}
+
+// SetTenants completes the two-phase wiring with `platform` (cmd/server).
+func (s *TransactionService) SetTenants(d TenantDirectory) { s.tenants = d }
 
 func NewTransactionService(repo TransactionRepository) *TransactionService {
 	return &TransactionService{repo: repo}
@@ -32,8 +55,117 @@ func (s *TransactionService) List(ctx context.Context, tenantID *int64) ([]domai
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *TransactionService) ListPaginated(ctx context.Context, tenantID *int64, params pagination.Params, status string) ([]domain.Transaction, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, params, status)
+// TransactionSortSpec is the whitelist of ?sort= and its default order (today's:
+// newest first). createdAt, amount and status are SQL; tenantName is ordered after
+// the names are read from `platform`.
+func (s *TransactionService) TransactionSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
+}
+
+// TransactionRow is a transaction with its tenant's name ("" when it cannot be resolved).
+type TransactionRow struct {
+	domain.Transaction
+	TenantName string
+}
+
+const sortTenantName = "tenantName"
+
+// ListPage is the transaction list: filters and ordering run in SQL on this
+// module's table; the tenant's name (and the tenants a name search matches) come
+// from `platform` in one batch call. Ordering by tenantName needs every matching
+// transaction's tenant name, so those rows are read, named, ordered and sliced here.
+func (s *TransactionService) ListPage(ctx context.Context, tenantID *int64, params pagination.Params, f domain.TransactionFilter, sort pagination.Sort) ([]TransactionRow, int64, error) {
+	if f.Search != "" && s.tenants != nil {
+		ids, err := s.tenants.SearchTenantIDs(ctx, f.Search, maxSearchTenants)
+		if err != nil {
+			return nil, 0, err
+		}
+		f.TenantIDs = ids
+	}
+
+	var page []domain.Transaction
+	var total int64
+	var names map[int64]string
+	if sort.Field == sortTenantName {
+		all, err := s.repo.ListAllFiltered(ctx, tenantID, f)
+		if err != nil {
+			return nil, 0, err
+		}
+		if names, err = s.namesOf(ctx, all); err != nil {
+			return nil, 0, err
+		}
+		sortByTenantName(all, names, sort.Desc)
+		total = int64(len(all))
+		start, end := params.Offset(), params.Offset()+params.Limit
+		if start > len(all) {
+			start = len(all)
+		}
+		if end > len(all) {
+			end = len(all)
+		}
+		page = all[start:end]
+	} else {
+		var err error
+		if page, total, err = s.repo.ListPaginated(ctx, tenantID, params, f, sort); err != nil {
+			return nil, 0, err
+		}
+		if names, err = s.namesOf(ctx, page); err != nil {
+			return nil, 0, err
+		}
+	}
+	rows := make([]TransactionRow, len(page))
+	for i, t := range page {
+		rows[i] = TransactionRow{Transaction: t, TenantName: names[t.TenantID]}
+	}
+	return rows, total, nil
+}
+
+// NameOf labels one transaction (the receipt page); "" when unresolved.
+func (s *TransactionService) NameOf(ctx context.Context, t domain.Transaction) string {
+	names, err := s.namesOf(ctx, []domain.Transaction{t})
+	if err != nil {
+		return ""
+	}
+	return names[t.TenantID]
+}
+
+func (s *TransactionService) namesOf(ctx context.Context, list []domain.Transaction) (map[int64]string, error) {
+	if s.tenants == nil || len(list) == 0 {
+		return map[int64]string{}, nil
+	}
+	seen := map[int64]bool{}
+	var ids []int64
+	for _, t := range list {
+		if !seen[t.TenantID] {
+			seen[t.TenantID] = true
+			ids = append(ids, t.TenantID)
+		}
+	}
+	return s.tenants.TenantNames(ctx, ids)
+}
+
+// sortByTenantName orders transactions by their tenant's name, ignoring case;
+// a tenant whose name does not resolve sorts last whatever the direction, and
+// ties keep the transaction id order in the same direction.
+func sortByTenantName(list []domain.Transaction, names map[int64]string, desc bool) {
+	sort.SliceStable(list, func(i, j int) bool {
+		a, aok := names[list[i].TenantID]
+		b, bok := names[list[j].TenantID]
+		if aok != bok {
+			return aok // unresolved last, both directions
+		}
+		a, b = strings.ToLower(a), strings.ToLower(b)
+		if a == b {
+			if desc {
+				return list[i].ID > list[j].ID
+			}
+			return list[i].ID < list[j].ID
+		}
+		if desc {
+			return a > b
+		}
+		return a < b
+	})
 }
 
 // PaidSince backs the platform revenue metrics.

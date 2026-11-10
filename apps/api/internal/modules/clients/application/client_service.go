@@ -19,7 +19,10 @@ import (
 type ClientRepository interface {
 	ListByProject(ctx context.Context, tenantID, projectID int64) ([]domain.Client, error)
 	ListByTenant(ctx context.Context, tenantID int64) ([]domain.Client, error)
-	ListByTenantPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Client, int64, error)
+	ListByTenantPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.ListFilter, sort pagination.Sort) ([]domain.Client, int64, error)
+	ListAllFiltered(ctx context.Context, tenantID int64, f domain.ListFilter) ([]domain.Client, error)
+	// ListSortSpec: the columns of this module's table the list can order by in SQL.
+	ListSortSpec() map[string]pagination.SortColumn
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Client, error)
 	Create(ctx context.Context, c *domain.Client) error
 	Update(ctx context.Context, c *domain.Client) error
@@ -106,8 +109,129 @@ func (s *ClientService) ListByTenant(ctx context.Context, tenantID int64) ([]dom
 	return s.repo.ListByTenant(ctx, tenantID)
 }
 
-func (s *ClientService) ListByTenantPaginated(ctx context.Context, tenantID int64, params pagination.Params, search string) ([]domain.Client, int64, error) {
-	return s.repo.ListByTenantPaginated(ctx, tenantID, params, search)
+// ClientSortSpec is the whitelist of GET /clients?sort= and its default order
+// (today's: oldest first). name, role and createdAt are ordered by SQL; the
+// three others (domain.SortProjectName, SortProjectEventDate, SortLoginStatus)
+// are owned by other modules and ordered after they have been read.
+func (s *ClientService) ClientSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	columns := map[string]pagination.SortColumn{}
+	for name, col := range s.repo.ListSortSpec() {
+		columns[name] = col
+	}
+	for _, name := range []string{domain.SortProjectName, domain.SortProjectEventDate, domain.SortLoginStatus} {
+		columns[name] = pagination.Col("") // never rendered: these are ordered in memory
+	}
+	return columns, pagination.By("createdAt", false)
+}
+
+// ClientPage is one page of the list with its total.
+type ClientPage struct {
+	Rows  []domain.ClientRow
+	Total int64
+}
+
+// ListPage is the paginated client list: the SQL filters (search, role, project)
+// and ordering run in this module's table; the project's name and event date
+// come from `projects` and the sign-in state from `identity`, each in ONE batch
+// call for the rows that need them. When the order or the loginStatus filter
+// needs those foreign values, the matching clients are read (rows of this
+// tenant only, after the SQL filters), their foreign values resolved, and the
+// filtering, ordering and slicing done here: a tenant has hundreds of clients,
+// not millions, and no join into another module's tables is allowed.
+func (s *ClientService) ListPage(ctx context.Context, tenantID int64, params pagination.Params, f domain.ListFilter, sort pagination.Sort) (*ClientPage, error) {
+	if !domain.NeedsMemoryPaging(sort.Field, f.LoginStatus) {
+		list, total, err := s.repo.ListByTenantPaginated(ctx, tenantID, params, f, sort)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := s.enrich(ctx, tenantID, list, true, true)
+		if err != nil {
+			return nil, err
+		}
+		return &ClientPage{Rows: rows, Total: total}, nil
+	}
+
+	all, err := s.repo.ListAllFiltered(ctx, tenantID, f)
+	if err != nil {
+		return nil, err
+	}
+	needsProject := sort.Field == domain.SortProjectName || sort.Field == domain.SortProjectEventDate
+	needsLogin := f.LoginStatus != "" || sort.Field == domain.SortLoginStatus
+	rows, err := s.enrich(ctx, tenantID, all, needsProject, needsLogin)
+	if err != nil {
+		return nil, err
+	}
+	rows = domain.FilterByLoginStatus(rows, f.LoginStatus)
+	domain.SortRows(rows, sort.Field, sort.Desc)
+	total := int64(len(rows))
+	start := params.Offset()
+	if start > len(rows) {
+		start = len(rows)
+	}
+	end := start + params.Limit
+	if end > len(rows) {
+		end = len(rows)
+	}
+	page := rows[start:end]
+	// Whatever the page still lacks (the other foreign value) is read for the page only.
+	if !needsProject || !needsLogin {
+		clients := make([]domain.Client, len(page))
+		for i, r := range page {
+			clients[i] = r.Client
+		}
+		page, err = s.enrich(ctx, tenantID, clients, true, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &ClientPage{Rows: page, Total: total}, nil
+}
+
+// enrich attaches the project label and the login state to clients, one batch
+// call to `projects` and one to `identity` (skipped when not wanted).
+func (s *ClientService) enrich(ctx context.Context, tenantID int64, list []domain.Client, withProject, withLogin bool) ([]domain.ClientRow, error) {
+	rows := make([]domain.ClientRow, len(list))
+	for i, c := range list {
+		rows[i].Client = c
+	}
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	if withProject {
+		seen := map[int64]bool{}
+		var projectIDs []int64
+		for _, c := range list {
+			if !seen[c.ProjectID] {
+				seen[c.ProjectID] = true
+				projectIDs = append(projectIDs, c.ProjectID)
+			}
+		}
+		labels, err := s.projects.ProjectLabels(ctx, tenantID, projectIDs)
+		if err != nil {
+			return nil, err
+		}
+		for i := range rows {
+			if l, ok := labels[rows[i].Client.ProjectID]; ok {
+				rows[i].ProjectName = l.Name
+				d := l.EventDate
+				rows[i].ProjectEventDate = &d
+			}
+		}
+	}
+	if withLogin {
+		ids := make([]string, len(list))
+		for i, c := range list {
+			ids[i] = formatID(c.ID)
+		}
+		statuses, err := s.identity.LoginStatuses(ctx, identitycontracts.PrincipalClient, tenantID, ids)
+		if err != nil {
+			return nil, err
+		}
+		for i := range rows {
+			rows[i].LoginStatus = statuses[formatID(rows[i].Client.ID)]
+		}
+	}
+	return rows, nil
 }
 
 func (s *ClientService) Get(ctx context.Context, tenantID, id int64) (*domain.Client, error) {

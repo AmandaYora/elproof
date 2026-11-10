@@ -18,7 +18,9 @@ import (
 
 type StaffRepository interface {
 	List(ctx context.Context, tenantID int64) ([]domain.StaffMember, error)
-	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, role string) ([]domain.StaffMember, int64, error)
+	ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.StaffListFilter, sort pagination.Sort) ([]domain.StaffMember, int64, error)
+	// ListSortSpec: the columns of staff_members the list can order by in SQL.
+	ListSortSpec() map[string]pagination.SortColumn
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.StaffMember, error)
 	Create(ctx context.Context, member *domain.StaffMember) error
 	Update(ctx context.Context, member *domain.StaffMember) error
@@ -171,8 +173,50 @@ func (s *StaffService) List(ctx context.Context, tenantID int64) ([]domain.Staff
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *StaffService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, role string) ([]domain.StaffMember, int64, error) {
-	return s.repo.ListPaginated(ctx, tenantID, params, search, role)
+// StaffSortSpec is the whitelist of GET /staff?sort= and its default order
+// (today's: oldest first). name, title, isActive and createdAt are ordered by
+// SQL; roleName by the current role name, which `access` owns, after the names
+// are read.
+func (s *StaffService) StaffSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	columns := map[string]pagination.SortColumn{}
+	for name, col := range s.repo.ListSortSpec() {
+		columns[name] = col
+	}
+	columns[domain.SortRoleName] = pagination.Col("role_id") // replaced by the ranked column in ListPaginated
+	return columns, pagination.By("createdAt", false)
+}
+
+// ListPaginated is the team list page. Ordering by roleName ranks the members by
+// the role's CURRENT name, which `access` owns: the workspace's role names are read
+// (a handful of roles), and the SQL orders by the position of role_id in the
+// name-ordered list. Every other order is a plain column.
+func (s *StaffService) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.StaffListFilter, sort pagination.Sort) ([]domain.StaffMember, int64, error) {
+	if sort.Field == domain.SortRoleName {
+		sort = sort.With(pagination.RankedCol("role_id", domain.SortRoleIDsByName(s.RoleNames(ctx, tenantID))))
+	}
+	return s.repo.ListPaginated(ctx, tenantID, params, f, sort)
+}
+
+// LoginStatuses is LoginStatus for a page of members in one batch call
+// (a member whose state cannot be read is "unknown").
+func (s *StaffService) LoginStatuses(ctx context.Context, tenantID int64, members []domain.StaffMember) map[int64]string {
+	out := make(map[int64]string, len(members))
+	ids := make([]string, len(members))
+	for i, m := range members {
+		ids[i] = strconv.FormatInt(m.ID, 10)
+	}
+	statuses, err := s.identity.LoginStatuses(ctx, identitycontracts.PrincipalStaff, tenantID, ids)
+	if err != nil {
+		logger.Error("login statuses for staff of tenant %d: %v", tenantID, err)
+		for _, m := range members {
+			out[m.ID] = "unknown"
+		}
+		return out
+	}
+	for _, m := range members {
+		out[m.ID] = statuses[strconv.FormatInt(m.ID, 10)]
+	}
+	return out
 }
 
 func (s *StaffService) Get(ctx context.Context, tenantID, id int64) (*domain.StaffMember, error) {

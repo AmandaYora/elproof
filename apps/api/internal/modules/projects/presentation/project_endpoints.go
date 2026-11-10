@@ -8,6 +8,7 @@ import (
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/response"
@@ -42,10 +43,18 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims st
 		return
 	}
 	params := pagination.FromRequest(r)
-	search := r.URL.Query().Get("search")
-	status := r.URL.Query().Get("status")
-	showArchived := r.URL.Query().Get("archived") == "true"
-	projects, total, err := h.projects.ListPaginated(r.Context(), claims.tenantID, picStaffID, picSalesStaffID, params, search, status, showArchived)
+	filter, err := projectListFilter(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	columns, defaultSort := h.projects.ListSortSpec()
+	sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	projects, total, err := h.projects.ListPaginated(r.Context(), claims.tenantID, picStaffID, picSalesStaffID, params, filter, sort)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -55,7 +64,74 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request, claims st
 		writeAppError(w, err)
 		return
 	}
-	response.OKPaginated(w, "ok", result, pagination.BuildMeta(params, total))
+	money, err := h.projects.ListMoney(r.Context(), projects)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	items := make([]projectListItem, len(result))
+	for i, resp := range result {
+		items[i] = toProjectListItem(resp, projects[i].ID, money)
+	}
+	response.OKPaginated(w, "ok", items, pagination.BuildMeta(params, total).WithSort(sort))
+}
+
+// projectListFilter reads the filters of GET /projects: q/search, status,
+// archived, picStaffId, eventFrom, eventTo (both inclusive). Bad values are one
+// 422 naming every offending key.
+func projectListFilter(r *http.Request) (domain.ProjectListFilter, error) {
+	q := r.URL.Query()
+	f := domain.ProjectListFilter{
+		Search: pagination.SearchFromRequest(r), Status: q.Get("status"), ShowArchived: q.Get("archived") == "true",
+	}
+	bad := map[string][]string{}
+	if raw := q.Get("picStaffId"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 1 {
+			bad["picStaffId"] = []string{"PIC tidak valid"}
+		} else {
+			f.PICStaffID = &id
+		}
+	}
+	date := func(key string) *time.Time {
+		raw := q.Get(key)
+		if raw == "" {
+			return nil
+		}
+		t, err := parseDate(raw)
+		if err != nil {
+			bad[key] = []string{"Tanggal harus berformat YYYY-MM-DD"}
+			return nil
+		}
+		return &t
+	}
+	f.EventFrom, f.EventTo = date("eventFrom"), date("eventTo")
+	if f.EventFrom != nil && f.EventTo != nil && f.EventTo.Before(*f.EventFrom) {
+		bad["eventTo"] = []string{"Tanggal akhir tidak boleh sebelum tanggal awal"}
+	}
+	if len(bad) > 0 {
+		return f, apperror.Validation("Filter proyek tidak valid", bad)
+	}
+	return f, nil
+}
+
+// projectListItem is a row of the paginated list: the project as GET
+// /projects/{id} shows it plus the two derived columns.
+type projectListItem struct {
+	projectResponse
+	// Remaining is what the client still owes on the contract (never negative).
+	Remaining int64 `json:"remaining"`
+	// NextDueDate is the due date of the earliest installment not fully paid, or null.
+	NextDueDate *string `json:"nextDueDate"`
+}
+
+func toProjectListItem(resp projectResponse, id int64, money map[int64]domain.ListMoney) projectListItem {
+	item := projectListItem{projectResponse: resp}
+	if m, ok := money[id]; ok {
+		item.Remaining = m.Remaining
+		item.NextDueDate = formatDatePtr(m.NextDueDate)
+	}
+	return item
 }
 
 // toProjectResponsesWithProgress sets `.Progress` on every returned row using

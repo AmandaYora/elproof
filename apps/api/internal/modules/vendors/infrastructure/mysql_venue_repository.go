@@ -99,32 +99,50 @@ func (r *MySQLVenueRepository) List(ctx context.Context, tenantID int64) ([]doma
 	return venues, rows.Err()
 }
 
+// venueSortColumns is the sort whitelist of GET /venues (ADR-0035).
+var venueSortColumns = map[string]pagination.SortColumn{
+	"name":        pagination.Col("name"),
+	"city":        pagination.NullableCol("city"),
+	"capacity":    pagination.NullableCol("capacity"),
+	"rentalPrice": pagination.NullableCol("rental_price"),
+	"isActive":    pagination.Col("is_active"),
+	"createdAt":   pagination.Col("created_at"),
+}
+
+// ListSortSpec is the whitelist and the default order of GET /venues (today's:
+// oldest first).
+func (r *MySQLVenueRepository) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return venueSortColumns, pagination.By("createdAt", false)
+}
+
 // ListPaginated backs the real `GET /venues` list page -- List above stays
 // as-is for the venue-picker (attach-to-project) dropdown and the bulk
 // import's prefetch, both of which need the full roster in one call.
-func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, search, city string) ([]domain.Venue, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM venues WHERE tenant_id = ?`
-	listQuery := `SELECT ` + venueColumns + ` FROM venues WHERE tenant_id = ?`
+func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VenueListFilter, sort pagination.Sort) ([]domain.Venue, int64, error) {
+	where := ` WHERE tenant_id = ?`
 	args := []interface{}{tenantID}
-	if search != "" {
-		countQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		listQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(search) + "%"
+	if f.Search != "" {
+		where += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like)
 	}
-	if city != "" {
-		countQuery += ` AND city = ?`
-		listQuery += ` AND city = ?`
-		args = append(args, city)
+	if f.City != "" {
+		where += ` AND city = ?`
+		args = append(args, f.City)
+	}
+	if f.IsActive != nil {
+		where += ` AND is_active = ?`
+		args = append(args, *f.IsActive)
 	}
 
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM venues`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	listQuery += ` ORDER BY id LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+venueColumns+` FROM venues`+where+sort.OrderBy("id")+` LIMIT ? OFFSET ?`,
+		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -139,6 +157,12 @@ func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64
 		venues = append(venues, *v)
 	}
 	return venues, total, rows.Err()
+}
+
+// BulkSetActive activates or deactivates several venues of the tenant in one
+// transaction (POST /venues/bulk).
+func (r *MySQLVenueRepository) BulkSetActive(ctx context.Context, tenantID int64, ids []int64, active bool) (domain.BulkResult, error) {
+	return bulkSetActive(ctx, r.db, "venues", tenantID, ids, active)
 }
 
 // ListFiltered backs Export -- same search/city filters as ListPaginated, but

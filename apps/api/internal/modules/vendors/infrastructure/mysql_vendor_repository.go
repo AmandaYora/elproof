@@ -79,51 +79,78 @@ func (r *MySQLVendorRepository) List(ctx context.Context, tenantID int64, catego
 	return vendors, rows.Err()
 }
 
+// vendorSortColumns is the sort whitelist of GET /vendors (ADR-0035). The list
+// joins vendor_categories (this module's own table) as c for categoryName.
+var vendorSortColumns = map[string]pagination.SortColumn{
+	"name":         pagination.Col("v.name"),
+	"categoryName": pagination.NullableCol("c.name"),
+	"city":         pagination.NullableCol("v.city"),
+	"priceAkad":    pagination.NullableCol("v.price_akad"),
+	"isActive":     pagination.Col("v.is_active"),
+	"createdAt":    pagination.Col("v.created_at"),
+}
+
+// ListSortSpec is the whitelist and the default order of GET /vendors (today's:
+// oldest first).
+func (r *MySQLVendorRepository) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return vendorSortColumns, pagination.By("createdAt", false)
+}
+
 // ListPaginated backs the real `GET /vendors` list page — List above stays
 // as-is for the vendor-picker dropdowns and the bulk import's prefetch, both
 // of which need the full roster in one call.
-func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int64, categoryID *int64, params pagination.Params, search, city string) ([]domain.Vendor, int64, error) {
-	countQuery := `SELECT COUNT(*) FROM vendors WHERE tenant_id = ?`
-	listQuery := `SELECT ` + vendorColumns + ` FROM vendors WHERE tenant_id = ?`
+func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VendorListFilter, sort pagination.Sort) ([]domain.VendorRow, int64, error) {
+	where := ` WHERE v.tenant_id = ?`
 	args := []interface{}{tenantID}
-	if categoryID != nil {
-		countQuery += ` AND category_id = ?`
-		listQuery += ` AND category_id = ?`
-		args = append(args, *categoryID)
+	if f.CategoryID != nil {
+		where += ` AND v.category_id = ?`
+		args = append(args, *f.CategoryID)
 	}
-	if search != "" {
-		countQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		listQuery += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(search) + "%"
+	if f.Search != "" {
+		where += ` AND (v.name LIKE ? OR v.pic_name LIKE ? OR v.email LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like)
 	}
-	if city != "" {
-		countQuery += ` AND city = ?`
-		listQuery += ` AND city = ?`
-		args = append(args, city)
+	if f.City != "" {
+		where += ` AND v.city = ?`
+		args = append(args, f.City)
+	}
+	if f.IsActive != nil {
+		where += ` AND v.is_active = ?`
+		args = append(args, *f.IsActive)
 	}
 
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vendors v`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	listQuery += ` ORDER BY id LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, listQuery, append(args, params.Limit, params.Offset())...)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+qualifyColumns("v", vendorColumns)+`, COALESCE(c.name, '')
+		 FROM vendors v LEFT JOIN vendor_categories c ON c.id = v.category_id AND c.tenant_id = v.tenant_id`+where+
+			sort.OrderBy("v.id")+` LIMIT ? OFFSET ?`,
+		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var vendors []domain.Vendor
+	var vendors []domain.VendorRow
 	for rows.Next() {
-		v, err := scanVendor(rows.Scan)
+		var categoryName string
+		v, err := scanVendor(func(dest ...interface{}) error { return rows.Scan(append(dest, &categoryName)...) })
 		if err != nil {
 			return nil, 0, err
 		}
-		vendors = append(vendors, *v)
+		vendors = append(vendors, domain.VendorRow{Vendor: *v, CategoryName: categoryName})
 	}
 	return vendors, total, rows.Err()
+}
+
+// BulkSetActive activates or deactivates several vendors of the tenant in one
+// transaction (POST /vendors/bulk).
+func (r *MySQLVendorRepository) BulkSetActive(ctx context.Context, tenantID int64, ids []int64, active bool) (domain.BulkResult, error) {
+	return bulkSetActive(ctx, r.db, "vendors", tenantID, ids, active)
 }
 
 // ListFiltered backs Export -- the same category/search/city filters as

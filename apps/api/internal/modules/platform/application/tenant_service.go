@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,7 +30,9 @@ import (
 
 type TenantRepository interface {
 	List(ctx context.Context) ([]domain.Tenant, error)
-	ListPaginated(ctx context.Context, params pagination.Params, filter domain.TenantFilter) ([]domain.Tenant, int64, error)
+	ListPaginated(ctx context.Context, params pagination.Params, filter domain.TenantFilter, sort pagination.Sort) ([]domain.Tenant, int64, error)
+	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the default order.
+	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
 	// ListFiltered returns every match, newest first (CSV export).
 	ListFiltered(ctx context.Context, filter domain.TenantFilter) ([]domain.Tenant, error)
 	FindByID(ctx context.Context, id int64) (*domain.Tenant, error)
@@ -54,6 +57,8 @@ type TenantRepository interface {
 	JoinedSince(ctx context.Context, since time.Time) ([]time.Time, error)
 	// NamesByIDs resolves business names for the given tenant ids.
 	NamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
+	// SearchIDsByName returns the ids of up to limit tenants whose business name contains text.
+	SearchIDsByName(ctx context.Context, text string, limit int) ([]int64, error)
 }
 
 // ObjectStorage is the narrow slice of internal/shared/storage.Client this
@@ -164,8 +169,41 @@ func (s *TenantService) List(ctx context.Context) ([]domain.Tenant, error) {
 	return s.repo.List(ctx)
 }
 
-func (s *TenantService) ListPaginated(ctx context.Context, params pagination.Params, filter domain.TenantFilter) ([]domain.Tenant, int64, error) {
-	return s.repo.ListPaginated(ctx, params, filter)
+func (s *TenantService) ListPaginated(ctx context.Context, params pagination.Params, filter domain.TenantFilter, sort pagination.Sort) ([]domain.Tenant, int64, error) {
+	if sort.Field == "planName" {
+		// The plan names belong to billing: rank the plan ids by name and let the
+		// SQL order by position in that list. A catalog that cannot be read leaves
+		// the plan-id order rather than failing the page.
+		plans, err := s.billing.ListPlans(ctx)
+		if err != nil {
+			logger.Error("tenants list: reading plans to order by name: %v", err)
+		}
+		sort = sort.With(pagination.RankedCol("plan_id", planIDsByName(plans)))
+	}
+	return s.repo.ListPaginated(ctx, params, filter, sort)
+}
+
+// planIDsByName lists the plan ids in the order of the plan names (ignoring
+// case, ties by id): the ranking the planName sort uses.
+func planIDsByName(plans []billingcontracts.Plan) []int64 {
+	sorted := append([]billingcontracts.Plan(nil), plans...)
+	sort.Slice(sorted, func(i, j int) bool {
+		a, b := strings.ToLower(sorted[i].Name), strings.ToLower(sorted[j].Name)
+		if a == b {
+			return sorted[i].ID < sorted[j].ID
+		}
+		return a < b
+	})
+	ids := make([]int64, len(sorted))
+	for i, p := range sorted {
+		ids[i] = p.ID
+	}
+	return ids
+}
+
+// ListSortSpec is the sort whitelist and default of the paginated tenant list.
+func (s *TenantService) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return s.repo.ListSortSpec()
 }
 
 // ListFiltered returns every workspace matching the filter, for export.

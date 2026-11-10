@@ -44,6 +44,9 @@ func auditWhere(f domain.Filter) (string, []interface{}) {
 	if f.TenantID != nil {
 		conds, args = append(conds, "tenant_id = ?"), append(args, *f.TenantID)
 	}
+	if f.Action != "" {
+		conds, args = append(conds, "action = ?"), append(args, f.Action)
+	}
 	switch f.Outcome {
 	case "ok":
 		conds = append(conds, "status_code BETWEEN 200 AND 299")
@@ -85,14 +88,29 @@ func scanAuditRows(rows *sql.Rows) ([]domain.Entry, error) {
 	return out, rows.Err()
 }
 
-func (r *MySQLAuditRepository) ListPaginated(ctx context.Context, params pagination.Params, f domain.Filter) ([]domain.Entry, int64, error) {
+// auditSortColumns is the sort whitelist of GET /audit-log (ADR-0035). actor
+// orders by actor type, then role, then the actor id as a number (ids are digit
+// strings; padding keeps "10" after "9").
+var auditSortColumns = map[string]pagination.SortColumn{
+	"createdAt": pagination.Col("occurred_at"),
+	"action":    pagination.Col("action"),
+	"actor":     pagination.Col("CONCAT(actor_type, '/', actor_role, '/', LPAD(actor_id, 20, '0'))"),
+}
+
+// ListSortSpec is the whitelist and the default order of GET /audit-log (today's:
+// newest first).
+func (r *MySQLAuditRepository) ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort) {
+	return auditSortColumns, pagination.By("createdAt", true)
+}
+
+func (r *MySQLAuditRepository) ListPaginated(ctx context.Context, params pagination.Params, f domain.Filter, sort pagination.Sort) ([]domain.Entry, int64, error) {
 	where, args := auditWhere(f)
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+auditColumns+` FROM audit_log`+where+` ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?`,
+		`SELECT `+auditColumns+` FROM audit_log`+where+sort.OrderBy("id")+` LIMIT ? OFFSET ?`,
 		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err

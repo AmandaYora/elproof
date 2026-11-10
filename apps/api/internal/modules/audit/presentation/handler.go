@@ -50,11 +50,13 @@ func isSuperAdmin(w http.ResponseWriter, r *http.Request) (*middleware.Claims, b
 }
 
 // filterFrom reads ?actorId=, ?actorType=, ?tenantId=, ?outcome=ok|failed,
-// ?q=, ?from= and ?to= (dates, YYYY-MM-DD; "to" is inclusive of that day).
+// ?action= (exact action label), ?q= or ?search= (substring of action or path),
+// ?from= and ?to= (dates, YYYY-MM-DD; "to" is inclusive of that day).
 func filterFrom(r *http.Request) domain.Filter {
 	q := r.URL.Query()
 	f := domain.Filter{
-		ActorID: q.Get("actorId"), ActorType: q.Get("actorType"), Outcome: q.Get("outcome"), Query: strings.TrimSpace(q.Get("q")),
+		ActorID: q.Get("actorId"), ActorType: q.Get("actorType"), Outcome: q.Get("outcome"), Action: strings.TrimSpace(q.Get("action")),
+		Query: pagination.SearchFromRequest(r),
 	}
 	if id, err := strconv.ParseInt(q.Get("tenantId"), 10, 64); err == nil && id > 0 {
 		f.TenantID = &id
@@ -78,7 +80,13 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := pagination.FromRequest(r)
-	entries, total, err := h.service.List(r.Context(), params, filterFrom(r))
+	columns, defaultSort := h.service.ListSortSpec()
+	sort, err := pagination.SortFromRequest(r, columns, defaultSort)
+	if err != nil {
+		response.FromError(w, err)
+		return
+	}
+	entries, total, err := h.service.List(r.Context(), params, filterFrom(r), sort)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Gagal memuat audit log", nil)
 		return
@@ -87,7 +95,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		out = append(out, toEntryResponse(e))
 	}
-	response.OKPaginated(w, "ok", out, pagination.BuildMeta(params, total))
+	response.OKPaginated(w, "ok", out, pagination.BuildMeta(params, total).WithSort(sort))
 }
 
 func toEntryResponse(e domain.Entry) entryResponse {

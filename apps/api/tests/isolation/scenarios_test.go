@@ -29,6 +29,15 @@ func (w *world) lists(t *testing.T, s *stack) {
 		"/api/v1/milestone-templates",
 		"/api/v1/dashboard", "/api/v1/dashboard/mine",
 		"/api/v1/subscription-transactions", "/api/v1/subscription-transactions?all=true",
+		// Tahap 6: sorting, filters and derived columns never widen the tenant scope.
+		"/api/v1/projects?sort=remaining:desc", "/api/v1/projects?sort=nextDueDate:asc&eventFrom=2020-01-01&eventTo=2099-12-31",
+		fmt.Sprintf("/api/v1/projects?picStaffId=%d", w.b.staffID), "/api/v1/projects?sort=name&q=RAHASIA",
+		"/api/v1/clients?page=1&sort=projectName", "/api/v1/clients?page=1&loginStatus=active&sort=loginStatus:desc", "/api/v1/clients?page=1&role=Bride&q=RAHASIA",
+		fmt.Sprintf("/api/v1/clients?projectId=%d&page=1&sort=name", w.Project), fmt.Sprintf("/api/v1/clients?projectId=%d&page=1", w.Project2),
+		"/api/v1/vendors?sort=categoryName:desc&isActive=true", "/api/v1/vendors?sort=priceAkad&q=RAHASIA", "/api/v1/venues?sort=capacity:desc&isActive=false",
+		"/api/v1/vendor-categories?sort=name:desc", "/api/v1/staff?sort=roleName&isActive=true", fmt.Sprintf("/api/v1/staff?roleId=%d", w.Role),
+		"/api/v1/subscription-transactions?sort=tenantName", "/api/v1/subscription-transactions?sort=amount:desc&search=RAHASIA",
+		"/api/v1/subscription-transactions?from=2020-01-01&to=2099-12-31&search=ELP-",
 		"/api/v1/tenants/me", "/api/v1/tenants/me/contact", "/api/v1/tenants/me/branding", "/api/v1/tenants/me/subscription",
 		"/api/v1/tenants/me/support-access", "/api/v1/trial-limits", "/api/v1/announcements/active",
 	}
