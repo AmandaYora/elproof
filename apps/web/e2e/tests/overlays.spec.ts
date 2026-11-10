@@ -53,7 +53,7 @@ test.describe("action menu", () => {
     await expect(trigger).toBeFocused();
 
     await page.keyboard.press("Enter");
-    await page.getByRole("menuitem", { name: "Duplikat project" }).click();
+    await page.getByRole("menuitem", { name: "Duplikat proyek" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     // The menu returning focus to its button must not steal it from the dialog.

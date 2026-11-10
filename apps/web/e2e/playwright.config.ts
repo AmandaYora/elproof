@@ -40,7 +40,7 @@ export default defineConfig({
     {
       // Behavior (overlays, proof stamps, call budgets): functional, no screenshots.
       name: "behavior",
-      testMatch: /(overlays|proof|forms|overview|lists)\.spec\.ts$/,
+      testMatch: /(overlays|proof|forms|overview|lists|nav|terms)\.spec\.ts$/,
       use: { viewport: { width: 1280, height: 800 } },
     },
     {
