@@ -33,8 +33,12 @@ lets each workspace edit its roles while ElProof keeps a fixed catalog of what c
   permissions per request (30-second cache, invalidated on edit) and puts `Grants` in the context.
   Handlers check `Grants.Can(key)` / `AllProjects`. Errors are `403 forbidden_permission`
   (the browser re-fetches its grants), `403 role_missing` (role deleted → sign out) and `401
-  session_revoked` for tokens without `rid`. Changing someone's role ends their sessions; editing
-  a role's permissions applies at once without a new sign-in.
+  session_revoked` for tokens without `rid`. Changing someone's role makes the access
+  tokens they hold stop working at once (`401 session_revoked`); the web client then refreshes and
+  carries on with the new role, without a new sign-in, and nothing of the old role is kept
+  (revised 2026-11-10, T-20261110-12: this sentence used to say the change "ends their sessions").
+  Deactivating or deleting someone does end every session. Editing a role's permissions applies at
+  once without a new sign-in.
 - **No escalation**: someone who is not the Owner may only hand out, edit, create or delete a staff
   role that their own role covers (`Grants.Covers`: same permissions or fewer, and `all` scope only
   if they have it), may not change the role they hold, and may not edit, re-invite, deactivate or
