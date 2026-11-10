@@ -11,7 +11,7 @@ const SECTIONS: LegalSection[] = [
     id: "ketentuan-umum",
     title: "1. Ketentuan Umum",
     body: [
-      `ElProof adalah layanan berbasis langganan (Software as a Service), bukan barang fisik. Kebijakan refund ini mengatur kondisi di mana Tenant berhak mengajukan pengembalian dana atas pembayaran langganan yang telah diproses melalui mitra payment gateway.`,
+      `ElProof adalah layanan berbasis langganan (Software as a Service), bukan barang fisik. Kebijakan refund ini mengatur kondisi di mana Tenant berhak mengajukan pengembalian dana atas pembayaran langganan yang telah diproses melalui mitra pembayaran pihak ketiga.`,
     ],
   },
   {
@@ -45,8 +45,8 @@ const SECTIONS: LegalSection[] = [
     id: "proses-waktu",
     title: "5. Proses dan Waktu Pengembalian Dana",
     body: [
-      `Refund yang disetujui diproses melalui mitra payment gateway yang sama dengan metode pembayaran awal, dan diteruskan ke rekening atau instrumen pembayaran Tenant selambat-lambatnya 14 (empat belas) hari kerja sejak persetujuan — mengikuti waktu proses mitra pembayaran terkait.`,
-      `ElProof tidak memungut biaya tambahan atas proses refund yang disetujui; biaya administrasi yang mungkin dikenakan oleh mitra payment gateway di luar kendali ElProof.`,
+      `Refund yang disetujui diproses melalui mitra pembayaran yang sama dengan metode pembayaran awal, dan diteruskan ke rekening atau instrumen pembayaran Tenant selambat-lambatnya 14 (empat belas) hari kerja sejak persetujuan — mengikuti waktu proses mitra pembayaran terkait.`,
+      `ElProof tidak memungut biaya tambahan atas proses refund yang disetujui; biaya administrasi yang mungkin dikenakan oleh mitra pembayaran di luar kendali ElProof.`,
     ],
   },
   {

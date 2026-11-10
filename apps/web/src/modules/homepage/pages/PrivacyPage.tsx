@@ -18,7 +18,7 @@ const SECTIONS: LegalSection[] = [
       `Profil usaha: nama WO, nomor WhatsApp, kota, dan logo yang Anda isi.`,
       `Bukti persetujuan: versi Syarat & Ketentuan yang disetujui, waktu persetujuan, alamat IP, dan jenis peramban saat mendaftar.`,
       `Data operasional yang dimasukkan WO: project pernikahan, client, vendor, timeline, pembayaran, kendala, serta dokumen dan foto bukti kerja.`,
-      `Data langganan: paket, periode aktif, dan riwayat pembayaran. Data kartu atau rekening diproses oleh mitra payment gateway dan tidak disimpan ElProof.`,
+      `Data langganan: paket, periode aktif, dan riwayat pembayaran. Data kartu atau rekening diproses oleh mitra pembayaran pihak ketiga dan tidak disimpan ElProof.`,
     ],
   },
   {
@@ -35,7 +35,7 @@ const SECTIONS: LegalSection[] = [
     id: "pembagian-data",
     title: "4. Pembagian Data",
     body: [
-      `ElProof tidak menjual data pribadi. Data dibagikan hanya kepada penyedia yang membantu menjalankan layanan: penyedia server dan penyimpanan objek, mitra payment gateway, dan Google untuk proses masuk. Mereka terikat kewajiban kerahasiaan.`,
+      `ElProof tidak menjual data pribadi. Data dibagikan hanya kepada penyedia yang membantu menjalankan layanan: penyedia server dan penyimpanan objek, mitra pembayaran, dan Google untuk proses masuk. Mereka terikat kewajiban kerahasiaan.`,
       `Data dapat diungkapkan bila diwajibkan oleh ketentuan hukum yang berlaku.`,
     ],
   },
