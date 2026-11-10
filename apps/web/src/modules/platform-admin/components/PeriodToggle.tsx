@@ -21,7 +21,7 @@ export function PeriodToggle({ value, onChange }: PeriodToggleProps) {
           onClick={() => onChange(option.value)}
           className={cn(
             "rounded px-3 py-1.5 text-[13px] font-medium transition-colors",
-            value === option.value ? "bg-navy-900 text-white" : "text-text-secondary hover:text-text-primary"
+            value === option.value ? "bg-primary text-primary-foreground" : "text-text-secondary hover:text-text-primary"
           )}
         >
           {option.label}

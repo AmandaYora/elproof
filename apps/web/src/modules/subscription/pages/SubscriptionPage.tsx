@@ -301,7 +301,7 @@ export default function SubscriptionPage() {
   function receiptLink(tx: (typeof transactions)[number]) {
     if (tx.status !== "paid") return null;
     return (
-      <Link to={ROUTE_PATHS.subscriptionReceipt(tx.id)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-navy-900 hover:underline">
+      <Link to={ROUTE_PATHS.subscriptionReceipt(tx.id)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline">
         <Receipt className="h-3.5 w-3.5" /> Kuitansi
       </Link>
     );
@@ -347,11 +347,11 @@ export default function SubscriptionPage() {
             {activePlans.map((p) => {
               const isCurrentPlan = p.id === tenant?.planId;
               return (
-                <Card key={p.id} className={isCurrentPlan ? "border-navy-900 ring-1 ring-navy-900" : ""}>
+                <Card key={p.id} className={isCurrentPlan ? "border-primary ring-1 ring-ring" : ""}>
                   <CardContent className="flex flex-col gap-4 py-5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-900 text-[15px] font-bold text-white">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-[15px] font-bold text-primary-foreground">
                           EP
                         </span>
                         <p className="text-[15px] font-bold text-text-primary">{p.name}</p>
@@ -360,7 +360,7 @@ export default function SubscriptionPage() {
                     </div>
 
                     <div className="flex items-end gap-1.5 border-t border-border-light pt-4">
-                      <span className="text-[24px] font-bold leading-none tabular-nums text-navy-900">{formatCurrency(p.price)}</span>
+                      <span className="text-[24px] font-bold leading-none tabular-nums text-primary">{formatCurrency(p.price)}</span>
                       <span className="pb-0.5 text-[12.5px] text-text-secondary">/ {p.durationMonths} bulan</span>
                     </div>
 
@@ -556,7 +556,7 @@ export default function SubscriptionPage() {
                     href={activeCharge.checkoutUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1.5 text-[13px] font-semibold text-navy-900 hover:underline"
+                    className="flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
                   >
                     Buka Halaman Pembayaran <ExternalLink className="h-3.5 w-3.5" />
                   </a>

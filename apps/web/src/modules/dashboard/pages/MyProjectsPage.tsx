@@ -85,7 +85,7 @@ export default function MyProjectsPage() {
                       <div className="min-w-0">
                         <Link
                           to={ROUTE_PATHS.projectDetail(String(p.id))}
-                          className="block truncate text-[15px] font-semibold text-text-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900"
+                          className="block truncate text-[15px] font-semibold text-text-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                         >
                           {p.name}
                         </Link>
@@ -94,7 +94,7 @@ export default function MyProjectsPage() {
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        <span className="font-display text-[22px] font-semibold leading-none tabular-nums text-navy-900">{days >= 0 ? `H-${days}` : `H+${Math.abs(days)}`}</span>
+                        <span className="text-[22px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-primary">{days >= 0 ? `H-${days}` : `H+${Math.abs(days)}`}</span>
                         <ProjectStatusBadge status={p.status} />
                       </div>
                     </div>

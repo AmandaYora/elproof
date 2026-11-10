@@ -60,7 +60,7 @@ function HelpLink({ message, label }: { message: string; label: string }) {
   }, [fetchContact]);
   if (!contact?.whatsapp) return null;
   return (
-    <a href={whatsappUrl(contact.whatsapp, message)} target="_blank" rel="noopener noreferrer" className="font-semibold text-navy-900 underline underline-offset-2">
+    <a href={whatsappUrl(contact.whatsapp, message)} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline underline-offset-2">
       {label}
     </a>
   );
@@ -68,7 +68,7 @@ function HelpLink({ message, label }: { message: string; label: string }) {
 
 function FullScreenMessage({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white px-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-card px-6 text-center">
       <h1 className="text-lg font-bold text-text-primary">{title}</h1>
       <div className="flex max-w-sm flex-col items-center gap-4 text-[14px] text-text-secondary">{children}</div>
     </div>
@@ -120,10 +120,10 @@ export default function ClientPortalLayout() {
     );
   }
   if (state === "idle" || state === "loading" || !home || !brandingHydrated || !grantsLoaded) {
-    // Waits on branding too: the hero and header read brand color live, and
-    // painting before it lands would flash ElProof's own navy first.
+    // Waits on branding too: the header shows the WO's logo and name, and
+    // painting before they land would swap them in visibly.
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white" role="status" aria-label="Memuat portal">
+      <div className="flex min-h-screen items-center justify-center bg-card" role="status" aria-label="Memuat portal">
         <Loader2 className="h-6 w-6 animate-spin text-text-secondary" />
       </div>
     );
@@ -141,14 +141,14 @@ export default function ClientPortalLayout() {
       <Toaster mobileOffset={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }} />
       <OfflineBanner />
 
-      <header className="sticky top-0 z-30 border-b border-border bg-white/90 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
-          <NavLink to={ROUTE_PATHS.portal("beranda")} className="flex shrink-0 items-center gap-2 text-[14px] font-bold text-navy-950">
+          <NavLink to={ROUTE_PATHS.portal("beranda")} className="flex shrink-0 items-center gap-2 text-[14px] font-bold text-foreground">
             {logoUrl ? (
               <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-8 w-auto max-w-[140px] object-contain" />
             ) : (
               <>
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-900 text-white">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <Heart className="h-4 w-4" fill="currentColor" aria-hidden />
                 </span>
                 {brandName ?? APP_NAME}
@@ -163,7 +163,7 @@ export default function ClientPortalLayout() {
                 to={ROUTE_PATHS.portal(item.tab)}
                 className={cn(
                   "rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors",
-                  isActive(item) ? "bg-navy-900 text-white" : "text-text-secondary hover:bg-surface-muted hover:text-text-primary",
+                  isActive(item) ? "bg-primary text-primary-foreground" : "text-text-secondary hover:bg-surface-muted hover:text-text-primary",
                 )}
               >
                 {item.label}
@@ -174,7 +174,7 @@ export default function ClientPortalLayout() {
           <button
             type="button"
             onClick={() => void logoutAndRedirect(navigate)}
-            className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy-900 md:flex"
+            className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring md:flex"
           >
             <LogOut className="h-3.5 w-3.5" aria-hidden /> Keluar
           </button>
@@ -189,7 +189,7 @@ export default function ClientPortalLayout() {
 
       <nav
         aria-label="Menu portal"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         <ul className="mx-auto grid max-w-md" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
           {items.map((item) => {
@@ -200,8 +200,8 @@ export default function ClientPortalLayout() {
                   to={ROUTE_PATHS.portal(item.tab)}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11.5px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-navy-900",
-                    active ? "text-navy-900" : "text-text-secondary",
+                    "flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11.5px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                    active ? "text-primary" : "text-text-secondary",
                   )}
                 >
                   <item.icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />

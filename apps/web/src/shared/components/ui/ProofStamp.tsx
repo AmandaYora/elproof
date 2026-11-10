@@ -61,8 +61,8 @@ export function ProofStamp({ proof, label, onOpen, seenKey, className }: ProofSt
       type="button"
       onClick={onOpen}
       className={cn(
-        "inline-flex min-h-8 items-center gap-1.5 rounded-2xl border border-success/30 bg-success-soft py-1 pr-3 pl-2 text-left text-[12.5px] leading-tight font-medium text-success-text pointer-coarse:min-h-11",
-        "hover:bg-success-soft/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
+        "inline-flex min-h-8 items-center gap-1.5 rounded-2xl border border-seal/60 bg-seal-soft py-1 pr-3 pl-2 text-left text-[12.5px] leading-tight font-semibold text-seal-text pointer-coarse:min-h-11",
+        "hover:border-seal focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
         className,
       )}
     >

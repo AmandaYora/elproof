@@ -184,7 +184,7 @@ export function ImportBulkModal({
           type="button"
           onClick={() => void handleDownloadTemplate()}
           disabled={downloadingTemplate}
-          className="flex items-center gap-1.5 self-start text-[13px] font-semibold text-navy-900 hover:underline disabled:opacity-60"
+          className="flex items-center gap-1.5 self-start text-[13px] font-semibold text-primary hover:underline disabled:opacity-60"
         >
           <Download className="h-3.5 w-3.5" />
           {downloadingTemplate ? "Mengunduh..." : "Unduh template"}
@@ -208,8 +208,8 @@ export function ImportBulkModal({
               }
             }}
             className={cn(
-              "flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900",
-              isDragging ? "border-navy-900 bg-navy-900/5" : "border-border hover:border-navy-900/40"
+              "flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
             )}
           >
             <UploadCloud className="h-8 w-8 text-text-secondary" />
@@ -230,7 +230,7 @@ export function ImportBulkModal({
 
         {(stage === "selected" || stage === "importing") && file && (
           <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted/40 px-4 py-3">
-            <FileSpreadsheet className="h-5 w-5 shrink-0 text-navy-900" />
+            <FileSpreadsheet className="h-5 w-5 shrink-0 text-primary" />
             <span className="flex-1 truncate text-[13px] font-medium text-text-primary">{file.name}</span>
             {stage === "selected" && (
               <button

@@ -198,7 +198,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                   key={s.value}
                   className={cn(
                     "flex cursor-pointer gap-3 rounded-md border px-3.5 py-3 transition-colors",
-                    scope === s.value ? "border-navy-900 bg-navy-900/[0.04]" : "border-border hover:bg-surface-muted",
+                    scope === s.value ? "border-primary bg-primary/[0.04]" : "border-border hover:bg-surface-muted",
                     readOnly && "cursor-default",
                   )}
                 >
@@ -208,7 +208,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                     value={s.value}
                     checked={scope === s.value}
                     onChange={() => setScope(s.value)}
-                    className="mt-1 accent-navy-900"
+                    className="mt-1 accent-primary"
                   />
                   <span>
                     <span className="block text-[13.5px] font-medium text-text-primary">{s.title}</span>
@@ -240,7 +240,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                       type="checkbox"
                       checked={granted.has(p.key)}
                       onChange={() => toggle(p.key)}
-                      className="mt-1 h-4 w-4 shrink-0 accent-navy-900"
+                      className="mt-1 h-4 w-4 shrink-0 accent-primary"
                     />
                     <span className="min-w-0">
                       <span className="block text-[13.5px] font-medium text-text-primary">{p.label}</span>

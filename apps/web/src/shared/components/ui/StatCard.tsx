@@ -39,7 +39,7 @@ export function StatCard({ label, value, sublabel, tone = "neutral", to, icon }:
     </>
   );
 
-  const className = "block rounded-lg border border-border bg-surface px-5 py-4 transition-colors hover:border-navy-900/30";
+  const className = "block rounded-lg border border-border bg-surface px-5 py-4 transition-colors hover:border-primary/30";
 
   if (to) {
     return (

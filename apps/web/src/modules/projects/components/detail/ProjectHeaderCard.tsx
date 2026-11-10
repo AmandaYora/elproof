@@ -257,7 +257,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <div className="rounded-md bg-surface-muted/60 p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <span className="text-2xl font-bold leading-none tabular-nums text-navy-900">{progress.overallPercent}%</span>
+                <span className="text-2xl font-bold leading-none tabular-nums text-primary">{progress.overallPercent}%</span>
                 <ConditionBadge condition={progress.condition} />
               </div>
               <span className="text-[12.5px] text-text-secondary">
@@ -368,7 +368,7 @@ function InfoField({ label, value, emphasize }: { label: string; value: string; 
   return (
     <div className="min-w-0">
       <p className="text-[12px] font-medium text-text-secondary">{label}</p>
-      <p className={emphasize ? "mt-0.5 text-[15px] font-bold tabular-nums text-navy-900" : "mt-0.5 text-[13.5px] font-medium text-text-primary"}>
+      <p className={emphasize ? "mt-0.5 text-[15px] font-bold tabular-nums text-primary" : "mt-0.5 text-[13.5px] font-medium text-text-primary"}>
         {value}
       </p>
     </div>

@@ -33,7 +33,7 @@ export function CashFlowCard({ weeks }: { weeks: CashFlowWeek[] }) {
             <span className="font-medium text-text-secondary">{weekLabel(w.weekStart)}</span>
             <span className="flex flex-col gap-1">
               <Bar label="Masuk" value={w.expectedIn} max={max} tone="bg-success" />
-              <Bar label="Keluar" value={w.expectedOut} max={max} tone="bg-navy-900" />
+              <Bar label="Keluar" value={w.expectedOut} max={max} tone="bg-primary" />
             </span>
           </li>
         ))}

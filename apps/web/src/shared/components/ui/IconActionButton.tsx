@@ -4,14 +4,14 @@ import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Button } from "@/shared/components/kit/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/components/kit/tooltip";
 
-export type IconActionTone = "neutral" | "info" | "success" | "danger" | "navy";
+export type IconActionTone = "neutral" | "info" | "success" | "danger" | "brand";
 
 const TONE_CLASSES: Record<IconActionTone, string> = {
   neutral: "bg-neutral-soft text-muted-foreground hover:bg-border hover:text-foreground",
   info: "bg-info-soft text-info-text hover:bg-info/20",
   success: "bg-success-soft text-success-text hover:bg-success/20",
   danger: "bg-danger-soft text-danger-text hover:bg-danger/20",
-  navy: "bg-accent text-accent-foreground hover:bg-primary/20",
+  brand: "bg-accent text-accent-foreground hover:bg-primary/20",
 };
 
 interface IconActionButtonProps {

@@ -66,7 +66,7 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted">
         <div
-          className={cn("h-full rounded-full", full ? "bg-warning" : "bg-navy-900")}
+          className={cn("h-full rounded-full", full ? "bg-warning" : "bg-primary")}
           style={{ width: `${Math.min(100, (used / Math.max(1, limit)) * 100)}%` }}
         />
       </div>
@@ -140,7 +140,7 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
                   (step.action.to ? (
                     <Link
                       to={step.action.to}
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border bg-white px-3 text-[13px] font-medium text-text-primary hover:bg-surface-muted"
+                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border bg-card px-3 text-[13px] font-medium text-text-primary hover:bg-surface-muted"
                     >
                       {step.action.label}
                     </Link>
@@ -148,7 +148,7 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
                     <button
                       type="button"
                       onClick={step.action.onClick}
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-navy-900 px-3 text-[13px] font-medium text-white hover:bg-navy-800"
+                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:bg-primary-hover"
                     >
                       {step.action.label}
                     </button>
@@ -163,7 +163,7 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
         <div className={cn("px-5 py-4 sm:px-6", showChecklist && "border-t border-border-light bg-surface-muted/40")}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="text-[13px] font-semibold text-text-primary">Batas masa coba</h3>
-            <Link to={ROUTE_PATHS.subscription} className="text-[12.5px] font-medium text-navy-900 hover:underline">
+            <Link to={ROUTE_PATHS.subscription} className="text-[12.5px] font-medium text-primary hover:underline">
               Pilih paket untuk tanpa batas
             </Link>
           </div>

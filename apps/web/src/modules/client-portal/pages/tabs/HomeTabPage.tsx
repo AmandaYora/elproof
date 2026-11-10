@@ -75,7 +75,7 @@ export default function HomeTabPage() {
           to={ROUTE_PATHS.portal("dokumen")}
           className="flex min-h-14 items-center gap-3 rounded-2xl border border-border bg-card p-4 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground sm:p-5"
         >
-          <FileText className="size-5 shrink-0 text-navy-900" aria-hidden />
+          <FileText className="size-5 shrink-0 text-primary" aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block text-[14px] font-semibold text-foreground">Dokumen penting</span>
             <span className="block text-[12.5px] text-muted-foreground">Rundown, buku acara, dan lainnya</span>

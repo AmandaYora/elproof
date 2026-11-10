@@ -24,7 +24,7 @@ export function ContactCard({
     <section aria-labelledby="contact-heading" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
       <h2 id="contact-heading" className="text-[15px] font-semibold text-foreground">Hubungi kami</h2>
       <div className="mt-3 flex items-center gap-3">
-        <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-full bg-navy-900 text-[15px] font-semibold text-white">
+        <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-[15px] font-semibold text-primary-foreground">
           {name.trim().charAt(0).toUpperCase()}
         </span>
         <div className="min-w-0">

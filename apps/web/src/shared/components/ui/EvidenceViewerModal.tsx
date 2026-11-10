@@ -161,7 +161,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
                 src={fileUrl}
                 alt={evidence.name}
                 referrerPolicy="no-referrer"
-                className={zoomed ? "mx-auto max-w-none rounded-md border border-border-light bg-white p-2 shadow-sm" : "max-h-full max-w-full rounded-md border border-border-light bg-white p-2 object-contain shadow-sm"}
+                className={zoomed ? "mx-auto max-w-none rounded-md border border-border-light bg-card p-2 shadow-sm" : "max-h-full max-w-full rounded-md border border-border-light bg-card p-2 object-contain shadow-sm"}
               />
             </div>
           ) : (

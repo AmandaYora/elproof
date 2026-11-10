@@ -314,7 +314,7 @@ function SummaryStat({ label, value, badge }: { label: string; value: string; ba
   return (
     <div className="rounded-md border border-border bg-surface-muted/40 px-4 py-3">
       <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-[15px] font-bold tabular-nums text-navy-900">
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-[15px] font-bold tabular-nums text-primary">
         {value}
         {badge && <Badge tone="warning">{badge}</Badge>}
       </p>

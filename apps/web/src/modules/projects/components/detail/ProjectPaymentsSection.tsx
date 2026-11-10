@@ -245,7 +245,7 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-surface-muted/40 px-4 py-3">
       <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
-      <p className="mt-1 text-[15px] font-bold tabular-nums text-navy-900">{value}</p>
+      <p className="mt-1 text-[15px] font-bold tabular-nums text-primary">{value}</p>
     </div>
   );
 }

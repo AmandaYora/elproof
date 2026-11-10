@@ -11,14 +11,14 @@ export function SearchInput({ className, value, onChange, ...props }: InputHTMLA
 
   return (
     <div className={cn("group relative", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary transition-colors group-focus-within:text-navy-900" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary transition-colors group-focus-within:text-primary" />
       <input
         type="text"
         value={value}
         onChange={onChange}
         className={cn(
           "h-9 w-full rounded-lg border border-input bg-card pl-9 text-sm text-text-primary placeholder:text-subtle-foreground shadow-sm transition-shadow",
-          "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
+          "outline-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-ring",
           hasValue ? "pr-8" : "pr-3"
         )}
         {...props}

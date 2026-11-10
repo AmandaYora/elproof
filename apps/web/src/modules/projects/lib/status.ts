@@ -13,7 +13,7 @@ export const PROJECT_STATUS_TONE: Record<ProjectStatus, BadgeTone> = {
   Draft: "neutral",
   Preparation: "info",
   Ready: "success",
-  Completed: "navy",
+  Completed: "brand",
   Cancelled: "danger",
 };
 
@@ -25,7 +25,7 @@ export const ENGAGEMENT_STATUS_TONE: Record<EngagementStatus, BadgeTone> = {
   "In Progress": "info",
   "Fully Paid": "success",
   Ready: "success",
-  Completed: "navy",
+  Completed: "brand",
   Cancelled: "danger",
 };
 

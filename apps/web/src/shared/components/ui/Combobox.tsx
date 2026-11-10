@@ -159,10 +159,10 @@ export function Combobox({ value, onChange, children, className, disabled, place
         onClick={() => (open ? closeDropdown() : openDropdown())}
         onKeyDown={handleTriggerKeyDown}
         className={cn(
-          "flex h-9 pointer-coarse:h-11 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-3 text-left text-sm text-text-primary transition-colors",
-          "focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:border-navy-900",
+          "flex h-9 pointer-coarse:h-11 w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-3 text-left text-sm text-text-primary transition-colors",
+          "outline-none focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-ring",
           "disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-secondary",
-          open && "border-navy-900 ring-2 ring-navy-900/20"
+          open && "border-ring"
         )}
       >
         <span className={cn("truncate", !selected && "text-subtle-foreground")}>{selected ? selected.label : placeholder}</span>
@@ -175,7 +175,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
           <div
             ref={panelRef}
             style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width }}
-            className="z-50 overflow-hidden rounded-md border border-border bg-white shadow-lg"
+            className="z-50 overflow-hidden rounded-md border border-border bg-card shadow-lg"
           >
             <div className="relative border-b border-border-light p-1.5">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-secondary" />
@@ -188,7 +188,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
                 }}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Cari..."
-                className="h-8 w-full rounded-md border-0 bg-surface-muted pl-8 pr-2 text-[13px] text-text-primary placeholder:text-text-secondary/70 focus:outline-none"
+                className="h-8 w-full rounded-md border-0 bg-surface-muted pl-8 pr-2 text-[13px] text-text-primary placeholder:text-subtle-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-ring"
               />
             </div>
             <ul role="listbox" className="max-h-52 overflow-y-auto py-1">
@@ -208,8 +208,8 @@ export function Combobox({ value, onChange, children, className, disabled, place
                       opt.disabled && "pointer-events-none text-text-secondary/50"
                     )}
                   >
-                    <span className={cn("truncate", opt.value === value && "font-semibold text-navy-900")}>{opt.label}</span>
-                    {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-navy-900" />}
+                    <span className={cn("truncate", opt.value === value && "font-semibold text-primary")}>{opt.label}</span>
+                    {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
                   </li>
                 ))
               )}

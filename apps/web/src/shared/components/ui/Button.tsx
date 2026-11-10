@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { Button as KitButton } from "@/shared/components/kit/button";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "neutral";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -17,9 +17,6 @@ const KIT_VARIANT = {
   secondary: "secondary",
   ghost: "ghost",
   danger: "destructive",
-  // Deliberately NOT tied to --brand-navy-*: for the rare screen (LoginPage)
-  // that must stay tenant-agnostic since no tenant is known pre-auth.
-  neutral: "neutral",
 } as const;
 
 /**

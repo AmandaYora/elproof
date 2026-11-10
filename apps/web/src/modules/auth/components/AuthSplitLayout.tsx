@@ -6,8 +6,8 @@ import { useDocumentSurface } from "@/shared/hooks/useDocumentSurface";
 
 /**
  * Two-panel frame for every screen before sign-in (Masuk, Daftar, Siapkan
- * workspace, Undangan), in the public site's palette (ADR-0038): no tenant is
- * known yet, so nothing here follows a tenant's brand color (ADR-0012).
+ * workspace, Undangan), on the public site's surface (ADR-0038): white page,
+ * same plum and seal gold as every console (ADR-0039).
  *
  * Left (large screens): the photos chosen in Platform Console, under a plum
  * scrim so the words stay readable; without photos the plum panel carries the

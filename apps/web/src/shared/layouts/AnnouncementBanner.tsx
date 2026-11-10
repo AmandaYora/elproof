@@ -14,7 +14,7 @@ interface ActiveAnnouncement {
 const STYLE = {
   info: { icon: Info, box: "border-info/30 bg-info-soft text-info-text" },
   warning: { icon: TriangleAlert, box: "border-warning/30 bg-warning-soft text-warning-text" },
-  maintenance: { icon: Wrench, box: "border-navy-900/20 bg-navy-900/10 text-navy-900" },
+  maintenance: { icon: Wrench, box: "border-primary/20 bg-primary/10 text-primary" },
 } as const;
 
 const DISMISSED_KEY = "elproof.dismissedAnnouncements";

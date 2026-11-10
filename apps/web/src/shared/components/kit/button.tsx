@@ -3,11 +3,12 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 // shadcn/ui Button on Base UI, tuned to ElProof (DESIGN.md §4/§6): solid
-// brand primary, a visible 2px focus outline (the stock 50%-opacity ring does
-// not reach 3:1), control height from the density token (36px console, 44px
+// plum primary, a visible 2px focus outline (the stock 50%-opacity ring does
+// not reach 3:1; outline-solid is required because Tailwind 4's outline-none
+// also sets --tw-outline-style: none, which outline-2 reads), control height from the density token (36px console, 44px
 // portal) and 44px on coarse pointers.
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center rounded-md border border-transparent text-sm font-semibold whitespace-nowrap transition-colors outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-danger [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center rounded-md border border-transparent text-sm font-semibold whitespace-nowrap transition-colors outline-none select-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-danger [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -16,9 +17,6 @@ const buttonVariants = cva(
         secondary: "border-border bg-card text-foreground hover:bg-muted aria-expanded:bg-muted",
         ghost: "bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted",
         destructive: "bg-danger text-white hover:bg-danger/90",
-        // Deliberately not tied to the tenant's brand color: for the sign-in
-        // screen, where no tenant is known yet.
-        neutral: "bg-stone-800 text-white hover:bg-stone-700",
         link: "h-auto px-0 text-primary underline-offset-4 hover:underline",
       },
       size: {

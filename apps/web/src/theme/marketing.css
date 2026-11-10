@@ -1,46 +1,19 @@
 /*
- * Public site theme ("Janji Terbukti", ADR-0038, knowledge/DESIGN-PUBLIC.md).
+ * Public site surface ("Janji Terbukti", ADR-0038, knowledge/DESIGN-PUBLIC.md).
  *
- * The marketing pages and the sign-in/sign-up screens set
- * <html data-surface="marketing"> (shared/hooks/useDocumentSurface.ts). The
- * same semantic names as theme.css are redefined here, so every kit/ui
- * component keeps reading tokens and the consoles never see these values.
- * Defining --primary/--ring/--accent directly (not through --brand-navy-*)
- * keeps a tenant's runtime preset, written inline on <html>, out of the
- * public pages. Contrast ratios are WCAG 2.x, computed (DESIGN-PUBLIC.md §3).
+ * The palette itself (plum, seal gold, text greys, one typeface) lives in
+ * theme.css and is shared with the consoles (ADR-0039). The marketing pages
+ * and the sign-in/sign-up screens set <html data-surface="marketing">
+ * (shared/hooks/useDocumentSurface.ts); only the surface tokens that differ
+ * there are redefined here: a white page with blush bands instead of the
+ * consoles' plum-tinted near-white. Contrast ratios: DESIGN-PUBLIC.md §3.
  */
 :root[data-surface="marketing"] {
   --background: #ffffff;
-  --foreground: #2a1a27; /* 16.9:1 on white */
-  --card: #ffffff;
-  --card-foreground: var(--foreground);
-  --popover: #ffffff;
-  --popover-foreground: var(--foreground);
-  --muted: #f7eeec; /* blush: section bands, quiet surfaces */
-  --muted-foreground: #6b5566; /* 6.74:1 on white, 5.90:1 on --muted */
-  --subtle-foreground: #7e6a7a; /* placeholders, only on white: 4.96:1 */
+  --muted: #f7eeec; /* blush: section bands, quiet surfaces; --muted-foreground on it 5.90:1 */
+  --secondary: #f7eeec;
   --border: #e8dcda;
   --border-light: #f2e9e7;
-  --input: #8e7a8b; /* control boundary: 3.96:1 on white, 3.47:1 on --muted */
-
-  --primary: #3e1f3b; /* plum: 14.34:1 with white text */
-  --primary-foreground: #ffffff;
-  --primary-hover: #2f162c;
-  --secondary: #f7eeec;
-  --secondary-foreground: var(--foreground);
-  --accent: #efe3ec;
-  --accent-foreground: #3e1f3b;
-  --ring: #3e1f3b;
-
-  /* Public-only roles. */
-  --seal: #b88a3e; /* the proof seal and gold rules: non-text only, 3.11:1 on white */
-  --seal-text: #7a5a1e; /* text in seal color: 5.60:1 on --seal-soft */
-  --seal-soft: #f8f0e1;
-  --highlight-text: #9b3d4a; /* small accents such as "H-180": 6.65:1 on white */
-  --on-primary-muted: #e9d9c4; /* secondary text on plum bands: 10.37:1 */
-
-  /* One family on the public site (pengguna: huruf arah A). */
-  --font-display: var(--font-sans);
 
   color-scheme: light;
 }

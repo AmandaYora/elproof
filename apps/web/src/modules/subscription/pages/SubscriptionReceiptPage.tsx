@@ -55,7 +55,7 @@ export default function SubscriptionReceiptPage() {
         title="Kuitansi tidak tersedia"
         description="Kuitansi hanya ada untuk pembayaran yang sudah berhasil. Pastikan tautannya benar."
         action={
-          <Link to={ROUTE_PATHS.subscription} className="text-[13px] font-semibold text-navy-900 hover:underline">
+          <Link to={ROUTE_PATHS.subscription} className="text-[13px] font-semibold text-primary hover:underline">
             Kembali ke Langganan
           </Link>
         }
@@ -75,7 +75,7 @@ export default function SubscriptionReceiptPage() {
         </Button>
       </div>
 
-      <article className="rounded-lg border border-border bg-white p-8 text-text-primary print:rounded-none print:border-0 print:p-0">
+      <article className="rounded-lg border border-border bg-card p-8 text-text-primary print:rounded-none print:border-0 print:p-0">
         <header className="flex items-start justify-between gap-4 border-b border-border pb-5">
           <div>
             <p className="text-lg font-bold">{APP_NAME}</p>

@@ -19,7 +19,7 @@ export function QrCode({ value, size = 176, label, className }: QrCodeProps) {
 
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(value, { width: size * 2, margin: 1, errorCorrectionLevel: "M", color: { dark: "#0f172a", light: "#ffffff" } })
+    QRCode.toDataURL(value, { width: size * 2, margin: 1, errorCorrectionLevel: "M" })
       .then((url) => {
         if (!cancelled) {
           setSrc(url);
@@ -36,7 +36,7 @@ export function QrCode({ value, size = 176, label, className }: QrCodeProps) {
 
   if (failed) return null;
   return (
-    <div className={cn("rounded-lg border border-border bg-white p-2", className)} style={{ width: size + 18, height: size + 18 }}>
+    <div className={cn("rounded-lg border border-border bg-card p-2", className)} style={{ width: size + 18, height: size + 18 }}>
       {src ? <img src={src} alt={label} width={size} height={size} className="block" /> : <div style={{ width: size, height: size }} className="animate-pulse rounded bg-surface-muted" />}
     </div>
   );

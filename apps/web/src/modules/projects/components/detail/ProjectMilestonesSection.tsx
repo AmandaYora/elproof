@@ -141,7 +141,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                   onClick={() => setViewMode("list")}
                   className={cn(
                     "flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-semibold transition-colors",
-                    viewMode === "list" ? "bg-navy-900 text-white" : "text-text-secondary hover:text-text-primary"
+                    viewMode === "list" ? "bg-primary text-primary-foreground" : "text-text-secondary hover:text-text-primary"
                   )}
                 >
                   <ListIcon className="h-3.5 w-3.5" /> List
@@ -151,7 +151,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                   onClick={() => setViewMode("gantt")}
                   className={cn(
                     "flex items-center gap-1.5 rounded px-2.5 py-1 text-[12.5px] font-semibold transition-colors",
-                    viewMode === "gantt" ? "bg-navy-900 text-white" : "text-text-secondary hover:text-text-primary"
+                    viewMode === "gantt" ? "bg-primary text-primary-foreground" : "text-text-secondary hover:text-text-primary"
                   )}
                 >
                   <GanttChartSquare className="h-3.5 w-3.5" /> Gantt

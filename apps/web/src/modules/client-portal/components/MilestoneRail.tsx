@@ -38,18 +38,18 @@ export function MilestoneRail({ steps, onOpenProof }: { steps: RailStep[]; onOpe
         const last = i === steps.length - 1;
         return (
           <li key={m.id} className="relative flex gap-4 pb-6 last:pb-0" aria-current={active ? "step" : undefined}>
-            {!last && <span aria-hidden className={cn("absolute top-7 left-[13px] h-[calc(100%-1.75rem)] w-0.5", done ? "bg-navy-900" : "bg-border")} />}
+            {!last && <span aria-hidden className={cn("absolute top-7 left-[13px] h-[calc(100%-1.75rem)] w-0.5", done ? "bg-primary" : "bg-border")} />}
             <span
               aria-hidden
               className={cn(
                 "z-10 flex size-7 shrink-0 items-center justify-center rounded-full border-2",
-                done && "border-navy-900 bg-navy-900 text-white",
-                active && "border-navy-900 bg-card",
+                done && "border-primary bg-primary text-primary-foreground",
+                active && "border-primary bg-card",
                 blocked && "border-warning bg-card",
                 !done && !active && !blocked && "border-border bg-card",
               )}
             >
-              {done ? <Check className="size-4" /> : active ? <span className="size-2.5 rounded-full bg-navy-900" /> : null}
+              {done ? <Check className="size-4" /> : active ? <span className="size-2.5 rounded-full bg-primary" /> : null}
             </span>
             <div className="min-w-0 flex-1 pt-0.5">
               <p className={cn("text-[15px]", done || active ? "font-semibold text-foreground" : "font-medium text-muted-foreground")}>{m.name}</p>

@@ -366,7 +366,7 @@ export default function VendorListPage() {
                 <div>
                   <Link
                     to={ROUTE_PATHS.projectDetail(item.projectId)}
-                    className="text-[13.5px] font-semibold text-navy-900 hover:underline"
+                    className="text-[13.5px] font-semibold text-primary hover:underline"
                     onClick={() => setHistoryVendor(null)}
                   >
                     {item.projectName}

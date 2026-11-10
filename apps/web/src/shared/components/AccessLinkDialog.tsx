@@ -98,7 +98,7 @@ export function AccessLinkDialog({ open, onClose, link, recipient, woName, notic
 
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-text-primary">Pesan siap kirim</span>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-white px-3 py-2.5 font-sans text-[13px] leading-relaxed text-text-primary">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card px-3 py-2.5 font-sans text-[13px] leading-relaxed text-text-primary">
             {message}
           </pre>
         </div>
@@ -108,7 +108,7 @@ export function AccessLinkDialog({ open, onClose, link, recipient, woName, notic
             href={whatsappUrl(recipient.phone, message)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[#1f7a4d] px-4 text-sm font-medium text-white hover:bg-[#19663f]"
+            className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-whatsapp px-4 text-sm font-medium text-whatsapp-foreground hover:bg-whatsapp-hover"
           >
             <MessageCircle className="h-4 w-4" />
             {hasWa ? "Kirim via WhatsApp" : "Pilih chat WhatsApp"}

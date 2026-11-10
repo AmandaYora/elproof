@@ -9,7 +9,7 @@ const ROLE_LABEL: Record<ClientRole, string> = {
 
 const ROLE_TONE: Record<ClientRole, BadgeTone> = {
   Bride: "info",
-  Groom: "navy",
+  Groom: "brand",
   "Family Representative": "neutral",
 };
 

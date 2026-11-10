@@ -46,7 +46,7 @@ export function TenantActivityTab({ tenantId }: { tenantId: string }) {
         title="Aktivitas terbaru"
         subtitle="20 perubahan terakhir di workspace ini."
         action={
-          <Link to={`${ROUTE_PATHS.platformAudit}?tenantId=${tenantId}`} className="text-[13px] font-semibold text-navy-900 hover:underline">
+          <Link to={`${ROUTE_PATHS.platformAudit}?tenantId=${tenantId}`} className="text-[13px] font-semibold text-primary hover:underline">
             Buka di Audit Log
           </Link>
         }

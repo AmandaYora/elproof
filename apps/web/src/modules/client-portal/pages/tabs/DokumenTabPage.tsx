@@ -35,7 +35,7 @@ export default function DokumenTabPage() {
             <FileText className="h-5 w-5 shrink-0" />
           </div>
           <div>
-            <h1 className="text-[18px] font-bold text-navy-950 sm:text-[20px]">Dokumen</h1>
+            <h1 className="text-[18px] font-bold text-foreground sm:text-[20px]">Dokumen</h1>
             <p className="mt-0.5 text-[13px] text-text-secondary sm:text-[14px]">
               Dokumen umum acara yang telah kami bagikan untuk Anda — rundown, buku acara, dan lainnya.
             </p>
@@ -43,11 +43,11 @@ export default function DokumenTabPage() {
         </div>
 
         {sortedDocuments.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 rounded-3xl border border-border bg-white p-10 text-center shadow-sm sm:p-16">
+          <div className="flex flex-col items-center gap-4 rounded-3xl border border-border bg-card p-10 text-center shadow-sm sm:p-16">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-info-soft text-info-text mb-2">
               <FolderOpen className="h-10 w-10" />
             </div>
-            <p className="max-w-md text-[15px] font-bold text-navy-950 sm:text-[16px]">Belum Ada Dokumen</p>
+            <p className="max-w-md text-[15px] font-bold text-foreground sm:text-[16px]">Belum Ada Dokumen</p>
             <p className="max-w-sm text-[14px] text-text-secondary mt-1">
               Dokumen umum acara Anda akan muncul di sini setelah dibagikan oleh tim kami.
             </p>
@@ -58,13 +58,13 @@ export default function DokumenTabPage() {
               <button
                 key={doc.id}
                 onClick={() => setViewingEvidence(doc)}
-                className="flex items-start gap-3 rounded-2xl border border-border bg-white p-4 text-left shadow-sm transition-colors hover:border-navy-200 hover:bg-surface-muted/50"
+                className="flex items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-surface-muted/50"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info-text">
                   <FileText className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-semibold text-navy-950">{doc.name}</p>
+                  <p className="truncate text-[14px] font-semibold text-foreground">{doc.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-text-secondary">
                     <Badge tone="neutral">{evidenceTypeLabel(doc.type)}</Badge>
                     <span>{formatDate(doc.documentDate)}</span>

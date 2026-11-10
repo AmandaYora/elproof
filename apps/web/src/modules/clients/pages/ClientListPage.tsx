@@ -301,7 +301,7 @@ export default function ClientListPage() {
               <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(c)} />
             )}
             {c.role === "Family Representative" && (
-              <IconActionButton icon={Repeat} label="Ganti perwakilan" tone="navy" onClick={() => setModalTarget({ client: c, mode: "replace" })} />
+              <IconActionButton icon={Repeat} label="Ganti perwakilan" tone="brand" onClick={() => setModalTarget({ client: c, mode: "replace" })} />
             )}
             <IconActionButton icon={Trash2} label="Hapus klien" tone="danger" onClick={() => setDeleteTarget(c)} />
           </div>
