@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ifMatch } from "@/shared/lib/concurrency";
 import { httpClient, onProjectWrite } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
@@ -100,6 +101,8 @@ interface RawProgress {
 }
 
 export interface RawProject {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   name: string;
   brideName: string;
@@ -137,6 +140,7 @@ function toProgress(raw: RawProgress): ProjectProgress {
 
 export function toProject(raw: RawProject): Project {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     name: raw.name,
     brideName: raw.brideName,
@@ -218,6 +222,8 @@ function toEvidenceRefs(raw: RawEvidenceRef[] | null | undefined): EvidenceRef[]
 }
 
 interface RawMilestone {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   order: number;
   name: string;
@@ -229,6 +235,7 @@ interface RawMilestone {
 
 function toMilestone(raw: RawMilestone): ProjectMilestone {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     order: raw.order,
     name: raw.name,
@@ -246,6 +253,8 @@ export interface ProjectMilestoneUpdateFields {
 }
 
 interface RawProjectVendor {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   vendorId: number;
   categoryId: number;
@@ -274,6 +283,7 @@ interface RawProjectVendor {
 
 function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     vendorId: String(raw.vendorId),
     categoryId: String(raw.categoryId),
@@ -319,6 +329,8 @@ function vendorEngagementInputBody(values: ProjectVendorFormValues) {
 }
 
 interface RawVendorMilestone {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   order: number;
   name: string;
@@ -333,6 +345,7 @@ interface RawVendorMilestone {
 
 function toVendorMilestone(raw: RawVendorMilestone, projectVendorId: string): VendorMilestone {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     projectVendorId,
     order: raw.order,
@@ -357,6 +370,8 @@ export interface VendorMilestoneUpdateFields {
 }
 
 interface RawPayment {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   projectVendorId: number;
   type: VendorPayment["type"];
@@ -370,6 +385,7 @@ interface RawPayment {
 
 function toPayment(raw: RawPayment): VendorPayment {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     projectVendorId: String(raw.projectVendorId),
     type: raw.type,
@@ -383,6 +399,8 @@ function toPayment(raw: RawPayment): VendorPayment {
 }
 
 interface RawClientPayment {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   type: ClientPayment["type"];
   amount: number;
@@ -399,6 +417,7 @@ interface RawClientPayment {
 
 function toClientPayment(raw: RawClientPayment): ClientPayment {
   return {
+    updatedAt: raw.updatedAt ?? "",
     recordedBy: raw.recordedBy?.name ?? null,
     verifiedAt: raw.verifiedAt ?? null,
     verifiedBy: raw.verifiedBy?.name ?? null,
@@ -415,6 +434,8 @@ function toClientPayment(raw: RawClientPayment): ClientPayment {
 }
 
 interface RawVenuePayment {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   type: VenuePayment["type"];
   amount: number;
@@ -427,6 +448,7 @@ interface RawVenuePayment {
 
 function toVenuePayment(raw: RawVenuePayment): VenuePayment {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     type: raw.type,
     amount: raw.amount,
@@ -439,6 +461,8 @@ function toVenuePayment(raw: RawVenuePayment): VenuePayment {
 }
 
 interface RawIssue {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   projectVendorId: number | null;
   vendorMilestoneId: number | null;
@@ -479,6 +503,7 @@ function toPaymentTerms(raw: Array<Omit<PaymentTerm, "id"> & { id: number }>): P
 
 function toIssue(raw: RawIssue): VendorIssue {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     projectVendorId: raw.projectVendorId ? String(raw.projectVendorId) : "",
     vendorMilestoneId: raw.vendorMilestoneId !== null ? String(raw.vendorMilestoneId) : null,
@@ -521,6 +546,8 @@ export function toIssueUpdateFields(issue: VendorIssue): IssueFormValues {
 }
 
 interface RawEvidence {
+  /** The version for `If-Match` (ADR-0036). */
+  updatedAt?: string;
   id: number;
   name: string;
   type: EvidenceType;
@@ -536,6 +563,7 @@ interface RawEvidence {
 
 function toEvidence(raw: RawEvidence): Evidence {
   return {
+    updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
     name: raw.name,
     type: raw.type,
@@ -627,7 +655,8 @@ interface ProjectState {
    * problem reported at once. Retrying with the same Idempotency-Key returns the project the first try made.
    */
   createProject: (values: ProjectFormValues, extra?: NewProjectExtras, options?: SaveOptions) => Promise<Project>;
-  updateProject: (id: string, values: ProjectFormValues) => Promise<Project>;
+  /** `version` is the `updatedAt` the form was opened with; the API refuses the save (409) when the project changed since. */
+  updateProject: (id: string, values: ProjectFormValues, version?: string) => Promise<Project>;
   // Attaches/detaches this project's structured venue (ADR-0016) — pass
   // null to detach. Sends a full-replace PATCH body sourced from the
   // already-loaded currentProject (same wire shape as updateProject), since
@@ -658,7 +687,8 @@ interface ProjectState {
   paymentTermsFor: string | null;
   fetchPaymentTerms: (projectId: string) => Promise<void>;
   savePaymentTerms: (projectId: string, terms: PaymentTermInput[]) => Promise<void>;
-  toggleArchiveProject: (id: string) => Promise<void>;
+  /** Sets the archive state explicitly (ADR-0036): repeating it, or two people doing it, cannot undo it. */
+  setProjectArchived: (id: string, isArchived: boolean) => Promise<void>;
   // Hard delete (ADR-0013) — Owner-only and requires the project already be
   // archived or cancelled, both enforced server-side, not just by the UI
   // hiding the button.
@@ -683,19 +713,20 @@ interface ProjectState {
   fetchMilestones: (projectId: string) => Promise<void>;
   createMilestone: (projectId: string, values: ProjectMilestoneFormValues) => Promise<void>;
   updateMilestoneStatus: (projectId: string, milestoneId: string, status: MilestoneStatus) => Promise<void>;
-  updateMilestone: (projectId: string, milestoneId: string, fields: ProjectMilestoneUpdateFields) => Promise<void>;
+  updateMilestone: (projectId: string, milestoneId: string, fields: ProjectMilestoneUpdateFields, version?: string) => Promise<void>;
   reorderMilestones: (projectId: string, orderedIds: string[]) => Promise<void>;
 
   fetchVendorSection: (projectId: string) => Promise<void>;
   createVendorEngagement: (projectId: string, values: ProjectVendorFormValues) => Promise<void>;
-  updateVendorEngagement: (projectId: string, pvId: string, values: ProjectVendorFormValues) => Promise<void>;
+  updateVendorEngagement: (projectId: string, pvId: string, values: ProjectVendorFormValues, version?: string) => Promise<void>;
   cancelVendorEngagement: (projectId: string, pvId: string) => Promise<void>;
   createVendorMilestone: (projectId: string, pvId: string, values: VendorMilestoneFormValues) => Promise<void>;
   updateVendorMilestone: (
     projectId: string,
     pvId: string,
     milestoneId: string,
-    fields: VendorMilestoneUpdateFields
+    fields: Partial<VendorMilestoneUpdateFields>,
+    version?: string
   ) => Promise<void>;
 
   fetchPayments: (projectId: string) => Promise<void>;
@@ -707,7 +738,7 @@ interface ProjectState {
   // the pre-existing `pv.paidAmount` staleness bug (that cached field lives
   // on a sibling array populated only by fetchVendorSection, not derived
   // from `payments` itself).
-  updatePayment: (projectId: string, paymentId: string, values: PaymentUpdateFormValues) => Promise<void>;
+  updatePayment: (projectId: string, paymentId: string, values: PaymentUpdateFormValues, version?: string) => Promise<void>;
   /** Removes it at once and returns the function that restores it (the server keeps it 24 h). */
   deletePayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
 
@@ -718,7 +749,7 @@ interface ProjectState {
   // §1.4), closing the "always incomplete in practice" gap vendor_payments
   // has today (createPayment above never attaches evidence at creation time).
   createClientPayment: (projectId: string, values: ClientPaymentFormValues, options?: SaveOptions) => Promise<void>;
-  updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues) => Promise<void>;
+  updateClientPayment: (projectId: string, paymentId: string, values: ClientPaymentUpdateFormValues, version?: string) => Promise<void>;
   deleteClientPayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
   /** The WO confirms the money arrived (E4). Needs a proof file; the client then sees the stamp. */
   verifyClientPayment: (projectId: string, paymentId: string) => Promise<void>;
@@ -727,16 +758,18 @@ interface ProjectState {
   // Same two-slot evidence orchestration as createPayment (vendor's own),
   // just against .../venue-payments and relatedKind "venuePayment".
   createVenuePayment: (projectId: string, values: VenuePaymentFormValues, options?: SaveOptions) => Promise<void>;
-  updateVenuePayment: (projectId: string, paymentId: string, values: VenuePaymentUpdateFormValues) => Promise<void>;
+  updateVenuePayment: (projectId: string, paymentId: string, values: VenuePaymentUpdateFormValues, version?: string) => Promise<void>;
   deleteVenuePayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
 
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
-  updateIssue: (projectId: string, issueId: string, values: IssueFormValues) => Promise<void>;
+  updateIssue: (projectId: string, issueId: string, values: IssueFormValues, version?: string) => Promise<void>;
+  /** The status dropdown on a kendala: sends only the status, so nothing else another person changed is touched. */
+  setIssueStatus: (projectId: string, issueId: string, status: IssueStatus) => Promise<void>;
 
   fetchEvidence: (projectId: string) => Promise<void>;
   uploadEvidence: (projectId: string, values: UploadEvidenceInput) => Promise<void>;
-  toggleEvidenceClientVisible: (projectId: string, evidenceId: string) => Promise<void>;
+  setEvidenceClientVisible: (projectId: string, evidenceId: string, isClientVisible: boolean) => Promise<void>;
   fetchDocuments: (projectId: string) => Promise<void>;
 
   fetchActivity: (projectId: string, page?: number) => Promise<void>;
@@ -835,8 +868,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return project;
   },
 
-  updateProject: async (id, values) => {
-    const res = await httpClient.patch(API.projects.item(id), projectInputBody(values));
+  updateProject: async (id, values, version) => {
+    const current = get().currentProject;
+    const { status: _status, ...body } = projectInputBody(values); // state changes go through transition/cancel, not PATCH
+    const res = await httpClient.patch(API.projects.item(id), body, {
+      headers: ifMatch(version ?? (current?.id === id ? current.updatedAt : undefined)),
+    });
     const project = toProject(res.data.data as RawProject);
     set((state) => ({
       projects: state.projects.map((p) => (p.id === id ? project : p)),
@@ -850,27 +887,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!current || current.id !== id) {
       throw new Error("Project belum dimuat");
     }
-    const res = await httpClient.patch(API.projects.item(id), {
-      name: current.name,
-      brideName: current.brideName,
-      groomName: current.groomName,
-      eventDate: current.eventDate,
-      venue: current.venue,
-      prepStartDate: current.prepStartDate,
-      packageName: current.packageName,
-      contractValue: current.contractValue,
-      status: current.status,
-      picStaffId: current.picStaffId ? Number(current.picStaffId) : 0,
-      picSalesStaffId: current.picSalesStaffId ? Number(current.picSalesStaffId) : 0,
-      description: current.description,
-      // 0 is never a real venue id (AUTO_INCREMENT starts at 1) — the
-      // backend's sentinel for "detach" (see ADR-0016). The backend also
-      // force-clears venueRentalPrice/venueCharge on detach regardless of
-      // what's sent here — these are just the belt-and-suspenders mirror.
-      venueId: venueId !== null ? Number(venueId) : 0,
-      venueRentalPrice: venueId !== null ? rentalPrice ?? null : null,
-      venueCharge: venueId !== null ? charge ?? null : null,
-    });
+    // Only the venue changes: nothing else of the project is sent (ADR-0036). 0 is never a real venue id; the backend reads it
+    // as "detach" (ADR-0016) and clears both prices itself.
+    const res = await httpClient.patch(
+      API.projects.item(id),
+      {
+        venueId: venueId !== null ? Number(venueId) : 0,
+        venueRentalPrice: venueId !== null ? rentalPrice ?? null : null,
+        venueCharge: venueId !== null ? charge ?? null : null,
+      },
+      { headers: ifMatch(current.updatedAt) },
+    );
     const project = toProject(res.data.data as RawProject);
     set((state) => ({
       projects: state.projects.map((p) => (p.id === id ? project : p)),
@@ -918,8 +945,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }));
   },
 
-  toggleArchiveProject: async (id) => {
-    const res = await httpClient.post(API.projects.toggleArchive(id));
+  setProjectArchived: async (id, isArchived) => {
+    const res = await httpClient.patch(API.projects.item(id), { isArchived });
     const project = toProject(res.data.data as RawProject);
     set((state) => ({
       projects: state.projects.map((p) => (p.id === id ? project : p)),
@@ -1003,25 +1030,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   updateMilestoneStatus: async (projectId, milestoneId, status) => {
-    // The backend endpoint is a full update (mirrors vendor milestones) — the
-    // quick inline status dropdown resends this milestone's current dates
-    // unchanged alongside the new status, rather than needing its own
-    // partial-update endpoint.
+    // Only the status is sent; dates stay as they are, even if someone changed them a moment ago.
     const existing = get().milestones.find((m) => m.id === milestoneId);
-    await httpClient.patch(API.projects.milestone(projectId, milestoneId), {
-      status,
-      targetDate: existing?.targetDate ?? "",
-      completedDate: existing?.completedDate ?? "",
-    });
+    await httpClient.patch(API.projects.milestone(projectId, milestoneId), { status }, { headers: ifMatch(existing?.updatedAt) });
     await get().fetchMilestones(projectId);
   },
 
-  updateMilestone: async (projectId, milestoneId, fields) => {
-    await httpClient.patch(API.projects.milestone(projectId, milestoneId), {
-      status: fields.status,
-      targetDate: fields.targetDate,
-      completedDate: fields.completedDate,
-    });
+  updateMilestone: async (projectId, milestoneId, fields, version) => {
+    const existing = get().milestones.find((m) => m.id === milestoneId);
+    await httpClient.patch(
+      API.projects.milestone(projectId, milestoneId),
+      { status: fields.status, targetDate: fields.targetDate, completedDate: fields.completedDate || null },
+      { headers: ifMatch(version ?? existing?.updatedAt) },
+    );
     await get().fetchMilestones(projectId);
   },
 
@@ -1045,13 +1066,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchVendorSection(projectId);
   },
 
-  updateVendorEngagement: async (projectId, pvId, values) => {
+  updateVendorEngagement: async (projectId, pvId, values, version) => {
     const existing = get().vendorEngagements.find((pv) => pv.id === pvId);
-    await httpClient.patch(API.projects.vendor(projectId, pvId), {
-      ...vendorEngagementInputBody(values),
-      categoryId: existing ? Number(existing.categoryId) : 0,
-      eventDate: existing?.eventDate ?? "",
-    });
+    // The form has no category or event date: leaving them out keeps what the engagement has (they were once sent back to fill the gap).
+    const { categoryId: _category, eventDate: _eventDate, ...body } = vendorEngagementInputBody(values);
+    await httpClient.patch(API.projects.vendor(projectId, pvId), body, { headers: ifMatch(version ?? existing?.updatedAt) });
     await get().fetchVendorSection(projectId);
   },
 
@@ -1070,15 +1089,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchVendorSection(projectId);
   },
 
-  updateVendorMilestone: async (projectId, pvId, milestoneId, fields) => {
-    await httpClient.patch(API.projects.vendorMilestone(projectId, pvId, milestoneId), {
-      status: fields.status,
-      targetDate: fields.targetDate,
-      completedDate: fields.completedDate,
-      picStaffId: Number(fields.picStaffId),
-      description: fields.description,
-      notes: fields.notes,
-    });
+  updateVendorMilestone: async (projectId, pvId, milestoneId, fields, version) => {
+    const existing = get().vendorMilestones.find((m) => m.id === milestoneId);
+    await httpClient.patch(
+      API.projects.vendorMilestone(projectId, pvId, milestoneId),
+      // Only what was passed: a status change from the dropdown sends the status, not the whole step.
+      {
+        ...(fields.status !== undefined && { status: fields.status }),
+        ...(fields.targetDate !== undefined && { targetDate: fields.targetDate }),
+        ...(fields.completedDate !== undefined && { completedDate: fields.completedDate || null }),
+        ...(fields.picStaffId !== undefined && { picStaffId: Number(fields.picStaffId) }),
+        ...(fields.description !== undefined && { description: fields.description }),
+        ...(fields.notes !== undefined && { notes: fields.notes }),
+      },
+      { headers: ifMatch(version ?? existing?.updatedAt) },
+    );
     await get().fetchVendorSection(projectId);
   },
 
@@ -1110,15 +1135,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
   },
 
-  updatePayment: async (projectId, paymentId, values) => {
-    await httpClient.patch(API.projects.payment(projectId, paymentId), {
-      type: values.type,
-      amount: values.amount,
-      paymentDate: values.paymentDate,
-      method: values.method,
-      referenceNumber: values.referenceNumber,
-      notes: values.notes,
-    });
+  updatePayment: async (projectId, paymentId, values, version) => {
+    const existing = get().payments.find((p) => p.id === paymentId);
+    await httpClient.patch(
+      API.projects.payment(projectId, paymentId),
+      {
+        type: values.type,
+        amount: values.amount,
+        paymentDate: values.paymentDate,
+        method: values.method,
+        referenceNumber: values.referenceNumber,
+        notes: values.notes,
+      },
+      { headers: ifMatch(version ?? existing?.updatedAt) },
+    );
     await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
   },
 
@@ -1161,15 +1191,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchClientPayments(projectId);
   },
 
-  updateClientPayment: async (projectId, paymentId, values) => {
-    await httpClient.patch(API.projects.clientPayment(projectId, paymentId), {
-      type: values.type,
-      amount: values.amount,
-      paymentDate: values.paymentDate,
-      method: values.method,
-      referenceNumber: values.referenceNumber,
-      notes: values.notes,
-    });
+  updateClientPayment: async (projectId, paymentId, values, version) => {
+    const existing = get().clientPayments.find((p) => p.id === paymentId);
+    await httpClient.patch(
+      API.projects.clientPayment(projectId, paymentId),
+      {
+        type: values.type,
+        amount: values.amount,
+        paymentDate: values.paymentDate,
+        method: values.method,
+        referenceNumber: values.referenceNumber,
+        notes: values.notes,
+      },
+      { headers: ifMatch(version ?? existing?.updatedAt) },
+    );
     await get().fetchClientPayments(projectId);
   },
 
@@ -1219,15 +1254,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchVenuePayments(projectId);
   },
 
-  updateVenuePayment: async (projectId, paymentId, values) => {
-    await httpClient.patch(API.projects.venuePayment(projectId, paymentId), {
-      type: values.type,
-      amount: values.amount,
-      paymentDate: values.paymentDate,
-      method: values.method,
-      referenceNumber: values.referenceNumber,
-      notes: values.notes,
-    });
+  updateVenuePayment: async (projectId, paymentId, values, version) => {
+    const existing = get().venuePayments.find((p) => p.id === paymentId);
+    await httpClient.patch(
+      API.projects.venuePayment(projectId, paymentId),
+      {
+        type: values.type,
+        amount: values.amount,
+        paymentDate: values.paymentDate,
+        method: values.method,
+        referenceNumber: values.referenceNumber,
+        notes: values.notes,
+      },
+      { headers: ifMatch(version ?? existing?.updatedAt) },
+    );
     await get().fetchVenuePayments(projectId);
   },
 
@@ -1261,13 +1301,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchIssues(projectId);
   },
 
-  updateIssue: async (projectId, issueId, values) => {
-    await httpClient.patch(API.projects.issue(projectId, issueId), {
-      ...values,
-      projectVendorId: values.projectVendorId ? Number(values.projectVendorId) : null,
-      vendorMilestoneId: values.projectVendorId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
-      picStaffId: Number(values.picStaffId),
-    });
+  updateIssue: async (projectId, issueId, values, version) => {
+    const existing = get().issues.find((i) => i.id === issueId);
+    await httpClient.patch(
+      API.projects.issue(projectId, issueId),
+      {
+        ...values,
+        projectVendorId: values.projectVendorId ? Number(values.projectVendorId) : null,
+        vendorMilestoneId: values.projectVendorId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
+        picStaffId: Number(values.picStaffId),
+      },
+      { headers: ifMatch(version ?? existing?.updatedAt) },
+    );
+    await get().fetchIssues(projectId);
+  },
+
+  setIssueStatus: async (projectId, issueId, status) => {
+    const existing = get().issues.find((i) => i.id === issueId);
+    await httpClient.patch(API.projects.issue(projectId, issueId), { status }, { headers: ifMatch(existing?.updatedAt) });
     await get().fetchIssues(projectId);
   },
 
@@ -1292,8 +1343,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchEvidence(projectId);
   },
 
-  toggleEvidenceClientVisible: async (projectId, evidenceId) => {
-    await httpClient.post(API.projects.evidenceToggleClientVisible(projectId, evidenceId));
+  setEvidenceClientVisible: async (projectId, evidenceId, isClientVisible) => {
+    await httpClient.patch(API.projects.evidenceItem(projectId, evidenceId), { isClientVisible });
     await get().fetchEvidence(projectId);
   },
 

@@ -126,7 +126,6 @@ export const API = {
   staff: {
     base: "/api/v1/staff",
     item: (id: string) => `/api/v1/staff/${id}`,
-    toggleActive: (id: string) => `/api/v1/staff/${id}/toggle-active`,
     // New one-time invitation link (Fase 3).
     invite: (id: string) => `/api/v1/staff/${id}/invite`,
     // Public-safe within the tenant (any staff role) — {id, name, title}
@@ -141,11 +140,9 @@ export const API = {
   vendors: {
     categories: "/api/v1/vendor-categories",
     category: (id: string) => `/api/v1/vendor-categories/${id}`,
-    categoryToggleActive: (id: string) => `/api/v1/vendor-categories/${id}/toggle-active`,
     bulk: "/api/v1/vendors/bulk",
     base: "/api/v1/vendors",
     item: (id: string) => `/api/v1/vendors/${id}`,
-    toggleActive: (id: string) => `/api/v1/vendors/${id}/toggle-active`,
     projectHistory: (id: string) => `/api/v1/vendors/${id}/project-history`,
     attachment: (id: string) => `/api/v1/vendors/${id}/attachment`,
     template: "/api/v1/vendors/template",
@@ -169,7 +166,6 @@ export const API = {
     bulk: "/api/v1/venues/bulk",
     base: "/api/v1/venues",
     item: (id: string) => `/api/v1/venues/${id}`,
-    toggleActive: (id: string) => `/api/v1/venues/${id}/toggle-active`,
     attachment: (id: string) => `/api/v1/venues/${id}/attachment`,
     deleteImpact: (id: string) => `/api/v1/venues/${id}/delete-impact`,
     template: "/api/v1/venues/template",
@@ -186,7 +182,6 @@ export const API = {
     transition: (id: string) => `/api/v1/projects/${id}/transition`,
     closingChecklist: (id: string) => `/api/v1/projects/${id}/closing-checklist`,
     paymentTerms: (id: string) => `/api/v1/projects/${id}/payment-terms`,
-    toggleArchive: (id: string) => `/api/v1/projects/${id}/toggle-archive`,
     duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
     milestone: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}`,
@@ -213,8 +208,7 @@ export const API = {
     evidenceFile: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}/file`,
     // Direct, two-minute link to the stored file (501 when the deployment has none).
     evidenceLink: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}/link`,
-    evidenceToggleClientVisible: (id: string, evidenceId: string) =>
-      `/api/v1/projects/${id}/evidence/${evidenceId}/toggle-client-visible`,
+    evidenceItem: (id: string, evidenceId: string) => `/api/v1/projects/${id}/evidence/${evidenceId}`,
     // Client Portal's own "Dokumen" tab — always only general-kind,
     // client-visible documents, unconditionally (see backend listDocuments).
     documents: (id: string) => `/api/v1/projects/${id}/documents`,
@@ -235,7 +229,6 @@ export const API = {
     byProject: (projectId: string) => `/api/v1/clients?projectId=${projectId}`,
     item: (id: string) => `/api/v1/clients/${id}`,
     restore: (id: string) => `/api/v1/clients/${id}/restore`,
-    toggleActive: (id: string) => `/api/v1/clients/${id}/toggle-active`,
     // New invitation or password-reset link (Fase 3); the WO never sets a client password.
     accessLink: (id: string) => `/api/v1/clients/${id}/access-link`,
     replaceRepresentative: (id: string) => `/api/v1/clients/${id}/replace-representative`,

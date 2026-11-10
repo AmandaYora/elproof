@@ -60,7 +60,8 @@ interface ClientState {
   /** Creates the client and returns their invitation link (they set their own password). */
   createClient: (projectId: string, role: ClientRole, values: ClientCreateFormValues) => Promise<{ client: Client; link: AccessLink }>;
   updateContact: (projectId: string, clientId: string, values: ClientContactFormValues) => Promise<void>;
-  toggleActive: (projectId: string, clientId: string) => Promise<void>;
+  /** Sets the state explicitly (ADR-0036): a double click or a retry cannot flip it back. */
+  setActive: (projectId: string, clientId: string, isActive: boolean) => Promise<void>;
   /** Returns the function that undoes the delete (the server keeps the client 24 h). */
   deleteClient: (projectId: string, clientId: string) => Promise<() => Promise<void>>;
   /** New invitation (no password yet) or 24-hour password-reset link. */
@@ -115,8 +116,8 @@ export const useClientStore = create<ClientState>((set, get) => ({
     await get().fetchClients(projectId);
   },
 
-  toggleActive: async (projectId, clientId) => {
-    await httpClient.post(API.clients.toggleActive(clientId));
+  setActive: async (projectId, clientId, isActive) => {
+    await httpClient.patch(API.clients.item(clientId), { isActive });
     await get().fetchClients(projectId);
   },
 

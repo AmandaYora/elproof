@@ -44,7 +44,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const fetchVenuePayments = useProjectStore((s) => s.fetchVenuePayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
-  const toggleEvidenceClientVisible = useProjectStore((s) => s.toggleEvidenceClientVisible);
+  const setEvidenceClientVisible = useProjectStore((s) => s.setEvidenceClientVisible);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
   const staff = useStaffStore((s) => s.staffSummaries);
@@ -221,7 +221,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                         icon={item.isClientVisible ? EyeOff : Eye}
                         label={item.isClientVisible ? "Sembunyikan dari klien" : "Tampilkan ke klien"}
                         tone={item.isClientVisible ? "success" : "neutral"}
-                        onClick={() => void toggleEvidenceClientVisible(projectId, item.id)}
+                        onClick={() => void setEvidenceClientVisible(projectId, item.id, !item.isClientVisible)}
                       />
                     )}
                   </div>
@@ -265,7 +265,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                             icon={item.isClientVisible ? EyeOff : Eye}
                             label={item.isClientVisible ? "Sembunyikan dari klien" : "Tampilkan ke klien"}
                             tone={item.isClientVisible ? "success" : "neutral"}
-                            onClick={() => void toggleEvidenceClientVisible(projectId, item.id)}
+                            onClick={() => void setEvidenceClientVisible(projectId, item.id, !item.isClientVisible)}
                           />
                         )}
                       </div>

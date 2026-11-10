@@ -27,7 +27,7 @@ export default function VendorCategoryListPage() {
   const fetchCategoryPage = useVendorCategoryStore((s) => s.fetchCategoryPage);
   const createCategory = useVendorCategoryStore((s) => s.createCategory);
   const updateCategory = useVendorCategoryStore((s) => s.updateCategory);
-  const toggleCategoryActive = useVendorCategoryStore((s) => s.toggleCategoryActive);
+  const setCategoryActive = useVendorCategoryStore((s) => s.setCategoryActive);
   const deleteCategory = useVendorCategoryStore((s) => s.deleteCategory);
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
@@ -85,7 +85,7 @@ export default function VendorCategoryListPage() {
   async function handleToggleActive(category: VendorCategory) {
     setActionError(null);
     try {
-      await toggleCategoryActive(category.id);
+      await setCategoryActive(category.id, !category.isActive);
       await fetchCategoryPage(page, query);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status kategori"));

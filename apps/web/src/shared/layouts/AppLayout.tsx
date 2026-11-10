@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/shared/layouts/Sidebar";
 import { SidebarProvider } from "@/shared/layouts/nav/SidebarContext";
 import { Topbar } from "@/shared/layouts/Topbar";
+import { ConflictHost } from "@/shared/layouts/ConflictHost";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
@@ -71,6 +72,7 @@ export function AppLayout() {
     <SidebarProvider>
     <div className="min-h-screen bg-background" data-density="compact">
       <Toaster />
+      <ConflictHost />
       <SupportSessionBanner />
       <Sidebar />
       <div className="transition-[padding] duration-200 lg:pl-(--sidebar-w) print:pl-0">

@@ -93,7 +93,8 @@ interface VendorState {
   fetchVendorSummaries: () => Promise<void>;
   createVendor: (values: VendorCreateFormValues) => Promise<void>;
   updateVendor: (id: string, values: VendorFormValues) => Promise<void>;
-  toggleVendorActive: (id: string) => Promise<void>;
+  /** Sets the state explicitly (ADR-0036): a double click or a retry cannot flip it back. */
+  setVendorActive: (id: string, isActive: boolean) => Promise<void>;
   // Backs VendorListPage's "Lihat Project" modal — resolved server-side via
   // the `vendors` module calling into `projects.Contracts` (project_vendors
   // is owned by `projects`, not `vendors`). Not cached in store state since
@@ -159,8 +160,8 @@ export const useVendorStore = create<VendorState>((set, get) => ({
     await get().fetchVendors();
   },
 
-  toggleVendorActive: async (id) => {
-    await httpClient.post(API.vendors.toggleActive(id));
+  setVendorActive: async (id, isActive) => {
+    await httpClient.patch(API.vendors.item(id), { isActive });
     await get().fetchVendors();
   },
 

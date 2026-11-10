@@ -72,7 +72,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   const fetchClients = useClientStore((s) => s.fetchClients);
   const createClient = useClientStore((s) => s.createClient);
   const updateContact = useClientStore((s) => s.updateContact);
-  const toggleActive = useClientStore((s) => s.toggleActive);
+  const setClientActive = useClientStore((s) => s.setActive);
   const deleteClient = useClientStore((s) => s.deleteClient);
   const issueAccessLink = useClientStore((s) => s.issueAccessLink);
   const replaceRepresentative = useClientStore((s) => s.replaceRepresentative);
@@ -91,9 +91,11 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
   const activeTarget = modalTarget ? clients.find((c) => c.id === modalTarget.clientId) ?? null : null;
 
   async function handleToggleActive(id: string) {
+    const target = clients.find((c) => c.id === id);
+    if (!target) return;
     setActionError(null);
     try {
-      await toggleActive(projectId, id);
+      await setClientActive(projectId, id, !target.isActive);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Status klien belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }

@@ -25,7 +25,8 @@ interface VendorCategoryState {
   fetchCategoryPage: (page: number, search: string) => Promise<void>;
   createCategory: (values: VendorCategoryFormValues) => Promise<void>;
   updateCategory: (id: string, values: VendorCategoryFormValues) => Promise<void>;
-  toggleCategoryActive: (id: string) => Promise<void>;
+  /** Sets the state explicitly (ADR-0036): a double click or a retry cannot flip it back. */
+  setCategoryActive: (id: string, isActive: boolean) => Promise<void>;
   // Hard delete (PLAN.md) — no "delete-impact" dialog for this entity: a
   // category still assigned to any vendor is a hard block (real same-module
   // SQL FK), surfaced directly as the DELETE call's own error message.
@@ -65,8 +66,8 @@ export const useVendorCategoryStore = create<VendorCategoryState>((set, get) => 
     await get().fetchCategories();
   },
 
-  toggleCategoryActive: async (id) => {
-    await httpClient.post(API.vendors.categoryToggleActive(id));
+  setCategoryActive: async (id, isActive) => {
+    await httpClient.patch(API.vendors.category(id), { isActive });
     await get().fetchCategories();
   },
 

@@ -101,7 +101,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
 
   async function handleEditPayment(values: ClientPaymentUpdateFormValues) {
     if (!editingPayment) return;
-    await updateClientPayment(projectId, editingPayment.id, values);
+    await updateClientPayment(projectId, editingPayment.id, values, editingPayment.updatedAt);
     setEditingPayment(null);
     toast.success("Pembayaran diperbarui");
   }

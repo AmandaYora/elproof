@@ -1,0 +1,32 @@
+/*
+ * The Gantt library draws with its own --wx-* variables, defined per theme class. It sits inside <Willow fonts={false}>
+ * (so no web font is fetched) and this class, on the same element, wins by specificity and points every variable at
+ * the app's tokens (DESIGN.md §4), so the timeline follows the tenant brand color and the neutral surface.
+ */
+.wx-willow-theme.milestone-gantt {
+  --wx-font-family: var(--font-sans);
+  --wx-font-size: 13px;
+  --wx-font-size-sm: 12px;
+  --wx-color-font: var(--foreground);
+  --wx-color-secondary-font: var(--muted-foreground);
+  --wx-color-font-disabled: var(--subtle-foreground);
+  --wx-background: var(--card);
+  --wx-background-alt: var(--muted);
+  --wx-color-primary: var(--primary);
+  --wx-color-primary-selected: var(--accent);
+  --wx-color-danger: var(--color-danger-text);
+  --wx-border-color: var(--border);
+  --wx-border: 1px solid var(--border);
+  --wx-gantt-border-color: var(--border);
+  --wx-gantt-border: 1px solid var(--border);
+  --wx-gantt-select-color: var(--accent);
+  --wx-gantt-milestone-color: var(--primary);
+  --wx-gantt-task-color: var(--primary);
+  --wx-gantt-marker-color: var(--color-danger);
+  --wx-gantt-holiday-background: var(--muted);
+  --wx-gantt-icon-color: var(--muted-foreground);
+  --wx-table-header-background: var(--muted);
+  --wx-grid-header-font-color: var(--foreground);
+  --wx-table-select-background: var(--accent);
+  --wx-header-font-weight: 600;
+}

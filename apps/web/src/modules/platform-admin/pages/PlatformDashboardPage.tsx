@@ -5,7 +5,7 @@ import { StatCard } from "@/shared/components/ui/StatCard";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
-import { TrendBarChart } from "@/modules/platform-admin/components/TrendBarChart";
+import { TrendBarChart } from "@/shared/components/ui/TrendBarChart";
 import { PeriodToggle } from "@/modules/platform-admin/components/PeriodToggle";
 import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import type { AttentionTenant } from "@/modules/platform-admin/data/console.types";
@@ -209,8 +209,9 @@ export default function PlatformDashboardPage() {
           totalLabel={`total omzet ${periodLabel.toLowerCase()}`}
           formatTotal={formatCurrencyCompact}
           formatBarLabel={(value) => formatCurrencyCompact(value).replace(/^Rp\s*/, "")}
-          formatTooltip={(label, value) => `${label}: ${formatCurrency(value)}`}
-          emptyTooltip={(label) => `${label}: tidak ada omzet`}
+          formatValue={formatCurrency}
+          valueHeader="Omzet"
+          periodHeader={periodNoun === "hari" ? "Hari" : "Bulan"}
         />
         <TrendBarChart
           title={`Tenant Baru ${periodLabel}`}
@@ -219,8 +220,9 @@ export default function PlatformDashboardPage() {
           totalLabel={`tenant baru ${periodLabel.toLowerCase()}`}
           formatTotal={(value) => String(value)}
           formatBarLabel={(value) => String(value)}
-          formatTooltip={(label, value) => `${label}: ${value} tenant baru`}
-          emptyTooltip={(label) => `${label}: tidak ada tenant baru`}
+          formatValue={(value) => `${value} tenant`}
+          valueHeader="Tenant baru"
+          periodHeader={periodNoun === "hari" ? "Hari" : "Bulan"}
         />
       </div>
     </div>

@@ -36,7 +36,7 @@ export default function VendorListPage() {
   const fetchVendorPage = useVendorStore((s) => s.fetchVendorPage);
   const createVendor = useVendorStore((s) => s.createVendor);
   const updateVendor = useVendorStore((s) => s.updateVendor);
-  const toggleVendorActive = useVendorStore((s) => s.toggleVendorActive);
+  const setVendorActive = useVendorStore((s) => s.setVendorActive);
   const fetchVendorProjectHistory = useVendorStore((s) => s.fetchVendorProjectHistory);
   const downloadVendorTemplate = useVendorStore((s) => s.downloadVendorTemplate);
   const importVendors = useVendorStore((s) => s.importVendors);
@@ -132,7 +132,7 @@ export default function VendorListPage() {
   async function handleToggleActive(vendor: Vendor) {
     setActionError(null);
     try {
-      await toggleVendorActive(vendor.id);
+      await setVendorActive(vendor.id, !vendor.isActive);
       await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status vendor"));

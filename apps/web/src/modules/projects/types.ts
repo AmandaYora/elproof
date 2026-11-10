@@ -107,6 +107,8 @@ export interface ProjectProgress {
 }
 
 export interface Project {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   name: string;
   brideName: string;
@@ -163,6 +165,8 @@ export interface EvidenceRef {
 }
 
 export interface ProjectMilestone {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   order: number;
   name: string;
@@ -176,6 +180,8 @@ export interface ProjectMilestone {
 export type VendorPricingTier = "Akad" | "AkadResepsi" | "Resepsi";
 
 export interface ProjectVendor {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   vendorId: string;
   categoryId: string;
@@ -204,6 +210,8 @@ export interface ProjectVendor {
 }
 
 export interface VendorMilestone {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   projectVendorId: string;
   order: number;
@@ -218,6 +226,8 @@ export interface VendorMilestone {
 }
 
 export interface VendorPayment {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   projectVendorId: string;
   type: PaymentType;
@@ -235,6 +245,8 @@ export interface VendorPayment {
 // vendor), and only one evidence slot (a transfer proof), so evidenceComplete
 // here is a plain existence check, not a two-field rule.
 export interface ClientPayment {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   type: PaymentType;
   amount: number;
@@ -256,6 +268,8 @@ export interface ClientPayment {
 // but structurally simpler like ClientPayment: no projectVendorId-equivalent
 // field, since a project has at most one venue.
 export interface VenuePayment {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   type: PaymentType;
   amount: number;
@@ -267,6 +281,8 @@ export interface VenuePayment {
 }
 
 export interface VendorIssue {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   /** "" = a kendala about the event in general, not tied to a vendor. */
   projectVendorId: string;
@@ -294,6 +310,8 @@ export interface VendorIssue {
 }
 
 export interface Evidence {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
   id: string;
   name: string;
   type: EvidenceType;

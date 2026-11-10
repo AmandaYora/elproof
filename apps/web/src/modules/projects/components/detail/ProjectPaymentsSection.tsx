@@ -77,7 +77,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
 
   async function handleEditPayment(values: PaymentUpdateFormValues) {
     if (!editingPayment) return;
-    await updatePayment(projectId, editingPayment.id, values);
+    await updatePayment(projectId, editingPayment.id, values, editingPayment.updatedAt);
     setEditingPayment(null);
   }
 

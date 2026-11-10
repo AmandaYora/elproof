@@ -87,7 +87,7 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
   async function handleEditSave(fields: ProjectMilestoneEditFields) {
     if (!editingMilestone) return;
     setActionError(null);
-    await updateMilestone(projectId, editingMilestone.id, fields);
+    await updateMilestone(projectId, editingMilestone.id, fields, editingMilestone.updatedAt);
     setEditingMilestone(null);
   }
 

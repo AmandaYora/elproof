@@ -39,10 +39,11 @@ export default function ProjectIssuesTabPage() {
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
   const createIssue = useProjectStore((s) => s.createIssue);
   const updateIssue = useProjectStore((s) => s.updateIssue);
+  const setIssueStatus = useProjectStore((s) => s.setIssueStatus);
   const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
   const currentStaffId = useAuthStore((s) => s.currentStaffId);
-  const [modal, setModal] = useState<{ mode: "create" | "edit"; issueId?: string; initialValues: IssueFormValues } | null>(null);
+  const [modal, setModal] = useState<{ mode: "create" | "edit"; issueId?: string; version?: string; initialValues: IssueFormValues } | null>(null);
 
   useEffect(() => {
     void fetchIssues(projectId);
@@ -72,7 +73,7 @@ export default function ProjectIssuesTabPage() {
 
   async function handleSubmit(values: IssueFormValues) {
     if (!modal) return;
-    if (modal.mode === "edit" && modal.issueId) await updateIssue(projectId, modal.issueId, values);
+    if (modal.mode === "edit" && modal.issueId) await updateIssue(projectId, modal.issueId, values, modal.version);
     else await createIssue(projectId, values);
     setModal(null);
     toast.success(modal.mode === "edit" ? "Kendala diperbarui" : "Kendala dicatat");
@@ -80,7 +81,7 @@ export default function ProjectIssuesTabPage() {
 
   async function changeStatus(issue: VendorIssue, status: IssueStatus) {
     try {
-      await updateIssue(projectId, issue.id, { ...toIssueUpdateFields(issue), status });
+      await setIssueStatus(projectId, issue.id, status);
       toast.success("Status kendala diperbarui");
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Status kendala belum berubah. Coba lagi."));
@@ -143,7 +144,7 @@ export default function ProjectIssuesTabPage() {
                   {canEdit && (
                     <button
                       type="button"
-                      onClick={() => setModal({ mode: "edit", issueId: issue.id, initialValues: toIssueUpdateFields(issue) })}
+                      onClick={() => setModal({ mode: "edit", issueId: issue.id, version: issue.updatedAt, initialValues: toIssueUpdateFields(issue) })}
                       className="text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline"
                     >
                       Ubah kendala

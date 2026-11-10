@@ -27,7 +27,7 @@ import {
 import { IssueFormModal } from "@/modules/projects/components/IssueFormModal";
 import { ISSUE_STATUS_OPTIONS } from "@/modules/projects/schemas/issue.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
-import { useProjectStore, toIssueUpdateFields, type VendorMilestoneUpdateFields } from "@/modules/projects/stores/useProjectStore";
+import { useProjectStore, toIssueUpdateFields } from "@/modules/projects/stores/useProjectStore";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
@@ -80,6 +80,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
   const createIssue = useProjectStore((s) => s.createIssue);
   const updateIssue = useProjectStore((s) => s.updateIssue);
+  const setIssueStatus = useProjectStore((s) => s.setIssueStatus);
 
   const vendors = useVendorStore((s) => s.vendors);
   const fetchVendors = useVendorStore((s) => s.fetchVendors);
@@ -96,6 +97,8 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   const [issueModal, setIssueModal] = useState<{
     mode: "create" | "edit";
     issueId?: string;
+    /** `updatedAt` of the kendala when the form was opened (ADR-0036). */
+    version?: string;
     milestoneLocked: boolean;
     initialValues: IssueFormValues;
   } | null>(null);
@@ -139,7 +142,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function handleEdit(values: ProjectVendorFormValues) {
     if (!editing) return;
     setActionError(null);
-    await updateVendorEngagement(projectId, editing.id, values);
+    await updateVendorEngagement(projectId, editing.id, values, editing.updatedAt);
     setEditing(null);
   }
 
@@ -159,24 +162,10 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
     setAddMilestoneFor(null);
   }
 
-  function toMilestoneUpdateFields(m: VendorMilestone): VendorMilestoneUpdateFields {
-    return {
-      status: m.status,
-      targetDate: m.targetDate,
-      completedDate: m.completedDate ?? "",
-      picStaffId: m.picStaffId,
-      description: m.description,
-      notes: m.notes,
-    };
-  }
-
   async function toggleVendorMilestoneCancelled(m: VendorMilestone) {
     setActionError(null);
     try {
-      await updateVendorMilestone(projectId, m.projectVendorId, m.id, {
-        ...toMilestoneUpdateFields(m),
-        status: m.status === "Cancelled" ? "Not Started" : "Cancelled",
-      });
+      await updateVendorMilestone(projectId, m.projectVendorId, m.id, { status: m.status === "Cancelled" ? "Not Started" : "Cancelled" }, m.updatedAt);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Tahapan belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
     }
@@ -185,11 +174,11 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function quickStatusChange(m: VendorMilestone, status: MilestoneStatus) {
     setActionError(null);
     try {
+      // Only the status (and the completion date when finishing); the rest of the step is not sent.
       await updateVendorMilestone(projectId, m.projectVendorId, m.id, {
-        ...toMilestoneUpdateFields(m),
         status,
-        completedDate: status === "Completed" ? m.completedDate ?? todayISO() : m.completedDate ?? "",
-      });
+        ...(status === "Completed" && { completedDate: m.completedDate ?? todayISO() }),
+      }, m.updatedAt);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Status tahapan belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
     }
@@ -198,7 +187,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function handleSaveMilestone(fields: MilestoneEditFields) {
     if (!editingMilestone) return;
     setActionError(null);
-    await updateVendorMilestone(projectId, editingMilestone.milestone.projectVendorId, editingMilestone.milestone.id, fields);
+    await updateVendorMilestone(projectId, editingMilestone.milestone.projectVendorId, editingMilestone.milestone.id, fields, editingMilestone.milestone.updatedAt);
     setEditingMilestone(null);
   }
 
@@ -241,14 +230,14 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   }
 
   function openEditIssue(issue: VendorIssue) {
-    setIssueModal({ mode: "edit", issueId: issue.id, milestoneLocked: false, initialValues: toIssueUpdateFields(issue) });
+    setIssueModal({ mode: "edit", issueId: issue.id, version: issue.updatedAt, milestoneLocked: false, initialValues: toIssueUpdateFields(issue) });
   }
 
   async function handleIssueSubmit(values: IssueFormValues) {
     if (!issueModal) return;
     setActionError(null);
     if (issueModal.mode === "edit" && issueModal.issueId) {
-      await updateIssue(projectId, issueModal.issueId, values);
+      await updateIssue(projectId, issueModal.issueId, values, issueModal.version);
     } else {
       await createIssue(projectId, values);
     }
@@ -258,7 +247,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
   async function quickIssueStatusChange(issue: VendorIssue, status: IssueStatus) {
     setActionError(null);
     try {
-      await updateIssue(projectId, issue.id, { ...toIssueUpdateFields(issue), status });
+      await setIssueStatus(projectId, issue.id, status);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal memperbarui status kendala"));
     }

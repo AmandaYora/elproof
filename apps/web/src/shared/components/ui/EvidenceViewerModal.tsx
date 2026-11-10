@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Download, X, FileWarning } from "lucide-react";
+import { Download, X, FileWarning, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/kit/button";
+import { Skeleton } from "@/shared/components/kit/skeleton";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/shared/components/kit/dialog";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
@@ -36,6 +37,8 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
   const [direct, setDirect] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +47,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
     setFileUrl(null);
     setDirect(false);
     setError(null);
+    setZoomed(false);
 
     async function load() {
       try {
@@ -57,7 +61,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
         // endpoint, so falling back is harmless; anything else is worth a retry there.
         if (cancelled) return;
         if (axios.isAxiosError(err) && err.response?.status === 404) {
-          setError("Gagal memuat berkas evidence.");
+          setError("Dokumen belum bisa dimuat.");
           return;
         }
       }
@@ -67,7 +71,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
         objectUrl = URL.createObjectURL(res.data as Blob);
         setFileUrl(objectUrl);
       } catch {
-        if (!cancelled) setError("Gagal memuat berkas evidence.");
+        if (!cancelled) setError("Dokumen belum bisa dimuat.");
       }
     }
     void load();
@@ -76,7 +80,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [open, projectId, evidence.id]);
+  }, [open, projectId, evidence.id, attempt]);
 
   // A direct link is only good for two minutes, so the download link is made
   // when the button is pressed, not when the viewer opens.
@@ -110,6 +114,13 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {fileUrl && kind === "image" && (
+              <Button variant="outline" size="sm" onClick={() => setZoomed((z) => !z)} aria-pressed={zoomed}>
+                {zoomed ? <ZoomOut /> : <ZoomIn />}
+                <span className="hidden sm:inline">{zoomed ? "Sesuaikan layar" : "Ukuran asli"}</span>
+                <span className="sr-only sm:hidden">{zoomed ? "Sesuaikan layar" : "Ukuran asli"}</span>
+              </Button>
+            )}
             {fileUrl && direct && (
               <Button variant="outline" size="sm" onClick={() => void downloadDirect()} disabled={downloading} aria-label="Unduh dokumen">
                 <Download />
@@ -131,26 +142,31 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
 
         <div className="relative flex-1 overflow-hidden bg-surface-muted/50">
           {error ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-              <FileWarning className="h-8 w-8 text-danger-text" />
-              <p className="text-[13px] text-text-secondary">{error}</p>
+            <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+              <FileWarning className="size-8 text-danger-text" aria-hidden />
+              <p className="text-[13px] text-muted-foreground">{error}</p>
+              <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+                <RefreshCw /> Coba lagi
+              </Button>
             </div>
           ) : !fileUrl ? (
-            <div className="flex h-full items-center justify-center text-[13px] text-text-secondary">Memuat berkas...</div>
+            <div role="status" aria-label="Memuat dokumen" className="flex h-full items-center justify-center p-8">
+              <Skeleton className="h-full max-h-96 w-full max-w-md" />
+            </div>
           ) : kind === "pdf" ? (
             <iframe src={fileUrl} title={evidence.name} referrerPolicy="no-referrer" className="h-full w-full border-0" />
           ) : kind === "image" ? (
-            <div className="flex h-full items-center justify-center p-4 sm:p-8">
+            <div className={zoomed ? "h-full overflow-auto p-4 sm:p-8" : "flex h-full items-center justify-center p-4 sm:p-8"}>
               <img
                 src={fileUrl}
                 alt={evidence.name}
                 referrerPolicy="no-referrer"
-                className="max-h-full max-w-full rounded-md border border-border-light bg-white p-2 object-contain shadow-sm"
+                className={zoomed ? "mx-auto max-w-none rounded-md border border-border-light bg-white p-2 shadow-sm" : "max-h-full max-w-full rounded-md border border-border-light bg-white p-2 object-contain shadow-sm"}
               />
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-[13px] text-text-secondary">
-              Pratinjau tidak tersedia untuk jenis berkas ini — gunakan tombol Unduh.
+              Pratinjau tidak tersedia untuk jenis berkas ini. Gunakan tombol Unduh.
             </div>
           )}
         </div>

@@ -64,7 +64,8 @@ interface StaffState {
   /** New invitation link (not accepted yet, or lost Google account). */
   reinviteStaff: (id: string) => Promise<AccessLink>;
   updateStaff: (id: string, values: UserFormValues) => Promise<void>;
-  toggleStaffActive: (id: string) => Promise<void>;
+  /** Sets the state explicitly (ADR-0036): a double click or a retry cannot flip it back. */
+  setStaffActive: (id: string, isActive: boolean) => Promise<void>;
   // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
   // The tenant's Owner account is rejected server-side unconditionally
   // (403), never reaching a confirmation dialog.
@@ -119,8 +120,8 @@ export const useStaffStore = create<StaffState>((set, get) => ({
     await get().fetchStaff();
   },
 
-  toggleStaffActive: async (id) => {
-    await httpClient.post(API.staff.toggleActive(id));
+  setStaffActive: async (id, isActive) => {
+    await httpClient.patch(API.staff.item(id), { isActive });
     await get().fetchStaff();
   },
 

@@ -59,7 +59,7 @@ export default function UserListPage() {
   const createStaff = useStaffStore((s) => s.createStaff);
   const reinviteStaff = useStaffStore((s) => s.reinviteStaff);
   const updateStaff = useStaffStore((s) => s.updateStaff);
-  const toggleStaffActive = useStaffStore((s) => s.toggleStaffActive);
+  const setStaffActive = useStaffStore((s) => s.setStaffActive);
   const fetchStaffDeleteImpact = useStaffStore((s) => s.fetchStaffDeleteImpact);
   const deleteStaff = useStaffStore((s) => s.deleteStaff);
 
@@ -152,7 +152,7 @@ export default function UserListPage() {
   async function handleToggleActive(user: StaffMember) {
     setActionError(null);
     try {
-      await toggleStaffActive(user.id);
+      await setStaffActive(user.id, !user.isActive);
       await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Status anggota tim belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));

@@ -67,7 +67,7 @@ export default function ClientListPage() {
   const meta = useClientStore((s) => s.clientPageMeta);
   const fetchClientPage = useClientStore((s) => s.fetchClientPage);
   const updateContact = useClientStore((s) => s.updateContact);
-  const toggleActive = useClientStore((s) => s.toggleActive);
+  const setClientActive = useClientStore((s) => s.setActive);
   const deleteClient = useClientStore((s) => s.deleteClient);
   const issueAccessLink = useClientStore((s) => s.issueAccessLink);
   const replaceRepresentative = useClientStore((s) => s.replaceRepresentative);
@@ -112,7 +112,7 @@ export default function ClientListPage() {
   async function handleToggleActive(client: Client) {
     setActionError(null);
     try {
-      await toggleActive(client.projectId, client.id);
+      await setClientActive(client.projectId, client.id, !client.isActive);
       await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Status klien belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));

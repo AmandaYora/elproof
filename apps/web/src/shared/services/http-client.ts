@@ -7,6 +7,8 @@ import { usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { setLoginNotice } from "@/shared/lib/session-notice";
 import { toast } from "@/shared/stores/useToastStore";
 import { useContactStore } from "@/shared/stores/useContactStore";
+import { useConflictStore } from "@/shared/stores/useConflictStore";
+import { isStaleConflict } from "@/shared/lib/concurrency";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 /** Codes the API attaches to a 403 when access depends on account state. */
@@ -169,6 +171,8 @@ httpClient.interceptors.response.use(
       Boolean(originalRequest?.url?.startsWith("/api/v1/auth/links/"));
 
     handleAccessError(accessErrorCode(error));
+    // Saved over someone else's change: say so once, here, whichever form made the save (ADR-0036).
+    if (isStaleConflict(error)) useConflictStore.getState().show();
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint) {
       originalRequest._retried = true;

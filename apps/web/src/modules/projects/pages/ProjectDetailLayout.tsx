@@ -4,6 +4,7 @@ import { Navigate, Outlet, useParams } from "react-router-dom";
 import { TabNav } from "@/shared/components/ui/TabNav";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { SkeletonRows } from "@/shared/components/ui/Skeleton";
+import { registerRevalidator } from "@/shared/stores/useConflictStore";
 import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
 import { ProjectHeaderCard } from "@/modules/projects/components/detail/ProjectHeaderCard";
 import { ProjectSidePanel } from "@/modules/projects/components/detail/ProjectSidePanel";
@@ -52,6 +53,10 @@ export default function ProjectDetailLayout() {
       cancelled = true;
     };
   }, [projectId, fetchOverview, attempt]);
+
+  // After "data diubah orang lain": load the project again. The page goes back to its loading state, so every tab (and any
+  // form open in it, holding old values) is built again from the latest data.
+  useEffect(() => registerRevalidator(() => setAttempt((n) => n + 1)), []);
 
   if (!projectId || status === "not-found") {
     return <Navigate to={ROUTE_PATHS.projects} replace />;

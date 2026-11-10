@@ -38,7 +38,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const cancelProject = useProjectStore((s) => s.cancelProject);
   const transitionProject = useProjectStore((s) => s.transitionProject);
   const fetchClosingChecklist = useProjectStore((s) => s.fetchClosingChecklist);
-  const toggleArchiveProject = useProjectStore((s) => s.toggleArchiveProject);
+  const setProjectArchived = useProjectStore((s) => s.setProjectArchived);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
   // Actions follow the workspace role's permissions (ADR-0026).
@@ -53,6 +53,8 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   // The server sends `margin` only to roles allowed to see it (finance.margin.view), so its presence is the permission.
 
   const [editOpen, setEditOpen] = useState(false);
+  /** `updatedAt` of the project when the edit form was opened: the save is refused if someone saved first (ADR-0036). */
+  const [editVersion, setEditVersion] = useState<string | undefined>();
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -85,7 +87,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   // The two form handlers throw on failure so the modal can show the
   // message next to the form, with what the user typed still in place.
   async function handleEdit(values: ProjectFormValues) {
-    await updateProject(projectId, values);
+    await updateProject(projectId, values, editVersion);
     setEditOpen(false);
     toast.success("Perubahan proyek disimpan");
   }
@@ -150,7 +152,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   async function handleToggleArchive() {
     setActionError(null);
     try {
-      await toggleArchiveProject(projectId);
+      await setProjectArchived(projectId, !project?.isArchived);
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Status arsip proyek belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }
@@ -201,7 +203,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
               </Button>
             )}
             {canEdit && (
-              <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
+              <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => {
+                setEditVersion(project?.updatedAt);
+                setEditOpen(true);
+              }}>
                 Ubah proyek
               </Button>
             )}

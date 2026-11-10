@@ -74,7 +74,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
 
   async function handleEditPayment(values: VenuePaymentUpdateFormValues) {
     if (!editingPayment) return;
-    await updateVenuePayment(projectId, editingPayment.id, values);
+    await updateVenuePayment(projectId, editingPayment.id, values, editingPayment.updatedAt);
     setEditingPayment(null);
   }
 

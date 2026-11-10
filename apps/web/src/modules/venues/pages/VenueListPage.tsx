@@ -32,7 +32,7 @@ export default function VenueListPage() {
   const fetchVenuePage = useVenueStore((s) => s.fetchVenuePage);
   const createVenue = useVenueStore((s) => s.createVenue);
   const updateVenue = useVenueStore((s) => s.updateVenue);
-  const toggleVenueActive = useVenueStore((s) => s.toggleVenueActive);
+  const setVenueActive = useVenueStore((s) => s.setVenueActive);
   const downloadVenueTemplate = useVenueStore((s) => s.downloadVenueTemplate);
   const importVenues = useVenueStore((s) => s.importVenues);
   const exportVenues = useVenueStore((s) => s.exportVenues);
@@ -107,7 +107,7 @@ export default function VenueListPage() {
   async function handleToggleActive(venue: Venue) {
     setActionError(null);
     try {
-      await toggleVenueActive(venue.id);
+      await setVenueActive(venue.id, !venue.isActive);
       await reload();
     } catch (err) {
       setActionError(getApiErrorMessage(err, "Gagal mengubah status venue"));

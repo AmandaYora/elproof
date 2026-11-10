@@ -39,7 +39,8 @@ function isDisplayCall(node) {
   while (call && !ts.isCallExpression(call)) call = call.parent;
   if (!call) return false;
   const text = call.expression.getText();
-  return /^toast\.(success|error|info)$/.test(text) || text === "getApiErrorMessage" || text === "deleteWithUndo";
+  // setError("..."), setFileError("..."), form.setFormError("..."), setLoginNotice("..."): state that is drawn as text.
+  return /^toast\.(success|error|info)$/.test(text) || text === "getApiErrorMessage" || text === "deleteWithUndo" || /(^|\.)set\w*(Error|Message|Notice)$/.test(text);
 }
 
 function isDisplayLiteral(node) {

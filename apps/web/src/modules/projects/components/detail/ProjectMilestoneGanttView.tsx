@@ -1,11 +1,17 @@
-import { Gantt, type ITask } from "@svar-ui/react-gantt";
+import { Gantt, Willow, type ITask } from "@svar-ui/react-gantt";
 import "@svar-ui/react-gantt/all.css";
+import "./gantt-theme.css";
 import { isMilestoneOverdue } from "@/modules/projects/lib/dates";
+import { MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import type { ProjectMilestone } from "@/modules/projects/types";
 
 function parseISODate(dateISO: string): Date {
   const [y, m, d] = dateISO.split("-").map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+function statusLabel(status: unknown): string {
+  return MILESTONE_STATUS_LABELS.staff[status as keyof typeof MILESTONE_STATUS_LABELS.staff] ?? String(status);
 }
 
 function sortForGantt(milestones: ProjectMilestone[]): ProjectMilestone[] {
@@ -38,16 +44,20 @@ export function ProjectMilestoneGanttView({ milestones }: { milestones: ProjectM
   }
 
   return (
-    <div className="h-[480px] overflow-hidden rounded-md border border-border">
+    // Below about 900px the library drops into a one-pane mode and hides the timeline, so a narrow card scrolls sideways instead.
+    <div className="h-[480px] overflow-x-auto overflow-y-hidden rounded-md border border-border" role="region" aria-label="Jadwal proyek dalam bentuk garis waktu" tabIndex={0}>
+      <Willow fonts={false}>
+        <div className="milestone-gantt wx-willow-theme h-full min-w-[900px]">
       <Gantt
         tasks={tasks}
         readonly
         columns={[
-          { id: "text", header: "Tahapan", flexGrow: 2 },
+          // A fixed grid leaves room for the timeline beside it; with a flexible one the grid took the whole width.
+          { id: "text", header: "Tahapan", width: 220 },
           {
             id: "status",
             header: "Status",
-            width: 130,
+            width: 120,
             cell: ({ row }: { row: ITask }) => (
               <span
                 className={
@@ -58,12 +68,14 @@ export function ProjectMilestoneGanttView({ milestones }: { milestones: ProjectM
                       : "text-text-secondary"
                 }
               >
-                {row.overdue ? `${row.status} · terlambat` : String(row.status)}
+                {row.overdue ? `${statusLabel(row.status)}, terlambat` : statusLabel(row.status)}
               </span>
             ),
           },
         ]}
       />
+        </div>
+      </Willow>
     </div>
   );
 }

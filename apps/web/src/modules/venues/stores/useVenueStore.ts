@@ -70,7 +70,8 @@ interface VenueState {
   fetchVenue: (id: string) => Promise<Venue>;
   createVenue: (values: VenueCreateFormValues) => Promise<void>;
   updateVenue: (id: string, values: VenueFormValues) => Promise<void>;
-  toggleVenueActive: (id: string) => Promise<void>;
+  /** Sets the state explicitly (ADR-0036): a double click or a retry cannot flip it back. */
+  setVenueActive: (id: string, isActive: boolean) => Promise<void>;
   uploadVenueAttachment: (id: string, file: CompressedFilePayload) => Promise<void>;
   downloadVenueTemplate: () => Promise<Blob>;
   importVenues: (file: File) => Promise<VenueImportResult>;
@@ -125,8 +126,8 @@ export const useVenueStore = create<VenueState>((set, get) => ({
     await get().fetchVenues();
   },
 
-  toggleVenueActive: async (id) => {
-    await httpClient.post(API.venues.toggleActive(id));
+  setVenueActive: async (id, isActive) => {
+    await httpClient.patch(API.venues.item(id), { isActive });
     await get().fetchVenues();
   },
 
