@@ -91,12 +91,26 @@ function useScrollOnNavigate() {
         window.clearInterval(poll);
         if (!el) return;
         el.scrollIntoView({ block: "start" });
-        settle = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start" }), 700);
+        const top = el.getBoundingClientRect().top;
+        // Only when a section above moved the target, and never after the person has started scrolling.
+        settle = window.setTimeout(() => {
+          const now = document.getElementById(id);
+          if (now && Math.abs(now.getBoundingClientRect().top - top) > 4) now.scrollIntoView({ block: "start" });
+        }, 700);
+        window.addEventListener("wheel", cancel, { once: true, passive: true });
+        window.addEventListener("touchstart", cancel, { once: true, passive: true });
+        window.addEventListener("keydown", cancel, { once: true });
       }
     }, 50);
+    function cancel() {
+      window.clearTimeout(settle);
+    }
     return () => {
       window.clearInterval(poll);
       window.clearTimeout(settle);
+      window.removeEventListener("wheel", cancel);
+      window.removeEventListener("touchstart", cancel);
+      window.removeEventListener("keydown", cancel);
     };
   }, [pathname, hash, key]);
 }
