@@ -11,7 +11,7 @@
     { "key": "secret", "value": "", "type": "string", "description": "Secret App eksternal Anda — rahasia, jangan commit ke repo manapun" },
     { "key": "accessToken", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Tukar appId + secret -> Token'" },
     { "key": "orderRef", "value": "CONTOH-ORDER-0001", "type": "string", "description": "ID transaksi milik sistem Anda sendiri — ganti dengan ID unik yang belum pernah dipakai sebelum membuat charge baru" },
-    { "key": "planId", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Lihat Katalog Paket Saya' — id paket pertama yang dipetakan ke App Anda" }
+    { "key": "planId", "value": "", "type": "string", "description": "Diisi otomatis oleh test script request 'Lihat Katalog Paket Saya' — id paket pertama milik App Anda" }
   ],
   "item": [
     {
@@ -166,7 +166,7 @@
                   "        pm.collectionVariables.set(\"planId\", String(data[0].id));",
                   "        console.log(\"planId tersimpan: \" + data[0].id + \" (\" + data[0].name + \")\");",
                   "    } else {",
-                  "        console.log(\"App ini belum dipetakan ke paket mana pun — hubungi tim ElProof\");",
+                  "        console.log(\"App ini belum punya paket — hubungi tim ElProof\");",
                   "    }",
                   "}"
                 ]
@@ -185,7 +185,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["external", "subscription-plans"]
             },
-            "description": "Katalog ini khusus milik App Anda — App lain punya katalognya sendiri dan tidak pernah saling terlihat. Respons 200 dengan data: [] bukan galat: artinya App Anda belum dipetakan ke paket mana pun, hubungi tim ElProof. Field features berisi rincian paket dan boleh kosong ([]). Field active bisa false — paket non-aktif tetap dikirim supaya Anda bisa menandai paket yang sedang dipakai pelanggan; saring sendiri di sisi Anda kalau hanya ingin menampilkan yang aktif."
+            "description": "Katalog ini khusus milik App Anda — App lain punya katalognya sendiri dan tidak pernah saling terlihat. Respons 200 dengan data: [] bukan galat: artinya App Anda belum punya paket, hubungi tim ElProof. Field features berisi rincian paket dan boleh kosong ([]). Field active bisa false — paket non-aktif tetap dikirim supaya Anda bisa menandai paket yang sedang dipakai pelanggan; saring sendiri di sisi Anda kalau hanya ingin menampilkan yang aktif."
           },
           "response": []
         },
@@ -206,7 +206,7 @@
                   "    console.log(\"Charge langganan dibuat: \" + data.orderRef + \" status=\" + data.status + \" amount=\" + data.amount);",
                   "}",
                   "if (pm.response.code === 422) {",
-                  "    console.log(\"planId tidak dipetakan ke App ini — jalankan 'Lihat Katalog Paket Saya' dulu\");",
+                  "    console.log(\"planId bukan milik App ini — jalankan 'Lihat Katalog Paket Saya' dulu\");",
                   "}"
                 ]
               }
@@ -230,7 +230,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["external", "subscriptions", "charges"]
             },
-            "description": "Tidak ada field amount — nominal diambil ElProof dari harga paket, jadi App tidak bisa menentukan sendiri berapa yang ia bayar. planId harus paket yang dipetakan ke App Anda; planId milik App lain dijawab 422 walaupun Anda tahu id-nya. orderRef harus unik selamanya milik sistem Anda sendiri — mengulang orderRef yang sama menghasilkan 409, bukan charge duplikat. Bentuk responsnya identik dengan \"Buat Charge\" di folder Pembayaran, jadi parser yang sudah Anda punya tidak perlu diubah.\n\nCatatan: planId di body raw di atas SENGAJA tanpa tanda kutip — ia angka (int64), bukan string. Jangan \"perbaiki\" jadi \"{{planId}}\" berkutip, endpoint akan menolaknya."
+            "description": "Tidak ada field amount — nominal diambil ElProof dari harga paket, jadi App tidak bisa menentukan sendiri berapa yang ia bayar. planId harus paket milik App Anda; planId milik App lain dijawab 422 walaupun Anda tahu id-nya. orderRef harus unik selamanya milik sistem Anda sendiri — mengulang orderRef yang sama menghasilkan 409, bukan charge duplikat. Bentuk responsnya identik dengan \"Buat Charge\" di folder Pembayaran, jadi parser yang sudah Anda punya tidak perlu diubah.\n\nCatatan: planId di body raw di atas SENGAJA tanpa tanda kutip — ia angka (int64), bukan string. Jangan \"perbaiki\" jadi \"{{planId}}\" berkutip, endpoint akan menolaknya."
           },
           "response": []
         },

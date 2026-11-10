@@ -81,6 +81,7 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
+| app_id | VARCHAR(100) NOT NULL | `FK*` → `payment.payment_apps.app_id` — the one App that sells this plan (migration `000073`, ADR-0040); cross-module primitive ID, no SQL constraint, checked by `POST`/`PATCH /plans`. `platform-billing` = ElProof's own catalog for WO tenants. Indexed |
 | name | VARCHAR(100) | |
 | duration_months | SMALLINT UNSIGNED | |
 | price | BIGINT UNSIGNED | Rupiah, integer |
@@ -112,20 +113,9 @@ submit semantics.
 | created_at | TIMESTAMP | |
 | paid_at | TIMESTAMP NULL | |
 
-### `subscription_plan_apps` — migration `000043`, `docs/plan/external-subscription-plans/PLAN.md`
-| Column | Type | Notes |
-|---|---|---|
-| id | BIGINT UNSIGNED PK | |
-| plan_id | BIGINT UNSIGNED `FK` → subscription_plans.id, `ON DELETE CASCADE` | same-module FK |
-| app_id | VARCHAR(100) | `FK*` → `payment.payment_apps.app_id` — cross-module primitive ID, no SQL constraint |
-| created_at | TIMESTAMP | |
-
-`UNIQUE(app_id, plan_id)`. **A plan's visibility is derived from whether it has any row here at
-all** — there is no `is_public` column (rejected: it would tie the demo catalog's price and an
-App's own price to one row, see the PLAN's D6). A plan with a row here is private to that App and
-hidden from the WO tenant subscription catalog (`GET /plans` for non-`platform_admin` principals);
-a plan with no row is part of ElProof's own public catalog. This is also the only source of the
-`appIds` field in `planResponse` (`GET /plans`, `platform_admin` only) — see `docs/API_CONTRACT.md`.
+`subscription_plan_apps` (migration `000043`, the many-to-many visibility mapping of ADR-0021) was
+dropped by migration `000073` (ADR-0040): every plan now names its one owning App in
+`subscription_plans.app_id`.
 
 ### `subscription_app_charges` — migration `000044`, `docs/plan/external-subscription-plans/PLAN.md`
 | Column | Type | Notes |

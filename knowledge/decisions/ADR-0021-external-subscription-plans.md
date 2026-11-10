@@ -1,7 +1,10 @@
 # ADR-0021: Isolated per-App plan catalog and subscription ledger for external Apps
 
 ## Status
-Accepted — implemented.
+Accepted — implemented. **Partly superseded by ADR-0040** (T-20261110-16): the visibility mapping
+(`subscription_plan_apps`, "unmapped = public", `appIds`, `/app-plans`) is replaced by one owning
+App per plan (`subscription_plans.app_id`). The external catalog, the subscription-charge endpoint
+and its ledger below still stand.
 
 ## Context
 

@@ -49,6 +49,11 @@ a payment gateway directly into `billing`/`platform`, this module wraps **one me
   knows nothing about plans, prices, or subscriptions. `billing` is the one that imports
   `payment/contracts` and owns those routes end to end; this module's own route table (§7.2) is
   unchanged.
+- **Plans per App (ADR-0040).** Every plan in `billing` belongs to exactly one App of this registry
+  (`subscription_plans.app_id`, a primitive ID, no FK). ElProof's own WO catalog is simply the plans
+  of the internal App `contracts.InternalAppBilling` (`platform-billing`) — the decision lives in
+  `billing` (`TenantPlansApp`); this module still has no notion of a plan. Manajemen Aplikasi ›
+  Detail › Paket lists and adds an App's own plans through `billing`'s `/plans?appId=`.
 
 ## 3. Structure and dependencies
 

@@ -47,7 +47,7 @@ export default defineConfig({
       // Tests that WRITE data (new project, new payment). They run after every screenshot project has finished, so the
       // data they add can never leak into a golden screenshot taken at the same time.
       name: "mutating",
-      testMatch: /(payment-flow|tahap5|tahap6|tahap8|branding|access)\.spec\.ts$/,
+      testMatch: /(payment-flow|tahap5|tahap6|tahap8|branding|access|plans)\.spec\.ts$/,
       dependencies: ["desktop", "mobile"],
       use: { viewport: { width: 1280, height: 800 } },
     },
