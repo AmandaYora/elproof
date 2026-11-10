@@ -138,10 +138,10 @@ func (s *VoucherService) validate(ctx context.Context, in *VoucherInput) error {
 		fields["discountType"] = []string{"Pilih jenis potongan"}
 	}
 	if in.ValidFrom != "" && !validDate(in.ValidFrom) {
-		fields["validFrom"] = []string{"Tanggal tidak valid"}
+		fields["validFrom"] = []string{"Pilih tanggal dari kalender"}
 	}
 	if in.ValidUntil != "" && !validDate(in.ValidUntil) {
-		fields["validUntil"] = []string{"Tanggal tidak valid"}
+		fields["validUntil"] = []string{"Pilih tanggal dari kalender"}
 	}
 	if in.ValidFrom != "" && in.ValidUntil != "" && in.ValidUntil < in.ValidFrom {
 		fields["validUntil"] = []string{"Tanggal akhir tidak boleh sebelum tanggal mulai"}
