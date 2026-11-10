@@ -15,7 +15,7 @@ const VARIANT: Record<CtaVariant, string> = {
  */
 export function ctaClass(variant: CtaVariant = "primary", size: "md" | "sm" = "md", className?: string) {
   return cn(
-    "inline-flex items-center justify-center gap-2 rounded-full border border-transparent font-semibold whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    "inline-flex items-center justify-center gap-2 rounded-full border border-transparent font-semibold whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
     size === "md" ? "h-12 px-6 text-[15px]" : "h-10 px-4 text-[14px] pointer-coarse:h-11",
     VARIANT[variant],
     className,

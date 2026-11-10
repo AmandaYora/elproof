@@ -49,7 +49,7 @@ const FOOTER_GROUPS = [
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    "rounded-full px-3.5 py-2 text-[14.5px] font-medium transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    "rounded-full px-3.5 py-2 text-[14.5px] font-medium transition-colors outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
     isActive ? "text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
   );
 
@@ -132,7 +132,7 @@ export default function MarketingLayout() {
               aria-expanded={menuOpen}
               aria-controls={menuId}
               aria-label={menuOpen ? "Tutup menu" : "Buka menu"}
-              className="grid size-11 place-items-center rounded-full text-foreground outline-none hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring lg:hidden"
+              className="grid size-11 place-items-center rounded-full text-foreground outline-none hover:bg-muted focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring lg:hidden"
             >
               {menuOpen ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
             </button>

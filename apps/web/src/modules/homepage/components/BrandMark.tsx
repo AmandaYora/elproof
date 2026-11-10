@@ -9,7 +9,7 @@ export function BrandMark({ className, inverted = false }: { className?: string;
     <Link
       to={ROUTE_PATHS.homepage}
       className={cn(
-        "inline-flex items-center gap-2.5 rounded-md text-[18px] font-bold tracking-tight outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "inline-flex items-center gap-2.5 rounded-md text-[18px] font-bold tracking-tight outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
         inverted ? "text-primary-foreground" : "text-foreground",
         className,
       )}
