@@ -35,8 +35,10 @@ and DESIGN.md forbids per-section entrance animation (written for the consoles).
 
 ### Motion: a scoped exception
 * Per-section reveal is allowed **only on Beranda and Tentang Kami**, opt-in with the `.reveal` class: CSS `animation-timeline: view()` inside
-  `@supports` and `prefers-reduced-motion: no-preference`, opacity + ≤ 12 px, once. No JavaScript hides content, so a browser without scroll-driven animations or a
-  person who asked for less motion simply sees the page. Never on legal pages, forms, prices or FAQ.
+  `@supports` and `prefers-reduced-motion: no-preference`, opacity + ≤ 12 px over the first half of the element's entry. The animation is tied to the
+  scroll position (it plays back if the element leaves through the bottom again); there is no timer and no state. No JavaScript hides content, so a browser
+  without scroll-driven animations or a person who asked for less motion simply sees the page. Never on legal pages, forms, prices or FAQ.
+* Motion that answers a person's action (a short fade when a "Cara kerja" step or a preview tab is chosen) is allowed, behind `motion-safe:`.
 * One expressive moment per page: the seal pressed onto the verified payment in the hero (`.seal-press`, ≤ 700 ms, once, reduced-motion → static).
 * `Reveal` and `useRevealOnScroll` are removed.
 * Interactive parts below the fold (the clickable app preview, the scroll story) are lazy chunks; the entry budget does not change.

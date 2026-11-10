@@ -12,7 +12,7 @@ const QUESTIONS = [
   {
     question: "Apa yang terjadi jika masa langganan habis?",
     answer:
-      "Bila langganan tidak diperpanjang, akses usaha Anda ke ElProof dapat dinonaktifkan sementara sampai langganan diperpanjang. Data yang sudah tercatat tidak dihapus karena terlambat memperpanjang.",
+      "Akses dikurangi bertahap, bukan langsung diputus: 7 hari pertama tetap penuh dengan pengingat, 23 hari berikutnya hanya baca dan ekspor data, setelah itu tim Anda hanya bisa membuka halaman Langganan untuk membayar. Portal Klien tetap bisa dibaca, dan data yang sudah tercatat tidak dihapus. Akses penuh kembali begitu pembayaran diterima.",
   },
   {
     question: "Apakah data proyek saya aman?",

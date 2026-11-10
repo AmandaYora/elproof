@@ -69,25 +69,36 @@ function NavItem({ to, label, className }: { to: string; label: string; classNam
   );
 }
 
-/** Scrolls to #id after navigation (react-router does not), or to the top on a new page. */
+/**
+ * Scrolls to #id after navigation (react-router does not), or to the top on a new page. Keyed on location.key so a
+ * second click on the same link (react-router replaces the entry with a new key) scrolls again. The page and its
+ * lazy sections may still be loading: look for the target for up to 5 s, then scroll once more after the layout
+ * has settled, since a lazy section above the target can change its position.
+ */
 function useScrollOnNavigate() {
-  const { pathname, hash } = useLocation();
+  const { pathname, hash, key } = useLocation();
   useEffect(() => {
     if (!hash) {
       window.scrollTo(0, 0);
       return;
     }
-    // The section may still be loading (lazy page): try for a moment.
+    const id = decodeURIComponent(hash.slice(1));
+    let settle: number | undefined;
     let tries = 0;
-    const id = window.setInterval(() => {
-      const el = document.getElementById(decodeURIComponent(hash.slice(1)));
-      if (el || ++tries > 20) {
-        window.clearInterval(id);
-        el?.scrollIntoView({ block: "start" });
+    const poll = window.setInterval(() => {
+      const el = document.getElementById(id);
+      if (el || ++tries > 100) {
+        window.clearInterval(poll);
+        if (!el) return;
+        el.scrollIntoView({ block: "start" });
+        settle = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start" }), 700);
       }
     }, 50);
-    return () => window.clearInterval(id);
-  }, [pathname, hash]);
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(settle);
+    };
+  }, [pathname, hash, key]);
 }
 
 export default function MarketingLayout() {
@@ -97,9 +108,10 @@ export default function MarketingLayout() {
   const location = useLocation();
   const menuId = useId();
 
+  // Any navigation closes the phone menu, also a tap on the page that is already open (same path, new key).
   useEffect(() => {
     setMenuOpen(false);
-  }, [location.pathname, location.hash]);
+  }, [location.key]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans text-[16px] leading-relaxed text-foreground">

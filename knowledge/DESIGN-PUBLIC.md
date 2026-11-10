@@ -62,8 +62,10 @@ Status (Lunas, Belum dibayar) tetap memakai token status konsol + ikon + teks. H
 
 ## 5. Gerak dan aksesibilitas
 
-- `.reveal`: CSS `animation-timeline: view()` dalam `@supports` + `prefers-reduced-motion: no-preference`; opacity + ≤ 12 px,
-  sekali; hanya Beranda dan Tentang; tidak pada harga, FAQ, formulir, atau hukum. Tidak ada JavaScript yang menyembunyikan isi.
+- `.reveal`: CSS `animation-timeline: view()` dalam `@supports` + `prefers-reduced-motion: no-preference`; opacity + ≤ 12 px
+  selama paruh pertama elemen masuk layar, terikat posisi gulir (bisa diputar balik saat elemen keluar lewat bawah); hanya
+  Beranda dan Tentang; tidak pada harga, FAQ, formulir, atau hukum. Tidak ada JavaScript yang menyembunyikan isi.
+- Gerak yang menjawab tindakan (pudar singkat saat langkah "Cara kerja" atau tab pratinjau dipilih) boleh, di balik `motion-safe:`.
 - `.seal-press`: satu momen ekspresif (≤ 700 ms) di hero; statis bila "kurangi gerakan".
 - Tab pratinjau pola APG (panah, Home/End); akordeon dengan `aria-expanded`; "Lewati ke isi"; fokus 2 px warna plum.
 

@@ -24,6 +24,10 @@ export function cheapestPerMonth(plans: PublicPlan[]): PublicPlan | null {
 export function savingPercent(plan: PublicPlan, plans: PublicPlan[]): number | null {
   const base = plans.reduce<PublicPlan | null>((min, p) => (!min || p.durationMonths < min.durationMonths ? p : min), null);
   if (!base || base === plan || base.durationMonths >= plan.durationMonths) return null;
-  const pct = Math.floor((1 - plan.price / plan.durationMonths / (base.price / base.durationMonths)) * 100);
+  // Integer arithmetic: 1 - 0.9 in floating point is 0.0999…, which floored would show 9% for a 10% saving.
+  // saving = 1 - (plan.price / plan.months) / (base.price / base.months) = (den - plan.price * base.months) / den
+  const den = base.price * plan.durationMonths;
+  if (den <= 0) return null;
+  const pct = Math.floor(((den - plan.price * base.durationMonths) * 100) / den);
   return pct > 0 ? pct : null;
 }

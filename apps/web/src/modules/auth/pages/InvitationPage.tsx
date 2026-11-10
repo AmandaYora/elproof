@@ -221,7 +221,7 @@ export default function InvitationPage() {
                       onBlur={() => form.blur("confirm")}
                     />
                   </Field>
-                  <Button type="submit" variant="primary" className="h-12 w-full justify-center rounded-full text-[15px]" disabled={form.submitting}>
+                  <Button type="submit" variant="primary" className="h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid" disabled={form.submitting}>
                     {form.submitting ? "Menyimpan..." : "Simpan kata sandi dan masuk"}
                   </Button>
                 </form>

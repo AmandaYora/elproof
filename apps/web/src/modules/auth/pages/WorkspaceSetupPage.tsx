@@ -180,7 +180,7 @@ export default function WorkspaceSetupPage() {
             </span>
           </p>
 
-          <Button type="submit" variant="primary" className="mt-1 h-12 w-full justify-center rounded-full text-[15px]" disabled={form.submitting}>
+          <Button type="submit" variant="primary" className="mt-1 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid" disabled={form.submitting}>
             {form.submitting ? "Menyiapkan workspace..." : "Buat workspace"}
           </Button>
         </div>

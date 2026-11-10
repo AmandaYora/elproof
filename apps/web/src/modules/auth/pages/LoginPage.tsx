@@ -223,7 +223,7 @@ export default function LoginPage() {
                       autoFocus
                     />
                   </Field>
-                  <Button type="submit" variant="primary" className="mt-2 h-12 w-full justify-center rounded-full text-[15px]" disabled={linkForm.submitting}>
+                  <Button type="submit" variant="primary" className="mt-2 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid" disabled={linkForm.submitting}>
                     {linkForm.submitting ? "Menghubungkan..." : "Hubungkan dan masuk"}
                   </Button>
                 </form>
@@ -267,7 +267,7 @@ export default function LoginPage() {
                       className="font-mono tracking-[0.3em]"
                     />
                   </Field>
-                  <Button type="submit" variant="primary" className="mt-2 h-12 w-full justify-center rounded-full text-[15px]" disabled={mfaForm.submitting}>
+                  <Button type="submit" variant="primary" className="mt-2 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid" disabled={mfaForm.submitting}>
                     {mfaForm.submitting ? "Memeriksa kode..." : "Verifikasi kode"}
                   </Button>
                 </form>
@@ -340,7 +340,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   variant="primary"
-                  className="mt-2 h-12 w-full justify-center rounded-full text-[15px]"
+                  className="mt-2 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid"
                   disabled={loginForm.submitting}
                 >
                   {loginForm.submitting ? "Memproses..." : "Masuk"}
