@@ -22,7 +22,8 @@ test.describe("wo: focus", () => {
     await page.keyboard.press("Space"); // Space acts on keyup: no Enter keydown can reach the dialog's first field and submit it
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await tabTo(page, dialog.locator('input[data-slot="input"]').first());
+    // The Modal focuses its first field itself; a Tab sent before that lands would blur it into an invalid state (keyboard.spec.ts).
+    await expect(dialog.locator('input[data-slot="input"]').first()).toBeFocused();
     await shot(page, info, "wo", "fokus-isian", { fullPage: false });
     await close();
   });

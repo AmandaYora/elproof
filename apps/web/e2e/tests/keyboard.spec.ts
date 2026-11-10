@@ -61,7 +61,10 @@ test("kit button, search, input and combobox show a solid 2px focus ring in --ri
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   const field = dialog.locator('input[data-slot="input"]').first();
-  await tabTo(page, field);
+  // The Modal puts focus on its first field itself. Wait for that instead of pressing Tab: on a slow runner a Tab sent before
+  // the initial focus lands moves past the field, the blur check marks it, and tabbing round the dialog back to it blurs the
+  // other empty fields too, so it is focused invalid and draws the --danger outline (CI run 42819755396).
+  await expect(field).toBeFocused();
   const fieldRing = await focusRing(field);
   expect(fieldRing.style).toBe("solid");
   expect(fieldRing.width).toBeGreaterThanOrEqual(2);
