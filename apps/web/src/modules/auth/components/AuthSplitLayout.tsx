@@ -20,8 +20,8 @@ export function AuthSplitLayout({ aside, children }: { aside: ReactNode; childre
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <div className="relative hidden overflow-hidden bg-primary lg:flex lg:w-[46%] lg:flex-col lg:justify-between lg:p-14">
-        <div className="pointer-events-none absolute -right-24 -bottom-24 opacity-25" aria-hidden>
-          <ProofSeal size={420} className="text-seal" />
+        <div className="pointer-events-none absolute -top-20 -right-20 opacity-30" aria-hidden>
+          <ProofSeal size={360} className="text-seal" />
         </div>
         <LoginPhotoSlider />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-primary via-primary/55 to-primary/25" aria-hidden />

@@ -14,7 +14,7 @@ import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const INCLUDED = [
   "Akses penuh semua fitur selama 14 hari",
-  "Portal klien untuk pasangan dan keluarga",
+  "Portal Klien untuk pasangan dan keluarga",
   "Tanpa kartu kredit, tanpa tagihan otomatis",
 ];
 
