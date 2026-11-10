@@ -1,4 +1,3 @@
-import { Scale } from "lucide-react";
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
@@ -81,5 +80,5 @@ const SECTIONS: LegalSection[] = [
 
 export default function TermsPage() {
   usePageMeta({ title: "Syarat dan ketentuan", description: "Syarat dan ketentuan penggunaan layanan ElProof untuk wedding organizer dan klien mereka." });
-  return <LegalDocument icon={Scale} title="Syarat & Ketentuan" updated={TERMS_UPDATED} sections={SECTIONS} />;
+  return <LegalDocument title="Syarat & Ketentuan" updated={TERMS_UPDATED} sections={SECTIONS} />;
 }
