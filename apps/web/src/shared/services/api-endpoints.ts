@@ -38,6 +38,11 @@ export const API = {
     // though it is read from Manajemen Aplikasi. A plan's App is a field of
     // the plan itself (ADR-0040): `plans?appId=` lists one App's plans.
     appSubscriptions: "/api/v1/app-subscriptions",
+    // Discount codes on subscription payments (ADR-0041): Platform Console only; a WO checks one before paying.
+    vouchers: "/api/v1/vouchers",
+    voucher: (id: number) => `/api/v1/vouchers/${id}`,
+    voucherRedemptions: (id: number) => `/api/v1/vouchers/${id}/redemptions`,
+    voucherCheck: "/api/v1/subscriptions/voucher-check",
   },
   // `payment` module — see knowledge/MODULE_PAYMENT.md. Internal-mode
   // (Fase 9) config + external-mode App registry (Fase 10, Platform

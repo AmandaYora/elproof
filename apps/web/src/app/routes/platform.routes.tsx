@@ -7,6 +7,7 @@ const PlatformLayout = lazy(() => import("@/modules/platform-admin/layouts/Platf
 const PlatformDashboardPage = lazy(() => import("@/modules/platform-admin/pages/PlatformDashboardPage"));
 const TenantListPage = lazy(() => import("@/modules/platform-admin/pages/TenantListPage"));
 const PlanListPage = lazy(() => import("@/modules/platform-admin/pages/PlanListPage"));
+const VoucherListPage = lazy(() => import("@/modules/platform-admin/pages/VoucherListPage"));
 const PlatformTransactionsPage = lazy(() => import("@/modules/platform-admin/pages/PlatformTransactionsPage"));
 const PlatformUserListPage = lazy(() => import("@/modules/platform-admin/pages/PlatformUserListPage"));
 const GatewayConfigPage = lazy(() => import("@/modules/platform-admin/pages/GatewayConfigPage"));
@@ -42,6 +43,7 @@ export const platformRoutes: RouteObject = {
         { path: ROUTE_PATHS.platformPolicy, element: <SubscriptionPolicyPage />, handle: { title: "Kebijakan langganan" } },
         { path: ROUTE_PATHS.platformLoginSlides, element: <LoginSlidesPage />, handle: { title: "Slide halaman masuk" } },
         { path: ROUTE_PATHS.platformPlans, element: <PlanListPage />, handle: { title: "Paket" } },
+        { path: ROUTE_PATHS.platformVouchers, element: <VoucherListPage />, handle: { title: "Voucher" } },
         { path: ROUTE_PATHS.platformTransactions, element: <PlatformTransactionsPage />, handle: { title: "Transaksi" } },
         { path: ROUTE_PATHS.platformUsers, element: <PlatformUserListPage />, handle: { title: "Pengguna platform" } },
         { path: ROUTE_PATHS.platformGatewayConfig, element: <GatewayConfigPage />, handle: { title: "Gateway pembayaran" } },

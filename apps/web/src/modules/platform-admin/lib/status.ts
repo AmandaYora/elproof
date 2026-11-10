@@ -54,6 +54,20 @@ export const TRANSACTION_STATUS_LABEL: Record<SubscriptionTransactionStatus, str
   cancelled: "Dibatalkan",
 };
 
+export const VOUCHER_STATE_TONE: Record<"active" | "inactive" | "scheduled" | "expired" | "exhausted", BadgeTone> = {
+  active: "success",
+  inactive: "neutral",
+  scheduled: "info",
+  expired: "danger",
+  exhausted: "warning",
+};
+
+export const VOUCHER_REDEMPTION_STATUS_TONE: Record<"reserved" | "used" | "released", BadgeTone> = {
+  reserved: "warning",
+  used: "success",
+  released: "neutral",
+};
+
 export const TRANSACTION_TYPE_LABEL = {
   new: "Baru",
   renewal: "Perpanjangan",
