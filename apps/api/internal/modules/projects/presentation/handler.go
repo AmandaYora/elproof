@@ -181,8 +181,6 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.restoreVendorEngagement(w, r, claims, projectID, rest[1])
 	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "cancel" && r.Method == http.MethodPost:
 		h.cancelVendorEngagement(w, r, claims, projectID, rest[1])
-	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "milestones" && r.Method == http.MethodGet:
-		h.listVendorMilestones(w, r, projectID, rest[1])
 	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "milestones" && r.Method == http.MethodPost:
 		h.createVendorMilestone(w, r, claims, projectID, rest[1])
 	case len(rest) == 4 && rest[0] == "vendors" && rest[2] == "milestones" && r.Method == http.MethodPatch:

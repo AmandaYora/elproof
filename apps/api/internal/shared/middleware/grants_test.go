@@ -13,7 +13,9 @@ type fakeGrantsResolver struct {
 	err error
 }
 
-func (f fakeGrantsResolver) ResolveGrants(context.Context, int64, int64) (*Grants, error) { return f.g, f.err }
+func (f fakeGrantsResolver) ResolveGrants(context.Context, int64, int64) (*Grants, error) {
+	return f.g, f.err
+}
 
 func runGrants(t *testing.T, claims *Claims, res GrantsResolver) (int, *Grants) {
 	t.Helper()

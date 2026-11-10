@@ -405,15 +405,26 @@ func (h *Handler) projectItem(ctx context.Context, tenantID int64, p domain.Proj
 // updateProject is PATCH /projects/{id}: a partial update (ADR-0036). Only the
 // fields present in the body change; `isArchived` is the explicit archive state
 // (the project.archive permission), everything else needs project.edit. An empty
-// body is a 422 on `body`; an optional If-Match makes the write a compare-and-set
-// (409 with data.current when the project changed meanwhile). The answer is the
+// body is a 422 on `body`. If-Match is required for every field edit (428 without,
+// before the body is judged); only a body that is exactly `isArchived` may go without
+// it. With it the write is a compare-and-set (409 with data.current when the project
+// changed meanwhile). The answer is the
 // project with its new updatedAt, and the ETag header carries the same version.
 func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
-	expected, ok := ifMatch(w, r)
-	if !ok {
+	pr, bodyErr := readPatchBody(r)
+	if bodyErr != nil {
+		// A body that cannot be read cannot be shown to be archive-only: a missing
+		// header is answered first (428), otherwise the body is the 400.
+		if _, ok := requireIfMatch(w, r, nil); ok {
+			writeBadBody(w)
+		}
 		return
 	}
-	pr, ok := newPatchReader(w, r)
+	// A body that is only isArchived is the idempotent explicit-state call and may go
+	// without a version; any other body (isArchived mixed with other keys too) is a
+	// field edit and must carry If-Match. The project itself was already resolved for
+	// this workspace by resolveProjectAccess, so a 404 cannot be told apart here.
+	expected, ok := readIfMatch(w, r, !pr.only("isArchived"), nil)
 	if !ok {
 		return
 	}
@@ -596,14 +607,16 @@ func (h *Handler) milestoneItem(ctx context.Context, claims staffClaims, project
 
 // updateMilestone is PATCH /projects/{id}/milestones/{mid}: a partial update
 // (status, targetDate, completedDate; completedDate may be null). See updateProject
-// for the body, If-Match and 409 rules.
+// for the body, If-Match (428 without) and 409 rules.
 func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
 		return
 	}
-	expected, ok := ifMatch(w, r)
+	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
+		return h.projects.MilestoneExists(ctx, claims.tenantID, projectID, milestoneID)
+	})
 	if !ok {
 		return
 	}

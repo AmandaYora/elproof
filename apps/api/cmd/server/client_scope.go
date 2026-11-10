@@ -37,8 +37,9 @@ func clientPortalAllowed(method, path string) bool {
 		// /projects/{id}/... — the projects module narrows this further
 		// (own project only, allowlisted sub-resources, redaction).
 		return clientProjectSubpathAllowed(s[2:])
-	// NOT allowed: vendors/summary and vendor-categories list every vendor and
-	// category of the workspace. The portal gets vendor and category names
+	// NOT allowed: vendors/summary (a route removed in Tahap 9; the path stays
+	// refused here, see client_scope_test.go) and vendor-categories list every
+	// vendor and category of the workspace. The portal gets vendor and category names
 	// inside GET /projects/{id}/vendors, for the project's own vendors only
 	// (E6, ADR-0032).
 	case len(s) == 3 && s[0] == "venues" && isID(s[1]) && s[2] == "attachment":

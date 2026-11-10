@@ -1148,6 +1148,23 @@ func (s *ProjectService) CreateMilestone(ctx context.Context, tenantID, projectI
 	return m, nil
 }
 
+// MilestoneExists is nil when the project (of this tenant) has this milestone, a
+// not found otherwise. The PATCH handler asks it before it answers a missing
+// If-Match (428), so a step that is not there is a 404 with or without the header.
+func (s *ProjectService) MilestoneExists(ctx context.Context, tenantID, projectID, milestoneID int64) error {
+	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
+		return err
+	}
+	m, err := s.milestones.FindByID(ctx, projectID, milestoneID)
+	if err != nil {
+		return err
+	}
+	if m == nil {
+		return apperror.NotFound("Timeline tidak ditemukan")
+	}
+	return nil
+}
+
 // MilestonePatch is what PATCH /projects/{id}/milestones/{mid} sent (ADR-0036).
 type MilestonePatch struct {
 	Status Opt[domain.MilestoneStatus]

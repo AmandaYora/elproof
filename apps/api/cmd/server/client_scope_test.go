@@ -38,6 +38,8 @@ func TestClientPortalAllowed(t *testing.T) {
 	denied := []string{
 		// E6: these list every vendor and category name of the workspace; the
 		// portal reads names inside /projects/{id}/vendors and /issues instead.
+		// vendors/summary itself is no longer a route (Tahap 9); the path stays
+		// refused here so that it can never come back open to a client.
 		"/api/v1/vendors/summary",
 		"/api/v1/vendor-categories",
 		"/api/v1/vendor-categories?all=true",

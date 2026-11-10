@@ -46,7 +46,7 @@ type VenueRepository interface {
 	// BulkSetActive flips is_active of several venues of the tenant in one transaction.
 	BulkSetActive(ctx context.Context, tenantID int64, ids []int64, active bool) (domain.BulkResult, error)
 	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
-	ListFiltered(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error)
+	ListFiltered(ctx context.Context, tenantID int64, f domain.VenueListFilter) ([]domain.Venue, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Venue, error)
 	Create(ctx context.Context, venue *domain.Venue) error
 	CreateBatch(ctx context.Context, venues []domain.Venue) error
@@ -99,8 +99,8 @@ func (s *VenueService) BulkSetActive(ctx context.Context, tenantID int64, ids []
 
 // Export backs "Export Excel" -- same filters as ListPaginated (so "filter
 // then export" works), unpaginated.
-func (s *VenueService) Export(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error) {
-	return s.repo.ListFiltered(ctx, tenantID, search, city)
+func (s *VenueService) Export(ctx context.Context, tenantID int64, f domain.VenueListFilter) ([]domain.Venue, error) {
+	return s.repo.ListFiltered(ctx, tenantID, f)
 }
 
 func (s *VenueService) Get(ctx context.Context, tenantID, id int64) (*domain.Venue, error) {

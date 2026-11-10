@@ -292,14 +292,17 @@ func (h *Handler) checkPatchedReferences(ctx context.Context, tenantID int64, pa
 // of the engagement (vendorId, categoryId, scope, contractValue, pricingTier,
 // engagementStatus, bookingDate, eventDate, eventStartTime, eventEndTime,
 // dpAmount, dueDate, picStaffId, notes; the dates and times marked optional may be
-// null). See updateProject for the body, If-Match and 409 rules.
+// null). See updateProject for the body, If-Match (428 without) and 409 rules.
 func (h *Handler) updateVendorEngagement(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw string) {
 	pvID, err := parseInt64(pvIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	expected, ok := ifMatch(w, r)
+	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
+		_, err := h.vendors.Get(ctx, projectID, pvID)
+		return err
+	})
 	if !ok {
 		return
 	}
@@ -417,24 +420,6 @@ func (h *Handler) restoreVendorEngagement(w http.ResponseWriter, r *http.Request
 
 // --- Vendor milestones ---
 
-func (h *Handler) listVendorMilestones(w http.ResponseWriter, r *http.Request, projectID int64, pvIDRaw string) {
-	pvID, err := parseInt64(pvIDRaw)
-	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
-		return
-	}
-	list, err := h.vendors.ListMilestones(r.Context(), projectID, pvID)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	result := make([]vendorMilestoneResponse, 0, len(list))
-	for _, m := range list {
-		result = append(result, toVendorMilestoneResponse(m))
-	}
-	response.OK(w, "ok", result)
-}
-
 type vendorMilestoneInputBody struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -474,7 +459,7 @@ func (h *Handler) createVendorMilestone(w http.ResponseWriter, r *http.Request, 
 
 // updateVendorMilestone is PATCH /projects/{id}/vendors/{pvid}/milestones/{mid}: a
 // partial update (status, targetDate, completedDate (nullable), picStaffId,
-// description, notes). See updateProject for the body, If-Match and 409 rules.
+// description, notes). See updateProject for the body, If-Match (428 without) and 409 rules.
 func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, pvIDRaw, milestoneIDRaw string) {
 	pvID, err := parseInt64(pvIDRaw)
 	if err != nil {
@@ -486,7 +471,9 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
 		return
 	}
-	expected, ok := ifMatch(w, r)
+	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
+		return h.vendors.MilestoneExists(ctx, projectID, pvID, milestoneID)
+	})
 	if !ok {
 		return
 	}

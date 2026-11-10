@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -31,12 +32,26 @@ type patchReader struct {
 // newPatchReader reads the request body, which must be a JSON object (a 400
 // otherwise, written here).
 func newPatchReader(w http.ResponseWriter, r *http.Request) (*patchReader, bool) {
-	obj, _, err := httpx.ReadObject(r.Body)
+	pr, err := readPatchBody(r)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		writeBadBody(w)
 		return nil, false
 	}
-	return &patchReader{obj: obj, errs: map[string][]string{}}, true
+	return pr, true
+}
+
+// readPatchBody reads the body without answering, for the one handler that must
+// decide about If-Match before it answers a bad body (the project PATCH).
+func readPatchBody(r *http.Request) (*patchReader, error) {
+	obj, _, err := httpx.ReadObject(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &patchReader{obj: obj, errs: map[string][]string{}}, nil
+}
+
+func writeBadBody(w http.ResponseWriter) {
+	response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 }
 
 func (p *patchReader) fail(key, msg string) { p.errs[key] = append(p.errs[key], msg) }
@@ -54,6 +69,10 @@ func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "
 
 // has reports whether the key was sent at all (without counting it as read).
 func (p *patchReader) has(key string) bool { _, ok := p.obj[key]; return ok }
+
+// only reports whether the body is exactly this one key (so no other member,
+// recognised or not, rides along). Reading it does not count the key as read.
+func (p *patchReader) only(key string) bool { return len(p.obj) == 1 && p.has(key) }
 
 const msgRequired = "Wajib diisi"
 
@@ -189,16 +208,53 @@ func (p *patchReader) finish() error {
 	return nil
 }
 
-// ifMatch reads the optional If-Match header. A malformed value is a 400 (written
-// here); an absent header is (nil, true): the write is then last-write-wins.
-func ifMatch(w http.ResponseWriter, r *http.Request) (*time.Time, bool) {
+// MsgIfMatchRequired is the message of the 428 a field edit gets when it carries no
+// If-Match header (ADR-0036, Tahap 9).
+const MsgIfMatchRequired = "Sertakan versi data (If-Match) agar perubahan tidak menimpa orang lain. Muat ulang data lalu coba lagi."
+
+// readIfMatch is the one place that decides what the If-Match header means for a
+// PATCH (ADR-0036). Order of answers:
+//
+//  1. a malformed value is a 400 (the header leaks nothing, so it goes first);
+//  2. a valid value is returned and the write becomes a compare-and-set;
+//  3. no header and not required (an explicit-state call, which is idempotent):
+//     (nil, true), the write proceeds as it always did;
+//  4. no header and required: nothing is written and nothing about the body is
+//     looked at. exists, when given, is asked first and its error answered as is,
+//     so a row that is not there (or is another workspace's) is the same 404 with
+//     and without the header and the 428 never tells the two apart; only a row
+//     the caller may see gets `428 Precondition Required`.
+func readIfMatch(w http.ResponseWriter, r *http.Request, required bool, exists func(context.Context) error) (*time.Time, bool) {
 	expected, err := etag.ParseIfMatch(r.Header.Get("If-Match"))
 	if err != nil {
 		msg := "Header If-Match tidak valid. Kirim nilai updatedAt dari data yang Anda lihat."
 		response.Error(w, http.StatusBadRequest, msg, map[string][]string{"If-Match": {msg}})
 		return nil, false
 	}
+	if expected == nil && required {
+		if exists != nil {
+			if err := exists(r.Context()); err != nil {
+				writeAppError(w, err)
+				return nil, false
+			}
+		}
+		response.Error(w, http.StatusPreconditionRequired, MsgIfMatchRequired, map[string][]string{"If-Match": {"wajib"}})
+		return nil, false
+	}
 	return expected, true
+}
+
+// ifMatch reads an If-Match that is optional (the evidence visibility state: an
+// idempotent call that still honours the header when it is sent).
+func ifMatch(w http.ResponseWriter, r *http.Request) (*time.Time, bool) {
+	return readIfMatch(w, r, false, nil)
+}
+
+// requireIfMatch reads the If-Match of a field edit, which must carry one (428
+// without). exists is the row's existence check, run only when the header is
+// missing; see readIfMatch for the order.
+func requireIfMatch(w http.ResponseWriter, r *http.Request, exists func(context.Context) error) (*time.Time, bool) {
+	return readIfMatch(w, r, true, exists)
 }
 
 // writePatchError answers a failed PATCH. A stale version is the 409 whose

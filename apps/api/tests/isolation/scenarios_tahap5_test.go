@@ -896,7 +896,7 @@ func TestTahap5(t *testing.T) {
 			for k, v := range body {
 				b[k] = v
 			}
-			return s.do(tn.token, "PATCH", proj(Pd, fmt.Sprintf("/issues/%d", id)), b)
+			return s.doFresh(tn.token, "PATCH", proj(Pd, fmt.Sprintf("/issues/%d", id)), b)
 		}
 		res := upd(hiddenID, map[string]any{"status": "Resolved"}) // isClientVisible omitted: stays hidden
 		s.mustOK("resolve hidden", res)
@@ -1057,7 +1057,7 @@ func TestTahap5(t *testing.T) {
 		if mid == 0 || cm.dig("data", "name") != "Baru" {
 			t.Errorf("a milestone answer keeps its own fields: %s", cm)
 		}
-		um := s.do(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/milestones/%d", mid)), map[string]any{"status": "Completed", "targetDate": day(-9), "completedDate": day(-1)})
+		um := s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/milestones/%d", mid)), map[string]any{"status": "Completed", "targetDate": day(-9), "completedDate": day(-1)})
 		s.progressMatches(t, tn, Pf, "milestone update", um)
 		list := rows(s.mustOK("ms", s.do(tn.token, "GET", proj(Pf, "/milestones"), nil)), "data")
 		var order []int64
@@ -1068,16 +1068,16 @@ func TestTahap5(t *testing.T) {
 		// vendor milestones
 		cvm := s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/vendors/%d/milestones", EV)), map[string]any{"name": "vm", "description": "d", "targetDate": day(-5), "picStaffId": tn.staffID})
 		s.progressMatches(t, tn, Pf, "vendor milestone create", cvm)
-		s.progressMatches(t, tn, Pf, "vendor milestone update", s.do(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/vendors/%d/milestones/%d", EV, cvm.id("data", "id"))), map[string]any{"status": "Blocked", "targetDate": day(-5), "picStaffId": tn.staffID, "description": "d"}))
+		s.progressMatches(t, tn, Pf, "vendor milestone update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/vendors/%d/milestones/%d", EV, cvm.id("data", "id"))), map[string]any{"status": "Blocked", "targetDate": day(-5), "picStaffId": tn.staffID, "description": "d"}))
 		// issues
 		ci := s.do(tn.token, "POST", proj(Pf, "/issues"), map[string]any{"projectVendorId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "picStaffId": tn.staffID})
 		s.progressMatches(t, tn, Pf, "issue create", ci)
-		s.progressMatches(t, tn, Pf, "issue update", s.do(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/issues/%d", ci.id("data", "id"))), map[string]any{"projectVendorId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "status": "Resolved", "picStaffId": tn.staffID}))
+		s.progressMatches(t, tn, Pf, "issue update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/issues/%d", ci.id("data", "id"))), map[string]any{"projectVendorId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "status": "Resolved", "picStaffId": tn.staffID}))
 		// engagements
 		ce := s.do(tn.token, "POST", proj(Pf, "/vendors"), map[string]any{"vendorId": vendorID, "scope": "Foto progres", "contractValue": 1_000_000, "pricingTier": "Akad", "engagementStatus": "Planned", "picStaffId": tn.staffID})
 		s.progressMatches(t, tn, Pf, "engagement create", ce)
 		eid := ce.id("data", "id")
-		s.progressMatches(t, tn, Pf, "engagement update", s.do(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/vendors/%d", eid)), map[string]any{"vendorId": vendorID, "categoryId": category, "scope": "Foto progres", "contractValue": 1_000_000, "pricingTier": "Akad", "engagementStatus": "Booked", "eventDate": day(100), "picStaffId": tn.staffID}))
+		s.progressMatches(t, tn, Pf, "engagement update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/vendors/%d", eid)), map[string]any{"vendorId": vendorID, "categoryId": category, "scope": "Foto progres", "contractValue": 1_000_000, "pricingTier": "Akad", "engagementStatus": "Booked", "eventDate": day(100), "picStaffId": tn.staffID}))
 		s.progressMatches(t, tn, Pf, "engagement cancel", s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/vendors/%d/cancel", eid)), map[string]any{}))
 		s.progressMatches(t, tn, Pf, "engagement delete", s.do(tn.token, "DELETE", proj(Pf, fmt.Sprintf("/vendors/%d", eid)), nil))
 		s.progressMatches(t, tn, Pf, "engagement restore", s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/vendors/%d/restore", eid)), nil))
@@ -1089,7 +1089,7 @@ func TestTahap5(t *testing.T) {
 				t.Errorf("%s create keeps its ledgerSummary: %s", kind, c)
 			}
 			id := c.id("data", "id")
-			u := s.do(tn.token, "PATCH", proj(Pf, fmt.Sprintf("%s/%d", path, id)), update)
+			u := s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("%s/%d", path, id)), update)
 			s.progressMatches(t, tn, Pf, kind+" update", u)
 			if u.dig("data", "ledgerSummary") == nil || num(u, "data", "id") != id {
 				t.Errorf("%s update carries ledgerSummary next to its own fields: %s", kind, u)

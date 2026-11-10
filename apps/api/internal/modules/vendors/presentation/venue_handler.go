@@ -117,9 +117,8 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		params := pagination.FromRequest(r)
-		isActive, err := isActiveFilter(r)
-		if err != nil {
-			writeAppError(w, err)
+		filter, ok := venueListFilter(w, r)
+		if !ok {
 			return
 		}
 		columns, defaultSort := h.venues.ListSortSpec()
@@ -128,7 +127,6 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
-		filter := domain.VenueListFilter{Search: pagination.SearchFromRequest(r), City: r.URL.Query().Get("city"), IsActive: isActive}
 		venues, total, err := h.venues.ListPaginated(r.Context(), tenantID, params, filter, sort)
 		if err != nil {
 			writeAppError(w, err)
@@ -150,7 +148,7 @@ func (h *VenueHandler) Collection(w http.ResponseWriter, r *http.Request) {
 }
 
 // Export streams every venue matching the same filters Collection's list view
-// accepts (search/city) as an .xlsx workbook, unpaginated -- mirrors Vendor's
+// accepts (q or search, city, isActive: one parser, venueListFilter) as an .xlsx workbook, unpaginated -- mirrors Vendor's
 // Export exactly. Column order matches venueTemplateHeaders plus an appended
 // Status column, so the file round-trips through Import unmodified.
 func (h *VenueHandler) Export(w http.ResponseWriter, r *http.Request) {
@@ -166,9 +164,11 @@ func (h *VenueHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	search := r.URL.Query().Get("search")
-	city := r.URL.Query().Get("city")
-	venues, err := h.venues.Export(r.Context(), tenantID, search, city)
+	filter, ok := venueListFilter(w, r)
+	if !ok {
+		return
+	}
+	venues, err := h.venues.Export(r.Context(), tenantID, filter)
 	if err != nil {
 		writeAppError(w, err)
 		return

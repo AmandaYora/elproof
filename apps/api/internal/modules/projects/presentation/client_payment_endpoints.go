@@ -135,14 +135,16 @@ func (h *Handler) createClientPaymentNow(w http.ResponseWriter, r *http.Request,
 // updateClientPayment is PATCH /projects/{id}/client-payments/{pid}: a partial
 // update (type, amount, paymentDate, method, referenceNumber, notes). Changing
 // what was paid clears a verification. See updatePayment and updateProject for the
-// body, If-Match and 409 rules.
+// body, If-Match (428 without) and 409 rules.
 func (h *Handler) updateClientPayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	paymentID, err := parseInt64(paymentIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	expected, ok := ifMatch(w, r)
+	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
+		return h.clientPayments.Exists(ctx, projectID, paymentID)
+	})
 	if !ok {
 		return
 	}

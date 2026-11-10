@@ -17,10 +17,10 @@ type successBody struct {
 }
 
 type successBodyPaginated struct {
-	Success bool               `json:"success"`
-	Message string             `json:"message"`
-	Data    interface{}        `json:"data"`
-	Meta    pagination.Meta    `json:"meta"`
+	Success bool            `json:"success"`
+	Message string          `json:"message"`
+	Data    interface{}     `json:"data"`
+	Meta    pagination.Meta `json:"meta"`
 }
 
 type errorBody struct {

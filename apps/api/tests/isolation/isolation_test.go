@@ -153,7 +153,7 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "engagement create", method: "POST", path: proj(P, "/vendors"), body: engagement, control: true},
 		{name: "engagement update", method: "PATCH", path: proj(P, fmt.Sprintf("/vendors/%d", w.Engagement)), body: engagementOrig, control: true},
 		{name: "engagement cancel", method: "POST", path: proj(P, fmt.Sprintf("/vendors/%d/cancel", w.Engagement)), body: map[string]any{}},
-		{name: "vendor milestones list", method: "GET", path: proj(P, fmt.Sprintf("/vendors/%d/milestones", w.Engagement)), control: true},
+		// Vendor milestones are read from milestones[] inside the "engagements list" row above.
 		{name: "vendor milestone create", method: "POST", path: proj(P, fmt.Sprintf("/vendors/%d/milestones", w.Engagement)), body: vmilestone, control: true},
 		{name: "vendor milestone update", method: "PATCH", path: proj(P, fmt.Sprintf("/vendors/%d/milestones/%d", w.Engagement, w.VendorMilestone)), body: map[string]any{"status": "In Progress", "targetDate": day(30)}, control: true},
 		{name: "vendor payments list", method: "GET", path: proj(P, "/payments"), control: true},
@@ -285,7 +285,7 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 			if a.controlPath != "" {
 				cp = a.controlPath
 			}
-			c := s.do(w.b.token, a.method, cp, a.body)
+			c := s.doFresh(w.b.token, a.method, cp, a.body)
 			if c.status == http.StatusNotFound || c.status == http.StatusForbidden || c.status == http.StatusUnauthorized || c.status >= 500 {
 				t.Errorf("control: B -> %s %s must reach its own data, got %s", a.method, cp, c)
 			}
@@ -307,7 +307,6 @@ func (w *world) mixedIDs(t *testing.T, s *stack) {
 		{name: "A project + B milestone", method: "PATCH", path: ap(fmt.Sprintf("/milestones/%d", w.ProjectMilestone)), body: map[string]any{"status": "Completed", "targetDate": day(15)}},
 		{name: "A project + B engagement update", method: "PATCH", path: ap(fmt.Sprintf("/vendors/%d", w.Engagement)), body: map[string]any{"vendorId": w.aVendor, "categoryId": cat, "scope": "x", "pricingTier": "Akad", "engagementStatus": "Planned", "eventDate": day(120), "picStaffId": w.a.staffID}},
 		{name: "A project + B engagement cancel", method: "POST", path: ap(fmt.Sprintf("/vendors/%d/cancel", w.Engagement)), body: map[string]any{}},
-		{name: "A project + B engagement milestones", method: "GET", path: ap(fmt.Sprintf("/vendors/%d/milestones", w.Engagement))},
 		{name: "A project + B engagement milestone create", method: "POST", path: ap(fmt.Sprintf("/vendors/%d/milestones", w.Engagement)), body: map[string]any{"name": "x", "targetDate": day(5), "picStaffId": w.a.staffID}},
 		{name: "A engagement + B vendor milestone", method: "PATCH", path: ap(fmt.Sprintf("/vendors/%d/milestones/%d", ownEng, w.VendorMilestone)), body: map[string]any{"status": "Completed", "targetDate": day(15)}},
 		{name: "A project + B vendor payment update", method: "PATCH", path: ap(fmt.Sprintf("/payments/%d", w.VendorPay)), body: map[string]any{"projectVendorId": ownEng, "type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}},
@@ -341,4 +340,55 @@ func (w *world) mixedIDs(t *testing.T, s *stack) {
 			w.checkNoLeak(t, a.method+" "+a.path, r)
 		})
 	}
+
+	// Vendor milestones are only readable embedded in GET /projects/{id}/vendors
+	// (the GET on /vendors/{pv}/milestones is gone, Tahap 9). The old attack
+	// "A project + B engagement milestones" becomes: A reads B's project, and A
+	// reads its own project whose list must never carry B's milestones.
+	t.Run("embedded vendor milestones", func(t *testing.T) {
+		routesCovered += 3
+		foreign := fmt.Sprintf("/api/v1/projects/%d/vendors", w.Project)
+		r := s.do(w.a.token, "GET", foreign, nil)
+		if r.status != http.StatusNotFound && r.status != http.StatusForbidden {
+			t.Errorf("A GET %s: want 403 or 404, got %s", foreign, r)
+		}
+		if vacuous(r) {
+			t.Errorf("A GET %s: router miss, not an ownership answer: %s", foreign, r)
+		}
+		if strings.Contains(string(r.body), `"milestones"`) {
+			t.Errorf("A GET %s: answer carries a milestones list: %s", foreign, r)
+		}
+		w.checkNoLeak(t, "A GET "+foreign, r)
+
+		// A gets a milestone of its own so that its list is not empty, then reads it.
+		own := s.mustOK("A vendor milestone", s.do(w.a.token, "POST", fmt.Sprintf("/api/v1/projects/%d/vendors/%d/milestones", w.aProject, ownEng),
+			map[string]any{"name": "Milestone A", "description": "d", "targetDate": day(5), "picStaffId": w.a.staffID})).id("data", "id")
+		mine := s.mustOK("A engagements", s.do(w.a.token, "GET", ap("/vendors"), nil))
+		w.checkNoLeak(t, "A GET own engagements", mine)
+		found := false
+		for _, e := range rows(mine, "data") {
+			ms, _ := e["milestones"].([]any)
+			for _, m := range ms {
+				id := int64(m.(map[string]any)["id"].(float64))
+				if id == w.VendorMilestone {
+					t.Errorf("A's engagement list carries B's vendor milestone %d: %s", id, mine)
+				}
+				found = found || id == own
+			}
+		}
+		if !found {
+			t.Errorf("A's own milestone %d is not in its embedded milestones[]: %s", own, mine)
+		}
+
+		// The standalone read is gone for everyone: never a 200, whoever asks and whatever the ids.
+		for name, path := range map[string]string{
+			"A on B's engagement":       fmt.Sprintf("/api/v1/projects/%d/vendors/%d/milestones", w.Project, w.Engagement),
+			"A on its own engagement":   ap(fmt.Sprintf("/vendors/%d/milestones", ownEng)),
+			"A project, B's engagement": ap(fmt.Sprintf("/vendors/%d/milestones", w.Engagement)),
+		} {
+			if r := s.do(w.a.token, "GET", path, nil); r.status == http.StatusOK {
+				t.Errorf("%s: GET %s must no longer be a route, got %s", name, path, r)
+			}
+		}
+	})
 }

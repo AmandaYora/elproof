@@ -116,6 +116,19 @@ func (s *ClientPaymentService) Create(ctx context.Context, tenantID, projectID i
 	return p, nil
 }
 
+// Exists is nil when the client payment is on this project and not deleted, a not
+// found otherwise (see PaymentService.Exists).
+func (s *ClientPaymentService) Exists(ctx context.Context, projectID, id int64) error {
+	p, err := s.repo.FindByID(ctx, projectID, id)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return apperror.NotFound("Pembayaran tidak ditemukan")
+	}
+	return nil
+}
+
 // Patch changes the fields of a client payment that were sent, and only those; see
 // PaymentService.Patch (overpayment rule on the merged type and amount against the
 // contract, project lock, no-op writes nothing, compare-and-set with `expected`).

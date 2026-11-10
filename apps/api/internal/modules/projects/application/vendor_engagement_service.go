@@ -330,6 +330,22 @@ func (s *VendorEngagementService) CreateMilestone(ctx context.Context, projectID
 	return m, nil
 }
 
+// MilestoneExists is nil when the engagement is on this project and has this
+// milestone, a not found otherwise (see ProjectService.MilestoneExists).
+func (s *VendorEngagementService) MilestoneExists(ctx context.Context, projectID, projectVendorID, milestoneID int64) error {
+	if _, err := s.Get(ctx, projectID, projectVendorID); err != nil {
+		return err
+	}
+	m, err := s.milestones.FindByID(ctx, projectVendorID, milestoneID)
+	if err != nil {
+		return err
+	}
+	if m == nil {
+		return apperror.NotFound("Timeline vendor tidak ditemukan")
+	}
+	return nil
+}
+
 // VendorMilestonePatch is what PATCH .../vendors/{pvid}/milestones/{mid} sent
 // (ADR-0036). CompletedDate may be null (clear); Description and Notes null clear to "".
 type VendorMilestonePatch struct {

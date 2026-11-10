@@ -100,25 +100,7 @@ func (r *MySQLVendorRepository) ListSortSpec() (map[string]pagination.SortColumn
 // as-is for the vendor-picker dropdowns and the bulk import's prefetch, both
 // of which need the full roster in one call.
 func (r *MySQLVendorRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VendorListFilter, sort pagination.Sort) ([]domain.VendorRow, int64, error) {
-	where := ` WHERE v.tenant_id = ?`
-	args := []interface{}{tenantID}
-	if f.CategoryID != nil {
-		where += ` AND v.category_id = ?`
-		args = append(args, *f.CategoryID)
-	}
-	if f.Search != "" {
-		where += ` AND (v.name LIKE ? OR v.pic_name LIKE ? OR v.email LIKE ?)`
-		like := "%" + utils.EscapeLike(f.Search) + "%"
-		args = append(args, like, like, like)
-	}
-	if f.City != "" {
-		where += ` AND v.city = ?`
-		args = append(args, f.City)
-	}
-	if f.IsActive != nil {
-		where += ` AND v.is_active = ?`
-		args = append(args, *f.IsActive)
-	}
+	where, args := vendorWhere(tenantID, f)
 
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vendors v`+where, args...).Scan(&total); err != nil {
@@ -153,28 +135,38 @@ func (r *MySQLVendorRepository) BulkSetActive(ctx context.Context, tenantID int6
 	return bulkSetActive(ctx, r.db, "vendors", tenantID, ids, active)
 }
 
-// ListFiltered backs Export -- the same category/search/city filters as
-// ListPaginated, but unpaginated (Export always returns the whole matching
-// set, per PLAN.md's Export design).
-func (r *MySQLVendorRepository) ListFiltered(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error) {
-	query := `SELECT ` + vendorColumns + ` FROM vendors WHERE tenant_id = ?`
+// vendorWhere is the WHERE clause (alias v) both the paginated list and the
+// export apply, so the two always agree on what a filter means.
+func vendorWhere(tenantID int64, f domain.VendorListFilter) (string, []interface{}) {
+	where := ` WHERE v.tenant_id = ?`
 	args := []interface{}{tenantID}
-	if categoryID != nil {
-		query += ` AND category_id = ?`
-		args = append(args, *categoryID)
+	if f.CategoryID != nil {
+		where += ` AND v.category_id = ?`
+		args = append(args, *f.CategoryID)
 	}
-	if search != "" {
-		query += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(search) + "%"
+	if f.Search != "" {
+		where += ` AND (v.name LIKE ? OR v.pic_name LIKE ? OR v.email LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like)
 	}
-	if city != "" {
-		query += ` AND city = ?`
-		args = append(args, city)
+	if f.City != "" {
+		where += ` AND v.city = ?`
+		args = append(args, f.City)
 	}
-	query += ` ORDER BY id`
+	if f.IsActive != nil {
+		where += ` AND v.is_active = ?`
+		args = append(args, *f.IsActive)
+	}
+	return where, args
+}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+// ListFiltered backs Export -- the same filters as ListPaginated (one WHERE
+// builder), but unpaginated (Export always returns the whole matching set, per
+// PLAN.md's Export design).
+func (r *MySQLVendorRepository) ListFiltered(ctx context.Context, tenantID int64, f domain.VendorListFilter) ([]domain.Vendor, error) {
+	where, args := vendorWhere(tenantID, f)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+qualifyColumns("v", vendorColumns)+` FROM vendors v`+where+` ORDER BY v.id`, args...)
 	if err != nil {
 		return nil, err
 	}

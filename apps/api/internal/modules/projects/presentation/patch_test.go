@@ -1,6 +1,9 @@
 package presentation
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -137,5 +140,112 @@ func TestWritePatchErrorRendersTheCurrentItem(t *testing.T) {
 	writePatchError(rec, apperror.NotFound("tidak ada"), nil)
 	if rec.Code != 404 {
 		t.Errorf("other errors keep their shape: %d", rec.Code)
+	}
+}
+
+const validIfMatch = `"2026-11-10T08:15:30.123456Z"`
+
+func TestRequireIfMatchMissingHeaderIs428WithTheStandardEnvelope(t *testing.T) {
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/x", strings.NewReader(`{"name":"x"}`))
+	if exp, ok := requireIfMatch(rec, r, nil); ok || exp != nil {
+		t.Fatalf("a field edit without If-Match must stop: ok=%v exp=%v", ok, exp)
+	}
+	if rec.Code != http.StatusPreconditionRequired {
+		t.Fatalf("status %d, want 428", rec.Code)
+	}
+	var body struct {
+		Success bool                `json:"success"`
+		Message string              `json:"message"`
+		Errors  map[string][]string `json:"errors"`
+		Data    any                 `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Success || body.Message != "Sertakan versi data (If-Match) agar perubahan tidak menimpa orang lain. Muat ulang data lalu coba lagi." {
+		t.Errorf("envelope: %s", rec.Body)
+	}
+	if got := body.Errors["If-Match"]; len(got) != 1 || got[0] != "wajib" || len(body.Errors) != 1 {
+		t.Errorf("errors = %v, want {If-Match: [wajib]}", body.Errors)
+	}
+	if body.Data != nil || rec.Header().Get("ETag") != "" {
+		t.Errorf("a 428 carries no data and no ETag: %s", rec.Body)
+	}
+}
+
+func TestRequireIfMatchLetsAVersionThrough(t *testing.T) {
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/x", nil)
+	r.Header.Set("If-Match", validIfMatch)
+	called := false
+	exp, ok := requireIfMatch(rec, r, func(context.Context) error { called = true; return nil })
+	if !ok || exp == nil || rec.Code != http.StatusOK {
+		t.Fatalf("a valid header passes: ok=%v exp=%v code=%d", ok, exp, rec.Code)
+	}
+	if called {
+		t.Error("the existence check is only for a request that is about to get a 428")
+	}
+}
+
+func TestRequireIfMatchMalformedStaysA400(t *testing.T) {
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/x", nil)
+	r.Header.Set("If-Match", "banana")
+	if _, ok := requireIfMatch(rec, r, func(context.Context) error { return apperror.NotFound("x") }); ok || rec.Code != http.StatusBadRequest {
+		t.Errorf("a malformed header is a 400, got ok=%v %d", ok, rec.Code)
+	}
+}
+
+func TestRequireIfMatchANotFoundRowWinsOver428(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"row missing or other tenant's": {apperror.NotFound("Timeline tidak ditemukan"), http.StatusNotFound},
+		"row present":                   {nil, http.StatusPreconditionRequired},
+		"lookup fails":                  {errors.New("db down"), http.StatusInternalServerError},
+	} {
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPatch, "/x", nil)
+		if _, ok := requireIfMatch(rec, r, func(context.Context) error { return tc.err }); ok || rec.Code != tc.want {
+			t.Errorf("%s: want %d, got ok=%v %d", name, tc.want, ok, rec.Code)
+		}
+	}
+}
+
+func TestOptionalIfMatchStaysOptional(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if exp, ok := ifMatch(rec, httptest.NewRequest(http.MethodPatch, "/x", nil)); !ok || exp != nil || rec.Code != http.StatusOK {
+		t.Errorf("the explicit-state calls go without a header: ok=%v exp=%v %d", ok, exp, rec.Code)
+	}
+}
+
+func TestPatchReaderOnlyIsTheArchiveExemption(t *testing.T) {
+	for body, want := range map[string]bool{
+		`{"isArchived":true}`:                   true,
+		`{"isArchived":false}`:                  true,
+		`{"isArchived":true,"description":"x"}`: false,
+		`{"isArchived":true,"unknown":1}`:       false,
+		`{"description":"x"}`:                   false,
+		`{}`:                                    false,
+	} {
+		if got := reader(t, body).only("isArchived"); got != want {
+			t.Errorf("%s: only(isArchived) = %v, want %v", body, got, want)
+		}
+	}
+	// readIfMatch as updateProject calls it: no header, exempt only when the body is
+	// just isArchived.
+	for body, want := range map[string]int{
+		`{"isArchived":true}`:                   http.StatusOK,
+		`{"isArchived":true,"description":"x"}`: http.StatusPreconditionRequired,
+		`{"name":"x"}`:                          http.StatusPreconditionRequired,
+	} {
+		pr := reader(t, body)
+		rec := httptest.NewRecorder()
+		readIfMatch(rec, httptest.NewRequest(http.MethodPatch, "/x", nil), !pr.only("isArchived"), nil)
+		if rec.Code != want {
+			t.Errorf("%s: %d, want %d", body, rec.Code, want)
+		}
 	}
 }

@@ -44,7 +44,7 @@ Resources: project (`PATCH /projects/{id}`), project milestone (`/projects/{id}/
   exactly as today; row present → **`409`**:
   `{ success: false, message: "Data ini sudah diubah orang lain. Muat ulang untuk melihat versi terbaru.", errors: { _conflict: ["stale"] }, data: { current: <the item as a GET returns it> } }`.
   Returning the current item lets the web show what changed without a second call.
-* **The header is optional in this transition.** Without it the write is last-write-wins as before (callers not yet moved keep working; this is the only break in
+* **The header was optional in this transition (superseded: required for field edits since Tahap 9, see the last section).** Without it the write is last-write-wins as before (callers not yet moved keep working; this is the only break in
   E9 and it is transitional). A malformed value is `400`. Tahap 9 decides whether to make it required (`428 Precondition Required`) once every caller sends it.
 * **A successful PATCH answers with the new item (and the new `ETag`)**, in the same envelope the mutation already returns (`h.mutated(...)` extras such as
   `projectProgress` and `ledgerSummary` stay).
@@ -68,7 +68,7 @@ same service call, so behaviour was identical). **The old routes were removed on
 proved it): `POST /projects/{id}/toggle-archive`, `POST /projects/{id}/evidence/{eid}/toggle-client-visible` and `POST /vendors|venues|vendor-categories|clients|staff/{id}/toggle-active`,
 with their handlers and the service helper only they used (`EvidenceService.ToggleClientVisible`) and the permission routing for them. A request to one of them now
 gets exactly the answer any unknown route of its subtree gets: `404` `Endpoint tidak ditemukan` (for the projects subtree and the clients and staff subtrees after the
-usual ownership/permission gates, so a caller without the gate's permission may still see its `403`, as for any other unknown path). `API_CONTRACT.md` and the Postman collection follow in Tahap 9.
+usual ownership/permission gates, so a caller without the gate's permission may still see its `403`, as for any other unknown path). `docs/API_CONTRACT.md` was brought in line in Tahap 9 (the Postman collection covers only the external payment gateway, which this did not touch).
 
 ### 4. Audit and activity
 A PATCH writes one activity/audit entry naming only the fields that actually changed (as the full-body update did for the fields it compared). A no-op PATCH (every
@@ -83,7 +83,7 @@ sent value equal to the stored one) writes nothing and returns `200` with the un
 * One more column of the response to keep (`updatedAt`) and an `ETag` header to set; the web keeps the last seen `updatedAt` per edited item.
 * The `If-Match` check covers the rows in section 1 only. A person who adds a payment while another edits the project is not a conflict (different rows); two people editing
   different fields of the **same** row **are** a conflict by design (the second must reload) — finer granularity (per field) was rejected as complexity without a user need.
-* Making `If-Match` mandatory, deleting the old toggle routes from `API_CONTRACT.md` and the Postman collection are Tahap 9.
+* Making `If-Match` mandatory is done (Tahap 9, last section); the old toggle routes are gone from `docs/API_CONTRACT.md` (Tahap 9).
 
 ## Implementation notes
 Backend half shipped in the commit that adds this section. What the code forced or decided beyond the text above:
@@ -124,7 +124,7 @@ Backend half shipped in the commit that adds this section. What the code forced 
   also honours `If-Match`. Only `general` documents and timeline attachments carry the flag (422 `relatedKind` otherwise, as before).
 * **Blank text.** On PATCH a required text field (name, brideName, groomName, packageName, scope, title) cannot be blank (422 on that key) and enum/format values are
   validated (milestone/issue/engagement status, impact, pricing tier, payment type, `HH:MM`): create never checked these and a bad value used to surface as a database error.
-* **Not done / left for later:** `If-Match` stays optional (Tahap 9 decides on `428`); `API_CONTRACT.md` and the Postman collection are Tahap 9; platform-console toggles are untouched
+* **Not done / left for later:** (`If-Match` was optional here; Tahap 9 made it required, see the last section); `docs/API_CONTRACT.md` was updated in Tahap 9; platform-console toggles are untouched
   (the old toggle routes themselves were removed on 2026-11-10). Any write to a row bumps its version, so a *non-PATCH* change
   (reordering milestones, cancelling or deleting an engagement, verifying a client payment, a status transition on the project) also makes a held `ETag` stale, which is
   intended.
@@ -134,7 +134,8 @@ Common to every PATCH below:
 * Body is a JSON object; only keys present change. `null` clears a field **only where the table says "nullable"**; `null` on any other key is `422` with `errors.<key>: ["Wajib diisi"]`.
   A body with no recognised key (`{}`, or only unknown keys) is `422` with `errors.body`. A body that is not a JSON object or not valid JSON is `400`.
   A wrongly typed or badly formatted value is `422` on its own key (dates `YYYY-MM-DD`, message `Gunakan format YYYY-MM-DD`). Several problems come back together.
-* Optional header `If-Match: "<updatedAt>"` (quotes optional, value exactly as returned in `updatedAt`). Absent → last write wins. Malformed → `400` with `errors["If-Match"]`.
+* Header `If-Match: "<updatedAt>"` (quotes optional, value exactly as returned in `updatedAt`). **Required for field edits since Tahap 9**: absent → `428` (see the last section; the
+  archive-only, evidence-visibility and `isActive` calls are exempt). Malformed → `400` with `errors["If-Match"]`.
 * Success `200`: `{ success, message, data: <the item, as the list shows it, with its new updatedAt>, … }` and header `ETag: "<updatedAt>"`. Most answers go through the existing
   mutation envelope, so `data` also carries `projectProgress` (and `ledgerSummary` on payments). The project PATCH answer is the project itself (with `progress` and
   `picName`, as `GET /projects/{id}`) and has no `projectProgress` key. A repeated state or a no-op patch is a `200` with the unchanged item and unchanged `updatedAt`.
@@ -163,10 +164,42 @@ Common to every PATCH below:
 | Vendor | `PATCH /vendors/{id}` | `vendor.manage` | `{ "isActive": bool }` alone | none |
 | Venue | `PATCH /venues/{id}` | `vendor.manage` | `{ "isActive": bool }` alone | none |
 | Vendor category | `PATCH /vendor-categories/{id}` | `vendor.category.manage` | `{ "isActive": bool }` alone | none |
-| Client | `PATCH /clients/{id}` | client manager (Owner/Admin, or Sales of the client's project) | `{ "isActive": bool }` alone | none |
+| Client | `PATCH /clients/{id}` | `client.manage` with every-project scope (`requireClientManager`) | `{ "isActive": bool }` alone | none |
 | Staff | `PATCH /staff/{id}` | team manager (and the target's role must not exceed the caller's) | `{ "isActive": bool }` alone | none |
 
 The five directory routes keep their ordinary edit on the same `PATCH` (a body without `isActive`); they have **no `If-Match`** (not in scope), and their answers are the
 item as the old toggle answered. `isActive` not a boolean, or sent together with other keys, is `422` on `isActive`. Removed on 2026-11-10 (they answer `404`
 `Endpoint tidak ditemukan`; `scenarios_tahap8_test.go` checks each of the seven): `POST /projects/{id}/toggle-archive`, `POST /projects/{id}/evidence/{eid}/toggle-client-visible`,
 `POST /vendors|venues|vendor-categories|clients|staff/{id}/toggle-active`.
+
+## Tahap 9: `If-Match` is now required for field edits (428)
+Accepted — 2026-11-10 (docs/plan/revamp-ui-shadcn/PLAN.md Tahap 9, backend hardening). This settles the open point in section 2 ("Tahap 9 decides whether to make it
+required"): every caller (the web) now sends the version it saw, so the transitional last-write-wins is closed.
+
+**Rule.** A `PATCH` that edits fields of a **project, project milestone, project vendor, vendor milestone, kendala, client payment, vendor payment or venue payment**
+must carry `If-Match`. Without it: `428 Precondition Required`, nothing written, nothing logged, no `ETag`:
+`{ success: false, message: "Sertakan versi data (If-Match) agar perubahan tidak menimpa orang lain. Muat ulang data lalu coba lagi.", errors: { "If-Match": ["wajib"] } }`.
+A malformed value is still `400`, a stale one still `409` with `data.current`, a valid current one is the compare-and-set of section 2.
+
+**Exempt (header stays optional; they are idempotent explicit-state calls, so a retry or a double click cannot overwrite anyone's data):**
+* a project `PATCH` whose body is **exactly** `{ "isArchived": bool }`. `isArchived` mixed with any other key (a field, or even an unknown key) is a field edit and needs the header;
+* the evidence `PATCH` `{ "isClientVisible": bool }` (it still honours the header when it is sent, 409 on a stale one);
+* the five directory `{ "isActive": bool }` PATCHes (vendor, venue, vendor category, client, staff). Their ordinary edit (a body without `isActive`) was never in scope and is unchanged;
+* the collection `PATCH /projects/{id}/milestones` (reorder, body `orderedIds`) is not an item edit and is unchanged.
+
+**Order of answers** (so the 428 never tells a caller more than a 404 would):
+1. Auth, the workspace gate on the project (a project that is not this workspace's is `404`) and the route permission run first, as before: they decide who may talk about the row at all.
+2. A malformed `If-Match` is `400`.
+3. Header present: it is used (compare-and-set), the body is judged as before.
+4. Header absent and required: the item is looked up first. A row that does not exist, is soft-deleted, or belongs to another workspace/project is the **same `404` it is with a
+   header**; only a row the caller may see gets the `428`. The body is not read, validated or permission-checked in detail before this (an empty or invalid body without a header
+   is a `428`, not a `422`), so a missing header can never be used to probe validation or per-field permission rules. The project PATCH has to read the body to know whether it is the
+   archive-only call, but it still answers a missing header first: an unparseable body without a header is a `428`, with a header a `400`; nothing is validated before the 428.
+
+**Where it lives.** One function, `readIfMatch` in `internal/modules/projects/presentation/patch.go`, owns the policy (`requireIfMatch` for field edits, `ifMatch` for the
+optional ones, `requireIfMatch`'s existence probe is a one-line closure per handler over the owning service's `Get`/`Exists`/`MilestoneExists`). Handlers carry no
+"required" logic of their own, and the services still receive a plain optional `expected`, so the application layer is unchanged.
+
+**Consequences.** Any client that edits these fields without first reading `updatedAt` now gets 428 (the web already sends it; `docs/API_CONTRACT.md` was updated in the same Tahap, and the Postman collection
+only covers the external payment gateway, which is not affected). The old "no header = last write wins" test became the 428 test; two writers who both send the version they saw conflict by design
+(second one `409`), they no longer both land silently.

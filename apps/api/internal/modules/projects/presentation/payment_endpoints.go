@@ -119,14 +119,16 @@ func (h *Handler) paymentItem(ctx context.Context, projectID int64, p domain.Ven
 // updatePayment is PATCH /projects/{id}/payments/{pid}: a partial update (type,
 // amount, paymentDate, method, referenceNumber, notes), no role-gate beyond
 // finance.record. The overpayment rule is judged on the merged result. See
-// updateProject for the body, If-Match and 409 rules.
+// updateProject for the body, If-Match (428 without) and 409 rules.
 func (h *Handler) updatePayment(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, paymentIDRaw string) {
 	paymentID, err := parseInt64(paymentIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	expected, ok := ifMatch(w, r)
+	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
+		return h.payments.Exists(ctx, projectID, paymentID)
+	})
 	if !ok {
 		return
 	}

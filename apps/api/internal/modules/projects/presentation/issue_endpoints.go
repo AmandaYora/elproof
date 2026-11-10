@@ -129,14 +129,17 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request, claims sta
 // resolutionPlan (null clears), picStaffId, targetResolutionDate (nullable) and
 // isClientVisible. Only the fields present change; a status change to
 // Resolved/Closed stamps resolvedDate once. See updateProject for the body,
-// If-Match and 409 rules.
+// If-Match (428 without) and 409 rules.
 func (h *Handler) updateIssue(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, issueIDRaw string) {
 	issueID, err := parseInt64(issueIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	expected, ok := ifMatch(w, r)
+	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
+		_, err := h.issues.Get(ctx, projectID, issueID)
+		return err
+	})
 	if !ok {
 		return
 	}

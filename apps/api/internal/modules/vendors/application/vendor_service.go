@@ -41,7 +41,7 @@ type VendorRepository interface {
 	// BulkSetActive flips is_active of several vendors of the tenant in one transaction.
 	BulkSetActive(ctx context.Context, tenantID int64, ids []int64, active bool) (domain.BulkResult, error)
 	// ListFiltered backs Export -- same filters as ListPaginated, unpaginated.
-	ListFiltered(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error)
+	ListFiltered(ctx context.Context, tenantID int64, f domain.VendorListFilter) ([]domain.Vendor, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Vendor, error)
 	// NamesByIDs resolves several vendor names in one query (absent = not this tenant's).
 	NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
@@ -97,8 +97,8 @@ func (s *VendorService) BulkSetActive(ctx context.Context, tenantID int64, ids [
 
 // Export backs "Export Excel" -- same filters as ListPaginated (so "filter
 // then export" works), unpaginated.
-func (s *VendorService) Export(ctx context.Context, tenantID int64, categoryID *int64, search, city string) ([]domain.Vendor, error) {
-	return s.repo.ListFiltered(ctx, tenantID, categoryID, search, city)
+func (s *VendorService) Export(ctx context.Context, tenantID int64, f domain.VendorListFilter) ([]domain.Vendor, error) {
+	return s.repo.ListFiltered(ctx, tenantID, f)
 }
 
 func (s *VendorService) Get(ctx context.Context, tenantID, id int64) (*domain.Vendor, error) {

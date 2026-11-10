@@ -68,14 +68,9 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		var categoryID *int64
-		if raw := r.URL.Query().Get("categoryId"); raw != "" {
-			id, err := strconv.ParseInt(raw, 10, 64)
-			if err != nil {
-				response.Error(w, http.StatusBadRequest, "categoryId tidak valid", nil)
-				return
-			}
-			categoryID = &id
+		categoryID, ok := categoryIDFilter(w, r)
+		if !ok {
+			return
 		}
 		if r.URL.Query().Get("all") == "true" {
 			if !requireDirectoryRead(w, r) {
@@ -97,9 +92,8 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		params := pagination.FromRequest(r)
-		isActive, err := isActiveFilter(r)
-		if err != nil {
-			writeAppError(w, err)
+		filter, ok := vendorListFilter(w, r)
+		if !ok {
 			return
 		}
 		columns, defaultSort := h.vendors.ListSortSpec()
@@ -107,9 +101,6 @@ func (h *VendorHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeAppError(w, err)
 			return
-		}
-		filter := domain.VendorListFilter{
-			CategoryID: categoryID, Search: pagination.SearchFromRequest(r), City: r.URL.Query().Get("city"), IsActive: isActive,
 		}
 		vendors, total, err := h.vendors.ListPaginated(r.Context(), tenantID, params, filter, sort)
 		if err != nil {
@@ -161,7 +152,8 @@ func (h *VendorHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 }
 
 // Export streams every vendor matching the same filters Collection's list
-// view accepts (categoryId/search/city) as an .xlsx workbook, unpaginated —
+// view accepts (q or search, categoryId, city, isActive: one parser,
+// vendorListFilter) as an .xlsx workbook, unpaginated —
 // "filter then export" (PLAN.md's Export design). Column order matches
 // vendorTemplateHeaders exactly, plus an appended Status column, so the file
 // round-trips through Import unmodified.
@@ -178,19 +170,11 @@ func (h *VendorHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var categoryID *int64
-	if raw := r.URL.Query().Get("categoryId"); raw != "" {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			response.Error(w, http.StatusBadRequest, "categoryId tidak valid", nil)
-			return
-		}
-		categoryID = &id
+	filter, ok := vendorListFilter(w, r)
+	if !ok {
+		return
 	}
-	search := r.URL.Query().Get("search")
-	city := r.URL.Query().Get("city")
-
-	vendors, err := h.vendors.Export(r.Context(), tenantID, categoryID, search, city)
+	vendors, err := h.vendors.Export(r.Context(), tenantID, filter)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -496,42 +480,6 @@ func (h *VendorHandler) downloadAttachment(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Disposition", `inline; filename="attachment"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
-}
-
-// --- Public-safe summary (reachable by `client` principals too) ---
-
-type vendorSummaryResponse struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
-// Summary backs Client Portal's Vendor Progress tab, which only ever needs
-// a vendor's name (confirmed by code inspection: `VendorProgressTabPage.tsx`
-// resolves `vendors.find(v => v.id === pv.vendorId)?.name` and nothing else
-// from the vendor record — category name comes from a separate store).
-// Deliberately includes inactive vendors too, unlike the rest of this
-// module's `all=true` listing convention: a vendor deactivated after being
-// engaged on a project must still resolve to its real name here, not
-// silently disappear from a client's already-committed engagement history.
-func (h *VendorHandler) Summary(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := requireTenant(w, r)
-	if !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
-		return
-	}
-	vendors, err := h.vendors.List(r.Context(), tenantID, nil)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	result := make([]vendorSummaryResponse, 0, len(vendors))
-	for _, v := range vendors {
-		result = append(result, vendorSummaryResponse{ID: v.ID, Name: v.Name})
-	}
-	response.OK(w, "ok", result)
 }
 
 // --- Bulk import (Excel) ---

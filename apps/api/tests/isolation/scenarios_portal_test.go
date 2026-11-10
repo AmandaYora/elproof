@@ -126,7 +126,7 @@ func (w *world) buildPortal(t *testing.T, s *stack) *portal {
 	p.Milestone = s.mustOK("milestone", s.do(b.token, "POST", s.projectsPath(P, "/milestones"), map[string]any{
 		"name": "Dekorasi " + b.marker, "targetDate": day(20),
 	})).id("data", "id")
-	s.mustOK("complete milestone", s.do(b.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/milestones/%d", p.Milestone)), map[string]any{
+	s.mustOK("complete milestone", s.doFresh(b.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/milestones/%d", p.Milestone)), map[string]any{
 		"status": "Completed", "targetDate": day(20), "completedDate": day(-1),
 	}))
 	p.EvUnflagged = s.attach(b, P, "projectMilestone", p.Milestone, "Photo", "foto-internal", false)
@@ -188,6 +188,13 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 				if r := s.do(tok, "GET", path, nil); r.status != http.StatusForbidden {
 					t.Errorf("%s GET %s: want 403, got %s", name, path, r)
 				}
+			}
+		}
+		// GET /vendors/summary was removed (Tahap 9): the refusal above stays for
+		// clients (client scope runs before routing), and nobody gets a 200 there.
+		for name, tok := range map[string]string{"A's owner": w.a.token, "B's owner": w.b.token} {
+			if r := s.do(tok, "GET", "/api/v1/vendors/summary", nil); r.status == http.StatusOK {
+				t.Errorf("%s GET vendors/summary: the route is removed, got %s", name, r)
 			}
 		}
 		// The home is for client principals only.
@@ -346,7 +353,7 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 
 		// Editing what was paid clears it; a note-only edit does not.
 		edit := func(amount int, note string) reply {
-			return s.do(w.b.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/client-payments/%d", p.Payment)), map[string]any{
+			return s.doFresh(w.b.token, "PATCH", s.projectsPath(P, fmt.Sprintf("/client-payments/%d", p.Payment)), map[string]any{
 				"type": "Termin", "amount": amount, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "PAY-" + w.b.marker, "notes": note,
 			})
 		}

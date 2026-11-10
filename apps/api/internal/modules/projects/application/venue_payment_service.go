@@ -101,6 +101,19 @@ func (s *VenuePaymentService) Create(ctx context.Context, tenantID, projectID in
 	return p, nil
 }
 
+// Exists is nil when the venue payment is on this project and not deleted, a not
+// found otherwise (see PaymentService.Exists).
+func (s *VenuePaymentService) Exists(ctx context.Context, projectID, id int64) error {
+	p, err := s.repo.FindByID(ctx, projectID, id)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return apperror.NotFound("Pembayaran tidak ditemukan")
+	}
+	return nil
+}
+
 // Patch changes the fields of a venue payment that were sent, and only those; see
 // PaymentService.Patch (overpayment rule on the merged type and amount, project
 // lock, no-op writes nothing, compare-and-set with `expected`).

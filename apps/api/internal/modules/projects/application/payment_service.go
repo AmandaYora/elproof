@@ -103,6 +103,20 @@ func (s *PaymentService) Create(ctx context.Context, projectID int64, actorStaff
 	return p, nil
 }
 
+// Exists is nil when the vendor payment is on this project and not deleted, a not
+// found otherwise. The PATCH handler asks it before it answers a missing
+// If-Match (428), so a payment that is not there is a 404 with or without the header.
+func (s *PaymentService) Exists(ctx context.Context, projectID, id int64) error {
+	p, err := s.repo.FindByID(ctx, projectID, id)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return apperror.NotFound("Pembayaran tidak ditemukan")
+	}
+	return nil
+}
+
 // Patch changes the fields of a vendor payment that were sent, and only those. No
 // status/role guard (only Delete escalates to Owner-only, PLAN.md §2.3).
 // ProjectVendorID is deliberately not patchable (PLAN.md §2.5): re-parenting a

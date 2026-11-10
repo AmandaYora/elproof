@@ -119,21 +119,7 @@ func (r *MySQLVenueRepository) ListSortSpec() (map[string]pagination.SortColumn,
 // as-is for the venue-picker (attach-to-project) dropdown and the bulk
 // import's prefetch, both of which need the full roster in one call.
 func (r *MySQLVenueRepository) ListPaginated(ctx context.Context, tenantID int64, params pagination.Params, f domain.VenueListFilter, sort pagination.Sort) ([]domain.Venue, int64, error) {
-	where := ` WHERE tenant_id = ?`
-	args := []interface{}{tenantID}
-	if f.Search != "" {
-		where += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(f.Search) + "%"
-		args = append(args, like, like, like)
-	}
-	if f.City != "" {
-		where += ` AND city = ?`
-		args = append(args, f.City)
-	}
-	if f.IsActive != nil {
-		where += ` AND is_active = ?`
-		args = append(args, *f.IsActive)
-	}
+	where, args := venueWhere(tenantID, f)
 
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM venues`+where, args...).Scan(&total); err != nil {
@@ -165,23 +151,31 @@ func (r *MySQLVenueRepository) BulkSetActive(ctx context.Context, tenantID int64
 	return bulkSetActive(ctx, r.db, "venues", tenantID, ids, active)
 }
 
-// ListFiltered backs Export -- same search/city filters as ListPaginated, but
-// unpaginated (Export always returns the whole matching set).
-func (r *MySQLVenueRepository) ListFiltered(ctx context.Context, tenantID int64, search, city string) ([]domain.Venue, error) {
-	query := `SELECT ` + venueColumns + ` FROM venues WHERE tenant_id = ?`
+// venueWhere is the WHERE clause both the paginated list and the export apply.
+func venueWhere(tenantID int64, f domain.VenueListFilter) (string, []interface{}) {
+	where := ` WHERE tenant_id = ?`
 	args := []interface{}{tenantID}
-	if search != "" {
-		query += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
-		like := "%" + utils.EscapeLike(search) + "%"
+	if f.Search != "" {
+		where += ` AND (name LIKE ? OR pic_name LIKE ? OR email LIKE ?)`
+		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like)
 	}
-	if city != "" {
-		query += ` AND city = ?`
-		args = append(args, city)
+	if f.City != "" {
+		where += ` AND city = ?`
+		args = append(args, f.City)
 	}
-	query += ` ORDER BY id`
+	if f.IsActive != nil {
+		where += ` AND is_active = ?`
+		args = append(args, *f.IsActive)
+	}
+	return where, args
+}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+// ListFiltered backs Export -- the same filters as ListPaginated (one WHERE
+// builder), but unpaginated (Export always returns the whole matching set).
+func (r *MySQLVenueRepository) ListFiltered(ctx context.Context, tenantID int64, f domain.VenueListFilter) ([]domain.Venue, error) {
+	where, args := venueWhere(tenantID, f)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+venueColumns+` FROM venues`+where+` ORDER BY id`, args...)
 	if err != nil {
 		return nil, err
 	}

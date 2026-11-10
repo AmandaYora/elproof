@@ -61,7 +61,6 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/vendors/import", authed(http.HandlerFunc(m.vendorHandler.Import)))
 	mux.Handle("/api/v1/vendors/export", authed(http.HandlerFunc(m.vendorHandler.Export)))
 	mux.Handle("/api/v1/vendors/bulk", authed(http.HandlerFunc(m.vendorHandler.Bulk)))
-	mux.Handle("/api/v1/vendors/summary", authed(http.HandlerFunc(m.vendorHandler.Summary)))
 	mux.Handle("/api/v1/vendors/", authed(http.HandlerFunc(m.vendorHandler.Item)))
 	mux.Handle("/api/v1/venues", authed(http.HandlerFunc(m.venueHandler.Collection)))
 	mux.Handle("/api/v1/venues/template", authed(http.HandlerFunc(m.venueHandler.Template)))

@@ -19,7 +19,9 @@ func (w *world) checkNoLeakVia(t *testing.T) func(string, reply) {
 func (w *world) lists(t *testing.T, s *stack) {
 	endpoints := []string{
 		"/api/v1/projects", "/api/v1/projects?all=true", "/api/v1/projects?archived=true", "/api/v1/projects?search=RAHASIA",
-		"/api/v1/vendors", "/api/v1/vendors?all=true", "/api/v1/vendors?search=RAHASIA", "/api/v1/vendors/summary",
+		"/api/v1/vendors", "/api/v1/vendors?all=true", "/api/v1/vendors?search=RAHASIA",
+		// The removed directory route (Tahap 9): still never anything of B's, whatever the router answers.
+		"/api/v1/vendors/summary",
 		"/api/v1/venues", "/api/v1/venues?all=true", "/api/v1/venues?search=RAHASIA",
 		"/api/v1/vendor-categories", "/api/v1/vendor-categories?all=true", "/api/v1/vendor-categories?search=RAHASIA",
 		"/api/v1/clients", "/api/v1/clients?all=true", "/api/v1/clients?search=RAHASIA",
@@ -201,7 +203,7 @@ func (w *world) foreignReferences(t *testing.T, s *stack) {
 		c := c
 		routesCovered++
 		t.Run(c.name, func(t *testing.T) {
-			r := s.do(a.token, c.method, c.path, c.attack)
+			r := s.doFresh(a.token, c.method, c.path, c.attack)
 			if r.status < 400 || r.status >= 500 {
 				t.Errorf("%s %s naming B's id must be refused with a 4xx, got %s", c.method, c.path, r)
 			}
@@ -209,7 +211,7 @@ func (w *world) foreignReferences(t *testing.T, s *stack) {
 			if c.verify != nil {
 				c.verify(t)
 			}
-			ctl := s.do(a.token, c.method, c.path, c.own)
+			ctl := s.doFresh(a.token, c.method, c.path, c.own)
 			if ctl.status < 200 || ctl.status > 299 {
 				t.Errorf("control: the same request with A's own ids should succeed, got %s", ctl)
 			}
@@ -344,7 +346,7 @@ func (w *world) intact(t *testing.T, s *stack) {
 	check("venue", fmt.Sprintf("/api/v1/venues/%d", w.Venue), "Venue B "+b.marker)
 	check("categories", "/api/v1/vendor-categories?all=true", "Kategori "+b.marker)
 	check("engagement", fmt.Sprintf("/api/v1/projects/%d/vendors", P), "Dekorasi "+b.marker)
-	check("vendor milestone", fmt.Sprintf("/api/v1/projects/%d/vendors/%d/milestones", P, w.Engagement), "Milestone vendor "+b.marker)
+	check("vendor milestone (embedded in the engagements)", fmt.Sprintf("/api/v1/projects/%d/vendors", P), "Milestone vendor "+b.marker)
 	check("vendor payments", fmt.Sprintf("/api/v1/projects/%d/payments", P), "VREF-"+b.marker)
 	check("client payments", fmt.Sprintf("/api/v1/projects/%d/client-payments", P), "REF-"+b.marker)
 	check("venue payments", fmt.Sprintf("/api/v1/projects/%d/venue-payments", P), "VNREF-"+b.marker)
