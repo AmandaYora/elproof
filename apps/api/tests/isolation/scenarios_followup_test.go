@@ -20,7 +20,8 @@ import (
 func TestConcurrentSignups(t *testing.T) {
 	s := startStack(t)
 	const n = 8
-	for round := 0; round < 3; round++ {
+	// Two rounds: with the Owner that is the three staff a trial workspace allows.
+	for round := 0; round < 2; round++ {
 		var wg sync.WaitGroup
 		results := make([]string, n)
 		start := make(chan struct{})
@@ -64,6 +65,101 @@ func TestConcurrentSignups(t *testing.T) {
 	}
 	if incomplete != 0 {
 		t.Errorf("%d sign-ups left half-provisioned", incomplete)
+	}
+}
+
+// burst sends n requests at the same moment and returns, per request, "" on a
+// 2xx or what went wrong. It never calls t.Fatal (it runs off the test goroutine).
+func (s *stack) burst(n int, req func(i int) (token, method, path string, body any)) []string {
+	results := make([]string, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		token, method, path, body := req(i)
+		b, _ := json.Marshal(body)
+		r, _ := http.NewRequest(method, s.base+path, bytes.NewReader(b))
+		r.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		r.Header.Set("X-Forwarded-For", fmt.Sprintf("10.98.%d.%d", (i/250)%250, i%250+1))
+		wg.Add(1)
+		go func(i int, r *http.Request) {
+			defer wg.Done()
+			<-start
+			resp, err := s.client.Do(r)
+			if err != nil {
+				results[i] = "transport: " + err.Error()
+				return
+			}
+			defer resp.Body.Close()
+			out, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode < 200 || resp.StatusCode > 299 {
+				results[i] = fmt.Sprintf("%d %s", resp.StatusCode, tail(string(out), 200))
+			}
+		}(i, r)
+	}
+	close(start)
+	wg.Wait()
+	return results
+}
+
+// TestConcurrentStaffInvites: several workspaces inviting a team member at the
+// same moment all succeed. Issuing the invitation link used to deadlock (1213)
+// on the auth_tokens gap lock, and one invitation got a 500. Re-sending one
+// person's invitation several times at once still leaves exactly one open link.
+func TestConcurrentStaffInvites(t *testing.T) {
+	s := startStack(t)
+	const n = 6
+	owners := make([]tenant, n)
+	roles := make([]int64, n)
+	for i := range owners {
+		owners[i] = s.signUp(fmt.Sprintf("undang%d", i))
+		roles[i] = s.mustOK("role", s.do(owners[i].token, "POST", "/api/v1/access/roles", map[string]any{
+			"kind": "staff", "name": "Peran " + owners[i].marker, "description": "Uji", "projectScope": "all", "permissions": []string{"project.edit"},
+		})).id("data", "id")
+	}
+	// Two rounds: with the Owner that is the three staff a trial workspace allows.
+	for round := 0; round < 2; round++ {
+		for i, r := range s.burst(n, func(i int) (string, string, string, any) {
+			return owners[i].token, "POST", "/api/v1/staff", map[string]any{
+				"name": fmt.Sprintf("Staf %d-%d", round, i), "title": "Koordinator", "roleId": roles[i], "phone": "081234567890",
+				"email": fmt.Sprintf("staf.%d.%d.%d@example.com", round, i, time.Now().UnixNano()),
+			}
+		}) {
+			if r != "" {
+				t.Errorf("round %d invitation %d failed: %s", round, i, r)
+			}
+		}
+	}
+
+	// One person, several re-sends at once.
+	o := owners[0]
+	staff := s.mustOK("staff list", s.do(o.token, "GET", "/api/v1/staff?limit=50", nil))
+	var staffID int64
+	for _, row := range rows(staff, "data") {
+		if row["loginStatus"] == "invited" {
+			staffID = int64(row["id"].(float64))
+			break
+		}
+	}
+	if staffID == 0 {
+		t.Fatalf("no invited staff member to re-invite: %s", staff)
+	}
+	for i, r := range s.burst(5, func(int) (string, string, string, any) {
+		return o.token, "POST", fmt.Sprintf("/api/v1/staff/%d/invite", staffID), map[string]any{}
+	}) {
+		if r != "" {
+			t.Errorf("re-send %d failed: %s", i, r)
+		}
+	}
+	var open int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM auth_tokens t JOIN credentials c ON c.id = t.credential_id
+		WHERE c.principal_type = 'staff' AND c.principal_id = ? AND t.used_at IS NULL AND t.revoked_at IS NULL`, fmt.Sprint(staffID)).Scan(&open); err != nil {
+		t.Fatal(err)
+	}
+	if open != 1 {
+		t.Errorf("after concurrent re-sends: %d open invitation links, want 1", open)
 	}
 }
 

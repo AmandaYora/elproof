@@ -20,12 +20,22 @@ func NewMySQLAccessLinkRepository(db *sql.DB) *MySQLAccessLinkRepository {
 
 // Issue stores a new link and revokes every still-open link of the same
 // login, so only the latest link handed out works.
+//
+// READ COMMITTED: under REPEATABLE READ the revoking UPDATE of a login with no
+// open link gap-locks idx_auth_tokens_credential, and two invitations sent at
+// once (two workspaces) then deadlocked on each other's INSERT (MySQL 1213).
+// The login's own row is locked first instead, so two links issued at once for
+// the same person still run one after the other and only the later one works.
 func (r *MySQLAccessLinkRepository) Issue(ctx context.Context, credentialID int64, purpose domain.LinkPurpose, tokenHash string, expiresAt time.Time) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var locked int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM credentials WHERE id = ? FOR UPDATE`, credentialID).Scan(&locked); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE auth_tokens SET revoked_at = NOW() WHERE credential_id = ? AND used_at IS NULL AND revoked_at IS NULL`,
 		credentialID); err != nil {
