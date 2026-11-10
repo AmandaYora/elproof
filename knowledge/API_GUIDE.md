@@ -16,6 +16,10 @@ The `shared` auth middleware verifies the token and injects `principal_type`, `p
 `tenant_id` (nullable), `role` into the request context. Tenant-scoped modules read `tenant_id`
 from context — never from a request parameter or body.
 
+`/api/v1/public/*` is registered outside `authed` by each owning module's `RegisterPublicRoutes`
+(`platform`: login slides, signup; `billing`: `GET /public/plans`, the homepage price list) and
+returns only what an anonymous visitor may see.
+
 ## Path conventions
 
 - Resource paths are plural, tenant scope is implicit via the token (not in the URL): e.g.

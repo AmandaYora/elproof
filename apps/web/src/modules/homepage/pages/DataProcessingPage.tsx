@@ -1,4 +1,3 @@
-import { FileLock2 } from "lucide-react";
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
@@ -61,7 +60,6 @@ export default function DataProcessingPage() {
   usePageMeta({ title: "Perjanjian pemrosesan data", description: "Perjanjian pemrosesan data antara wedding organizer sebagai pengendali data dan ElProof sebagai prosesor." });
   return (
     <LegalDocument
-      icon={FileLock2}
       title="Perjanjian Pemrosesan Data"
       updated={TERMS_UPDATED}
       intro="Mengatur cara ElProof memproses data pribadi client dan vendor yang Anda kelola di ElProof."

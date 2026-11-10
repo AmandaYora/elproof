@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { loginSchema, googleLinkSchema, mfaCodeSchema } from "@/modules/auth/schemas/login.schema";
@@ -12,20 +12,15 @@ import { clearLoginNotice, peekLoginNotice } from "@/shared/lib/session-notice";
 import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import { LoginPhotoSlider } from "@/modules/auth/components/LoginPhotoSlider";
+import { AuthAside, AuthCard, AuthSplitLayout } from "@/modules/auth/components/AuthSplitLayout";
 import { GoogleSignInButton } from "@/shared/components/auth/GoogleSignInButton";
 import { landingPathFor } from "@/shared/lib/auth-actions";
 import type { GoogleAuthOutcome, GoogleSignupState } from "@/modules/auth/types";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
-// The login page's slate look is deliberately not tied to --brand-navy-*
-// (ADR-0012): no tenant is knowable before anyone has signed in. Every class is
-// written out in full, never built by string concatenation, since Tailwind
-// finds utilities by scanning the source for whole tokens.
-const PANEL_CLASS = "bg-gradient-to-br from-slate-900 to-slate-800";
-const ICON_BOX_CLASS = "bg-slate-800";
-// The gradient scrim behind the headline over the photo slider.
-const SCRIM_CLASS = "bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent";
+// The sign-in screen uses the public site's palette (AuthSplitLayout, ADR-0038),
+// never a tenant's brand color: no tenant is knowable before anyone has signed
+// in (ADR-0012).
 
 /** What the person is told when a sign-in call fails: the server's own words, or a connection hint when it never answered. */
 function loginErrorMessage(err: unknown, fallback: string) {
@@ -184,32 +179,17 @@ export default function LoginPage() {
   const activeRoot = googleLink && !mfaToken ? linkFormRef : mfaToken ? mfaFormRef : loginFormRef;
 
   return (
-    <div className="flex min-h-screen">
-      <div
-        className={`relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-end lg:px-16 lg:pb-16 ${PANEL_CLASS}`}
-      >
-        <LoginPhotoSlider />
-        <div className={`pointer-events-none absolute inset-0 ${SCRIM_CLASS}`} />
-        <div className="relative z-10">
-          <p className="text-[40px] font-bold leading-[1.15] text-white">Setiap langkah menuju hari istimewa Anda.</p>
-          <div className="mt-4 h-px w-12 bg-white/40" />
-          <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/70">
-            Pantau seluruh perjalanan menuju hari pernikahan Anda dalam satu portal. Mulai dari jadwal, desain,
-            pembayaran, hingga progres produksi, semuanya tersusun rapi, transparan, dan dapat diakses kapan saja.
-          </p>
-        </div>
-      </div>
-
-      <main className="flex w-full items-center justify-center bg-background px-6 py-12 lg:w-1/2">
-        <div className="w-full max-w-md rounded-xl border border-border bg-surface p-10 shadow-sm">
-          <div
-            className={`mb-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl text-white ${ICON_BOX_CLASS}`}
-          >
-            <Lock className="h-5 w-5" />
-          </div>
-
-          <h1 className="text-2xl font-bold text-text-primary">Selamat datang</h1>
-          <p className="mt-1.5 text-[13.5px] text-text-secondary">
+    <AuthSplitLayout
+      aside={
+        <AuthAside
+          title="Setiap langkah menuju hari istimewa, tercatat rapi."
+          body="Tim WO mengelola jadwal, vendor, dan pembayaran di WO Console. Klien memantau persiapan dan buktinya di Portal Klien."
+        />
+      }
+    >
+        <AuthCard>
+          <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-foreground">Masuk ke ElProof</h1>
+          <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
             {mfaToken
               ? "Verifikasi dua langkah untuk admin platform."
               : "Tim WO masuk dengan Google. Klien dan admin platform masuk dengan nama pengguna."}
@@ -243,7 +223,7 @@ export default function LoginPage() {
                       autoFocus
                     />
                   </Field>
-                  <Button type="submit" variant="neutral" className="mt-2 w-full justify-center" disabled={linkForm.submitting}>
+                  <Button type="submit" variant="primary" className="mt-2 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid" disabled={linkForm.submitting}>
                     {linkForm.submitting ? "Menghubungkan..." : "Hubungkan dan masuk"}
                   </Button>
                 </form>
@@ -287,7 +267,7 @@ export default function LoginPage() {
                       className="font-mono tracking-[0.3em]"
                     />
                   </Field>
-                  <Button type="submit" variant="neutral" className="mt-2 w-full justify-center" disabled={mfaForm.submitting}>
+                  <Button type="submit" variant="primary" className="mt-2 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid" disabled={mfaForm.submitting}>
                     {mfaForm.submitting ? "Memeriksa kode..." : "Verifikasi kode"}
                   </Button>
                 </form>
@@ -359,8 +339,8 @@ export default function LoginPage() {
 
                 <Button
                   type="submit"
-                  variant="neutral"
-                  className="mt-2 w-full justify-center"
+                  variant="primary"
+                  className="mt-2 h-12 w-full justify-center rounded-full text-[15px] focus-visible:outline-solid"
                   disabled={loginForm.submitting}
                 >
                   {loginForm.submitting ? "Memproses..." : "Masuk"}
@@ -375,15 +355,14 @@ export default function LoginPage() {
           </div>
 
           {!mfaToken && !googleLink && (
-            <p className="mt-8 border-t border-border pt-5 text-center text-[13.5px] text-text-secondary">
+            <p className="mt-8 border-t border-border pt-5 text-center text-[14px] text-muted-foreground">
               Belum memakai ElProof?{" "}
               <Link to={ROUTE_PATHS.signup} className="font-semibold text-text-primary hover:underline">
                 Coba gratis 14 hari
               </Link>
             </p>
           )}
-        </div>
-      </main>
-    </div>
+        </AuthCard>
+    </AuthSplitLayout>
   );
 }

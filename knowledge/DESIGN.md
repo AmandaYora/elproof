@@ -137,14 +137,15 @@ dengan success. Karena itu status **selalu** ikon + teks (T5), dan warna merek t
   dirancang untuk identitas kota Jakarta, OFL) memberi karakter Indonesia yang khas tanpa mengorbankan keterbacaan;
   **syarat**: punya fitur `tnum` dan ukuran berkas variabel wajar; dicek di prototipe Tahap 0 [?: `tnum` belum
   terverifikasi]. Bila tidak lolos, tetap Inter.
-- **Fraunces** hanya untuk pemasaran dan judul besar Beranda Portal (nama pasangan, hitung mundur; D8). Tidak pernah
+- **Fraunces** hanya untuk judul besar Beranda Portal (nama pasangan, hitung mundur; D8); situs publik memakai satu keluarga, Plus Jakarta Sans (ADR-0038). Tidak pernah
   di tabel/formulir.
 - **Skala:** 12 / 14 / 16 / 20 / 24 / 30 px; line-height 16 / 20 / 24 / 28 / 32 / 38; bobot 400/500/600 (700 hanya
   angka besar). Badan console 14 px, Portal 16 px. Panjang baris prosa ≤ 70 karakter. Label tidak huruf kapital semua.
 - **Kepadatan** per `data-density`: console `compact` (kontrol 36 px, baris 40/32 px, celah 16 px), Portal
   `comfortable` (kontrol 44 px, celah 24 px). Grid 4 px.
 - **Gerak:** 110–150 ms hover/menu, 240 ms dialog/drawer, easing productive; satu momen expressive (`ProofStamp`).
-  Semua dibungkus `motion-reduce:`. Tidak ada animasi masuk per bagian.
+  Semua dibungkus `motion-reduce:`. Tidak ada animasi masuk per bagian (pengecualian terlingkup untuk Beranda dan Tentang
+  Kami situs publik: ADR-0038, `DESIGN-PUBLIC.md`).
 - **Lapisan (z-index):** konten 0, sticky 10, sidebar 30, dropdown/popover 40, dialog 50, toast 60, banner sesi
   dukungan 70. Root `isolation: isolate` (Base UI); variabel tenant di `:root`/`body` agar konten portal mewarisinya.
 - **Elevasi:** permukaan datar = garis `--border`, tanpa bayangan. Bayangan hanya untuk popover/menu (kecil) dan

@@ -1,6 +1,6 @@
 {
   "generatedBy": "e2e/tests/axe.spec.ts (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa)",
-  "pagesScanned": 68,
+  "pagesScanned": 76,
   "violationsByImpact": {
     "critical": 0,
     "serious": 0,
@@ -20,12 +20,62 @@
       "violations": []
     },
     {
+      "page": "marketing/daftar",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/daftar",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
       "page": "marketing/faq",
       "viewport": "desktop",
       "violations": []
     },
     {
       "page": "marketing/faq",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "marketing/kontak",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/kontak",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "marketing/masuk",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/masuk",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "marketing/syarat-ketentuan",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/syarat-ketentuan",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "marketing/tentang-kami",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "marketing/tentang-kami",
       "viewport": "mobile",
       "violations": []
     },
@@ -206,16 +256,6 @@
     },
     {
       "page": "wo/langganan",
-      "viewport": "mobile",
-      "violations": []
-    },
-    {
-      "page": "wo/login",
-      "viewport": "desktop",
-      "violations": []
-    },
-    {
-      "page": "wo/login",
       "viewport": "mobile",
       "violations": []
     },

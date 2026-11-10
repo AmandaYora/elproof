@@ -13,5 +13,6 @@ Routing for the project knowledge base. Read the file relevant to your task befo
 - [DATABASE_GUIDE.md](DATABASE_GUIDE.md) — table ownership, relations as IDs
 - [FRONTEND_GUIDE.md](FRONTEND_GUIDE.md) — frontend conventions
 - [BACKEND_GUIDE.md](BACKEND_GUIDE.md) — backend conventions
-- [decisions/](decisions/) — Architecture Decision Records (UI revamp: ADR-0037 for the front end and its gates; ADR-0032…0036 for the API half)
+- [decisions/](decisions/) — Architecture Decision Records (UI revamp: ADR-0037 for the front end and its gates; ADR-0038 for the public site; ADR-0032…0036 for the API half)
+- [DESIGN-PUBLIC.md](DESIGN-PUBLIC.md) — situs publik (12 halaman sebelum masuk): arah "Janji Terbukti", token terlingkup, harga dari data, gerak CSS (ADR-0038)
 - [DESIGN.md](DESIGN.md) — brief desain untuk revamp UI/UX (temuan riset → keputusan, token, rupa, bahasa & glosarium UI, onboarding, sumber); rencana dan daftar perubahan endpoint (E1–E14) di `docs/plan/revamp-ui-shadcn/PLAN.md`

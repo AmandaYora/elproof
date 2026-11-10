@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"sort"
 
 	"elproof/internal/modules/billing/domain"
 	"elproof/internal/shared/apperror"
@@ -102,6 +103,34 @@ func (s *PlanService) ListForApp(ctx context.Context, appID string) ([]domain.Pl
 // ListPublic returns ElProof's own catalog — plans with no App mapping (D3).
 func (s *PlanService) ListPublic(ctx context.Context) ([]domain.Plan, error) {
 	return s.repo.ListPublic(ctx)
+}
+
+// ListPublicActive is the catalog shown to anonymous visitors on the public
+// homepage (GET /api/v1/public/plans): ListPublic narrowed to active plans,
+// ordered by duration then price (id breaks ties so the order is stable).
+// ListPublic itself keeps returning inactive plans for its existing callers.
+func (s *PlanService) ListPublicActive(ctx context.Context) ([]domain.Plan, error) {
+	plans, err := s.repo.ListPublic(ctx)
+	if err != nil {
+		return nil, err
+	}
+	active := make([]domain.Plan, 0, len(plans))
+	for _, p := range plans {
+		if p.IsActive {
+			active = append(active, p)
+		}
+	}
+	sort.SliceStable(active, func(i, j int) bool {
+		a, b := active[i], active[j]
+		if a.DurationMonths != b.DurationMonths {
+			return a.DurationMonths < b.DurationMonths
+		}
+		if a.Price != b.Price {
+			return a.Price < b.Price
+		}
+		return a.ID < b.ID
+	})
+	return active, nil
 }
 
 // ListPublicPaginated is ListPublic with pagination — backs the branching

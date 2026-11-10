@@ -25,6 +25,7 @@ type Module struct {
 	appPlanHandler              *presentation.AppPlanHandler
 	externalSubscriptionHandler *presentation.ExternalSubscriptionHandler
 	appSubscriptionHandler      *presentation.AppSubscriptionHandler
+	publicPlanHandler           *presentation.PublicPlanHandler
 	subscriptionReconciler      *application.SubscriptionReconciler
 	contracts                   contracts.Contracts
 }
@@ -55,6 +56,7 @@ func NewModule(db *sql.DB, appRegistry paymentcontracts.AppRegistry, paymentClie
 		appPlanHandler:              presentation.NewAppPlanHandler(planService, appRegistry),
 		externalSubscriptionHandler: presentation.NewExternalSubscriptionHandler(subscriptionService, appRegistry),
 		appSubscriptionHandler:      presentation.NewAppSubscriptionHandler(appChargeRepo),
+		publicPlanHandler:           presentation.NewPublicPlanHandler(planService),
 		subscriptionReconciler:      subscriptionReconciler,
 		contracts:                   contracts.New(planService, transactionService),
 	}
@@ -84,6 +86,19 @@ func (m *Module) StartSubscriptionReconciler(ctx context.Context, interval time.
 // never ticks with the bootstrap default.
 func (m *Module) SetSubscriptionChargeMaxAge(maxAge time.Duration) {
 	m.subscriptionReconciler.SetMaxAge(maxAge)
+}
+
+// RegisterPublicRoutes registers this module's pre-auth endpoints, never
+// wrapped in `authed` (same pattern as platform.RegisterPublicRoutes): the
+// public homepage reads the active plan catalog before anyone signs in.
+func (m *Module) RegisterPublicRoutes(mux *http.ServeMux) {
+	registerPublicRoutes(mux, m.publicPlanHandler)
+}
+
+// registerPublicRoutes is split out so the route table (path, no auth, GET
+// only) can be tested without a database.
+func registerPublicRoutes(mux *http.ServeMux, plans *presentation.PublicPlanHandler) {
+	mux.Handle("/api/v1/public/plans", httpx.Method(http.MethodGet, plans.List))
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {

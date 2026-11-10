@@ -66,6 +66,14 @@
   --color-info-soft: #eff6ff;
   --color-neutral-soft: #f0efed;
 
+  /* Public site roles: real values live in marketing.css under
+     [data-surface="marketing"]; these defaults only keep the utilities valid. */
+  --seal: #b45309;
+  --seal-text: #b45309;
+  --seal-soft: #fffbeb;
+  --highlight-text: var(--foreground);
+  --on-primary-muted: #ffffff;
+
   /* Legacy names, same values (read by inline styles and old classes). */
   --color-background: var(--background);
   --color-surface: var(--card);
@@ -159,6 +167,13 @@
   --color-danger-soft: var(--color-danger-soft);
   --color-info-soft: var(--color-info-soft);
   --color-neutral-soft: var(--color-neutral-soft);
+
+  /* Public site roles (marketing.css); the console never uses them. */
+  --color-seal: var(--seal);
+  --color-seal-text: var(--seal-text);
+  --color-seal-soft: var(--seal-soft);
+  --color-highlight-text: var(--highlight-text);
+  --color-on-primary-muted: var(--on-primary-muted);
 
   --font-display: var(--font-display);
 
