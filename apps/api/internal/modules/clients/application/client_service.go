@@ -271,6 +271,14 @@ type AccessLinkResult struct {
 // provisions a real login credential in the same flow, mirroring how
 // `platform`'s tenant registration works (ADR-0008).
 func (s *ClientService) Create(ctx context.Context, tenantID int64, input CreateClientInput) (*domain.Client, *AccessLinkResult, error) {
+	// Checked here, not left to the column: an unknown value was a 500
+	// ("Data truncated"), and the ENUM's case-insensitive match let "bride"
+	// through while the login kept the lowercase spelling.
+	if !domain.IsClientRole(string(input.Role)) {
+		return nil, nil, apperror.Validation("Hubungan client tidak dikenal", map[string][]string{
+			"role": {"Pilih salah satu: Pengantin wanita, Pengantin pria, atau Perwakilan keluarga"},
+		})
+	}
 	exists, err := s.projects.ProjectExists(ctx, tenantID, input.ProjectID)
 	if err != nil {
 		return nil, nil, err

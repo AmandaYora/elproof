@@ -117,7 +117,7 @@ func (r *MySQLPaymentRepository) Create(ctx context.Context, p *domain.VendorPay
 		return err
 	}
 	p.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "vendor_payments", id, &p.UpdatedAt)
 }
 
 var vendorPaymentPatchColumns = map[string]column[domain.VendorPayment]{

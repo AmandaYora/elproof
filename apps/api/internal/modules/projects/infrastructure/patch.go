@@ -69,3 +69,10 @@ func patchRow[T any](ctx context.Context, db dbtx, table string, spec map[string
 	}
 	return n > 0 || expected == nil, nil
 }
+
+// readVersion loads a freshly inserted row's `updatedAt` (its ADR-0036
+// version, set by MySQL) into dst, on the same executor as the INSERT. A
+// create answer that carried the zero time made an edit straight from it a 409.
+func readVersion(ctx context.Context, db dbtx, table string, id int64, dst *time.Time) error {
+	return db.QueryRowContext(ctx, `SELECT updated_at FROM `+table+` WHERE id = ?`, id).Scan(dst)
+}
