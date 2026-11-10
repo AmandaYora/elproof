@@ -124,18 +124,18 @@ func (s *VoucherService) validate(ctx context.Context, in *VoucherInput) error {
 	switch in.Type {
 	case domain.DiscountPercent:
 		if in.Value < 1 || in.Value > 99 {
-			fields["value"] = []string{"Potongan persen 1–99%"}
+			fields["discountValue"] = []string{"Potongan persen 1–99%"}
 		}
 		if in.MaxDiscount != nil && *in.MaxDiscount < 1 {
 			fields["maxDiscount"] = []string{"Batas potongan minimal Rp1, atau kosongkan"}
 		}
 	case domain.DiscountAmount:
 		if in.Value < 1 {
-			fields["value"] = []string{"Potongan minimal Rp1"}
+			fields["discountValue"] = []string{"Potongan minimal Rp1"}
 		}
 		in.MaxDiscount = nil // a cap only applies to a percentage
 	default:
-		fields["type"] = []string{"Pilih jenis potongan"}
+		fields["discountType"] = []string{"Pilih jenis potongan"}
 	}
 	if in.ValidFrom != "" && !validDate(in.ValidFrom) {
 		fields["validFrom"] = []string{"Tanggal tidak valid"}
@@ -161,7 +161,7 @@ func (s *VoucherService) validate(ctx context.Context, in *VoucherInput) error {
 		case plan == nil || plan.AppID != in.AppID:
 			fields["planId"] = []string{"Pilih paket milik aplikasi ini, atau kosongkan untuk semua paket"}
 		case in.Type == domain.DiscountAmount && in.Value >= plan.Price:
-			fields["value"] = []string{"Potongan harus di bawah harga paket (" + formatRupiah(plan.Price) + "); harga akhir tidak boleh Rp0"}
+			fields["discountValue"] = []string{"Potongan harus di bawah harga paket (" + formatRupiah(plan.Price) + "); harga akhir tidak boleh Rp0"}
 		}
 	}
 	if len(fields) > 0 {
