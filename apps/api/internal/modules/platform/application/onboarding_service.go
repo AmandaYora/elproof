@@ -182,18 +182,6 @@ func (s *TenantService) UpdateOwnProfile(ctx context.Context, tenantID int64, in
 	return s.Get(ctx, tenantID)
 }
 
-// UpdateOwnBrandColor lets the Owner choose the workspace's brand color from
-// the fixed presets (it recolors the WO Console and the Client Portal).
-func (s *TenantService) UpdateOwnBrandColor(ctx context.Context, tenantID int64, preset string) (*domain.Tenant, error) {
-	if !domain.IsValidBrandColorPreset(preset) {
-		return nil, apperror.Validation("Warna tidak dikenal", map[string][]string{"preset": {"Pilih salah satu warna yang tersedia"}})
-	}
-	if err := s.repo.UpdateBrandColor(ctx, tenantID, preset); err != nil {
-		return nil, err
-	}
-	return s.Get(ctx, tenantID)
-}
-
 var bankAccountNumber = regexp.MustCompile(`^[0-9][0-9 .-]{3,38}[0-9]$`)
 
 // BusinessDetailsInput is the Owner's form for address and bank account.

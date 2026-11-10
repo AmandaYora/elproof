@@ -2,7 +2,7 @@
 // apps/api/internal/modules/vendors/domain/city.go) — the fixed set of 128
 // official kota/kabupaten across Java's six provinces plus Bali (ADR-0016).
 // Both sides must agree on the exact strings, same discipline as
-// brandPresets.ts vs. AllowedBrandColorPresets. Deliberately kota AND
+// labels.ts vs. the API's enums. Deliberately kota AND
 // kabupaten, not kota alone: Bali has exactly one official kota (Denpasar),
 // so a kota-only list would leave every venue/vendor in Ubud/Kuta/Nusa Dua/
 // Seminyak (all kabupaten Gianyar/Badung) with no accurate city to pick.

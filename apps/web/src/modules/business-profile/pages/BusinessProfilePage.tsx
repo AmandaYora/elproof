@@ -1,6 +1,5 @@
 import { SupportAccessCard } from "@/modules/business-profile/components/SupportAccessCard";
 import { useCallback, useEffect, useState } from "react";
-import { Check } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { useWriteLocked } from "@/shared/stores/usePermissionStore";
@@ -12,7 +11,6 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { CompleteProfileModal } from "@/modules/onboarding/components/CompleteProfileModal";
 import { BusinessDetailsDrawer, type BusinessDetails } from "@/modules/business-profile/components/BusinessDetailsDrawer";
-import { BRAND_COLOR_PRESETS, BRAND_COLOR_PRESET_KEYS, BRAND_COLOR_PRESET_LABELS, isBrandColorPresetKey, type BrandColorPresetKey } from "@/theme/brandPresets";
 import { cn } from "@/shared/lib/cn";
 
 interface Tenant {
@@ -22,7 +20,6 @@ interface Tenant {
   phone: string;
   city: string;
   hasLogo: boolean;
-  brandColorPreset: string;
 }
 
 /** 62812… shown the way people write it: 0812… */
@@ -30,7 +27,7 @@ function displayPhone(stored: string) {
   return stored.startsWith("62") ? "0" + stored.slice(2) : stored;
 }
 
-/** Pengaturan → Profil Usaha: the Owner's own business details, logo and brand color. */
+/** Pengaturan → Profil Usaha: the Owner's own business details and logo. */
 export default function BusinessProfilePage() {
   const writeLocked = useWriteLocked();
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
@@ -40,8 +37,6 @@ export default function BusinessProfilePage() {
   const [editing, setEditing] = useState(false);
   const [details, setDetails] = useState<BusinessDetails | null>(null);
   const [editingDetails, setEditingDetails] = useState(false);
-  const [savingColor, setSavingColor] = useState<string | null>(null);
-  const [colorError, setColorError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -69,35 +64,16 @@ export default function BusinessProfilePage() {
     loadDetails();
   }, [load, loadDetails]);
 
-  async function chooseColor(key: BrandColorPresetKey) {
-    if (savingColor || tenant?.brandColorPreset === key) return;
-    setSavingColor(key);
-    setColorError(null);
-    try {
-      await httpClient.patch(API.platform.tenantMeBrandColor, { preset: key });
-      // Re-read branding so the whole console takes the new color at once.
-      await hydrateBranding("WO Console");
-      await load();
-      toast.success(`Warna diganti ke ${BRAND_COLOR_PRESET_LABELS[key]}`);
-    } catch (err) {
-      setColorError(getApiErrorMessage(err, "Warna belum tersimpan. Coba lagi."));
-    } finally {
-      setSavingColor(null);
-    }
-  }
-
   if (loadError) {
     return <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{loadError}</p>;
   }
   if (!tenant) return <div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>;
 
-  const current = isBrandColorPresetKey(tenant.brandColorPreset) ? tenant.brandColorPreset : "navy";
-
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold text-text-primary">Profil Usaha</h1>
-        <p className="mt-1 text-[13px] text-text-secondary">Nama, kontak, logo, dan warna WO Anda. Klien melihat ini di portal mereka.</p>
+        <p className="mt-1 text-[13px] text-text-secondary">Nama, kontak, dan logo WO Anda. Klien melihat ini di portal mereka.</p>
       </div>
 
       <Card>
@@ -146,42 +122,6 @@ export default function BusinessProfilePage() {
             <p className="mt-3 text-[13px] text-text-secondary">
               Belum ada rekening. Tanpa rekening, klien melihat tagihannya tetapi tidak tahu ke mana harus membayar.
             </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader title="Warna merek" subtitle="Dipakai di menu, tombol, dan portal klien. Berlaku untuk semua orang di WO Anda." />
-        <CardContent>
-          <div role="radiogroup" aria-label="Warna merek" className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {BRAND_COLOR_PRESET_KEYS.map((key) => {
-              const selected = key === current;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={writeLocked || savingColor !== null}
-                  onClick={() => void chooseColor(key)}
-                  className={`flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900 disabled:opacity-60 ${
-                    selected ? "border-navy-900 bg-surface-muted text-text-primary" : "border-border text-text-secondary hover:bg-surface-muted"
-                  }`}
-                >
-                  <span
-                    aria-hidden
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white"
-                    style={{ backgroundColor: BRAND_COLOR_PRESETS[key][900] }}
-                  >
-                    {selected && <Check className="h-3 w-3" />}
-                  </span>
-                  <span>{BRAND_COLOR_PRESET_LABELS[key]}</span>
-                </button>
-              );
-            })}
-          </div>
-          {colorError && (
-            <p role="alert" className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{colorError}</p>
           )}
         </CardContent>
       </Card>

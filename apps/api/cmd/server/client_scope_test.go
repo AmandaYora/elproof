@@ -64,7 +64,6 @@ func TestClientPortalAllowed(t *testing.T) {
 		"/api/v1/venues/3",
 		"/api/v1/tenants/me",
 		"/api/v1/tenants/me/business-details",
-		"/api/v1/tenants/me/brand-color",
 		"/api/v1/projects/12/closing-checklist",
 		"/api/v1/projects/12/transition",
 		"/api/v1/subscriptions",

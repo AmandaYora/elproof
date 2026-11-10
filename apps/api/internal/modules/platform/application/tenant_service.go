@@ -44,7 +44,6 @@ type TenantRepository interface {
 	UpdateSubscription(ctx context.Context, id int64, planID int64, status domain.SubscriptionStatus, expiresAt time.Time) error
 	SetSubscriptionStatus(ctx context.Context, id int64, status domain.SubscriptionStatus) error
 	UpdateProfile(ctx context.Context, id int64, businessName, phone, city string) error
-	UpdateBrandColor(ctx context.Context, id int64, preset string) error
 	GetBusinessDetails(ctx context.Context, tenantID int64) (domain.BusinessDetails, error)
 	SaveBusinessDetails(ctx context.Context, tenantID int64, d domain.BusinessDetails) error
 	SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error
@@ -285,7 +284,6 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		JoinedAt:           time.Now(),
 		SubscriptionStatus: domain.StatusTrialing,
 		TrialEndsAt:        &trialEndsAt,
-		BrandColorPreset:   domain.DefaultBrandColorPreset,
 		SignupSource:       domain.SignupSourcePlatform,
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
@@ -372,31 +370,17 @@ func NormalizeWhatsAppOrRaw(v string) string {
 }
 
 type UpdateTenantInput struct {
-	BusinessName     string
-	OwnerName        string
-	Email            string
-	Phone            string
-	City             string
-	BrandColorPreset string
+	BusinessName string
+	OwnerName    string
+	Email        string
+	Phone        string
+	City         string
 }
 
 func (s *TenantService) Update(ctx context.Context, id int64, input UpdateTenantInput) (*domain.Tenant, error) {
 	tenant, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-	// BrandColorPreset is optional on this otherwise-full-replace update: an
-	// empty value (an older cached frontend bundle mid-deploy, calling this
-	// endpoint without knowing about branding yet) keeps the tenant's current
-	// preset rather than rejecting the whole edit; a non-empty, invalid value
-	// is still rejected, since presets are a fixed enum, not free text.
-	if input.BrandColorPreset != "" {
-		if !domain.IsValidBrandColorPreset(input.BrandColorPreset) {
-			return nil, apperror.Validation("Warna brand tidak valid", map[string][]string{
-				"brandColorPreset": {"Pilih salah satu preset warna yang tersedia"},
-			})
-		}
-		tenant.BrandColorPreset = input.BrandColorPreset
 	}
 	tenant.BusinessName = input.BusinessName
 	tenant.OwnerName = input.OwnerName

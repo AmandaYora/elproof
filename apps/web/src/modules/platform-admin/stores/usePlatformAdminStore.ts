@@ -82,7 +82,6 @@ export interface RawTenant {
   lifecycle: Tenant["lifecycle"];
   isSuspended: boolean;
   lastCredentialResetAt: string | null;
-  brandColorPreset: string;
   hasLogo: boolean;
 }
 

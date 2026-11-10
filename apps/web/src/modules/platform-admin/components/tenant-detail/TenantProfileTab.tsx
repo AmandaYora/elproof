@@ -4,7 +4,6 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { formatDate, formatDateTime } from "@/shared/lib/formatters";
 import type { Tenant } from "@/modules/platform-admin/data/types";
 import type { SignupConsent } from "@/modules/platform-admin/data/console.types";
-import { BRAND_COLOR_PRESET_LABELS, type BrandColorPresetKey } from "@/theme/brandPresets";
 
 export function DefinitionList({ rows }: { rows: { label: string; value: ReactNode }[] }) {
   return (
@@ -35,7 +34,6 @@ export function TenantProfileTab({ tenant, consent }: { tenant: Tenant; consent:
               { label: "Telepon", value: tenant.phone },
               { label: "Bergabung", value: formatDate(tenant.joinedAt) },
               { label: "Sumber pendaftaran", value: tenant.signupSource === "self_service" ? "Daftar mandiri di situs" : "Dibuat tim ElProof" },
-              { label: "Warna merek", value: BRAND_COLOR_PRESET_LABELS[tenant.brandColorPreset as BrandColorPresetKey] ?? tenant.brandColorPreset },
               { label: "Logo", value: tenant.hasLogo ? "Sudah diunggah" : "Belum ada" },
               { label: "Kredensial Owner terakhir diatur ulang", value: tenant.lastCredentialResetAt ? formatDateTime(tenant.lastCredentialResetAt) : "Belum pernah" },
               { label: "Status akun", value: tenant.isSuspended ? <Badge tone="danger">Dibekukan</Badge> : <Badge tone="success">Normal</Badge> },

@@ -42,7 +42,6 @@ export interface Tenant {
   lifecycle: TenantLifecycle;
   isSuspended: boolean;
   lastCredentialResetAt: string | null;
-  brandColorPreset: string;
   hasLogo: boolean;
 }
 

@@ -1,50 +1,37 @@
 import { create } from "zustand";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
-import {
-  applyBrandColorPreset,
-  resetBrandColorPreset,
-  isBrandColorPresetKey,
-  type BrandColorPresetKey,
-} from "@/theme/brandPresets";
 import { applyTabIdentity, resetTabIdentity } from "@/theme/tabIdentity";
 
 interface RawBranding {
   businessName: string;
-  brandColorPreset: string;
   hasLogo: boolean;
 }
 
+/** A tenant's identity inside its own session: its name and logo. There is no
+ * per-tenant colour (ADR-0039): every console uses the one palette in theme.css. */
 interface TenantBrandingState {
-  colorPreset: BrandColorPresetKey;
   logoUrl: string | null;
   /** The tenant's own business name — used as the text fallback in place of
    * "ElProof" wherever no logo is configured yet (Sidebar, ClientPortalLayout),
    * so an unbranded tenant still sees its own name, never the platform's. */
   businessName: string | null;
   /** False from the moment a fresh session mounts (AppLayout/ClientPortalLayout)
-   * until `hydrate()` settles (match, 404, or failure) at least once. Every
-   * `bg-navy-*`/`text-navy-*` class in the app reads live off the
-   * `--brand-navy-*` CSS vars `hydrate()` overwrites — painting the chrome
-   * before that resolves shows ElProof's own navy default first, then a
-   * visible color swap once the tenant's real preset lands. Layouts hold off
-   * rendering their branded chrome while this is false (see AppLayout,
-   * ClientPortalLayout) so only the final color is ever painted. */
+   * until `hydrate()` settles (match, 404, or failure) at least once. Layouts
+   * hold off rendering the header and sidebar while this is false, so the
+   * tenant's logo and name are painted once instead of swapping in. */
   hydrated: boolean;
   /** Fetches the caller's own tenant's branding (GET /tenants/me/branding,
    * self-service — open to any staff role or client, unlike GET /tenants/me
-   * which stays Owner-only) and applies it by overriding the app's brand CSS
-   * variables at runtime, plus the browser tab title/favicon. Call once per
-   * authenticated WO Console/Client Portal session (fresh login or page
-   * reload) — never for a platform_admin session, which has no tenant to
-   * brand. `consoleLabel` (e.g. "WO Console", "Portal Klien") is appended to
-   * the tab title so it still reads like a real page title, not just a bare
-   * company name. Failures are swallowed: branding is a visual nicety, not
-   * something that should block the app. */
+   * which stays Owner-only), loads the logo, and sets the browser tab
+   * title/favicon. Call once per authenticated WO Console/Client Portal
+   * session (fresh login or page reload) — never for a platform_admin
+   * session, which has no tenant. `consoleLabel` (e.g. "WO Console", "Portal
+   * Klien") is appended to the tab title so it still reads like a real page
+   * title. Failures are swallowed: branding must never block the app. */
   hydrate: (consoleLabel?: string) => Promise<void>;
-  /** Reverts to the app's default (navy) look, tab title, and favicon, and
-   * revokes the logo object URL — called alongside every session teardown
-   * (logoutAndRedirect). */
+  /** Reverts the tab title and favicon and revokes the logo object URL —
+   * called alongside every session teardown (logoutAndRedirect). */
   reset: () => void;
 }
 
@@ -55,7 +42,6 @@ interface TenantBrandingState {
 let hydrateToken = 0;
 
 export const useTenantBrandingStore = create<TenantBrandingState>((set, get) => ({
-  colorPreset: "navy",
   logoUrl: null,
   businessName: null,
   hydrated: false,
@@ -66,7 +52,6 @@ export const useTenantBrandingStore = create<TenantBrandingState>((set, get) => 
       const res = await httpClient.get(API.platform.tenantMeBranding);
       if (token !== hydrateToken) return; // superseded by a newer hydrate()/reset()
       const raw = res.data.data as RawBranding;
-      const colorPreset = isBrandColorPresetKey(raw.brandColorPreset) ? raw.brandColorPreset : "navy";
 
       let logoUrl: string | null = null;
       if (raw.hasLogo) {
@@ -75,27 +60,24 @@ export const useTenantBrandingStore = create<TenantBrandingState>((set, get) => 
         logoUrl = URL.createObjectURL(fileRes.data as Blob);
       }
 
-      applyBrandColorPreset(colorPreset);
       applyTabIdentity(raw.businessName, logoUrl, consoleLabel);
       const previousLogoUrl = get().logoUrl;
-      set({ colorPreset, logoUrl, businessName: raw.businessName, hydrated: true });
+      set({ logoUrl, businessName: raw.businessName, hydrated: true });
       if (previousLogoUrl) URL.revokeObjectURL(previousLogoUrl);
     } catch {
-      // No tenant to brand (e.g. platform_admin) or a transient failure —
-      // the app keeps rendering with its default navy look. Still unblocks
-      // whichever layout is waiting on `hydrated` (AppLayout/
-      // ClientPortalLayout) -- a real failure here must never hang the app
-      // on its loading screen forever.
+      // No tenant (e.g. platform_admin) or a transient failure: the header
+      // falls back to plain text. Still unblocks whichever layout is waiting
+      // on `hydrated` — a failure here must never hang the app on its
+      // loading screen.
       if (token === hydrateToken) set({ hydrated: true });
     }
   },
 
   reset: () => {
     hydrateToken++; // invalidate any hydrate() still in flight
-    resetBrandColorPreset();
     resetTabIdentity();
     const previousLogoUrl = get().logoUrl;
     if (previousLogoUrl) URL.revokeObjectURL(previousLogoUrl);
-    set({ colorPreset: "navy", logoUrl: null, businessName: null, hydrated: false });
+    set({ logoUrl: null, businessName: null, hydrated: false });
   },
 }));

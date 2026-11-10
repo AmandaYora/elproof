@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
@@ -17,24 +16,17 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { compressFileForUpload, type CompressedFilePayload } from "@/shared/lib/image-compression";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import {
-  BRAND_COLOR_PRESET_KEYS,
-  BRAND_COLOR_PRESETS,
-  BRAND_COLOR_PRESET_LABELS,
-  type BrandColorPresetKey,
-} from "@/theme/brandPresets";
 
 type FormState = TenantFormValues;
 
 const FIELD_LABELS: Record<string, string> = {
-  businessName: "Nama WO", city: "Kota", ownerName: "Nama owner", email: "Email akun Google Owner", phone: "No. HP Owner", brandColorPreset: "Warna brand",
+  businessName: "Nama WO", city: "Kota", ownerName: "Nama owner", email: "Email akun Google Owner", phone: "No. HP Owner",
 };
 
 function toFormState(tenant?: Tenant): FormState {
   if (!tenant) {
     return {
       businessName: "", ownerName: "", email: "", phone: "", city: "",
-      brandColorPreset: "navy",
     };
   }
   return {
@@ -43,7 +35,6 @@ function toFormState(tenant?: Tenant): FormState {
     email: tenant.email,
     phone: tenant.phone,
     city: tenant.city,
-    brandColorPreset: (tenant.brandColorPreset as BrandColorPresetKey) || "navy",
   };
 }
 
@@ -67,8 +58,7 @@ export function TenantFormModal({
 }: TenantFormModalProps) {
   const isEditing = Boolean(initialTenant);
   const canChangeEmail = usePlatformCan("super-admin");
-  // Creating checks only the profile fields; brandColorPreset (edit-only) is ignored there.
-  const form = useZodForm({ schema: (isEditing ? tenantSchema : tenantCreateSchema) as typeof tenantSchema, initial: toFormState(initialTenant) });
+  const form = useZodForm({ schema: isEditing ? tenantSchema : tenantCreateSchema, initial: toFormState(initialTenant) });
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
@@ -191,31 +181,6 @@ export function TenantFormModal({
           <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="08xx-xxxx-xxxx" />
         </Field>
         {isEditing && (
-          <>
-            <Field label="Warna Brand" required name="brandColorPreset" error={errors.brandColorPreset}>
-              <div className="grid grid-cols-5 gap-2">
-                {BRAND_COLOR_PRESET_KEYS.map((key) => {
-                  const selected = values.brandColorPreset === key;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => set("brandColorPreset", key)}
-                      title={BRAND_COLOR_PRESET_LABELS[key]}
-                      aria-label={BRAND_COLOR_PRESET_LABELS[key]}
-                      aria-pressed={selected}
-                      className={`flex h-9 w-9 items-center justify-center rounded-full ring-offset-2 transition-shadow ${
-                        selected ? "ring-2 ring-navy-900" : "hover:ring-2 hover:ring-border"
-                      }`}
-                      style={{ backgroundColor: BRAND_COLOR_PRESETS[key][900] }}
-                    >
-                      {selected && <Check className="h-4 w-4 text-white" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-
             <Field label="Logo" hint={logoError ?? undefined}>
               <div className="flex items-center gap-3">
                 {logoPreviewUrl && (
@@ -237,7 +202,6 @@ export function TenantFormModal({
                 PNG, JPEG, atau WebP, maksimal 2 MB. Diunggah langsung setelah dipilih.
               </p>
             </Field>
-          </>
         )}
       </form>
     </Modal>

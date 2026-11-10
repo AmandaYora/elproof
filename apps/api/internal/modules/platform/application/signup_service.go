@@ -183,7 +183,6 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 			JoinedAt:           now,
 			SubscriptionStatus: domain.StatusTrialing,
 			TrialEndsAt:        &trialEndsAt,
-			BrandColorPreset:   domain.DefaultBrandColorPreset,
 			SignupSource:       domain.SignupSourceSelfService,
 		}
 		// Tenant row and signup link in one transaction: never a tenant
