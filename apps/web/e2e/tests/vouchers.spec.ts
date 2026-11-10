@@ -59,7 +59,8 @@ async function elproofPlanId(page: Page) {
   return plan!.id;
 }
 
-/** The Owner's "Bayar Sekarang" dialog for ElProof's seeded plan, with its voucher field focused. */
+/** The Owner's "Bayar Sekarang" dialog for ElProof's seeded plan. The optional voucher field is not focused on open (a
+ * phone would pop its keyboard): the dialog is, and the test clicks into the field. */
 async function openPayDialog(page: Page) {
   await visit(page, "/langganan");
   await page
@@ -69,7 +70,9 @@ async function openPayDialog(page: Page) {
     .click();
   const dialog = page.getByRole("dialog");
   const field = dialog.getByLabel("Kode voucher (opsional)");
-  await expect(field).toBeFocused(); // the dialog's first field; typing before focus lands would be lost
+  await expect(dialog).toBeFocused();
+  await field.click();
+  await expect(field).toBeFocused();
   return { dialog, field };
 }
 
@@ -140,7 +143,10 @@ test("Voucher: a WO Owner applies a code in Bayar Sekarang and sees the price be
   await field.press("X");
   await expect(dialog.getByText("Harga akhir", { exact: true })).toHaveCount(0);
   await expect(priceLine(dialog, "Biaya")).toContainText("Rp2.000.000");
-  await expect(dialog.getByRole("button", { name: "Pakai" })).toBeVisible();
+  // A typed code that was not checked is never dropped silently: paying asks to apply or clear it first.
+  await dialog.getByRole("button", { name: "Bayar Sekarang" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Tekan Pakai untuk memeriksa kode ini");
+  await expect(dialog).toBeVisible();
 
   // Applied again, then removed with "Hapus": back to the normal price, field empty.
   await field.fill(code);

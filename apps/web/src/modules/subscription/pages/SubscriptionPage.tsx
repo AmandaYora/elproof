@@ -234,6 +234,11 @@ export default function SubscriptionPage() {
 
   async function handleConfirmSubscribe() {
     if (!selectedPlan) return;
+    // A typed code that was never checked is not silently dropped: the Owner either uses it or clears it.
+    if (voucherCode.trim() && !appliedVoucher) {
+      setVoucherError("Tekan Pakai untuk memeriksa kode ini, atau kosongkan kolom kode voucher.");
+      return;
+    }
     setActionError(null);
     setIsSubmitting(true);
     try {
@@ -574,6 +579,7 @@ export default function SubscriptionPage() {
             <div className="flex gap-2">
               <Input
                 id="subscription-voucher-code"
+                data-no-autofocus
                 value={voucherCode}
                 onChange={(e) => resetVoucher(e.target.value.toUpperCase())}
                 onKeyDown={(e) => {

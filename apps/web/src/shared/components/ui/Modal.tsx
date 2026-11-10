@@ -26,7 +26,8 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps["size"]>, string> = {
   xl: "sm:max-w-5xl",
 };
 
-const FIRST_FIELD = "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled])";
+const FIRST_FIELD =
+  "input:not([disabled]):not([type=hidden]):not([data-no-autofocus]), textarea:not([disabled]):not([data-no-autofocus]), select:not([disabled]):not([data-no-autofocus])";
 
 /**
  * A centered dialog. Built on the kit Dialog (Base UI): focus moves in and
@@ -47,8 +48,15 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         ref={popupRef}
         showCloseButton={false}
         aria-busy={busy || undefined}
-        // Prefer the first form control over the close button.
-        initialFocus={() => popupRef.current?.querySelector<HTMLElement>(FIRST_FIELD) ?? true}
+        // Prefer the first form control over the close button. An optional field marked
+        // data-no-autofocus is skipped (on a phone focusing it opens the keyboard); with no other
+        // field the dialog itself takes focus.
+        initialFocus={() => {
+          const popup = popupRef.current;
+          const field = popup?.querySelector<HTMLElement>(FIRST_FIELD);
+          if (field) return field;
+          return popup?.querySelector("[data-no-autofocus]") ? popup : true;
+        }}
         className={cn("flex w-full max-w-[calc(100%-2rem)] flex-col gap-0 p-0", SIZE_CLASSES[size])}
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
