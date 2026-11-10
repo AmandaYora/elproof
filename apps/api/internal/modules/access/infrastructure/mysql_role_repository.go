@@ -121,10 +121,21 @@ func isDuplicate(err error) bool {
 	return errors.As(err, &me) && me.Number == 1062
 }
 
+// writeTx is the transaction options for role writes. They read nothing back,
+// so READ COMMITTED is enough, and it keeps InnoDB from taking gap locks: under
+// REPEATABLE READ a DELETE that matches no row (a role without permissions)
+// locks the gap at the end of tenant_role_permissions, and two workspaces
+// signing up at once then deadlock on each other's insert (MySQL 1213).
+var writeTx = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+
 func replacePermissions(ctx context.Context, tx *sql.Tx, roleID int64, perms []string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM tenant_role_permissions WHERE role_id = ?`, roleID); err != nil {
 		return err
 	}
+	return insertPermissions(ctx, tx, roleID, perms)
+}
+
+func insertPermissions(ctx context.Context, tx *sql.Tx, roleID int64, perms []string) error {
 	if len(perms) == 0 {
 		return nil
 	}
@@ -139,7 +150,7 @@ func replacePermissions(ctx context.Context, tx *sql.Tx, roleID int64, perms []s
 
 // Create inserts a role with its permissions (one transaction).
 func (r *MySQLRoleRepository) Create(ctx context.Context, role *domain.Role) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, writeTx)
 	if err != nil {
 		return err
 	}
@@ -161,7 +172,8 @@ func (r *MySQLRoleRepository) Create(ctx context.Context, role *domain.Role) err
 	if err != nil {
 		return err
 	}
-	if err := replacePermissions(ctx, tx, id, role.Permissions); err != nil {
+	// A new role has no permission rows yet: insert only, no DELETE.
+	if err := insertPermissions(ctx, tx, id, role.Permissions); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -173,7 +185,7 @@ func (r *MySQLRoleRepository) Create(ctx context.Context, role *domain.Role) err
 
 // Update replaces a role's name, description, scope and permissions.
 func (r *MySQLRoleRepository) Update(ctx context.Context, role *domain.Role) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, writeTx)
 	if err != nil {
 		return err
 	}

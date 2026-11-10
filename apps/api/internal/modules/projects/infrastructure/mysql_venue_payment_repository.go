@@ -116,7 +116,7 @@ func (r *MySQLVenuePaymentRepository) Create(ctx context.Context, p *domain.Venu
 		return err
 	}
 	p.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "venue_payments", id, &p.UpdatedAt)
 }
 
 var venuePaymentPatchColumns = map[string]column[domain.VenuePayment]{

@@ -150,7 +150,7 @@ func (r *MySQLVendorEngagementRepository) Create(ctx context.Context, pv *domain
 		return err
 	}
 	pv.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "project_vendors", id, &pv.UpdatedAt)
 }
 
 var projectVendorPatchColumns = map[string]column[domain.ProjectVendor]{
@@ -307,7 +307,7 @@ func (r *MySQLVendorMilestoneRepository) Create(ctx context.Context, m *domain.V
 		return err
 	}
 	m.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "vendor_milestones", id, &m.UpdatedAt)
 }
 
 var vendorMilestonePatchColumns = map[string]column[domain.VendorMilestone]{

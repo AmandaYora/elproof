@@ -114,7 +114,7 @@ func (r *MySQLIssueRepository) Create(ctx context.Context, issue *domain.VendorI
 		return err
 	}
 	issue.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "vendor_issues", id, &issue.UpdatedAt)
 }
 
 var issuePatchColumns = map[string]column[domain.VendorIssue]{

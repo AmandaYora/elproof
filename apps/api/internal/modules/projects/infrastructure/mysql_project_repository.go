@@ -321,7 +321,7 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 		return err
 	}
 	p.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "projects", id, &p.UpdatedAt)
 }
 
 // projectPatchColumns maps each patchable field of a project to its column.
@@ -509,7 +509,7 @@ func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.Project
 		return err
 	}
 	m.ID = id
-	return nil
+	return readVersion(ctx, conn(ctx, r.db), "project_milestones", id, &m.UpdatedAt)
 }
 
 var milestonePatchColumns = map[string]column[domain.ProjectMilestone]{
