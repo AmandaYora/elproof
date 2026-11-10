@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"elproof/internal/modules/vendors/application"
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/response"
 )
@@ -429,7 +431,7 @@ func (h *VendorHandler) projectHistory(w http.ResponseWriter, r *http.Request, t
 		writeAppError(w, err)
 		return
 	}
-	rows, err := h.projects.ListVendorEngagementHistory(r.Context(), tenantID, id)
+	rows, err := h.visibleHistory(r.Context(), tenantID, id)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -442,6 +444,43 @@ func (h *VendorHandler) projectHistory(w http.ResponseWriter, r *http.Request, t
 		})
 	}
 	response.OK(w, "ok", result)
+}
+
+// visibleHistory is the vendor's project history as the caller may see it: a
+// role that reaches only the projects it holds (PIC or PIC Sales) never sees a
+// tenant-wide list of projects (ADR-0026), so its history keeps only those.
+func (h *VendorHandler) visibleHistory(ctx context.Context, tenantID, vendorID int64) ([]projectscontracts.VendorEngagementHistoryItem, error) {
+	rows, err := h.projects.ListVendorEngagementHistory(ctx, tenantID, vendorID)
+	if err != nil {
+		return nil, err
+	}
+	g := middleware.GrantsFrom(ctx)
+	if g != nil && g.AllProjects {
+		return rows, nil
+	}
+	claims, ok := middleware.FromContext(ctx)
+	if !ok {
+		return nil, nil
+	}
+	staffID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+	kept := make([]projectscontracts.VendorEngagementHistoryItem, 0, len(rows))
+	for _, row := range rows {
+		pic, err := h.projects.ProjectPICStaffID(ctx, tenantID, row.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		sales, err := h.projects.ProjectPICSalesStaffID(ctx, tenantID, row.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		if pic == staffID || sales == staffID {
+			kept = append(kept, row)
+		}
+	}
+	return kept, nil
 }
 
 type vendorAttachmentUploadBody struct {

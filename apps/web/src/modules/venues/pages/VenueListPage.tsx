@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Select } from "@/shared/components/ui/Input";
@@ -24,8 +24,9 @@ import { formatCurrency } from "@/shared/lib/formatters";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
-  // Read-only workspace (subscription): no new records until it is renewed.
-  const writeLocked = useWriteLocked();
+  // Adding, editing, importing and (de)activating need vendor.manage (ADR-0026); useCan also reads "no" while the
+  // workspace is read-only (subscription), so the write buttons disappear then too.
+  const canManage = useCan("vendor.manage");
   const venues = useVenueStore((s) => s.venuePage);
   const meta = useVenueStore((s) => s.venuePageMeta);
   const bulkVenues = useVenueStore((s) => s.bulkVenues);
@@ -217,7 +218,7 @@ export default function VenueListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola direktori gedung/lokasi acara yang bekerja sama dengan WO.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!writeLocked && (
+          {canManage && (
             <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
               Impor bulk
             </Button>
@@ -225,7 +226,7 @@ export default function VenueListPage() {
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVenues()} disabled={isExporting}>
             {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
           </Button>
-          {!writeLocked && (
+          {canManage && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
               Tambah Venue
             </Button>
@@ -280,10 +281,10 @@ export default function VenueListPage() {
         empty={{
           title: "Belum ada venue",
           description: "Catat gedung dan lokasi acara yang sering dipakai agar bisa dipilih saat membuat proyek.",
-          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah venue</Button> : undefined,
+          action: canManage ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah venue</Button> : undefined,
         }}
         density={density}
-        selection={writeLocked ? undefined : { selected, onChange: setSelected }}
+        selection={!canManage ? undefined : { selected, onChange: setSelected }}
         bulkActions={(ids) => (
           <>
             <Button variant="secondary" size="sm" onClick={() => void handleBulk(ids, "activate")}>Aktifkan</Button>
@@ -292,12 +293,12 @@ export default function VenueListPage() {
         )}
         actions={(venue) => (
           <div className="flex items-center gap-1.5">
-            <IconActionButton icon={Pencil} label="Ubah Venue" tone="neutral" onClick={() => openEditModal(venue)} />
-            {venue.isActive ? (
+            {canManage && <IconActionButton icon={Pencil} label="Ubah Venue" tone="neutral" onClick={() => openEditModal(venue)} />}
+            {canManage && (venue.isActive ? (
               <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(venue)} />
             ) : (
               <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
-            )}
+            ))}
             {isOwner && <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />}
           </div>
         )}

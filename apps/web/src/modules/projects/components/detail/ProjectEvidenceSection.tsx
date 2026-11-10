@@ -295,6 +295,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
           onSubmit={handleAddEvidence}
           error={modalError}
           relatedOptionsFor={relatedOptionsFor}
+          canShareWithClient={canEdit}
         />
       )}
 
