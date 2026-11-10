@@ -1,7 +1,8 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ChevronDown } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
-import { Reveal } from "@/modules/homepage/components/Reveal";
+import { Container } from "@/modules/homepage/components/Container";
 import { cn } from "@/shared/lib/cn";
 
 export interface LegalSection {
@@ -11,105 +12,147 @@ export interface LegalSection {
 }
 
 interface LegalDocumentProps {
-  icon: ComponentType<{ className?: string }>;
   title: string;
   updated: string;
   /** Optional lead paragraph under the title. */
   intro?: ReactNode;
   sections: LegalSection[];
+  /** Heading and text of the closing contact note; defaults to the general one. */
+  closing?: { title: string; body: ReactNode };
+}
+
+const tocLinkClass = (active: boolean) =>
+  cn(
+    "flex min-h-11 items-center border-l-2 py-1.5 pl-4 text-[14.5px] leading-snug outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
+    active
+      ? "border-primary font-semibold text-foreground"
+      : "border-border text-muted-foreground hover:border-input hover:text-foreground",
+  );
+
+/**
+ * Marks the section being read in the table of contents. Only the marker
+ * depends on the observer: every section is always rendered and visible.
+ */
+function useActiveSection(ids: string[]) {
+  const [activeId, setActiveId] = useState("");
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const elements = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => el !== null);
+    // The section being read is the last one whose top has passed 30% of the viewport (the first one near the top).
+    const mark = () => {
+      const line = window.innerHeight * 0.3;
+      let current = elements[0]?.id ?? "";
+      for (const el of elements) if (el.getBoundingClientRect().top <= line) current = el.id;
+      setActiveId(current);
+    };
+    const observer = new IntersectionObserver(mark, { threshold: [0, 1], rootMargin: "0px 0px -70% 0px" });
+    for (const el of elements) observer.observe(el);
+    mark();
+    return () => observer.disconnect();
+  }, [ids]);
+  return activeId;
 }
 
 /**
- * Shared frame for the legal pages (Syarat & Ketentuan, Kebijakan Privasi,
- * Perjanjian Pemrosesan Data): title, table of contents that follows the
- * reader, numbered sections, and a contact note.
+ * Shared reading layout of the legal pages (Syarat & Ketentuan, Kebijakan
+ * Privasi, Perjanjian Pemrosesan Data, Kebijakan Refund): a quiet title block,
+ * a table of contents (sticky on the left on desktop, a disclosure above the
+ * text on phones), numbered sections in a ≤70-character column, and a contact
+ * note. No entrance animation (ADR-0038): legal text is never hidden.
  */
-export function LegalDocument({ icon: Icon, title, updated, intro, sections }: LegalDocumentProps) {
-  const [activeId, setActiveId] = useState("");
+export function LegalDocument({ title, updated, intro, sections, closing }: LegalDocumentProps) {
+  const [ids] = useState(() => sections.map((s) => s.id));
+  const activeId = useActiveSection(ids);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveId(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -80% 0px" },
-    );
-    sections.forEach((s) => {
-      const el = document.getElementById(s.id);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [sections]);
+  const links = () => (
+    <ol className="flex flex-col">
+      {sections.map((section) => (
+        <li key={section.id}>
+          <a
+            href={`#${section.id}`}
+            aria-current={activeId === section.id ? "location" : undefined}
+            className={tocLinkClass(activeId === section.id)}
+          >
+            {section.title}
+          </a>
+        </li>
+      ))}
+    </ol>
+  );
 
   return (
-    <div className="min-h-screen bg-background">
-      <section className="relative overflow-hidden border-b border-border bg-white px-6 py-20 md:py-24">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
-        <div className="relative z-10 mx-auto max-w-4xl text-center">
-          <Reveal>
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3.5 py-1.5 text-[13px] font-semibold text-blue-600">
-              <Icon className="h-4 w-4" /> Dokumen layanan
-            </div>
-            <h1 className="mt-6 font-display text-[36px] font-semibold tracking-tight text-navy-950 md:text-[48px]">{title}</h1>
-            <p className="mt-4 text-[15px] font-medium text-text-secondary">Terakhir diperbarui: {updated}</p>
-            {intro && <div className="mx-auto mt-6 max-w-2xl text-[15.5px] leading-relaxed text-text-secondary">{intro}</div>}
-          </Reveal>
-        </div>
-      </section>
+    <div className="bg-background">
+      <header className="border-b border-border bg-muted">
+        <Container className="py-12 md:py-16">
+          <div className="max-w-[44rem]">
+            <h1 className="text-[34px] font-extrabold leading-[1.04] tracking-[-0.035em] text-foreground md:text-[48px]">
+              {title}
+            </h1>
+            <p className="mt-4 text-[15px] text-muted-foreground">Terakhir diperbarui: {updated}</p>
+            {intro && <div className="mt-5 max-w-[34rem] text-[17px] leading-relaxed text-foreground">{intro}</div>}
+          </div>
+        </Container>
+      </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-24">
-        <div className="flex flex-col gap-12 md:flex-row lg:gap-20">
-          <nav aria-label="Daftar isi" className="hidden w-64 shrink-0 md:block">
-            <div className="sticky top-32 flex flex-col gap-2">
-              <h3 className="mb-4 text-[13px] font-semibold text-text-secondary">Daftar isi</h3>
-              {sections.map((section) => (
-                <a
-                  key={section.id}
-                  href={`#${section.id}`}
-                  className={cn(
-                    "border-l-2 py-1.5 pl-4 text-[14px] font-medium transition-all duration-200",
-                    activeId === section.id
-                      ? "rounded-r-md border-navy-900 bg-navy-50/50 text-navy-950"
-                      : "border-border text-text-secondary hover:border-navy-400 hover:text-navy-900",
-                  )}
-                >
-                  {section.title}
-                </a>
-              ))}
+      <Container className="py-10 md:py-16">
+        <div className="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-12 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-20">
+          <nav aria-label="Daftar isi" className="hidden md:block">
+            <div className="sticky top-24">
+              <p className="mb-3 text-[14px] font-semibold text-foreground">Daftar isi</p>
+              {links()}
             </div>
           </nav>
 
-          <div className="max-w-3xl flex-1 rounded-3xl border border-border bg-white p-6 shadow-sm sm:p-8 md:p-12">
-            <Reveal className="flex flex-col gap-12">
+          <details className="group mb-10 rounded-xl border border-border bg-muted md:hidden">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 text-[15px] font-semibold text-foreground outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+              Daftar isi
+              <ChevronDown aria-hidden className="h-4 w-4 text-muted-foreground motion-safe:transition-transform group-open:rotate-180" />
+            </summary>
+            <nav aria-label="Daftar isi" className="px-4 pb-3">
+              {links()}
+            </nav>
+          </details>
+
+          <article className="max-w-[34rem]">
+            <div className="flex flex-col gap-11">
               {sections.map((section) => (
-                <div key={section.id} id={section.id} className="scroll-mt-32">
-                  <h2 className="text-[20px] font-bold tracking-tight text-navy-950">{section.title}</h2>
+                <section key={section.id} id={section.id} aria-labelledby={`${section.id}-judul`} className="scroll-mt-24">
+                  <h2
+                    id={`${section.id}-judul`}
+                    className="text-[21px] font-extrabold leading-snug tracking-[-0.03em] text-foreground md:text-[23px]"
+                  >
+                    {section.title}
+                  </h2>
                   <div className="mt-4 flex flex-col gap-4">
                     {section.body.map((paragraph, i) => (
-                      <p key={i} className="text-[15.5px] leading-relaxed text-text-secondary">
+                      <p key={i} className="text-[16.5px] leading-[1.75] text-foreground md:text-[17px]">
                         {paragraph}
                       </p>
                     ))}
                   </div>
-                </div>
+                </section>
               ))}
+            </div>
 
-              <div className="mt-8 rounded-2xl border border-border bg-surface-muted/60 p-6 sm:p-8">
-                <h3 className="text-[16px] font-bold text-navy-950">Ada pertanyaan tentang dokumen ini?</h3>
-                <p className="mt-3 text-[14.5px] leading-relaxed text-text-secondary">
-                  Hubungi tim kami melalui halaman{" "}
-                  <Link to={ROUTE_PATHS.homepageContact} className="font-semibold text-navy-900 hover:underline">
-                    Kontak
-                  </Link>
-                  .
-                </p>
-              </div>
-            </Reveal>
-          </div>
+            <aside className="mt-14 border-t-2 border-seal pt-6">
+              <h2 className="text-[18px] font-bold tracking-[-0.02em] text-foreground">
+                {closing?.title ?? "Ada pertanyaan tentang dokumen ini?"}
+              </h2>
+              <p className="mt-2 max-w-[32rem] text-[16px] leading-relaxed text-muted-foreground">
+                {closing?.body ?? (
+                  <>
+                    Hubungi tim kami melalui halaman{" "}
+                    <Link to={ROUTE_PATHS.homepageContact} className="font-semibold text-foreground underline underline-offset-4 hover:text-primary-hover">
+                      Kontak
+                    </Link>
+                    .
+                  </>
+                )}
+              </p>
+            </aside>
+          </article>
         </div>
-      </div>
+      </Container>
     </div>
   );
 }

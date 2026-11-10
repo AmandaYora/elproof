@@ -1,123 +1,122 @@
-import { Mail, Phone, MessageCircle, MapPin, Clock, ArrowRight, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { Mail, MessageCircle, Phone } from "lucide-react";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { Container } from "@/modules/homepage/components/Container";
+import { ctaClass } from "@/modules/homepage/components/cta";
 import { CONTACT } from "@/modules/homepage/data/contact";
-import { Reveal } from "@/modules/homepage/components/Reveal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+
+const GREETING = "Halo ElProof, saya ingin bertanya tentang ElProof untuk usaha WO saya: ";
+
+const whatsappUrl = (number: string) => `https://wa.me/${number}?text=${encodeURIComponent(GREETING)}`;
+const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(CONTACT.address)}`;
+
+const textLink =
+  "inline-flex min-h-11 items-center gap-1.5 rounded-md font-semibold text-foreground underline underline-offset-4 outline-hidden hover:text-primary-hover focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+function Row({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div className="border-t border-border py-4 first:border-t-0 first:pt-0 last:pb-0 sm:grid sm:grid-cols-[132px_minmax(0,1fr)] sm:gap-4">
+      <dt className="text-[14px] font-medium text-muted-foreground sm:pt-[11px]">{term}</dt>
+      <dd className="mt-1 text-[16px] text-foreground sm:mt-0">{children}</dd>
+    </div>
+  );
+}
 
 export default function ContactPage() {
   usePageMeta({ title: "Hubungi kami", description: "Hubungi tim ElProof untuk pertanyaan, bantuan, atau permintaan terkait data Anda." });
+  const [main, second] = CONTACT.phones;
+
   return (
-    <div className="bg-background min-h-screen">
-      <div className="mx-auto max-w-7xl px-6 py-20 md:py-32">
-        <div className="grid gap-16 lg:grid-cols-2 lg:gap-24 items-start">
-          
-          {/* LEFT SIDE: Heading & Context */}
-          <Reveal className="lg:sticky lg:top-32 flex flex-col gap-6">
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3.5 py-1.5 text-[13px] font-bold uppercase tracking-widest text-blue-600 w-fit">
-              <Sparkles className="h-4 w-4" /> Mulai Bersama Kami
-            </div>
-            
-            <h1 className="font-display text-[40px] font-semibold tracking-tight text-navy-950 md:text-[56px] leading-[1.1]">
-              Mari diskusi tentang kebutuhan WO Anda.
+    <div className="bg-background">
+      <Container className="py-12 md:py-20">
+        <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-20">
+          <div className="max-w-[32rem]">
+            <h1 className="text-[40px] font-extrabold leading-[1.04] tracking-[-0.035em] text-foreground md:text-[56px]">
+              Hubungi kami
             </h1>
-            
-            <p className="max-w-md text-[16px] leading-relaxed text-text-secondary md:text-[18px]">
-              Aktivasi akun ElProof dibantu langsung secara personal. Ceritakan skala proyek dan kebutuhan Anda, 
-              tim kami siap membantu proses onboarding bisnis Anda.
+            <p className="mt-5 max-w-[34rem] text-[17px] leading-relaxed text-muted-foreground md:text-[18px]">
+              Tanya soal ElProof, minta dibantu menyiapkan workspace, atau ajukan permintaan data dan refund. Paling cepat
+              lewat WhatsApp; kami membalas pada jam layanan.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a href={whatsappUrl(main.number)} target="_blank" rel="noreferrer" className={ctaClass("primary", "md", "focus-visible:outline-solid")}>
+                <MessageCircle aria-hidden className="h-[18px] w-[18px]" /> Tanya lewat WhatsApp
+              </a>
+              <a href={`mailto:${CONTACT.email}`} className={ctaClass("outline", "md", "focus-visible:outline-solid")}>
+                <Mail aria-hidden className="h-[18px] w-[18px]" /> Kirim email
+              </a>
+            </div>
+            <p className="mt-4 text-[14.5px] text-muted-foreground">
+              Ke WhatsApp {main.display}. Pesan pembuka sudah terisi; tinggal lengkapi pertanyaan Anda.
             </p>
 
-            <div className="mt-8 rounded-2xl border border-border bg-surface-muted/50 p-6 shadow-sm">
-              <h3 className="text-[15px] font-bold text-navy-950">Sudah punya akun WO Console?</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-text-secondary">
-                Anda tidak perlu menghubungi kami untuk masuk sehari-hari — langsung saja login dengan kredensial yang 
-                sudah didaftarkan oleh owner / tim Anda.
+            <div className="mt-12 border-t-2 border-seal pt-6">
+              <h2 className="text-[18px] font-bold tracking-[-0.02em] text-foreground">Sudah memakai ElProof?</h2>
+              <p className="mt-2 text-[16px] leading-relaxed text-muted-foreground">
+                Anda tidak perlu menghubungi kami untuk masuk sehari-hari. Buka{" "}
+                <Link to={ROUTE_PATHS.login} className="font-semibold text-foreground underline underline-offset-4 hover:text-primary-hover">
+                  halaman Masuk
+                </Link>{" "}
+                dengan akun yang didaftarkan pemilik usaha atau tim Anda.
               </p>
             </div>
-          </Reveal>
-
-          {/* RIGHT SIDE: Contact Cards (Bento Style) */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {/* Phone Card */}
-            <Reveal delay={100} className="col-span-1 sm:col-span-2">
-              <div className="group flex flex-col sm:flex-row gap-6 rounded-3xl border border-border bg-white p-8 transition-all hover:border-navy-900/20 hover:shadow-xl hover:shadow-navy-900/5">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-4 ring-blue-50/50 transition-transform group-hover:scale-110">
-                  <Phone className="h-6 w-6" />
-                </div>
-                <div className="flex flex-1 flex-col">
-                  <h2 className="text-[18px] font-bold text-navy-950">Telepon & WhatsApp</h2>
-                  <p className="mt-2 text-[14px] leading-relaxed text-text-secondary mb-6">
-                    Bisa dihubungi lewat telepon langsung atau chat WhatsApp untuk respon tercepat.
-                  </p>
-                  
-                  <div className="flex flex-col gap-4 mt-auto">
-                    {CONTACT.phones.map((phone) => (
-                      <div key={phone.number} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface-muted/50 border border-border">
-                        <span className="font-semibold text-navy-900">{phone.display}</span>
-                        <div className="flex items-center gap-3">
-                          <a href={`tel:+${phone.number}`} className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm hover:text-navy-900 hover:bg-navy-50 transition-colors" title="Telepon">
-                            <Phone className="h-4 w-4" />
-                          </a>
-                          <a href={`https://wa.me/${phone.number}`} target="_blank" rel="noreferrer" className="flex h-10 items-center gap-2 rounded-full bg-emerald-500 px-4 text-[13px] font-bold text-white shadow-sm hover:bg-emerald-600 transition-colors">
-                            <MessageCircle className="h-4 w-4" /> WhatsApp
-                          </a>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </Reveal>
-
-            {/* Email Card */}
-            <Reveal delay={200} className="flex flex-col rounded-3xl border border-border bg-white p-8 transition-all hover:-translate-y-1 hover:border-navy-900/20 hover:shadow-lg hover:shadow-navy-900/5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600 mb-6">
-                <Mail className="h-5 w-5" />
-              </div>
-              <h2 className="text-[18px] font-bold text-navy-950">Email</h2>
-              <p className="mt-2 text-[14px] leading-relaxed text-text-secondary mb-4 flex-1">
-                Untuk pertanyaan detail, proposal kerja sama, atau pengiriman dokumen.
-              </p>
-              <a href={`mailto:${CONTACT.email}`} className="mt-auto group/btn inline-flex items-center justify-between rounded-xl bg-surface-muted/50 p-4 font-semibold text-navy-900 transition-colors hover:bg-surface-muted">
-                {CONTACT.email}
-                <ArrowRight className="h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-              </a>
-            </Reveal>
-
-            {/* Hours Card */}
-            <Reveal delay={300} className="flex flex-col rounded-3xl border border-border bg-white p-8 transition-all hover:-translate-y-1 hover:border-navy-900/20 hover:shadow-lg hover:shadow-navy-900/5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 mb-6">
-                <Clock className="h-5 w-5" />
-              </div>
-              <h2 className="text-[18px] font-bold text-navy-950">Jam Layanan</h2>
-              <p className="mt-2 text-[14px] leading-relaxed text-text-secondary mb-4 flex-1">
-                Di luar jam ini, pesan Anda tetap akan kami proses sesegera mungkin.
-              </p>
-              <div className="mt-auto rounded-xl bg-surface-muted/50 p-4 font-semibold text-navy-900">
-                {CONTACT.hours}
-              </div>
-            </Reveal>
-
-            {/* Address Card */}
-            <Reveal delay={400} className="col-span-1 sm:col-span-2 flex flex-col sm:flex-row gap-6 rounded-3xl border border-border bg-white p-8 transition-all hover:border-navy-900/20 hover:shadow-lg hover:shadow-navy-900/5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col flex-1">
-                <h2 className="text-[18px] font-bold text-navy-950">Kantor Kami</h2>
-                <p className="mt-2 text-[14px] leading-relaxed text-text-secondary">
-                  Kunjungan langsung disarankan untuk membuat janji terlebih dahulu agar tim kami dapat bersiap.
-                </p>
-                <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl bg-surface-muted/50 p-4">
-                  <span className="font-semibold text-navy-900 max-w-[250px] text-[14px] leading-snug">{CONTACT.address}</span>
-                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(CONTACT.address)}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-5 text-[13px] font-bold text-navy-900 shadow-sm border border-border transition-colors hover:bg-navy-50 shrink-0">
-                    Buka di Peta <ArrowRight className="h-3.5 w-3.5" />
-                  </a>
-                </div>
-              </div>
-            </Reveal>
-
           </div>
+
+          <section aria-labelledby="kontak-judul" className="rounded-2xl bg-muted p-5 sm:p-7 lg:self-start">
+            <h2 id="kontak-judul" className="mb-5 text-[20px] font-extrabold tracking-[-0.03em] text-foreground">
+              Kontak ElProof
+            </h2>
+            <dl>
+              <Row term="WhatsApp utama">
+                <span className="block font-semibold sm:pt-[11px]">{main.display}</span>
+                <span className="flex flex-wrap gap-x-5">
+                  <a href={whatsappUrl(main.number)} target="_blank" rel="noreferrer" className={textLink}>
+                    <MessageCircle aria-hidden className="h-4 w-4" /> WhatsApp
+                  </a>
+                  <a href={`tel:+${main.number}`} className={textLink}>
+                    <Phone aria-hidden className="h-4 w-4" /> Telepon
+                  </a>
+                </span>
+              </Row>
+              {second && (
+                <Row term="Nomor kedua">
+                  <span className="block font-semibold sm:pt-[11px]">{second.display}</span>
+                  <span className="flex flex-wrap gap-x-5">
+                    <a href={whatsappUrl(second.number)} target="_blank" rel="noreferrer" className={textLink}>
+                      <MessageCircle aria-hidden className="h-4 w-4" /> WhatsApp
+                    </a>
+                    <a href={`tel:+${second.number}`} className={textLink}>
+                      <Phone aria-hidden className="h-4 w-4" /> Telepon
+                    </a>
+                  </span>
+                </Row>
+              )}
+              <Row term="Email">
+                <a href={`mailto:${CONTACT.email}`} className={`${textLink} break-all`}>
+                  {CONTACT.email}
+                </a>
+              </Row>
+              <Row term="Jam layanan">
+                <span className="block sm:pt-[11px]">{CONTACT.hours}</span>
+                <span className="mt-1 block text-[14.5px] text-muted-foreground">
+                  Di luar jam ini, pesan Anda tetap kami balas sesegera mungkin.
+                </span>
+              </Row>
+              <Row term="Alamat">
+                <span className="block leading-relaxed sm:pt-[9px]">{CONTACT.address}</span>
+                <span className="mt-1 block text-[14.5px] text-muted-foreground">
+                  Ingin berkunjung? Buat janji dulu agar tim kami bisa bersiap.
+                </span>
+                <a href={mapUrl} target="_blank" rel="noreferrer" className={textLink}>
+                  Buka di peta
+                </a>
+              </Row>
+            </dl>
+          </section>
         </div>
-      </div>
+      </Container>
     </div>
   );
 }
