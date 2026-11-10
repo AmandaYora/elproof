@@ -16,8 +16,13 @@ export interface RawAffectedProject {
 
 export interface RawDeleteImpact {
   affectedProjects: RawAffectedProject[];
+  /** Affected projects outside the caller's project scope: counted, never named (ADR-0026). */
+  hiddenProjectCount?: number;
 }
 
 export function toAffectedProjects(raw: RawDeleteImpact): AffectedProject[] {
-  return raw.affectedProjects.map((p) => ({ id: p.id, name: p.name }));
+  const named = raw.affectedProjects.map((p) => ({ id: p.id, name: p.name }));
+  const hidden = raw.hiddenProjectCount ?? 0;
+  // The warning lists names joined by commas: the projects one may not open are one more entry, as a count.
+  return hidden > 0 ? [...named, { id: "lainnya", name: `${hidden} proyek lain yang tidak Anda pegang` }] : named;
 }

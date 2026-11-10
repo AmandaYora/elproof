@@ -41,6 +41,9 @@ type StaffRepository interface {
 // can't take this as a constructor argument.
 type ProjectReferenceLookup interface {
 	ListAffectedProjectsForStaff(ctx context.Context, tenantID, staffID int64) ([]projectscontracts.ProjectRef, error)
+	// Who holds a project, to name only the projects in a viewer's scope.
+	ProjectPICStaffID(ctx context.Context, tenantID, projectID int64) (int64, error)
+	ProjectPICSalesStaffID(ctx context.Context, tenantID, projectID int64) (int64, error)
 }
 
 // RoleResolver is the narrow slice of the access module staff needs:
@@ -473,6 +476,35 @@ func (s *StaffService) ListAffectedProjects(ctx context.Context, tenantID, id in
 		return nil, nil
 	}
 	return s.projects.ListAffectedProjectsForStaff(ctx, tenantID, id)
+}
+
+// AffectedProjectsFor is ListAffectedProjects as viewerStaffID may read it: with
+// a role that reaches every project, all of them by name; otherwise only the
+// projects the viewer holds (PIC or PIC Sales) by name and the rest counted, since
+// a role limited to its own projects never sees a tenant-wide list (ADR-0026).
+func (s *StaffService) AffectedProjectsFor(ctx context.Context, tenantID, id, viewerStaffID int64, allProjects bool) ([]projectscontracts.ProjectRef, int, error) {
+	refs, err := s.ListAffectedProjects(ctx, tenantID, id)
+	if err != nil || allProjects {
+		return refs, 0, err
+	}
+	named := make([]projectscontracts.ProjectRef, 0, len(refs))
+	hidden := 0
+	for _, ref := range refs {
+		pic, err := s.projects.ProjectPICStaffID(ctx, tenantID, ref.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		sales, err := s.projects.ProjectPICSalesStaffID(ctx, tenantID, ref.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		if pic == viewerStaffID || sales == viewerStaffID {
+			named = append(named, ref)
+		} else {
+			hidden++
+		}
+	}
+	return named, hidden, nil
 }
 
 // Delete permanently removes a staff member -- an explicit, guarded exception

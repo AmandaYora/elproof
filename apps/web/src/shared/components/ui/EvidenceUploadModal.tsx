@@ -41,6 +41,8 @@ interface EvidenceUploadModalProps {
   defaultType?: EvidenceType;
   title?: string;
   description?: string;
+  /** Offer "Tampilkan dokumen ini ke portal klien"; off for a role that may add proofs but not share them (ADR-0026). */
+  canShareWithClient?: boolean;
 }
 
 function emptyValues(defaultRelatedId: string, defaultType?: EvidenceType): EvidenceUploadFormValues {
@@ -69,6 +71,7 @@ export function EvidenceUploadModal({
   lockedRelatedKind,
   lockedRelatedId,
   defaultType,
+  canShareWithClient = true,
   title = "Tambah dokumen",
   description = "Unggah dokumen pendukung dan kaitkan dengan jadwal, pembayaran, kerja sama vendor, atau kendala pada proyek ini.",
 }: EvidenceUploadModalProps) {
@@ -186,7 +189,7 @@ export function EvidenceUploadModal({
         <Field label="Deskripsi">
           <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} />
         </Field>
-        {!locked && values.relatedKind === "general" && (
+        {canShareWithClient && !locked && values.relatedKind === "general" && (
           <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[13px] text-text-secondary">
             <input
               type="checkbox"

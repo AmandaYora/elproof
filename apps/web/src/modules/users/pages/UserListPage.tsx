@@ -24,7 +24,7 @@ import { APP_NAME } from "@/shared/constants/brand";
 import type { StaffMember } from "@/modules/users/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { AffectedProject } from "@/shared/types/delete-impact";
-import { useWriteLocked } from "@/shared/stores/usePermissionStore";
+import { coversRole, usePermissionStore, useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 interface LinkShare {
   link: AccessLink;
@@ -70,6 +70,14 @@ export default function UserListPage() {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
   const staffRoles = useRolesStore((s) => s.roles.staff);
+  const myGrants = usePermissionStore((s) => s.grants);
+  // Someone whose role allows more than one's own is the Owner's to change (ADR-0026; the API refuses it too).
+  const manageable = (user: StaffMember) => {
+    if (myGrants?.isOwner) return true;
+    const role = staffRoles.find((r) => r.id === user.roleId);
+    // Roles not loaded yet: keep the actions, the API still decides.
+    return role === undefined || coversRole(myGrants, role);
+  };
   const fetchRoles = useRolesStore((s) => s.fetchRoles);
   useEffect(() => {
     void fetchRoles("staff").catch(() => undefined);
@@ -286,6 +294,7 @@ export default function UserListPage() {
           const isOwner = user.role === "Owner";
           const isSelf = user.id === currentStaffId;
           if (isOwner && !isSelf) return <span className="text-[12px] text-muted-foreground">Hanya dapat diubah oleh Owner sendiri</span>;
+          if (!isOwner && !manageable(user)) return <span className="text-[12px] text-muted-foreground">Hanya dapat diubah oleh Owner</span>;
           return (
             <div className="flex items-center gap-1.5">
               <IconActionButton icon={Pencil} label="Ubah anggota tim" tone="neutral" onClick={() => openEditModal(user)} />

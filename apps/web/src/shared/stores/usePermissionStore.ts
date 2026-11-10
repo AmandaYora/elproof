@@ -43,6 +43,18 @@ export function hasPermission(grants: Grants | null, permission: string): boolea
   return Boolean(grants?.permissions.includes(permission));
 }
 
+/**
+ * Whether these grants cover a staff role: the same permissions or fewer, and the every-project scope only when held.
+ * The API's rule (Grants.Covers, ADR-0026) for handing out, editing or deleting a role and for managing its members, so
+ * team.manage / role.manage never become a way to gain access. The Owner covers every role.
+ */
+export function coversRole(grants: Grants | null, role: { permissions: string[]; projectScope: "all" | "assigned" }): boolean {
+  if (!grants) return false;
+  if (grants.isOwner) return true;
+  if (role.projectScope === "all" && grants.projectScope !== "all") return false;
+  return role.permissions.every((p) => grants.permissions.includes(p));
+}
+
 /** True while the workspace may only be read (grace period over, unpaid or frozen). */
 export function isWriteLocked(lifecycle: SubscriptionLifecycle | null): boolean {
   return lifecycle !== null && lifecycle.access !== "full";

@@ -79,6 +79,13 @@ func (h *Handler) uploadEvidence(w http.ResponseWriter, r *http.Request, claims 
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
+	// Showing a document to the client is a project decision (project.edit), the
+	// same one the visibility toggle needs: a role that only records payments may
+	// add a proof but not publish it to the Client Portal while uploading it.
+	if body.IsClientVisible && domain.EvidenceRelatedKind(body.RelatedKind).SupportsClientVisibility() && !claims.can("project.edit") {
+		forbiddenPermission(w, "Peran Anda tidak dapat menampilkan dokumen ke portal klien")
+		return
+	}
 	e, err := h.evidence.Upload(r.Context(), claims.tenantID, projectID, claims.staffID, application.UploadEvidenceInput{
 		Name: body.Name, Type: domain.EvidenceType(body.Type), FileName: body.FileName, MimeType: body.MimeType,
 		Base64Data: body.Base64Data, DocumentDate: parseOptionalDate(body.DocumentDate), Description: body.Description,

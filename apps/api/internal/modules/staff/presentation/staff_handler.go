@@ -276,8 +276,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Changing someone whose role allows more than the caller's is the
-	// Owner's call (ADR-0026).
-	if r.Method != http.MethodGet {
+	// Owner's call (ADR-0026); so is the delete warning, the first step of deleting.
+	if r.Method != http.MethodGet || (len(segments) == 2 && segments[1] == "delete-impact") {
 		if err := h.staff.CheckManageable(r.Context(), tenantID, id, middleware.GrantsFrom(r.Context())); err != nil {
 			writeAppError(w, err)
 			return
@@ -309,6 +309,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 
 type staffDeleteImpactResponse struct {
 	AffectedProjects []staffDeleteImpactProjectRef `json:"affectedProjects"`
+	// HiddenProjectCount: affected projects outside the caller's scope, counted but not named.
+	HiddenProjectCount int `json:"hiddenProjectCount"`
 }
 
 type staffDeleteImpactProjectRef struct {
@@ -324,7 +326,10 @@ func (h *Handler) deleteImpact(w http.ResponseWriter, r *http.Request, tenantID,
 		writeAppError(w, err)
 		return
 	}
-	refs, err := h.staff.ListAffectedProjects(r.Context(), tenantID, id)
+	claims, _ := middleware.FromContext(r.Context())
+	viewer, _ := strconv.ParseInt(claims.PrincipalID, 10, 64)
+	g := middleware.GrantsFrom(r.Context())
+	refs, hidden, err := h.staff.AffectedProjectsFor(r.Context(), tenantID, id, viewer, g != nil && g.AllProjects)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -333,7 +338,7 @@ func (h *Handler) deleteImpact(w http.ResponseWriter, r *http.Request, tenantID,
 	for _, ref := range refs {
 		result = append(result, staffDeleteImpactProjectRef{ID: strconv.FormatInt(ref.ID, 10), Name: ref.Name})
 	}
-	response.OK(w, "ok", staffDeleteImpactResponse{AffectedProjects: result})
+	response.OK(w, "ok", staffDeleteImpactResponse{AffectedProjects: result, HiddenProjectCount: hidden})
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request, tenantID, id int64) {

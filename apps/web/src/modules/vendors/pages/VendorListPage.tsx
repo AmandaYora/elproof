@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
+import { useCan } from "@/shared/stores/usePermissionStore";
 import { Link } from "react-router-dom";
 import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
@@ -28,8 +28,9 @@ import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import type { AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VendorListPage() {
-  // Read-only workspace (subscription): no new records until it is renewed.
-  const writeLocked = useWriteLocked();
+  // Adding, editing, importing and (de)activating need vendor.manage (ADR-0026); useCan also reads "no" while the
+  // workspace is read-only (subscription), so the write buttons disappear then too.
+  const canManage = useCan("vendor.manage");
   const vendors = useVendorStore((s) => s.vendorPage);
   const bulkVendors = useVendorStore((s) => s.bulkVendors);
   const meta = useVendorStore((s) => s.vendorPageMeta);
@@ -240,7 +241,7 @@ export default function VendorListPage() {
           <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh vendor yang bekerja sama dengan WO.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!writeLocked && (
+          {canManage && (
             <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
               Impor bulk
             </Button>
@@ -248,7 +249,7 @@ export default function VendorListPage() {
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVendors()} disabled={isExporting}>
             {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
           </Button>
-          {!writeLocked && (
+          {canManage && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
               Tambah vendor
             </Button>
@@ -311,10 +312,10 @@ export default function VendorListPage() {
         empty={{
           title: "Belum ada vendor",
           description: "Daftarkan vendor katering, dekorasi, foto, dan lainnya agar bisa dipasang ke proyek.",
-          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah vendor</Button> : undefined,
+          action: canManage ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah vendor</Button> : undefined,
         }}
         density={density}
-        selection={writeLocked ? undefined : { selected, onChange: setSelected }}
+        selection={!canManage ? undefined : { selected, onChange: setSelected }}
         bulkActions={(ids) => (
           <>
             <Button variant="secondary" size="sm" onClick={() => void handleBulk(ids, "activate")}>Aktifkan</Button>
@@ -323,12 +324,12 @@ export default function VendorListPage() {
         )}
         actions={(vendor) => (
           <div className="flex items-center gap-1.5">
-            <IconActionButton icon={Pencil} label="Ubah vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
-            {vendor.isActive ? (
+            {canManage && <IconActionButton icon={Pencil} label="Ubah vendor" tone="neutral" onClick={() => openEditModal(vendor)} />}
+            {canManage && (vendor.isActive ? (
               <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
             ) : (
               <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
-            )}
+            ))}
             <IconActionButton icon={Eye} readOnly label="Lihat proyek" tone="info" onClick={() => setHistoryVendor(vendor)} />
             {isOwner && <IconActionButton icon={Trash2} label="Hapus permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />}
           </div>

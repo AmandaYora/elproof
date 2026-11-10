@@ -9,7 +9,7 @@ import { toast } from "@/shared/stores/useToastStore";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import { roleSchema } from "@/modules/access/schemas/role.schema";
-import { usePermissionStore } from "@/shared/stores/usePermissionStore";
+import { coversRole, usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { useRolesStore, type Permission, type ProjectScope, type Role, type RoleKind } from "@/modules/access/stores/useRolesStore";
 
 const FIELD_LABELS: Record<string, string> = { name: "Nama peran", description: "Deskripsi", permissions: "Izin" };
@@ -46,7 +46,13 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
   // Nobody but the Owner changes the role they hold themselves (the API
   // refuses it too), so role.manage can't become a way to gain access.
   const ownRole = Boolean(role && myGrants && !myGrants.isOwner && myGrants.roleId === role.id);
-  const readOnly = Boolean(role?.isSystem) || ownRole;
+  // A staff role that allows more than one's own is the Owner's to change (Grants.Covers on the API).
+  const beyondMe = kind === "staff" && Boolean(role && !role.isSystem && !coversRole(myGrants, role));
+  const readOnly = Boolean(role?.isSystem) || ownRole || beyondMe;
+  // What one may not hand out oneself cannot be ticked (it can still be unticked, e.g. in a copy).
+  const limited = kind === "staff" && !myGrants?.isOwner;
+  const lacks = (key: string) => limited && !myGrants?.permissions.includes(key);
+  const lacksAllScope = limited && myGrants?.projectScope !== "all";
 
   const form = useZodForm({
     schema: roleSchema,
@@ -173,7 +179,9 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
             <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             {ownRole
               ? "Ini peran yang Anda pakai sendiri. Hanya Owner yang dapat mengubahnya."
-              : "Owner selalu memiliki semua akses dan tidak bisa diubah, supaya workspace tidak pernah terkunci."}
+              : beyondMe
+                ? "Peran ini memberi akses yang tidak Anda miliki. Hanya Owner yang dapat mengubahnya."
+                : "Owner selalu memiliki semua akses dan tidak bisa diubah, supaya workspace tidak pernah terkunci."}
           </p>
         )}
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
@@ -207,6 +215,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                     name="scope"
                     value={s.value}
                     checked={scope === s.value}
+                    disabled={s.value === "all" && lacksAllScope && scope !== "all"}
                     onChange={() => setScope(s.value)}
                     className="mt-1 accent-primary"
                   />
@@ -239,6 +248,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
                     <input
                       type="checkbox"
                       checked={granted.has(p.key)}
+                      disabled={lacks(p.key) && !granted.has(p.key)}
                       onChange={() => toggle(p.key)}
                       className="mt-1 h-4 w-4 shrink-0 accent-primary"
                     />

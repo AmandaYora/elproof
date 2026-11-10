@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FolderKanban, Store, Users, type LucideIcon } from "lucide-react";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/shared/components/kit/command";
 import { httpClient } from "@/shared/services/http-client";
+import { hasPermission, usePermissionStore } from "@/shared/stores/usePermissionStore";
 import { API } from "@/shared/services/api-endpoints";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -42,6 +43,11 @@ export default function CommandPaletteDialog({ open, onOpenChange: setOpen, page
   const navigate = useNavigate();
   const q = query.trim();
   const debounced = useDebouncedValue(q, 250);
+  // Search only what the role may open (the same rules as the Vendor and Klien pages, ADR-0026): asking the API
+  // for the rest is refused with 403 and leads to pages the role cannot see.
+  const grants = usePermissionStore((s) => s.grants);
+  const searchVendors = hasPermission(grants, "vendor.view");
+  const searchClients = hasPermission(grants, "client.manage") && grants?.projectScope === "all";
 
   useEffect(() => {
     if (!open) {
@@ -60,8 +66,8 @@ export default function CommandPaletteDialog({ open, onOpenChange: setOpen, page
     setSearching(true);
     Promise.all([
       settle(searchKind(API.projects.base, debounced, controller.signal)),
-      settle(searchKind(API.vendors.base, debounced, controller.signal)),
-      settle(searchKind(API.clients.base, debounced, controller.signal)),
+      searchVendors ? settle(searchKind(API.vendors.base, debounced, controller.signal)) : Promise.resolve({ ok: false as const }),
+      searchClients ? settle(searchKind(API.clients.base, debounced, controller.signal)) : Promise.resolve({ ok: false as const }),
     ]).then(([projects, vendors, clients]) => {
       if (controller.signal.aborted) return;
       setHits([
@@ -72,7 +78,7 @@ export default function CommandPaletteDialog({ open, onOpenChange: setOpen, page
       setSearching(false);
     });
     return () => controller.abort();
-  }, [debounced, searchRecords]);
+  }, [debounced, searchRecords, searchVendors, searchClients]);
 
   const matchingPages = pages.filter((p) => p.label.toLowerCase().includes(q.toLowerCase()));
 

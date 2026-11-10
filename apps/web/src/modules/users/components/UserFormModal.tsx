@@ -4,6 +4,8 @@ import { Input, Select, Field } from "@/shared/components/ui/Input";
 import { userSchema, type UserFormValues } from "@/modules/users/schemas/user.schema";
 import { OWNER_ROLE_NAME, type StaffMember } from "@/modules/users/types";
 import { useRolesStore } from "@/modules/access/stores/useRolesStore";
+import { coversRole, usePermissionStore } from "@/shared/stores/usePermissionStore";
+import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useEffect, useRef } from "react";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
@@ -36,7 +38,11 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
   const formRef = useRef<HTMLFormElement>(null);
   const roles = useRolesStore((s) => s.roles.staff);
   const fetchRoles = useRolesStore((s) => s.fetchRoles);
-  const assignable = roles.filter((r) => !r.isSystem);
+  const myGrants = usePermissionStore((s) => s.grants);
+  const currentStaffId = useAuthStore((s) => s.currentStaffId);
+  // Only roles one's own role covers can be handed out, and nobody but the Owner changes their own role (ADR-0026).
+  const assignable = roles.filter((r) => !r.isSystem && coversRole(myGrants, r));
+  const ownRow = Boolean(initialUser && initialUser.id === currentStaffId);
 
   useEffect(() => {
     void fetchRoles("staff").catch(() => undefined);
@@ -86,6 +92,8 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
         <Field label="Peran" required name="roleId" error={errors.roleId} hint="Izin tiap peran diatur di Pengaturan → Peran & Akses.">
           {initialUser?.role === OWNER_ROLE_NAME ? (
             <Input value={OWNER_ROLE_NAME} disabled />
+          ) : ownRow ? (
+            <Input value={initialUser?.roleName || initialUser?.role || ""} disabled />
           ) : (
             <Select value={values.roleId ? String(values.roleId) : ""} onChange={(e) => set("roleId", Number(e.target.value))}>
               <option value="" disabled>
