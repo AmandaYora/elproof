@@ -29,7 +29,7 @@ const SECTIONS: LegalSection[] = [
     id: "subprosesor",
     title: "4. Subprosesor",
     body: [
-      `WO menyetujui ElProof menggunakan subprosesor untuk menjalankan layanan: penyedia server dan basis data, penyedia penyimpanan objek untuk dokumen dan foto, dan mitra payment gateway untuk pembayaran langganan. ElProof memastikan subprosesor terikat kewajiban pelindungan data yang setara dan memberi tahu WO sebelum menambah subprosesor baru.`,
+      `WO menyetujui ElProof menggunakan subprosesor untuk menjalankan layanan: penyedia server dan basis data, penyedia penyimpanan objek untuk dokumen dan foto, dan mitra pembayaran yang memproses pembayaran langganan. ElProof memastikan subprosesor terikat kewajiban pelindungan data yang setara dan memberi tahu WO sebelum menambah subprosesor baru.`,
     ],
   },
   {
