@@ -5,16 +5,18 @@
 -- 'platform-billing' (paymentcontracts.InternalAppBilling).
 -- app_id is a primitive cross-module ID: no FK to payment_apps, same as
 -- payment_charge_dispatch.app_id and subscription_app_charges.app_id.
+-- Binary collation: the column compares exactly like Go does (GetForApp), so a
+-- catalog query and the ownership check can never disagree on letter case.
 --
 -- Data move (development data only, no compatibility path is kept):
 --   * a plan with no mapping (the old "public catalog") -> 'platform-billing'
 --   * a plan mapped to one or more Apps -> its first App (MIN(app_id))
 ALTER TABLE subscription_plans
-  ADD COLUMN app_id VARCHAR(100) NOT NULL DEFAULT 'platform-billing' AFTER id;
+  ADD COLUMN app_id VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'platform-billing' AFTER id;
 
 UPDATE subscription_plans sp
   JOIN (SELECT plan_id, MIN(app_id) AS app_id FROM subscription_plan_apps GROUP BY plan_id) m ON m.plan_id = sp.id
-   SET sp.app_id = m.app_id;
+   SET sp.app_id = LOWER(m.app_id);
 
 -- No default from here on: every new plan must name its App.
 ALTER TABLE subscription_plans

@@ -129,6 +129,18 @@ func TestPlanCreate_AppTidakAdaJadi422(t *testing.T) {
 	}
 }
 
+func TestPlanCreate_AppIdBedaHurufDitolak(t *testing.T) {
+	for _, id := range []string{"Platform-Billing", "APP_02EF90C52704"} {
+		reg := &stubAppRegistry{exists: true} // the registry lookup ignores case
+		stub := &stubPlanLister{}
+		h := NewPlanHandler(stub, reg)
+		w := postPlan(h, http.MethodPost, "/api/v1/plans", strings.Replace(planBody, "%q", `"`+id+`"`, 1))
+		if w.Code != http.StatusUnprocessableEntity || stub.created != nil {
+			t.Fatalf("%s: status = %d created=%v, want 422 tanpa simpan", id, w.Code, stub.created)
+		}
+	}
+}
+
 func TestPlanCreate_GalatRegistryBukan422(t *testing.T) {
 	h := NewPlanHandler(&stubPlanLister{}, &stubAppRegistry{existsErr: errors.New("db down")})
 	w := postPlan(h, http.MethodPost, "/api/v1/plans", strings.Replace(planBody, "%q", `"app_x"`, 1))

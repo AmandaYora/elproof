@@ -7,7 +7,6 @@ import type { AccessLink } from "@/shared/lib/access-link";
 import type { Tenant } from "@/modules/platform-admin/data/types";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
-import { ELPROOF_APP_ID } from "@/shared/data/subscriptionPlans";
 import type { TenantFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
 import type { ActivateSubscriptionFormValues } from "@/modules/platform-admin/schemas/activate-subscription.schema";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -44,8 +43,9 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Announcements and tenants concern WO tenants: only ElProof's own plans apply (ADR-0040).
-    void fetchPlans(ELPROOF_APP_ID).catch(() => undefined);
+    // Every App's plans: a tenant's plan is named by id lookup, and a plan moved to another App
+    // must still show its name. Only the pickers narrow to ElProof's own plans (ADR-0040).
+    void fetchPlans().catch(() => undefined);
   }, [fetchPlans]);
 
   // Errors are not caught here: they propagate to the form, which shows a 422 on its fields.

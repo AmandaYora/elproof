@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -52,15 +52,24 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
 
   const appId = app?.appId;
 
-  // The plans this App owns (ADR-0040), narrowed by the server.
+  // The plans this App owns (ADR-0040), narrowed by the server. Only the answer for the App shown last may land:
+  // an older one (the dialog was reopened for another App meanwhile) is dropped.
+  const shownAppId = useRef<string | undefined>(undefined);
   const loadPlans = useCallback(
     (id: string) => {
+      shownAppId.current = id;
       setIsLoadingPlans(true);
       setPlansError(null);
       return fetchPlansForApp(id)
-        .then(setAppPlans)
-        .catch((err) => setPlansError(getApiErrorMessage(err, "Gagal memuat paket aplikasi ini")))
-        .finally(() => setIsLoadingPlans(false));
+        .then((plans) => {
+          if (shownAppId.current === id) setAppPlans(plans);
+        })
+        .catch((err) => {
+          if (shownAppId.current === id) setPlansError(getApiErrorMessage(err, "Gagal memuat paket aplikasi ini"));
+        })
+        .finally(() => {
+          if (shownAppId.current === id) setIsLoadingPlans(false);
+        });
     },
     [fetchPlansForApp]
   );

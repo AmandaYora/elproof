@@ -86,6 +86,8 @@ func TestPlansPerApp(t *testing.T) {
 		if !strings.Contains(string(r.body), "appId") {
 			t.Errorf("422 must point at appId: %s", r)
 		}
+		wantStatus(t, "create with ElProof in another case", s.do(admin, "POST", "/api/v1/plans", withApp("Platform-Billing")), http.StatusUnprocessableEntity)
+		wantStatus(t, "create with an App id in another case", s.do(admin, "POST", "/api/v1/plans", withApp(strings.ToUpper(jwsID))), http.StatusUnprocessableEntity)
 		wantStatus(t, "edit to unknown appId", s.do(admin, "PATCH", fmt.Sprintf("/api/v1/plans/%d", kasirPlan), withApp("app_tidak_ada")), http.StatusUnprocessableEntity)
 		if n := s.count(`SELECT COUNT(*) FROM subscription_plans WHERE name = 'Tanpa App'`); n != 0 {
 			t.Errorf("a rejected plan was stored (%d rows)", n)
@@ -215,6 +217,10 @@ func TestPlansPerAppMigration(t *testing.T) {
 		if n := s.count(`SELECT COUNT(*) FROM subscription_plans WHERE name = ? AND app_id = ?`, name, app); n != 1 {
 			t.Errorf("up: plan %q must belong to %q", name, app)
 		}
+	}
+	// Exact comparison, like Go: a case variant of an App id is another value.
+	if n := s.count(`SELECT COUNT(*) FROM subscription_plans WHERE app_id = ?`, "PLATFORM-BILLING"); n != 0 {
+		t.Errorf("app_id must compare case-sensitively, %d rows matched PLATFORM-BILLING", n)
 	}
 	// No default: an INSERT that forgets the App is refused.
 	if _, err := s.db.Exec(`INSERT INTO subscription_plans (name, duration_months, price) VALUES ('Tanpa App', 1, 1)`); err == nil {

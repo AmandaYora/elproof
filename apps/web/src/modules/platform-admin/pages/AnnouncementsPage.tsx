@@ -45,8 +45,8 @@ export default function AnnouncementsPage() {
     fetchAnnouncements()
       .then(() => setLoaded(true))
       .catch(() => setFailed(true));
-    // Announcements and tenants concern WO tenants: only ElProof's own plans apply (ADR-0040).
-    void fetchPlans(ELPROOF_APP_ID).catch(() => undefined);
+    // Every App's plans for naming an old audience; the picker offers ElProof's own only (ADR-0040).
+    void fetchPlans().catch(() => undefined);
   }, [fetchAnnouncements, fetchPlans]);
 
   useEffect(() => {
@@ -139,7 +139,7 @@ export default function AnnouncementsPage() {
         open={editing !== undefined}
         onClose={() => setEditing(undefined)}
         initial={editing ?? undefined}
-        plans={plans}
+        plans={plans.filter((p) => p.appId === ELPROOF_APP_ID)}
         onSubmit={handleSubmit}
       />
 

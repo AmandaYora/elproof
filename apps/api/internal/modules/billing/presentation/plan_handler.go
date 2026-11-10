@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"elproof/internal/modules/billing/application"
 	"elproof/internal/modules/billing/domain"
@@ -217,9 +218,18 @@ func (h *PlanHandler) toggleActive(w http.ResponseWriter, r *http.Request, id in
 // empty appId is left to the service (same 422). ElProof's own App is always
 // known — it is bootstrapped at every start, and `api seed` empties the
 // registry until then. A deactivated App may still own plans.
+//
+// Registry IDs are lower case ("app_<hex>", "platform-billing") and the
+// registry lookup ignores case, so an ID in any other case is refused here:
+// the stored app_id is always byte-identical to the registry's.
 func (h *PlanHandler) requireKnownApp(w http.ResponseWriter, r *http.Request, appID string) bool {
 	if appID == "" || appID == application.TenantPlansApp {
 		return true
+	}
+	unknown := apperror.Validation("Aplikasi tidak ditemukan", map[string][]string{"appId": {"Pilih aplikasi yang terdaftar"}})
+	if appID != strings.ToLower(appID) {
+		writeAppError(w, unknown)
+		return false
 	}
 	exists, err := h.apps.AppExists(r.Context(), appID)
 	if err != nil {
@@ -227,7 +237,7 @@ func (h *PlanHandler) requireKnownApp(w http.ResponseWriter, r *http.Request, ap
 		return false
 	}
 	if !exists {
-		writeAppError(w, apperror.Validation("Aplikasi tidak ditemukan", map[string][]string{"appId": {"Pilih aplikasi yang terdaftar"}}))
+		writeAppError(w, unknown)
 		return false
 	}
 	return true

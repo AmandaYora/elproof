@@ -78,18 +78,20 @@ export const useSubscriptionPlanStore = create<SubscriptionPlanState>((set, get)
 
   fetchPlansForApp: (appId) => requestPlans(appId),
 
+  // A write that succeeded is reported as success even if the reload after it fails: saying "not saved" would
+  // invite a second, duplicate save (or flip the status back).
   createPlan: async (values) => {
     await httpClient.post(API.billing.plans, values);
-    await get().fetchPlans(get().appFilter);
+    await get().fetchPlans(get().appFilter).catch(() => undefined);
   },
 
   updatePlan: async (id, values) => {
     await httpClient.patch(API.billing.plan(id), values);
-    await get().fetchPlans(get().appFilter);
+    await get().fetchPlans(get().appFilter).catch(() => undefined);
   },
 
   togglePlanActive: async (id) => {
     await httpClient.post(API.billing.planToggleActive(id));
-    await get().fetchPlans(get().appFilter);
+    await get().fetchPlans(get().appFilter).catch(() => undefined);
   },
 }));

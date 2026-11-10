@@ -19,7 +19,9 @@ in development and its data is dummy data, so no compatibility path was needed.
 - `subscription_plans.app_id VARCHAR(100) NOT NULL` (migration `000073`): the one App that sells the
   plan. It is a primitive cross-module ID with **no FK** to `payment_apps` (same as
   `subscription_app_charges.app_id`); `POST`/`PATCH /plans` check it against
-  `payment.contracts.AppRegistry.AppExists` and answer `422` on `appId` otherwise.
+  `payment.contracts.AppRegistry.AppExists` and answer `422` on `appId` otherwise. The column is
+  `utf8mb4_bin` so SQL compares exactly like Go, and an `appId` that is not lower case (registry IDs
+  always are) is refused, because the registry lookup itself ignores case.
 - **ElProof is an App like the others**: its plans are the plans of its internal App
   `platform-billing` (`paymentcontracts.InternalAppBilling`) — the App `platform` already charges WO
   tenant subscriptions through. No special value, no extra column. `payment` stays unaware of plans:
