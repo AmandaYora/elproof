@@ -7,11 +7,12 @@ export interface Reply {
 }
 
 /** One API call. Every call "comes from" a different address so per-IP limiters do not turn seeding into a rate-limit test. */
-export async function call(base: string, token: string | null, method: string, path: string, body?: unknown): Promise<Reply> {
+export async function call(base: string, token: string | null, method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<Reply> {
   counter += 1;
   const headers: Record<string, string> = { "X-Forwarded-For": `10.20.${Math.floor(counter / 250)}.${(counter % 250) + 1}` };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
+  Object.assign(headers, extraHeaders);
   const res = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await res.text();
   let json: any = null;

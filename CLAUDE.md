@@ -9,6 +9,8 @@ npm run dev:web   # start frontend
 npm run dev:api   # start backend
 ```
 
+Checks (from `apps/web`): `npx tsc -b && npm run check:terms && npm run build && npm run budget`; `npm run e2e` for the browser tests. CI (`.github/workflows/ci.yml`) runs the same gates.
+
 ## Critical architecture rules
 
 - Backend is a **modular monolith**. A module exposes only `contracts/` to other modules.

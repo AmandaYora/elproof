@@ -105,9 +105,9 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
   for (const a of ["start_preparation", "mark_ready", "complete"]) await step(p2, a);
 
   // P1: timeline progress, vendors, money, an issue
-  const ms = must("milestones", await call(s.api, t, "GET", `/api/v1/projects/${p1}/milestones`)).json.data as { id: number; targetDate: string }[];
+  const ms = must("milestones", await call(s.api, t, "GET", `/api/v1/projects/${p1}/milestones`)).json.data as { id: number; targetDate: string; updatedAt: string }[];
   for (const m of ms.slice(0, 2)) {
-    must("milestone done", await call(s.api, t, "PATCH", `/api/v1/projects/${p1}/milestones/${m.id}`, { status: "Completed", targetDate: m.targetDate, completedDate: day(-20) }));
+    must("milestone done", await call(s.api, t, "PATCH", `/api/v1/projects/${p1}/milestones/${m.id}`, { status: "Completed", targetDate: m.targetDate, completedDate: day(-20) }, { "If-Match": `"${m.updatedAt}"` }));
   }
   const engagement = must("engagement catering", await call(s.api, t, "POST", `/api/v1/projects/${p1}/vendors`, {
     vendorId: vendorIds[0], categoryId: cat(0), scope: "Katering 500 pax", contractValue: 45_000_000, pricingTier: "Akad & Resepsi", engagementStatus: "Booked",

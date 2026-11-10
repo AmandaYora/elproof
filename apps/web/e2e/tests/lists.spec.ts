@@ -66,6 +66,17 @@ test.describe("Vendor list", () => {
     await close();
   });
 
+  test("the export carries the filters the list is showing", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "owner");
+    await visit(page, "/vendors?isActive=false&q=Uji");
+    const exported = page.waitForRequest((r) => r.url().includes("/vendors/export"));
+    await page.getByRole("button", { name: "Ekspor ke Excel" }).first().click();
+    const url = new URL((await exported).url());
+    expect(url.searchParams.get("isActive")).toBe("false");
+    expect(url.searchParams.get("q")).toBe("Uji");
+    await close();
+  });
+
   test("money is right aligned in tabular figures", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
     await visit(page, "/vendors");

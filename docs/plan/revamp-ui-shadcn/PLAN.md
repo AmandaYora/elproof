@@ -1,6 +1,6 @@
 # PLAN.md — Revamp UI/UX ke shadcn/ui
 
-> Status (10 Nov 2026): **Tahap 0–7 dikerjakan dan dikomit; Tahap 8 dikerjakan, belum dikomit** (lihat "Catatan
+> Status (10 Nov 2026): **Tahap 0–8 dikomit; Tahap 9 dikerjakan seluruhnya yang bisa dikerjakan mesin, belum dikomit; uji manusia belum dilakukan** (lihat catatan Tahap 9) (lihat "Catatan
 > pelaksanaan" di akhir bagian Tahap). Rencana revisi 2 selebihnya belum dikerjakan. Revisi 1 (8 Nov 2026) hanya mengganti lapisan komponen.
 > Revisi 2 mengikuti arahan pemilik produk (9 Nov 2026): **tujuannya fitur mudah dipahami, mudah dipakai, ideal, dan
 > rupa modern; endpoint boleh diubah bila bentuk API membuat alur UI tidak ideal.**
@@ -362,6 +362,41 @@ sebagai gerbang CI; hapus komponen lama, `useDialogBehavior`, dan jalur API yang
 revamp UI, ADR-0033 untuk endpoint tampilan dan kebijakan kompatibilitas, `FRONTEND_GUIDE.md`, `API_GUIDE.md`,
 `.claude/rules/frontend-react.md`); inventaris ulang angka §1; **uji kegunaan akhir** dengan tugas yang sama dengan
 Tahap 0. **Selesai bila:** semua gerbang hijau di CI dan target §2 tercapai atau selisihnya dijelaskan.
+
+*Tahap 9 (10 Nov 2026).* **Gerbang:** `.github/workflows/ci.yml` (**belum pernah berjalan di GitHub**: divalidasi sebagai YAML, dan perintah tiap langkah dijalankan lokal dalam bentuk yang sama: gofmt, build, vet, tes, suite isolasi, tipe, `check:terms`, `budget`, axe ketat, `behavior`, `mutating --no-deps`, `e2e:perf` + `budget:routes`;
+hanya pemasangan biner MinIO, peramban Playwright dan service MySQL yang tidak terbukti, dan versi MinIO yang dipin belum saya unduh) dengan tiga job: `api` (gofmt, build, vet, tes, suite isolasi dengan MySQL dan MinIO asli), `web` (tipe, `check:terms`, build, anggaran bundel `perf-budget.json`) dan `e2e` (axe **ketat**,
+`behavior`, `mutating --no-deps`, `e2e:perf` + anggaran per layar). Potret piksel sengaja tidak masuk CI (render macOS). **Dihapus:** tujuh jalur toggle (Tahap 8), `GET /vendors/summary`, `GET /projects/{id}/vendors/{pv}/milestones`,
+sembilan berkas web tanpa pengimpor (`ProjectCard`, `UpcomingEvents`, `condition.ts`, barrel `ui/index.ts` dan `theme/index.ts`, empat komponen kit tak terpakai), empat aksi store mati dan konstanta endpointnya
+(`useDialogBehavior` sudah hilang sebelumnya). **`If-Match` kini wajib (428)** pada delapan PATCH edit-field (ADR-0036); PATCH keadaan (`isArchived`, `isClientVisible`, `isActive`) tetap tanpa header;
+404 mendahului 428 agar keberadaan baris tidak bocor. **Dokumentasi:** `API_CONTRACT.md` disinkronkan dengan 211 rute yang benar-benar terdaftar (31 belum pernah terdokumentasi, 9 dihapus, ±60 baris salah),
+`API-INVENTORY.md` (rute × pemakai web × kandidat hapus), ADR-0037 (revamp UI dan gerbangnya), `FRONTEND_GUIDE.md`, `API_GUIDE.md`, `.claude/rules/frontend-react.md`, README e2e. **Temuan yang diperbaiki di tahap ini:**
+(a) **judul tab sama di seluruh halaman** tiap konsol ("WO Contoh — WO Console"; WCAG 2.4.2): kini per rute lewat `handle.title` + `useRouteTitle`; (b) halaman Masuk tanpa `main` dan `h1` hanya di layar lebar, tab Dokumen portal tanpa `h1`;
+(c) slogan dan judul bawaan masih Inggris ("Every Step to Your Perfect Day.", "Client Transparency Portal"); (d) ±30 teks Inggris (Export, Import, Download, Reset, Password) lolos pemeriksa istilah, yang kini mencakup kata kerja itu;
+(e) ekspor vendor/venue mengabaikan `q` dan `isActive` sehingga daftar terfilter dan berkasnya berbeda; (f) Gantt dimuat statis (tab Jadwal 87 KB → 4,7 KB, kini dimuat saat tampilan Gantt dipilih); (g) seed e2e dan tes dua-sesi mengedit tanpa versi.
+Tes baru: `structure.spec.ts` (satu h1, satu main, judul tab unik per halaman, 4 konsol), `keyboard.spec.ts` (Masuk dengan papan ketik), ekspor membawa filter, 428 pada delapan sumber daya. **241 tes e2e lulus**; axe 68 halaman 0 pelanggaran;
+Go: build, vet, tes unit, dan 387 subtes integrasi lulus dengan MySQL dan MinIO sementara.
+
+**Inventaris ulang §1** (metode sama dengan Tahap 0, 10 Nov 2026): berkas `.tsx` 194 → 230 dan baris TS+TSX ±33.500 → 36.300 (kit, `shared/forms`, `data-table`, tes terpisah di `e2e/`); halaman 60 → 60; form dengan `safeParse` langsung 33 → 6
+(sisanya lewat `useZodForm`: 39); komponen bersama ±35 → 56 (30 `ui` + 19 `kit` + `feedback`); `<Select` 69 → 72, `<Field` 249 → 235; `type="date"` 25 → 27; `<button>` mentah di luar komponen bersama 42 → 33 dan `<input>` mentah 26 → 17 (sisanya kontrol khusus: pemilih berkas,
+kotak centang, akordeon, menu; **target penggantian penuh tidak tercapai**, axe bersih); teks berwarna status **tanpa** token `-text`: ±173 → **0** (145 pemakaian token `-text`); istilah campur "Project"/"Client" di teks JSX ±116 → 0 (pemeriksa otomatis);
+**panggilan API per layar** (termasuk 3–4 panggilan kerangka: branding, izin, langganan, pengumuman): Beranda Portal 10 → 4, Jadwal 10 → 4, Kendala 13 → 4, Pembayaran 11 → 5, Vendor 15 → 6; Detail Proyek Ringkasan 16 → 5, Keuangan 19 → 9, Kendala 16 → 7, tab Vendor 24 → 7;
+pustaka pihak ketiga baru: `@base-ui/react`, `sonner`, `cmdk`, `class-variance-authority`; tes UI: Playwright + axe (sebelumnya tidak ada); Storybook tidak ada (D10); mode gelap belum (D6).
+
+**Bukti target §2:**
+| Target | Hasil |
+|---|---|
+| Keberhasilan tugas ≥ 90% per tugas, waktu dan salah langkah turun, SEQ ≥ 6 | **Tidak terukur.** `uji-kegunaan-lembar.csv` hanya berisi baris judul: tidak ada hasil putaran 1–3 yang tercatat, dan putaran 4 belum dilakukan. Perbandingan "sebelum/sesudah" tidak bisa diklaim. |
+| Rupa modern yang tenang | Dilaksanakan menurut DESIGN.md; penilaian rupa itu subjektif dan keputusan D8, D13, D14, D15 menunggu persetujuan pemilik (ADR-0037). |
+| shadcn/ui + Base UI; WCAG 2.2 AA dengan gerbang otomatis dan manual | Otomatis: axe ketat 0 pelanggaran di 68 halaman × 2 viewport, gerbang CI, tes struktur dan papan ketik. **Manual: belum** (`UJI-MANUAL.md`: pembaca layar, iOS dan Android nyata, target sentuh, banner sesi dukungan z-70). |
+| API melayani layar: satu panggilan, mutasi mengembalikan keadaan terbaru, aksi atomik, galat per field | Tercapai untuk **data layar**: Beranda Portal 1 panggilan (`/projects/me/home`), Detail Proyek 1 (`/overview`), tab Vendor 2; **total** termasuk kerangka 4, 5 dan 7, di atas target "≤ 2/≤ 3/≤ 2" bila kerangka dihitung (dijelaskan di catatan Tahap 3). Mutasi mengembalikan `projectProgress`/butir terbaru, buat proyek dan catat pembayaran atomik, 422 per field. |
+| Satu bahasa Indonesia sesuai glosarium | Tercapai dan dijaga mesin (`check:terms`, tes e2e, CI). Teks yang disimpan API di basis data (riwayat aktivitas lama) dan halaman hukum/FAQ **belum** (lihat catatan Tahap 7). |
+| Tanpa big-bang | Tiap tahap berakhir dengan aplikasi utuh dan tes hijau. |
+| Bundel dan INP tidak lebih buruk dari garis dasar (§7) | **Tidak terpenuhi.** JS gzip seluruh aplikasi 489 → 630 KB; JS first-load naik 19–97 KB per layar (entri 129 → 147 KB; rute WO memuat 9 chunk kecil tambahan: Base UI, form, data-table). LCP lab (HP, CPU 4×, 1,6 Mbps) naik di Beranda WO 2,5 → 3,1 dtk, Klien 2,4 → 3,1, Tenant 2,7 → 3,6; turun di tab Detail Proyek 2,6 → 1,6 dtk; Beranda Portal 2,29 → 2,49 dtk (target 2,5: **margin 12 ms**, di lab, bukan di Android nyata). INP tidak diukur dari skrip. Harga komponen aksesibel dari Base UI; dibatasi dengan anggaran (`perf-budget.json`) supaya tidak naik lagi. |
+
+**Belum dikerjakan, dan tidak bisa oleh mesin** (naskah dan lembar hasil di `UJI-MANUAL.md`): uji papan ketik tujuh alur (K1–K7), pembaca layar pada empat kombinasi, iPhone dan Android kelas menengah nyata (target sentuh, papan ketik layar, banner z-70, jaringan buruk), dan uji kegunaan putaran 4
+(serta pencatatan putaran 1–3 jika memang pernah dilakukan). Kandidat hapus yang dibiarkan ('unsure' di `API-INVENTORY.md`): `GET /clients?all=true`, `GET /projects/me`, `GET /projects/{id}`, `GET /tenants/names`, `GET /tenants/{id}`, `GET /access/roles/{id}`, `GET /auth/me`,
+DELETE/restore vendor proyek dan DELETE dokumen (belum ada UI). Temuan yang tidak diperbaiki: uang di dashboard hanya sebagian di balik `dashboard.revenue.view` (`revenue`, `revenueTrend`, `overdueTermsTotal` terlihat oleh semua pemegang `dashboard.view`); PATCH proyek dengan badan non-objek
+dijawab 400 sebelum 428 (lainnya 404/428 dulu). **Tahap 9 belum boleh disebut selesai** sampai bagian manusia di atas terisi.
 
 ## 6. Estimasi
 

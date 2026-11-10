@@ -6,6 +6,39 @@ Base rules: `.claude/rules/frontend-react.md`. This file adds ElProof-specific s
 convention, since it's the single biggest structural gap found in the pre-integration frontend
 audit (see ADR-0009).
 
+## UI kit and conventions (ADR-0037)
+
+Read this before touching a screen. Layers, from the bottom:
+
+| Layer | Where | Rule |
+|---|---|---|
+| Tokens | `src/theme/theme.css` | Semantic names only (`bg-card`, `text-muted-foreground`, `text-danger-text`, `border-input`). No hex or palette colours in a component; text in a status colour uses the `-text` token (4.5:1). Tenant branding overrides `--brand-navy-*` only. |
+| Primitives | `src/shared/components/kit/` | shadcn copies on **Base UI**. Add one with the shadcn CLI only when a screen needs it; delete what nothing imports. |
+| App components | `src/shared/components/ui/` | `Button`, `Input`, `Field`, `Modal`, `Drawer`, `ConfirmDialog`, `Badge`, `Table`, `IconActionButton`, `TrendBarChart`, `ProofStamp`… The API screens use. Domain-agnostic. |
+| Forms | `src/shared/forms/` | `useZodForm(schema, …)` + `<Field name="…">` + `FormErrorSummary`; types with `z.infer`; a 422's `errors` keys land on the same fields; the first error takes focus. |
+| Lists | `src/shared/data-table/` | `useListState` (page, sort, search, filters in the URL) + `DataTable`. The server sorts, filters and pages (ADR-0035); never load `all=true` to filter in the browser. |
+| Layout | `src/shared/layouts/` | `AppSidebar`/`Sidebar`/`Topbar`, `Breadcrumbs`, ⌘K palette. Sheet, palette dialog, tooltips on the rail, conflict dialog and toaster load on demand. |
+
+**Rules that a test enforces:** wording (`npm run check:terms`), accessibility (axe strict in CI), the entry bundle and per-screen API-call ceilings (`perf-budget.json`),
+and the behaviour in `e2e/tests/*.spec.ts`. Run from `apps/web`:
+
+```bash
+npx tsc -b && npm run check:terms && npm run build && npm run budget   # the fast gates, no browser
+npm run e2e                                                             # snapshots (macOS), axe, behaviour, writes
+npm run e2e:perf && npm run budget:routes                               # per-screen calls and first-load JS
+```
+
+**Words.** One term per concept, Indonesian (`DESIGN.md` §7): Proyek, Klien, Tagihan, Dokumen/bukti, Kendala, Jadwal, Tahapan, Tim. API enum values stay English; show them through
+`shared/lib/labels.ts` (`MILESTONE_STATUS_LABELS.staff[...]`, `evidenceTypeLabel`). An English word that really must stay in a string gets `// ui-terms-ok` and a reason.
+
+**Overlays and focus.** Use `Modal`/`Drawer`/`ConfirmDialog`, never a hand-made fixed div: focus goes in and returns, Escape closes only the top one, background does not scroll.
+Row actions that are only an icon are `IconActionButton` (named, with a tooltip); never a control inside a control (a `<button>` inside a row `<button>`).
+
+**Motion.** Only CSS transitions/animations through Tailwind (`motion-safe:` for the decorative); `theme.css` removes durations under `prefers-reduced-motion`, and an e2e test checks
+it. Do not add JS-driven animation.
+
+**Deleting.** A routine delete is a soft delete with "Urungkan" (`shared/lib/undo-delete.ts`); only a verified payment asks first.
+
 ## State management: Zustand only, one store per module (ADR-0009)
 
 Every domain module gets exactly one store at `modules/<module>/stores/use<Module>Store.ts`,

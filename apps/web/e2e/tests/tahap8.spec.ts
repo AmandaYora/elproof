@@ -57,7 +57,8 @@ test.describe("two sessions on one item", () => {
     await expect(dialog).toBeVisible();
 
     // ...while session B (the API, as another person) saves a change to the same project.
-    const theirs = await page.request.patch(API(`/projects/${id}`), { headers: auth, data: { name: "Uji Konflik, ubahan B" } });
+    const seen = ((await (await page.request.get(API(`/projects/${id}`), { headers: auth })).json()).data as { updatedAt: string }).updatedAt;
+    const theirs = await page.request.patch(API(`/projects/${id}`), { headers: { ...auth, "If-Match": `"${seen}"` }, data: { name: "Uji Konflik, ubahan B" } });
     expect(theirs.status()).toBe(200);
 
     await dialog.getByLabel("Deskripsi / catatan proyek").fill("Catatan dari A");
@@ -84,8 +85,8 @@ test.describe("two sessions on one item", () => {
     const firstRow = page.getByRole("row").filter({ hasText: /^1\./ }).first();
     await expect(firstRow).toBeVisible();
 
-    const listed = (await (await page.request.get(API(`/projects/${id}/milestones`), { headers: auth })).json()).data as Array<{ id: number; targetDate: string }>;
-    const bumped = await page.request.patch(API(`/projects/${id}/milestones/${listed[0].id}`), { headers: auth, data: { targetDate: "2027-06-01" } });
+    const listed = (await (await page.request.get(API(`/projects/${id}/milestones`), { headers: auth })).json()).data as Array<{ id: number; targetDate: string; updatedAt: string }>;
+    const bumped = await page.request.patch(API(`/projects/${id}/milestones/${listed[0].id}`), { headers: { ...auth, "If-Match": `"${listed[0].updatedAt}"` }, data: { targetDate: "2027-06-01" } });
     expect(bumped.status()).toBe(200);
 
     const status = firstRow.getByRole("button", { name: /Belum mulai/ });
@@ -101,7 +102,7 @@ test.describe("two sessions on one item", () => {
     await close();
   });
 
-  test("the API gives every edited item a version and refuses an old one; without it the write goes through", async ({ browser }, info) => {
+  test("the API gives every edited item a version, refuses an old one (409) and a missing one (428)", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
     await visit(page, "/dashboard");
     const { id, auth } = await newProject(page, "Uji Versi");
@@ -116,9 +117,11 @@ test.describe("two sessions on one item", () => {
     const body = await stale.json();
     expect(body.errors._conflict).toEqual(["stale"]);
     expect(body.data.current.description).toBe("satu");
-    // A caller that sends no version still works (transition).
+    // A field edit without a version is refused outright (428) and writes nothing; the state-only call needs none.
     const blind = await page.request.patch(API(`/projects/${id}`), { headers: auth, data: { description: "tiga" } });
-    expect(blind.status()).toBe(200);
+    expect(blind.status()).toBe(428);
+    expect((await blind.json()).errors["If-Match"]).toEqual(["wajib"]);
+    expect(((await (await page.request.get(API(`/projects/${id}`), { headers: auth })).json()).data as { description: string }).description).toBe("satu");
     await close();
   });
 

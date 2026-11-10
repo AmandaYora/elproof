@@ -6,12 +6,13 @@ perubahan visual pertama; setiap tahap harus menunjukkan selisih yang disengaja 
 ## Menjalankan
 
 ```bash
-npm run e2e                 # potret desktop + mobile dan axe (186 tes)
+npm run e2e                 # potret desktop + mobile, axe, tes perilaku dan tes tulis (±240 tes; potret = piksel macOS)
 npm run e2e:perf            # pengukuran garis dasar performa (sendirian: ukuran terganggu bila berbarengan dengan tes lain)
 npm run e2e:update          # perbarui potret (desktop + mobile) setelah perubahan visual yang disengaja
 E2E_REUSE=1 npm run e2e     # pakai tumpukan yang sudah menyala (cepat); mati dengan `npm run e2e:down`
 npm run e2e:stack           # hanya menyalakan tumpukan untuk dipakai manual (sesi login di e2e/.tmp/auth/*.json)
 npm run e2e:typecheck       # tsc untuk folder e2e (tidak ikut `tsc -b` aplikasi)
+npm run budget              # anggaran bundel dari build (perf-budget.json); `npm run budget:routes` juga membaca laporan e2e:perf
 AXE_STRICT=1 npm run e2e -- --project=desktop tests/axe.spec.ts   # gagal bila ada pelanggaran serius/kritis
 ```
 
@@ -33,6 +34,15 @@ membangun biner API (`go build`), membuat basis data sementara `elproof_e2e_pw` 
 | `E2E_WORKERS` | 3 | jumlah worker potret |
 | `E2E_API_WRAPPER` | kosong | awalan perintah untuk API, mis. `faketime -f "@2026-11-09 03:00:00"` untuk membekukan jam server (lihat Determinisme) |
 | `AXE_STRICT` | kosong | `1` = axe gagal pada pelanggaran serius/kritis |
+
+## Empat proyek Playwright
+
+| Proyek | Isi | Di CI |
+|---|---|---|
+| `desktop` / `mobile` | potret halaman emas × keadaan, dan `axe.spec.ts` | hanya axe (`AXE_STRICT=1`); potret tidak, karena pikselnya render macOS |
+| `behavior` | `overlays`, `proof`, `forms`, `overview`, `lists`, `nav`, `terms`, `structure`, `keyboard` | ya |
+| `mutating` | `payment-flow`, `tahap5`, `tahap6`, `tahap8` (menulis data; setelah semua potret, `--no-deps` di CI) | ya |
+| `baseline` | pengukuran performa profil HP (`npm run e2e:perf`), sendirian | ya, lalu `budget:routes` |
 
 ## Isi
 

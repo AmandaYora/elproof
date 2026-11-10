@@ -1,0 +1,158 @@
+name: CI
+
+# The gates of the UI revamp (docs/plan/revamp-ui-shadcn/PLAN.md Tahap 9). deploy.yml only builds the image on main; this runs on
+# every pull request. Screenshot tests are NOT here: their pixels are macOS renders (e2e/README.md), so on Linux they would fail
+# for font reasons, not because of a change. What is gated: Go build/vet/tests incl. the tenant-isolation suite, TypeScript,
+# the wording checker, the bundle budget, axe (strict), the behaviour and write tests, and the per-screen API-call budget.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+  MINIO_VERSION: RELEASE.2025-04-22T22-12-26Z
+
+jobs:
+  api:
+    name: API (build, vet, tests, isolation)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1" --health-interval=5s --health-timeout=5s --health-retries=20
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - name: MinIO (object storage for the upload scenarios)
+        working-directory: .
+        env:
+          MINIO_ROOT_USER: ciaccesskey
+          MINIO_ROOT_PASSWORD: cisecretkey123
+        run: |
+          curl -fsSL "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}" -o /usr/local/bin/minio
+          chmod +x /usr/local/bin/minio
+          mkdir -p "$RUNNER_TEMP/minio"
+          nohup minio server "$RUNNER_TEMP/minio" --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 > "$RUNNER_TEMP/minio.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:9000/minio/health/live && break; sleep 1; done
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l ./internal ./cmd ./tests)"
+          if [ -n "$unformatted" ]; then echo "Not gofmt-formatted:"; echo "$unformatted"; exit 1; fi
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go vet -tags integration ./...
+      - run: go test ./...
+      - name: Tenant isolation and scenario suite (real MySQL and object storage)
+        env:
+          TEST_MYSQL_ADMIN_DSN: root@tcp(127.0.0.1:3306)/
+          TEST_S3_ENDPOINT: 127.0.0.1:9000
+          TEST_S3_ACCESS_KEY: ciaccesskey
+          TEST_S3_SECRET_KEY: cisecretkey123
+        run: go test -tags integration -count=1 ./tests/isolation/
+
+  web:
+    name: Web (types, wording, bundle budget)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+        working-directory: .
+      - name: Type-check and build
+        run: npm run build
+      - name: Wording stays inside the glossary
+        run: npm run check:terms
+      - name: Bundle budget
+        run: npm run budget
+      - name: e2e specs type-check
+        run: npm run e2e:typecheck
+
+  e2e:
+    name: e2e (axe strict, behaviour, writes, call budget)
+    runs-on: ubuntu-latest
+    needs: [] # independent: runs in parallel with the others
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      E2E_MYSQL_ADMIN: root@127.0.0.1:3306
+      E2E_MYSQL_BIN: mysql
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+        working-directory: .
+      - name: Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: MinIO (throwaway object storage the harness starts itself)
+        working-directory: .
+        run: |
+          curl -fsSL "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}" -o /usr/local/bin/minio
+          chmod +x /usr/local/bin/minio
+          minio --version
+      - name: axe, strict (desktop and mobile, 68 pages)
+        env:
+          AXE_STRICT: "1"
+        run: npx playwright test -c e2e/playwright.config.ts --project=desktop --project=mobile e2e/tests/axe.spec.ts
+      - name: Behaviour (menu, forms, lists, overlays, wording)
+        run: npx playwright test -c e2e/playwright.config.ts --project=behavior
+      - name: Writes (payments, conflicts, bulk actions, versions)
+        run: npx playwright test -c e2e/playwright.config.ts --project=mutating --no-deps
+      - name: Per-screen budget (API calls, first-load JS)
+        run: |
+          npm run build
+          npm run e2e:perf
+          npm run budget:routes
+      - name: Keep the reports and failure traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: |
+            apps/web/e2e/reports
+            apps/web/e2e/.tmp/test-results
+          if-no-files-found: ignore
