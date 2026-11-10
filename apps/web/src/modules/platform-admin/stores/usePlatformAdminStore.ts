@@ -95,6 +95,10 @@ export interface RawTransaction {
   tenantId: number;
   type: SubscriptionTransaction["type"];
   amount: number;
+  /** Absent on answers from before vouchers (ADR-0041). */
+  originalAmount?: number;
+  discountAmount?: number;
+  voucherCode?: string | null;
   paymentMethod: string;
   paymentReference: string;
   status: SubscriptionTransaction["status"];
@@ -105,7 +109,23 @@ export interface RawTransaction {
 }
 
 export function toTransaction(raw: RawTransaction): SubscriptionTransaction {
-  return { ...raw, id: String(raw.id), tenantId: String(raw.tenantId) };
+  return {
+    ...raw,
+    id: String(raw.id),
+    tenantId: String(raw.tenantId),
+    originalAmount: raw.originalAmount || raw.amount,
+    discountAmount: raw.discountAmount ?? 0,
+    voucherCode: raw.voucherCode ?? null,
+  };
+}
+
+/** What a voucher code does to one plan's price, as the API answers before paying. Whole rupiah. */
+export interface VoucherQuote {
+  voucherCode: string;
+  planId: number;
+  originalAmount: number;
+  discountAmount: number;
+  finalAmount: number;
 }
 
 interface RawPlatformAdmin {
@@ -160,7 +180,10 @@ interface PlatformAdminState {
   // tenant server-side via the JWT claim, not a request parameter. Returns
   // the created charge (Fase 9) — the subscription activates later, once
   // the gateway's webhook confirms payment, not synchronously here.
-  paySubscription: (planId: string) => Promise<PaymentCharge>;
+  // With a voucher code (already accepted by checkVoucher): the server checks it again and charges the discounted price.
+  paySubscription: (planId: string, voucherCode?: string) => Promise<PaymentCharge>;
+  /** Previews a voucher code on a plan; nothing is reserved. A refused code is a 422 whose message is ready to show. */
+  checkVoucher: (planId: string, voucherCode: string) => Promise<VoucherQuote>;
   fetchPendingCharge: () => Promise<PaymentCharge | null>;
   cancelPendingCharge: () => Promise<void>;
 
@@ -262,9 +285,15 @@ export const usePlatformAdminStore = create<PlatformAdminState>((set, get) => ({
     });
   },
 
-  paySubscription: async (planId) => {
-    const res = await httpClient.post(API.platform.subscriptionsPay, { planId: Number(planId) });
+  paySubscription: async (planId, voucherCode) => {
+    const body = voucherCode ? { planId: Number(planId), voucherCode } : { planId: Number(planId) };
+    const res = await httpClient.post(API.platform.subscriptionsPay, body);
     return res.data.data as PaymentCharge;
+  },
+
+  checkVoucher: async (planId, voucherCode) => {
+    const res = await httpClient.post(API.billing.voucherCheck, { planId: Number(planId), voucherCode });
+    return res.data.data as VoucherQuote;
   },
 
   // Lets the Owner re-view a still-pending charge (e.g. after accidentally

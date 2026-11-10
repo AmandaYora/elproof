@@ -11,7 +11,8 @@ interface ModalProps {
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  /** xl: a wide table of several money columns. */
+  size?: "sm" | "md" | "lg" | "xl";
   /** A save is running: Escape, outside clicks and the close button stop working. */
   busy?: boolean;
   /** Why the last save failed. Shown above the buttons, inside the modal. */
@@ -22,6 +23,7 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps["size"]>, string> = {
   sm: "sm:max-w-md",
   md: "sm:max-w-xl",
   lg: "sm:max-w-3xl",
+  xl: "sm:max-w-5xl",
 };
 
 const FIRST_FIELD = "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled])";

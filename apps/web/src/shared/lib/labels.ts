@@ -79,6 +79,22 @@ export function labelFor<T extends string>(labels: Labels<T>, value: T, audience
   return audience === "client" ? labels.client[value] : labels.staff[value];
 }
 
+/** A voucher's standing today (the API computes it in WIB). Platform Console only. */
+export const VOUCHER_STATE_LABELS: Record<"active" | "inactive" | "scheduled" | "expired" | "exhausted", string> = {
+  active: "Aktif",
+  inactive: "Nonaktif",
+  scheduled: "Terjadwal",
+  expired: "Kedaluwarsa",
+  exhausted: "Habis",
+};
+
+/** One use of a voucher: held while its payment is pending, used once paid, released when the payment did not go through. */
+export const VOUCHER_REDEMPTION_STATUS_LABELS: Record<"reserved" | "used" | "released", string> = {
+  reserved: "Menunggu pembayaran",
+  used: "Terpakai",
+  released: "Dibatalkan",
+};
+
 // ---- Glosarium UI (DESIGN.md §7, D15) --------------------------------------
 // One word per concept in everything a person reads. The database enums stay
 // English; this is only the vocabulary of screens, buttons and messages.

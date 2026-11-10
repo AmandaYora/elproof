@@ -52,7 +52,13 @@ export interface SubscriptionTransaction {
   id: string;
   tenantId: string;
   type: SubscriptionTransactionType;
+  /** What was charged (after a voucher discount). */
   amount: number;
+  /** The plan price before a voucher (equal to amount without one). */
+  originalAmount: number;
+  /** The voucher discount, 0 without one (ADR-0041). */
+  discountAmount: number;
+  voucherCode: string | null;
   paymentMethod: string;
   paymentReference: string;
   createdAt: string;

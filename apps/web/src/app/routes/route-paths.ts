@@ -56,6 +56,7 @@ export const ROUTE_PATHS = {
   platformTenants: "/platform/tenant",
   platformTenantDetail: (id: string, tab = "profil") => `/platform/tenant/${id}/${tab}`,
   platformPlans: "/platform/paket",
+  platformVouchers: "/platform/voucher",
   platformTransactions: "/platform/transaksi",
   platformUsers: "/platform/pengguna",
   platformGatewayConfig: "/platform/pembayaran",
