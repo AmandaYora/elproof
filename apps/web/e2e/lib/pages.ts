@@ -24,7 +24,6 @@ export interface GoldenDialog {
 const P = 1; // the rich project ("Citra & Bima")
 
 export const WO_PAGES: GoldenPage[] = [
-  { id: "login", auth: "anon", route: "/login" },
   { id: "beranda", auth: "owner", route: "/dashboard", fail: ["/api/v1/dashboard"], empty: true },
   { id: "proyek", auth: "owner", route: "/projects", fail: ["/api/v1/projects"], empty: true },
   { id: "proyek-ringkasan", auth: "owner", route: `/projects/${P}/ringkasan`, fail: [`/api/v1/projects/${P}`] },
@@ -91,7 +90,13 @@ export const PLATFORM_DIALOGS: GoldenDialog[] = [
   },
 ];
 
+// The twelve pages before sign-in share the public theme (ADR-0038): Masuk lives here, not with the WO console.
 export const MARKETING_PAGES: GoldenPage[] = [
-  { id: "beranda", auth: "anon", route: "/" },
+  { id: "beranda", auth: "anon", route: "/", fail: ["/api/v1/public/plans"] },
+  { id: "tentang-kami", auth: "anon", route: "/tentang-kami" },
   { id: "faq", auth: "anon", route: "/faq" },
+  { id: "kontak", auth: "anon", route: "/kontak" },
+  { id: "syarat-ketentuan", auth: "anon", route: "/syarat-ketentuan" },
+  { id: "masuk", auth: "anon", route: "/login" },
+  { id: "daftar", auth: "anon", route: "/daftar" },
 ];
