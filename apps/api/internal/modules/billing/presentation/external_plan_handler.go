@@ -141,7 +141,12 @@ func externalErrorCode(kind apperror.Kind) string {
 func writeExternalAppError(w http.ResponseWriter, err error) {
 	status := apperror.HTTPStatus(err)
 	if appErr, ok := apperror.As(err); ok {
-		response.Error(w, status, appErr.Message, map[string]string{"code": externalErrorCode(appErr.Kind)})
+		errs := map[string]string{"code": externalErrorCode(appErr.Kind)}
+		if appErr.Code != "" {
+			// A stable reason next to the generic code, e.g. "voucher_expired".
+			errs["reason"] = appErr.Code
+		}
+		response.Error(w, status, appErr.Message, errs)
 		return
 	}
 	response.Error(w, status, "Terjadi kesalahan pada server", map[string]string{"code": "internal"})

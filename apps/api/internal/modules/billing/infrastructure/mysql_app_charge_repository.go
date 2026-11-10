@@ -19,14 +19,14 @@ func NewMySQLAppChargeRepository(db *sql.DB) *MySQLAppChargeRepository {
 	return &MySQLAppChargeRepository{db: db}
 }
 
-const appChargeColumns = `order_ref, app_id, plan_id, plan_name, plan_price, plan_duration_months,
+const appChargeColumns = `order_ref, app_id, plan_id, plan_name, plan_price, discount_amount, amount, COALESCE(voucher_code, ''), plan_duration_months,
 	status, subscription_until, created_at, paid_at, resolved_at`
 
 func scanAppCharge(scan func(dest ...interface{}) error) (*domain.AppCharge, error) {
 	var c domain.AppCharge
 	var status string
 	var subscriptionUntil, paidAt, resolvedAt sql.NullTime
-	if err := scan(&c.OrderRef, &c.AppID, &c.PlanID, &c.PlanName, &c.PlanPrice, &c.PlanDurationMonths,
+	if err := scan(&c.OrderRef, &c.AppID, &c.PlanID, &c.PlanName, &c.PlanPrice, &c.DiscountAmount, &c.Amount, &c.VoucherCode, &c.PlanDurationMonths,
 		&status, &subscriptionUntil, &c.CreatedAt, &paidAt, &resolvedAt); err != nil {
 		return nil, err
 	}
@@ -49,9 +49,11 @@ func scanAppCharge(scan func(dest ...interface{}) error) (*domain.AppCharge, err
 // charge existing at the gateway with no local trace at all.
 func (r *MySQLAppChargeRepository) Create(ctx context.Context, c *domain.AppCharge) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO subscription_app_charges (order_ref, app_id, plan_id, plan_name, plan_price, plan_duration_months, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		c.OrderRef, c.AppID, c.PlanID, c.PlanName, c.PlanPrice, c.PlanDurationMonths, domain.AppChargePending,
+		`INSERT INTO subscription_app_charges (order_ref, app_id, plan_id, plan_name, plan_price, discount_amount, amount, voucher_code,
+		   plan_duration_months, status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.OrderRef, c.AppID, c.PlanID, c.PlanName, c.PlanPrice, c.DiscountAmount, c.Amount, nullString(c.VoucherCode),
+		c.PlanDurationMonths, domain.AppChargePending,
 	)
 	return err
 }

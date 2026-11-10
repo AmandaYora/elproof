@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"elproof/internal/modules/billing/application"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/shared/response"
 )
@@ -15,7 +16,8 @@ import (
 // can be injected for tests without a database or a real payment.Client
 // (A34).
 type subscriptionCharger interface {
-	StartSubscriptionCharge(ctx context.Context, appID, orderRef string, planID int64, opts paymentcontracts.ChargeOptions) (*paymentcontracts.ChargeResult, error)
+	StartSubscriptionCharge(ctx context.Context, appID, orderRef string, planID int64, voucherCode string, opts paymentcontracts.ChargeOptions) (*application.SubscriptionCharge, error)
+	QuoteVoucher(ctx context.Context, appID string, planID int64, voucherCode string) (*application.VoucherQuote, error)
 }
 
 // ExternalSubscriptionHandler serves POST /api/v1/external/subscriptions/charges
@@ -40,6 +42,8 @@ type externalSubscriptionChargeBody struct {
 	CustomerName  string `json:"customerName"`
 	CustomerEmail string `json:"customerEmail"`
 	CustomerPhone string `json:"customerPhone"`
+	// VoucherCode is optional: the discount is computed here, never by the caller.
+	VoucherCode string `json:"voucherCode"`
 }
 
 // externalSubscriptionChargeResponse mirrors payment's own
@@ -58,13 +62,20 @@ type externalSubscriptionChargeResponse struct {
 	FeeAmount   int64  `json:"feeAmount"`
 	ExpiresAt   string `json:"expiresAt"`
 	Status      string `json:"status"`
+	// OriginalAmount is the plan price, DiscountAmount the voucher discount
+	// (0 without one); the amount charged is OriginalAmount - DiscountAmount.
+	OriginalAmount int64  `json:"originalAmount"`
+	DiscountAmount int64  `json:"discountAmount"`
+	VoucherCode    string `json:"voucherCode,omitempty"`
 }
 
-func toExternalSubscriptionChargeResponse(c *paymentcontracts.ChargeResult) externalSubscriptionChargeResponse {
+func toExternalSubscriptionChargeResponse(s *application.SubscriptionCharge) externalSubscriptionChargeResponse {
+	c := s.Charge
 	return externalSubscriptionChargeResponse{
 		OrderRef: c.OrderRef, ProviderRef: c.ProviderRef, Channel: c.Channel,
 		QRImageURL: c.QRImageURL, PayCode: c.PayCode, CheckoutURL: c.CheckoutURL,
 		Amount: c.Amount, FeeAmount: c.FeeAmount, ExpiresAt: c.ExpiresAt.Format(time.RFC3339), Status: c.Status,
+		OriginalAmount: s.OriginalAmount, DiscountAmount: s.DiscountAmount, VoucherCode: s.VoucherCode,
 	}
 }
 
@@ -95,7 +106,7 @@ func (h *ExternalSubscriptionHandler) CreateCharge(w http.ResponseWriter, r *htt
 	// from the catalog inside SubscriptionService, so a caller can never
 	// determine what they pay for a plan.
 
-	result, err := h.subs.StartSubscriptionCharge(r.Context(), appID, body.OrderRef, body.PlanID, paymentcontracts.ChargeOptions{
+	result, err := h.subs.StartSubscriptionCharge(r.Context(), appID, body.OrderRef, body.PlanID, body.VoucherCode, paymentcontracts.ChargeOptions{
 		CustomerName: body.CustomerName, CustomerEmail: body.CustomerEmail, CustomerPhone: body.CustomerPhone,
 	})
 	if err != nil {
@@ -107,4 +118,34 @@ func (h *ExternalSubscriptionHandler) CreateCharge(w http.ResponseWriter, r *htt
 		return
 	}
 	response.Created(w, "ok", toExternalSubscriptionChargeResponse(result))
+}
+
+// VoucherCheck is POST /api/v1/external/subscriptions/voucher-check: the
+// calling App previews what a voucher code does to one of its own plans,
+// before creating the charge. Nothing is reserved; the charge checks again.
+// A code of another App answers exactly like a code that does not exist.
+func (h *ExternalSubscriptionHandler) VoucherCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeExternalError(w, http.StatusMethodNotAllowed, "bad_request", "Metode HTTP tidak diizinkan untuk endpoint ini")
+		return
+	}
+	appID, ok := requireActiveApp(w, r, h.apps)
+	if !ok {
+		return
+	}
+	var body voucherCheckBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeExternalError(w, http.StatusBadRequest, "bad_request", "Body permintaan tidak valid")
+		return
+	}
+	if body.PlanID == 0 || body.VoucherCode == "" {
+		writeExternalError(w, http.StatusBadRequest, "bad_request", "planId dan voucherCode wajib diisi")
+		return
+	}
+	q, err := h.subs.QuoteVoucher(r.Context(), appID, body.PlanID, body.VoucherCode)
+	if err != nil {
+		writeExternalAppError(w, err)
+		return
+	}
+	response.OK(w, "Voucher dapat dipakai", toQuoteResponse(*q))
 }

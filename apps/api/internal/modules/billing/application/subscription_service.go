@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"elproof/internal/modules/billing/domain"
@@ -30,13 +31,54 @@ type PlanCatalog interface {
 }
 
 type SubscriptionService struct {
-	plans   PlanCatalog
-	charges AppChargeWriter
-	payment paymentcontracts.Client
+	plans    PlanCatalog
+	charges  AppChargeWriter
+	payment  paymentcontracts.Client
+	vouchers VoucherReserver
+}
+
+// VoucherReserver is the slice of VoucherService a subscription charge needs.
+type VoucherReserver interface {
+	Quote(ctx context.Context, code string, plan *domain.Plan, c domain.Customer) (*VoucherQuote, error)
+	Reserve(ctx context.Context, code string, plan *domain.Plan, c domain.Customer, orderRef string) (*Reservation, error)
+	Cancel(ctx context.Context, r *Reservation) error
+}
+
+// SetVouchers wires the voucher service (same module).
+func (s *SubscriptionService) SetVouchers(v VoucherReserver) { s.vouchers = v }
+
+// appCustomer: the subscriber of an App charge is the App itself — the
+// ledger (subscription_app_charges) and the subscription period
+// (CurrentUntilForApp) are keyed on it, and the charge contract carries no
+// other required identity (customerEmail is optional).
+func appCustomer(appID string) domain.Customer {
+	return domain.Customer{Type: domain.CustomerApp, Ref: appID}
+}
+
+// QuoteVoucher previews voucherCode on the App's plan without reserving it
+// (POST /external/subscriptions/voucher-check).
+func (s *SubscriptionService) QuoteVoucher(ctx context.Context, appID string, planID int64, voucherCode string) (*VoucherQuote, error) {
+	if appID == "" || planID == 0 {
+		return nil, apperror.Validation("planId wajib diisi", nil)
+	}
+	plan, err := s.plans.GetForApp(ctx, appID, planID)
+	if err != nil {
+		return nil, err
+	}
+	return s.vouchers.Quote(ctx, voucherCode, plan, appCustomer(appID))
 }
 
 func NewSubscriptionService(plans PlanCatalog, charges AppChargeWriter, payment paymentcontracts.Client) *SubscriptionService {
 	return &SubscriptionService{plans: plans, charges: charges, payment: payment}
+}
+
+// SubscriptionCharge is a started subscription charge and what the voucher
+// (if any) took off the plan price. Charge.Amount is the amount charged.
+type SubscriptionCharge struct {
+	Charge         *paymentcontracts.ChargeResult
+	OriginalAmount int64
+	DiscountAmount int64
+	VoucherCode    string
 }
 
 // StartSubscriptionCharge is the business logic behind
@@ -51,7 +93,13 @@ func NewSubscriptionService(plans PlanCatalog, charges AppChargeWriter, payment 
 // leaves a ghost row the reconciler can resolve via a 404 from
 // CheckStatusForApp, and deletes that intent again if the charge call
 // itself fails so orderRef stays retryable.
-func (s *SubscriptionService) StartSubscriptionCharge(ctx context.Context, appID, orderRef string, planID int64, opts paymentcontracts.ChargeOptions) (*paymentcontracts.ChargeResult, error) {
+//
+// With a voucherCode, one use of the voucher is reserved first (under a row
+// lock, so quota and once-per-customer hold under concurrent charges) and the
+// discounted amount is what is written and charged. The reservation is
+// deleted again whenever the charge does not come to exist; the reconciler
+// settles it (used / released) with the charge.
+func (s *SubscriptionService) StartSubscriptionCharge(ctx context.Context, appID, orderRef string, planID int64, voucherCode string, opts paymentcontracts.ChargeOptions) (*SubscriptionCharge, error) {
 	if appID == "" || orderRef == "" || planID == 0 {
 		return nil, apperror.Validation("orderRef dan planId wajib diisi", nil)
 	}
@@ -61,27 +109,53 @@ func (s *SubscriptionService) StartSubscriptionCharge(ctx context.Context, appID
 		return nil, err
 	}
 
+	out := &SubscriptionCharge{OriginalAmount: plan.Price}
+	amount := plan.Price
+	var reservation *Reservation
+	if strings.TrimSpace(voucherCode) != "" {
+		if s.vouchers == nil {
+			return nil, apperror.Validation("Voucher tidak tersedia", map[string][]string{"voucherCode": {"Voucher tidak tersedia"}})
+		}
+		if reservation, err = s.vouchers.Reserve(ctx, voucherCode, plan, appCustomer(appID), orderRef); err != nil {
+			return nil, err
+		}
+		amount = reservation.FinalAmount
+		out.DiscountAmount = reservation.DiscountAmount
+		out.VoucherCode = reservation.Code
+	}
+	cancelReservation := func() {
+		if reservation != nil {
+			_ = s.vouchers.Cancel(ctx, reservation) // best effort: ReleaseStale is the safety net
+		}
+	}
+
 	if err := s.charges.Create(ctx, &domain.AppCharge{
 		OrderRef:           orderRef,
 		AppID:              appID,
 		PlanID:             plan.ID,
 		PlanName:           plan.Name,
 		PlanPrice:          plan.Price,
+		DiscountAmount:     out.DiscountAmount,
+		Amount:             amount,
+		VoucherCode:        out.VoucherCode,
 		PlanDurationMonths: plan.DurationMonths,
 	}); err != nil {
+		cancelReservation()
 		return nil, err
 	}
 
-	result, err := s.payment.CreateChannelCharge(ctx, appID, "", orderRef, plan.Price, defaultSubscriptionChannel, opts)
+	result, err := s.payment.CreateChannelCharge(ctx, appID, "", orderRef, amount, defaultSubscriptionChannel, opts)
 	if err != nil {
 		// Best-effort cleanup: if this Delete itself fails, the intent row
 		// becomes a ghost the reconciler will still resolve (CheckStatusForApp
 		// answers 404 for an order_ref the gateway never created, A20) — not
 		// fatal to the caller, who already has the real error to report.
 		_ = s.charges.Delete(ctx, orderRef)
+		cancelReservation()
 		return nil, err
 	}
-	return result, nil
+	out.Charge = result
+	return out, nil
 }
 
 // ComputeUntil stacks a renewal on top of remaining time rather than

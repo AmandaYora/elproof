@@ -479,6 +479,13 @@ type activateSubscriptionBody struct {
 	PlanID int64 `json:"planId"`
 }
 
+// payBody is POST /subscriptions/pay: the plan and an optional voucher code
+// (ADR-0041; preview it first with POST /subscriptions/voucher-check).
+type payBody struct {
+	PlanID      int64  `json:"planId"`
+	VoucherCode string `json:"voucherCode"`
+}
+
 type manualActivationBody struct {
 	PlanID         int64  `json:"planId"`
 	Reason         string `json:"reason"`
@@ -518,12 +525,12 @@ func (h *TenantHandler) Pay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body activateSubscriptionBody
+	var body payBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
 		return
 	}
-	charge, err := h.tenants.Pay(r.Context(), tenantID, body.PlanID)
+	charge, err := h.tenants.Pay(r.Context(), tenantID, body.PlanID, body.VoucherCode)
 	if err != nil {
 		writeAppError(w, err)
 		return

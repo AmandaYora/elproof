@@ -40,9 +40,18 @@ type TenantDirectory interface {
 const maxSearchTenants = 1000
 
 type TransactionService struct {
-	repo    TransactionRepository
-	tenants TenantDirectory
+	repo     TransactionRepository
+	tenants  TenantDirectory
+	vouchers VoucherSettler
 }
+
+// VoucherSettler records how a charge that used a voucher ended (VoucherService).
+type VoucherSettler interface {
+	Settle(ctx context.Context, orderRef string, paid bool) error
+}
+
+// SetVouchers wires the voucher ledger (same module, built after this service).
+func (s *TransactionService) SetVouchers(v VoucherSettler) { s.vouchers = v }
 
 // SetTenants completes the two-phase wiring with `platform` (cmd/server).
 func (s *TransactionService) SetTenants(d TenantDirectory) { s.tenants = d }
@@ -187,9 +196,14 @@ func (s *TransactionService) PaidSince(ctx context.Context, since time.Time) ([]
 }
 
 type RecordTransactionInput struct {
-	TenantID         int64
-	Type             domain.TransactionType
-	Amount           int64
+	TenantID int64
+	Type     domain.TransactionType
+	Amount   int64
+	// OriginalAmount and DiscountAmount describe a voucher discount; without
+	// one OriginalAmount is left 0 and recorded as Amount.
+	OriginalAmount   int64
+	DiscountAmount   int64
+	VoucherCode      string
 	PaymentMethod    string
 	PaymentReference string
 	Status           domain.TransactionStatus
@@ -203,9 +217,15 @@ func (s *TransactionService) RecordTransaction(ctx context.Context, input Record
 		TenantID:         input.TenantID,
 		Type:             input.Type,
 		Amount:           input.Amount,
+		OriginalAmount:   input.OriginalAmount,
+		DiscountAmount:   input.DiscountAmount,
+		VoucherCode:      input.VoucherCode,
 		PaymentMethod:    input.PaymentMethod,
 		PaymentReference: input.PaymentReference,
 		Status:           input.Status,
+	}
+	if tx.OriginalAmount == 0 {
+		tx.OriginalAmount = tx.Amount + tx.DiscountAmount
 	}
 	if input.Status == domain.StatusPaid || input.Status == domain.StatusGranted {
 		now := time.Now()
@@ -226,5 +246,18 @@ func (s *TransactionService) UpdateStatus(ctx context.Context, paymentReference 
 		now := time.Now()
 		paidAt = &now
 	}
-	return s.repo.UpdateStatusByReference(ctx, paymentReference, status, paidAt)
+	if err := s.repo.UpdateStatusByReference(ctx, paymentReference, status, paidAt); err != nil {
+		return err
+	}
+	// A voucher use counts while its charge is pending: paid makes it final,
+	// expired or cancelled gives it back to the quota and to the customer.
+	if s.vouchers != nil {
+		switch status {
+		case domain.StatusPaid:
+			return s.vouchers.Settle(ctx, paymentReference, true)
+		case domain.StatusExpired, domain.StatusCancelled:
+			return s.vouchers.Settle(ctx, paymentReference, false)
+		}
+	}
+	return nil
 }

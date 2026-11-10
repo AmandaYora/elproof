@@ -13,6 +13,7 @@ func TestStaffAllowedWhenRestricted(t *testing.T) {
 		{http.MethodGet, "/api/v1/plans"},
 		{http.MethodGet, "/api/v1/subscriptions/pending-charge"},
 		{http.MethodPost, "/api/v1/subscriptions/pay"},
+		{http.MethodPost, "/api/v1/subscriptions/voucher-check"},
 		{http.MethodPost, "/api/v1/subscriptions/pending-charge/cancel"},
 		{http.MethodGet, "/api/v1/vendors/export"},
 	}

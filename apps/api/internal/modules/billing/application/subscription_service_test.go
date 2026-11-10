@@ -108,7 +108,7 @@ func TestSubCharge_PaketMilikAppLainJadi422(t *testing.T) {
 			payment := &stubPaymentClient{result: &paymentcontracts.ChargeResult{OrderRef: "ORD-1"}}
 			s := NewSubscriptionService(plans, charges, payment)
 
-			_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", tc.planID, paymentcontracts.ChargeOptions{})
+			_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", tc.planID, "", paymentcontracts.ChargeOptions{})
 
 			if apperror.HTTPStatus(err) != 422 {
 				t.Fatalf("galat = %v (status %d), want 422 — paket milik App lain dijawab sama dengan paket yang tidak ada", err, apperror.HTTPStatus(err))
@@ -126,7 +126,7 @@ func TestSubCharge_PaketMilikAppLainJadi422(t *testing.T) {
 func TestSubCharge_PaketTanpaAppIdTidakLolos(t *testing.T) {
 	plans := catalogWith(&domain.Plan{ID: 1, AppID: "app_x", Price: 1})
 	s := NewSubscriptionService(plans, &stubAppChargeWriter{}, &stubPaymentClient{})
-	if _, err := s.StartSubscriptionCharge(context.Background(), "", "ORD-1", 1, paymentcontracts.ChargeOptions{}); err == nil {
+	if _, err := s.StartSubscriptionCharge(context.Background(), "", "ORD-1", 1, "", paymentcontracts.ChargeOptions{}); err == nil {
 		t.Fatal("appId kosong harus ditolak")
 	}
 }
@@ -160,7 +160,7 @@ func TestSubCharge_NominalDariKatalogBukanBody(t *testing.T) {
 	// Body/caller tidak pernah punya kesempatan mengirim amount sendiri —
 	// signature StartSubscriptionCharge tidak menerima parameter amount
 	// sama sekali (A18); nilainya HARUS berasal dari katalog (GetForApp).
-	_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, paymentcontracts.ChargeOptions{})
+	_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, "", paymentcontracts.ChargeOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestSubCharge_UrutanIntentSebelumCharge(t *testing.T) {
 	}
 	s := NewSubscriptionService(plans, charges, payment)
 
-	if _, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, paymentcontracts.ChargeOptions{}); err != nil {
+	if _, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, "", paymentcontracts.ChargeOptions{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !chargeCalledAfterIntentWritten {
@@ -195,7 +195,7 @@ func TestSubCharge_ChargeGagalMenghapusIntent(t *testing.T) {
 	payment := &stubPaymentClient{err: errors.New("gateway down")}
 	s := NewSubscriptionService(plans, charges, payment)
 
-	_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, paymentcontracts.ChargeOptions{})
+	_, err := s.StartSubscriptionCharge(context.Background(), "app_x", "ORD-1", 1, "", paymentcontracts.ChargeOptions{})
 
 	if err == nil {
 		t.Fatal("galat dari payment.Client harus diteruskan")

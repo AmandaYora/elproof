@@ -23,10 +23,15 @@ func NewTransactionHandler(transactions *application.TransactionService) *Transa
 }
 
 type transactionResponse struct {
-	ID               int64   `json:"id"`
-	TenantID         int64   `json:"tenantId"`
-	Type             string  `json:"type"`
-	Amount           int64   `json:"amount"`
+	ID       int64  `json:"id"`
+	TenantID int64  `json:"tenantId"`
+	Type     string `json:"type"`
+	Amount   int64  `json:"amount"`
+	// OriginalAmount is the price before a voucher discount DiscountAmount
+	// (equal to Amount and 0 without a voucher, ADR-0041).
+	OriginalAmount   int64   `json:"originalAmount"`
+	DiscountAmount   int64   `json:"discountAmount"`
+	VoucherCode      *string `json:"voucherCode"`
 	PaymentMethod    string  `json:"paymentMethod"`
 	PaymentReference string  `json:"paymentReference"`
 	Status           string  `json:"status"`
@@ -51,6 +56,7 @@ func toTransactionResponse(t domain.Transaction) transactionResponse {
 	}
 	return transactionResponse{
 		ID: t.ID, TenantID: t.TenantID, Type: string(t.Type), Amount: t.Amount,
+		OriginalAmount: t.OriginalAmount, DiscountAmount: t.DiscountAmount, VoucherCode: optString(t.VoucherCode),
 		PaymentMethod: t.PaymentMethod, PaymentReference: t.PaymentReference, Status: string(t.Status),
 		CreatedAt: t.CreatedAt.In(wib).Format(timeLayout), PaidAt: paidAt,
 	}

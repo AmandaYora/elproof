@@ -19,7 +19,7 @@ const (
 // (FLOW-IDEAL.md §1.3), enforced once here for every module's routes:
 //
 //   - every role may read (GET/HEAD);
-//   - Billing may manage plans, plan↔App mapping, trial caps and manual
+//   - Billing may manage plans, vouchers, trial caps and manual
 //     activation;
 //   - Support may register/edit tenants and reset an Owner's credential;
 //   - only Super Admin may freeze tenants, manage admins, change the payment
@@ -102,8 +102,8 @@ func platformWriteAction(method, path string) string {
 	}
 	s = s[2:]
 	switch {
-	case s[0] == "plans", s[0] == "trial-limits":
-		return "plans" // pricing & trial caps are Billing's job
+	case s[0] == "plans", s[0] == "trial-limits", s[0] == "vouchers":
+		return "plans" // pricing, vouchers & trial caps are Billing's job
 	case s[0] == "tenants" && len(s) == 1 && method == http.MethodPost:
 		return "tenant-manage" // register a tenant
 	case s[0] == "tenants" && len(s) == 2 && isID(s[1]) && method == http.MethodPatch:

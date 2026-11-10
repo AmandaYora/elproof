@@ -223,6 +223,11 @@ func (h *PlanHandler) toggleActive(w http.ResponseWriter, r *http.Request, id in
 // registry lookup ignores case, so an ID in any other case is refused here:
 // the stored app_id is always byte-identical to the registry's.
 func (h *PlanHandler) requireKnownApp(w http.ResponseWriter, r *http.Request, appID string) bool {
+	return requireKnownApp(w, r, h.apps, appID)
+}
+
+// requireKnownApp is shared by plans and vouchers (both name the App they belong to).
+func requireKnownApp(w http.ResponseWriter, r *http.Request, apps paymentcontracts.AppRegistry, appID string) bool {
 	if appID == "" || appID == application.TenantPlansApp {
 		return true
 	}
@@ -231,7 +236,7 @@ func (h *PlanHandler) requireKnownApp(w http.ResponseWriter, r *http.Request, ap
 		writeAppError(w, unknown)
 		return false
 	}
-	exists, err := h.apps.AppExists(r.Context(), appID)
+	exists, err := apps.AppExists(r.Context(), appID)
 	if err != nil {
 		writeAppError(w, err)
 		return false
