@@ -116,6 +116,14 @@ test("Voucher: admin creates an ElProof 10% voucher in the form, and an empty co
   const saved = (await (await page.request.get(API(`/vouchers?search=${code}`), { headers: await auth(page) })).json()).data as Array<Record<string, unknown>>;
   expect(saved).toHaveLength(1);
   expect(saved[0]).toMatchObject({ code, appId: ELPROOF, planId: null, discountType: "percent", discountValue: 10, maxDiscount: 50000, quota: null, isActive: true });
+
+  // Edit through the form: the save carries If-Match (a cross-origin preflight must allow it, T-20261110-17.2).
+  await row.getByRole("button", { name: `Ubah ${code}` }).click();
+  const edit = page.getByRole("dialog", { name: "Ubah Voucher" });
+  await edit.getByRole("spinbutton", { name: /^Kuota total/ }).fill("100");
+  await edit.getByRole("button", { name: "Simpan perubahan" }).click();
+  await expect(edit).toBeHidden();
+  await expect(row).toContainText("0 / 100");
   await close();
 });
 
@@ -195,7 +203,7 @@ test("Voucher: a refused code says why in Indonesian, under the field, and the p
     [uniqueCode("E2ENONE"), /Kode voucher tidak ditemukan/],
     [expired.code, /Voucher ini sudah kedaluwarsa/],
     [inactive.code, /Voucher ini sudah tidak berlaku/],
-    [wrongPlan.code, new RegExp(`Voucher ini hanya berlaku untuk paket ${otherName}`)],
+    [wrongPlan.code, new RegExp(`Voucher ini hanya berlaku untuk ${otherName}`)],
     [exhausted.code, /Kuota voucher ini sudah habis/],
   ];
   for (const [code, message] of cases) {

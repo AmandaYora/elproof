@@ -329,6 +329,9 @@ const (
 	VoucherTooLarge    = "voucher_too_large"
 )
 
+// nextStep ends a refusal the customer cannot fix by retyping: what to do instead.
+const nextStep = " Hapus kode ini untuk membayar harga normal, atau pakai kode lain."
+
 func voucherRefusal(reason, message string) error {
 	return apperror.Validation(message, map[string][]string{"voucherCode": {message}}).WithCode(reason)
 }
@@ -353,26 +356,26 @@ func (s *VoucherService) check(v *domain.Voucher, plan *domain.Plan, customerUse
 	today := s.Today()
 	switch {
 	case !v.IsActive:
-		return nil, voucherRefusal(VoucherInactive, "Voucher ini sudah tidak berlaku.")
+		return nil, voucherRefusal(VoucherInactive, "Voucher ini sudah tidak berlaku."+nextStep)
 	case v.ValidFrom != "" && today < v.ValidFrom:
 		return nil, voucherRefusal(VoucherNotStarted, "Voucher ini baru bisa dipakai mulai "+formatDay(v.ValidFrom)+".")
 	case v.ValidUntil != "" && today > v.ValidUntil:
-		return nil, voucherRefusal(VoucherExpired, "Voucher ini sudah kedaluwarsa (berlaku sampai "+formatDay(v.ValidUntil)+").")
+		return nil, voucherRefusal(VoucherExpired, "Voucher ini sudah kedaluwarsa (berlaku sampai "+formatDay(v.ValidUntil)+")."+nextStep)
 	case v.PlanID != nil && *v.PlanID != plan.ID:
 		name := v.PlanName
 		if name == "" {
 			return nil, voucherRefusal(VoucherWrongPlan, "Voucher ini tidak berlaku untuk paket yang dipilih.")
 		}
-		return nil, voucherRefusal(VoucherWrongPlan, "Voucher ini hanya berlaku untuk paket "+name+".")
+		return nil, voucherRefusal(VoucherWrongPlan, "Voucher ini hanya berlaku untuk "+name+"."+nextStep)
 	case v.OncePerCustomer && customerUses > 0:
-		return nil, voucherRefusal(VoucherAlreadyUsed, "Voucher ini sudah pernah Anda pakai. Satu pelanggan hanya boleh memakainya sekali.")
+		return nil, voucherRefusal(VoucherAlreadyUsed, "Voucher ini sudah pernah Anda pakai. Satu pelanggan hanya boleh memakainya sekali."+nextStep)
 	case v.Quota != nil && v.UsedCount+v.ReservedCount >= *v.Quota:
-		return nil, voucherRefusal(VoucherExhausted, "Kuota voucher ini sudah habis.")
+		return nil, voucherRefusal(VoucherExhausted, "Kuota voucher ini sudah habis."+nextStep)
 	}
 	discount := v.DiscountFor(plan.Price)
 	if discount >= plan.Price {
 		// Never Rp0 (owner's decision): a code that would take the whole price is refused.
-		return nil, voucherRefusal(VoucherTooLarge, "Potongan voucher ini melebihi harga paket, jadi tidak bisa dipakai untuk paket ini.")
+		return nil, voucherRefusal(VoucherTooLarge, "Potongan voucher ini melebihi harga paket, jadi tidak bisa dipakai untuk paket ini."+nextStep)
 	}
 	return &VoucherQuote{Code: v.Code, PlanID: plan.ID, OriginalAmount: plan.Price, DiscountAmount: discount, FinalAmount: plan.Price - discount}, nil
 }
