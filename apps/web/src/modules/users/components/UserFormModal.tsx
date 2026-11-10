@@ -52,17 +52,17 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
       if (isEditing) await onSubmitEdit(parsed);
       else await onSubmitCreate(parsed);
     },
-    { root: () => formRef.current, fallback: isEditing ? "Perubahan belum tersimpan. Periksa koneksi lalu coba lagi." : "Undangan belum dibuat. Periksa koneksi lalu coba lagi." },
+    { root: () => formRef.current, fallback: isEditing ? "Perubahan belum tersimpan. Periksa koneksi Anda, lalu coba lagi." : "Undangan belum dibuat. Periksa koneksi Anda, lalu coba lagi." },
   );
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={isEditing ? "Ubah Pengguna" : "Undang Pengguna"}
+      title={isEditing ? "Ubah anggota tim" : "Undang anggota tim"}
       description={
         isEditing
-          ? `Data staf ${businessName}.`
+          ? `Data anggota tim ${businessName}.`
           : `Orang ini menerima link undangan dan masuk ke ${businessName} dengan akun Google-nya.`
       }
       busy={form.submitting}
@@ -80,7 +80,7 @@ export function UserFormModal({ open, onClose, initialUser, onSubmitCreate, onSu
       <form id="user-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
       <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Lengkap" required name="name" error={errors.name}>
+        <Field label="Nama lengkap" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Anisa Putri" />
         </Field>
         <Field label="Peran" required name="roleId" error={errors.roleId} hint="Izin tiap peran diatur di Pengaturan → Peran & Akses.">

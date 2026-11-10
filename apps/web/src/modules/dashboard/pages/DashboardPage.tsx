@@ -130,17 +130,17 @@ function FullDashboard() {
           <AttentionQueue items={items} counts={counts} />
         </div>
         <div className="flex flex-col gap-6">
-          <DueList title="Acara 14 hari ke depan" subtitle="Hitung mundur per project." rows={events} empty="Tidak ada acara dalam 14 hari ke depan." />
-          <DueList title="Tugas minggu ini" subtitle="Timeline project yang jatuh tempo 7 hari ke depan." rows={tasks} empty="Tidak ada timeline yang jatuh tempo minggu ini." />
+          <DueList title="Acara 14 hari ke depan" subtitle="Hitung mundur per proyek." rows={events} empty="Tidak ada acara dalam 14 hari ke depan." />
+          <DueList title="Tugas minggu ini" subtitle="Tahapan proyek yang jatuh tempo 7 hari ke depan." rows={tasks} empty="Tidak ada tahapan yang jatuh tempo minggu ini." />
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DueList title="Pembayaran masuk 30 hari ke depan" subtitle="Termin klien yang belum lunas." rows={payments} empty="Belum ada termin jatuh tempo dalam 30 hari. Atur jadwal termin di tab Keuangan project." />
+          <DueList title="Pembayaran masuk 30 hari ke depan" subtitle="Termin klien yang belum lunas." rows={payments} empty="Belum ada termin jatuh tempo dalam 30 hari. Atur jadwal termin di tab Keuangan proyek." />
         </div>
         <section aria-labelledby="stage-heading" className="rounded-lg border border-border bg-surface px-5 py-4">
-          <h2 id="stage-heading" className="text-[15px] font-semibold text-text-primary">Project per tahap</h2>
+          <h2 id="stage-heading" className="text-[15px] font-semibold text-text-primary">Proyek per tahap</h2>
           <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
             {[
               ["Draf", stage.draft],
@@ -154,7 +154,7 @@ function FullDashboard() {
             ))}
           </dl>
           <Link to={ROUTE_PATHS.projects} className="mt-3 inline-block text-[13px] font-medium text-navy-900 underline-offset-2 hover:underline">
-            Lihat semua project
+            Lihat semua proyek
           </Link>
         </section>
       </div>

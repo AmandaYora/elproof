@@ -23,11 +23,11 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 // The one step each status offers next (FLOW-IDEAL 2.4). Moving through the
 // project's life uses these buttons, not a free choice of status.
 const LIFECYCLE_ACTION: Record<ProjectStatus, { action: ProjectStatusAction; label: string; done: string; primary: boolean }> = {
-  Draft: { action: "start_preparation", label: "Mulai persiapan", done: "Project masuk tahap persiapan", primary: true },
-  Preparation: { action: "mark_ready", label: "Tandai siap", done: "Project ditandai siap", primary: true },
-  Ready: { action: "complete", label: "Selesaikan project", done: "Project diselesaikan", primary: true },
-  Completed: { action: "reopen", label: "Buka kembali", done: "Project dibuka kembali", primary: false },
-  Cancelled: { action: "reopen", label: "Buka kembali", done: "Project dibuka kembali", primary: false },
+  Draft: { action: "start_preparation", label: "Mulai persiapan", done: "Proyek masuk tahap persiapan", primary: true },
+  Preparation: { action: "mark_ready", label: "Tandai siap", done: "Proyek ditandai siap", primary: true },
+  Ready: { action: "complete", label: "Selesaikan proyek", done: "Proyek diselesaikan", primary: true },
+  Completed: { action: "reopen", label: "Buka kembali", done: "Proyek dibuka kembali", primary: false },
+  Cancelled: { action: "reopen", label: "Buka kembali", done: "Proyek dibuka kembali", primary: false },
 };
 
 export function ProjectHeaderCard({ projectId }: { projectId: string }) {
@@ -65,7 +65,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const closingToken = useRef(0);
 
   if (!project) {
-    return <div className="text-sm text-text-secondary">Project tidak ditemukan.</div>;
+    return <div className="text-sm text-text-secondary">Proyek tidak ditemukan.</div>;
   }
 
   const progress = project.progress;
@@ -87,7 +87,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   async function handleEdit(values: ProjectFormValues) {
     await updateProject(projectId, values);
     setEditOpen(false);
-    toast.success("Perubahan project disimpan");
+    toast.success("Perubahan proyek disimpan");
   }
 
   async function handleTransition(action: ProjectStatusAction, successMessage: string) {
@@ -97,7 +97,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
       await transitionProject(projectId, action);
       toast.success(successMessage);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Status project belum berubah. Coba lagi."));
+      setActionError(getApiErrorMessage(err, "Status proyek belum berubah. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setTransitioning(false);
     }
@@ -129,9 +129,9 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     try {
       await transitionProject(projectId, "complete");
       setClosing(null);
-      toast.success("Project diselesaikan");
+      toast.success("Proyek diselesaikan");
     } catch (err) {
-      setClosing((c) => (c ? { ...c, error: getApiErrorMessage(err, "Project belum bisa diselesaikan. Coba lagi.") } : c));
+      setClosing((c) => (c ? { ...c, error: getApiErrorMessage(err, "Proyek belum bisa diselesaikan. Periksa koneksi Anda, lalu coba lagi.") } : c));
     } finally {
       setCompleting(false);
     }
@@ -143,7 +143,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
       await cancelProject(projectId);
       setConfirmingCancel(false);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal membatalkan project"));
+      setActionError(getApiErrorMessage(err, "Proyek belum bisa dibatalkan. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -152,14 +152,14 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     try {
       await toggleArchiveProject(projectId);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah status arsip project"));
+      setActionError(getApiErrorMessage(err, "Status arsip proyek belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
   async function handleDuplicate(values: ProjectFormValues) {
     const duplicated = await duplicateProject(projectId, values);
     setDuplicateOpen(false);
-    toast.success("Project diduplikat");
+    toast.success("Proyek diduplikat");
     navigate(ROUTE_PATHS.projectDetail(duplicated.id));
   }
 
@@ -170,7 +170,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
       await deleteProject(projectId);
       navigate(ROUTE_PATHS.projects);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menghapus project secara permanen"));
+      setActionError(getApiErrorMessage(err, "Proyek belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
       setIsDeleting(false);
     }
   }
@@ -202,19 +202,19 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             )}
             {canEdit && (
               <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditOpen(true)}>
-                Ubah Project
+                Ubah proyek
               </Button>
             )}
             <ActionMenu
               items={[
-                { label: "Duplikat project", icon: <Copy className="h-4 w-4" />, onSelect: () => setDuplicateOpen(true), hidden: !canDuplicate },
+                { label: "Duplikat proyek", icon: <Copy className="h-4 w-4" />, onSelect: () => setDuplicateOpen(true), hidden: !canDuplicate },
                 {
                   label: project.isArchived ? "Pulihkan dari arsip" : "Arsipkan",
                   icon: project.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />,
                   onSelect: () => void handleToggleArchive(),
                   hidden: !canArchive,
                 },
-                { label: "Batalkan project", icon: <Ban className="h-4 w-4" />, tone: "danger", onSelect: () => setConfirmingCancel(true), hidden: !(canEdit && isOpenProject) },
+                { label: "Batalkan proyek", icon: <Ban className="h-4 w-4" />, tone: "danger", onSelect: () => setConfirmingCancel(true), hidden: !(canEdit && isOpenProject) },
                 {
                   label: "Hapus permanen",
                   icon: <Trash2 className="h-4 w-4" />,
@@ -232,15 +232,15 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
         )}
 
         <div className="grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-5">
-          <InfoField label="Tanggal Acara" value={formatDate(project.eventDate)} />
+          <InfoField label="Tanggal acara" value={formatDate(project.eventDate)} />
           <InfoField
             label="Countdown"
             value={isOpenProject ? (d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`) : project.status === "Completed" ? "Selesai" : "Dibatalkan"}
             emphasize
           />
-          <InfoField label="Tanggal Booking" value={formatDate(project.prepStartDate)} />
+          <InfoField label="Tanggal booking" value={formatDate(project.prepStartDate)} />
           <InfoField label="Paket / Layanan" value={project.packageName} />
-          <InfoField label="Nilai Kontrak" value={formatCurrency(project.contractValue)} />
+          <InfoField label="Nilai kontrak" value={formatCurrency(project.contractValue)} />
           {overview?.finance.margin !== undefined && <InfoField label="Margin" value={formatCurrency(overview.finance.margin)} />}
         </div>
 
@@ -256,7 +256,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
                 <ConditionBadge condition={progress.condition} />
               </div>
               <span className="text-[12.5px] text-text-secondary">
-                Timeline project {progress.projectMilestoneStats.completed}/{progress.projectMilestoneStats.total} · Timeline vendor{" "}
+                Tahapan proyek {progress.projectMilestoneStats.completed}/{progress.projectMilestoneStats.total} · Tahapan vendor{" "}
                 {progress.vendorMilestoneStats.completed}/{progress.vendorMilestoneStats.total}
                 {progress.overdueMilestoneCount > 0 && (
                   <span className="font-semibold text-danger-text"> · {progress.overdueMilestoneCount} terlambat</span>
@@ -266,7 +266,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
             <ProgressMeter
               percent={progress.overallPercent}
               segments={segments}
-              caption={`${completedMilestones}/${totalMilestones} timeline selesai berdasarkan pencapaian nyata — bukan estimasi manual.`}
+              caption={`${completedMilestones}/${totalMilestones} tahapan selesai berdasarkan pencapaian nyata — bukan estimasi manual.`}
             />
           </div>
         )}
@@ -276,15 +276,15 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
         <Modal
           open
           onClose={closeClosing}
-          title="Selesaikan project"
-          description="Periksa dulu apakah semuanya sudah beres. Anda tetap bisa menyelesaikan project meski ada yang belum tuntas."
+          title="Selesaikan proyek"
+          description="Periksa dulu apakah semuanya sudah beres. Anda tetap bisa menyelesaikan proyek meski ada yang belum tuntas."
           busy={completing}
           error={closing.error}
           footer={
             <>
               <Button variant="secondary" onClick={closeClosing} disabled={completing}>Kembali</Button>
               <Button onClick={() => void handleComplete()} disabled={completing || closing.checklist === null}>
-                {completing ? "Menyelesaikan..." : closing.checklist && !closing.checklist.ready ? "Tetap selesaikan" : "Selesaikan project"}
+                {completing ? "Menyelesaikan..." : closing.checklist && !closing.checklist.ready ? "Tetap selesaikan" : "Selesaikan proyek"}
               </Button>
             </>
           }

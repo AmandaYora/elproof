@@ -11,6 +11,7 @@
     "e2e:update": "playwright test -c e2e/playwright.config.ts --update-snapshots --project=desktop --project=mobile",
     "e2e:stack": "tsx e2e/scripts/stack.ts up",
     "e2e:down": "tsx e2e/scripts/stack.ts down",
+    "check:terms": "node scripts/check-ui-terms.mjs",
     "e2e:typecheck": "tsc -p e2e/tsconfig.json",
     "e2e:perf": "playwright test -c e2e/playwright.config.ts --project=baseline"
   },
@@ -21,6 +22,7 @@
     "@svar-ui/react-gantt": "^2.7.1",
     "axios": "^1.7.0",
     "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
     "cn": "^0.4.0",
     "lucide-react": "^0.475.0",
     "qrcode": "^1.5.4",

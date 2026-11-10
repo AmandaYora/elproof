@@ -11,7 +11,7 @@ import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 const TABS: { kind: RoleKind; label: string; hint: string }[] = [
   { kind: "staff", label: "Tim WO", hint: "Apa yang boleh dilakukan setiap anggota tim di WO Console." },
-  { kind: "client", label: "Client", hint: "Apa yang dilihat pengantin dan keluarga di portal client." },
+  { kind: "client", label: "Klien", hint: "Apa yang dilihat pengantin dan keluarga di portal klien." },
 ];
 
 interface EditorState {
@@ -109,7 +109,7 @@ export default function RolesPage() {
                     <span>
                       {role.permissions.length} dari {total} izin
                     </span>
-                    {kind === "staff" && <span>{role.projectScope === "all" ? "Semua project" : "Project yang dipegang"}</span>}
+                    {kind === "staff" && <span>{role.projectScope === "all" ? "Semua proyek" : "Proyek yang dipegang"}</span>}
                     <span className="inline-flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" aria-hidden /> {role.memberCount} orang
                     </span>

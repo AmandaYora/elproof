@@ -14,6 +14,7 @@ import { todayISO } from "@/modules/projects/lib/dates";
 import { formatDate, formatDateTime } from "@/shared/lib/formatters";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 const FIELD_LABELS: Record<string, string> = {
   status: "Status", picStaffId: "PIC", targetDate: "Target tanggal", completedDate: "Tanggal selesai", description: "Deskripsi", notes: "Catatan",
@@ -98,7 +99,7 @@ export function VendorMilestoneEditModal({
     if (status === "Completed" && !fields.completedDate) set("completedDate", todayISO());
   }
 
-  const submit = form.handleSubmit(onSave, { root: () => formRef.current, fallback: "Timeline belum tersimpan. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSave, { root: () => formRef.current, fallback: "Tahapan belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
   async function handleAddEvidence() {
     if (!file || !evidenceForm.name || !evidenceForm.documentDate) return;
@@ -110,7 +111,7 @@ export function VendorMilestoneEditModal({
       setFile(null);
       setShowEvidenceForm(false);
     } catch {
-      setUploadError("Gagal mengunggah evidence.");
+      setUploadError("Bukti belum terunggah. Periksa koneksi Anda, lalu coba lagi.");
     } finally {
       setUploading(false);
     }
@@ -121,7 +122,7 @@ export function VendorMilestoneEditModal({
       open={open}
       onClose={onClose}
       title={milestone.name}
-      description={`${vendorName} · Timeline ${milestone.order} dari ${totalMilestones}`}
+      description={`${vendorName} · Tahapan ${milestone.order} dari ${totalMilestones}`}
       size="lg"
       busy={form.submitting}
       footer={
@@ -137,7 +138,7 @@ export function VendorMilestoneEditModal({
         <form id="vendor-milestone-edit-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-6">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         <section>
-          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Status &amp; Jadwal</p>
+          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Status dan jadwal</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Status" name="status" error={errors.status}>
               <Select value={fields.status} onChange={(e) => setStatus(e.target.value as MilestoneStatus)}>
@@ -153,23 +154,23 @@ export function VendorMilestoneEditModal({
                 ))}
               </Select>
             </Field>
-            <Field label="Target Tanggal" name="targetDate" error={errors.targetDate}>
+            <Field label="Target tanggal" name="targetDate" error={errors.targetDate}>
               <Input type="date" value={fields.targetDate} onChange={(e) => set("targetDate", e.target.value)} onBlur={() => blur("targetDate")} />
             </Field>
-            <Field label="Tanggal Selesai" name="completedDate" error={errors.completedDate}>
+            <Field label="Tanggal selesai" name="completedDate" error={errors.completedDate}>
               <Input type="date" value={fields.completedDate} onChange={(e) => set("completedDate", e.target.value)} onBlur={() => blur("completedDate")} />
             </Field>
           </div>
         </section>
 
         <section>
-          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Deskripsi &amp; Catatan</p>
+          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Deskripsi dan catatan</p>
           <div className="flex flex-col gap-4">
             <Field label="Deskripsi" name="description" error={errors.description}>
               <Textarea rows={2} value={fields.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
             </Field>
             <Field label="Catatan" name="notes" error={errors.notes}>
-              <Textarea rows={2} value={fields.notes} onChange={(e) => set("notes", e.target.value)} onBlur={() => blur("notes")} placeholder="Tambahkan catatan perkembangan timeline ini..." />
+              <Textarea rows={2} value={fields.notes} onChange={(e) => set("notes", e.target.value)} onBlur={() => blur("notes")} placeholder="Tambahkan catatan perkembangan tahapan ini..." />
             </Field>
           </div>
         </section>
@@ -179,7 +180,7 @@ export function VendorMilestoneEditModal({
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Bukti</p>
             <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setShowEvidenceForm((v) => !v)}>
-              Tambah Bukti
+              Tambah bukti
             </Button>
           </div>
 
@@ -195,17 +196,17 @@ export function VendorMilestoneEditModal({
                     className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
                   />
                 </Field>
-                <Field label="Nama Bukti" required>
-                  <Input value={evidenceForm.name} onChange={(e) => setEvidenceForm((p) => ({ ...p, name: e.target.value }))} placeholder="cth. Invoice DP" />
+                <Field label="Nama bukti" required>
+                  <Input value={evidenceForm.name} onChange={(e) => setEvidenceForm((p) => ({ ...p, name: e.target.value }))} placeholder="cth. Tagihan DP" />
                 </Field>
                 <Field label="Jenis">
                   <Select value={evidenceForm.type} onChange={(e) => setEvidenceForm((p) => ({ ...p, type: e.target.value as EvidenceType }))}>
                     {EVIDENCE_TYPE_OPTIONS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
+                      <option key={t} value={t}>{evidenceTypeLabel(t)}</option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Tanggal Dokumen" required>
+                <Field label="Tanggal dokumen" required>
                   <Input type="date" value={evidenceForm.documentDate} onChange={(e) => setEvidenceForm((p) => ({ ...p, documentDate: e.target.value }))} />
                 </Field>
                 <Field label="Deskripsi">
@@ -215,7 +216,7 @@ export function VendorMilestoneEditModal({
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="secondary" onClick={() => setShowEvidenceForm(false)}>Batal</Button>
                 <Button size="sm" onClick={() => void handleAddEvidence()} disabled={uploading || !file}>
-                  {uploading ? "Mengunggah..." : "Simpan Bukti"}
+                  {uploading ? "Mengunggah..." : "Simpan bukti"}
                 </Button>
               </div>
             </div>
@@ -223,7 +224,7 @@ export function VendorMilestoneEditModal({
 
           {evidenceList.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-3 text-[13px] text-text-secondary">
-              Belum ada evidence untuk timeline ini.
+              Belum ada bukti untuk tahapan ini.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -231,7 +232,7 @@ export function VendorMilestoneEditModal({
                 <li key={e.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 text-[13px]">
                   <FileText className="h-4 w-4 shrink-0 text-text-secondary" />
                   <span className="min-w-0 flex-1 truncate font-medium text-text-primary">{e.name}</span>
-                  <Badge tone="neutral">{e.type}</Badge>
+                  <Badge tone="neutral">{evidenceTypeLabel(e.type)}</Badge>
                   <span className="shrink-0 text-text-secondary">{formatDate(e.documentDate)}</span>
                 </li>
               ))}
@@ -240,9 +241,9 @@ export function VendorMilestoneEditModal({
         </section>
 
         <section>
-          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Riwayat Perubahan</p>
+          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Riwayat perubahan</p>
           {historyEntries.length === 0 ? (
-            <EmptyState title="Belum ada riwayat" description="Perubahan pada timeline ini akan tercatat di sini." />
+            <EmptyState title="Belum ada riwayat" description="Perubahan pada tahapan ini akan tercatat di sini." />
           ) : (
             <ul className="flex flex-col">
               {historyEntries.map((h, idx) => (

@@ -212,8 +212,8 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
     <Modal
       open={open}
       onClose={onClose}
-      title={initialProjectVendor ? "Ubah Vendor Project" : "Tambah Vendor ke Project"}
-      description="Keterlibatan vendor pada project ini — nilai kerja sama, status, dan pembayaran khusus untuk project ini."
+      title={initialProjectVendor ? "Ubah vendor di proyek" : "Tambah vendor ke proyek"}
+      description="Keterlibatan vendor pada proyek ini — nilai kerja sama, status, dan pembayaran khusus untuk proyek ini."
       size="lg"
       busy={form.submitting}
       footer={

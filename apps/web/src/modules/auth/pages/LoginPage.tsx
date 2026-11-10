@@ -194,7 +194,7 @@ export default function LoginPage() {
           <h1 className="text-[40px] font-bold leading-[1.15] text-white">Every Step to Your Perfect Day.</h1>
           <div className="mt-4 h-px w-12 bg-white/40" />
           <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/70">
-            Pantau seluruh perjalanan menuju hari pernikahan Anda dalam satu portal. Mulai dari timeline, desain,
+            Pantau seluruh perjalanan menuju hari pernikahan Anda dalam satu portal. Mulai dari jadwal, desain,
             pembayaran, hingga progres produksi, semuanya tersusun rapi, transparan, dan dapat diakses kapan saja.
           </p>
         </div>
@@ -208,11 +208,11 @@ export default function LoginPage() {
             <Lock className="h-5 w-5" />
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary">Selamat Datang</h2>
+          <h2 className="text-2xl font-bold text-text-primary">Selamat datang</h2>
           <p className="mt-1.5 text-[13.5px] text-text-secondary">
             {mfaToken
               ? "Verifikasi dua langkah untuk admin platform."
-              : "Tim WO masuk dengan Google. Client dan admin platform masuk dengan nama pengguna."}
+              : "Tim WO masuk dengan Google. Klien dan admin platform masuk dengan nama pengguna."}
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
@@ -227,7 +227,7 @@ export default function LoginPage() {
               <>
                 <form ref={linkFormRef} noValidate onSubmit={(e) => void submitLink(e)} className="flex flex-col gap-5">
                   <p className="rounded-md border border-border bg-surface-muted px-3.5 py-3 text-[13px] leading-relaxed text-text-secondary">
-                    Email <span className="font-semibold text-text-primary">{googleLink.email}</span> sudah terdaftar sebagai akun staf
+                    Email <span className="font-semibold text-text-primary">{googleLink.email}</span> sudah terdaftar sebagai akun anggota tim
                     di ElProof. Masukkan kata sandi ElProof akun tersebut sekali untuk menghubungkannya dengan Google. Setelah itu
                     cukup masuk dengan Google.
                   </p>
@@ -313,7 +313,7 @@ export default function LoginPage() {
                   <span className="h-px flex-1 bg-border" />
                 </div>
                 <form ref={loginFormRef} className="flex flex-col gap-5" noValidate onSubmit={(e) => void submitLogin(e)}>
-                <Field label="Nama Pengguna atau Email" htmlFor="login-username" required name="username" error={loginForm.errors.username}>
+                <Field label="Nama pengguna atau email" htmlFor="login-username" required name="username" error={loginForm.errors.username}>
                   <Input
                     id="login-username"
                     name="username"
@@ -330,7 +330,7 @@ export default function LoginPage() {
                   />
                 </Field>
 
-                <Field label="Kata Sandi" htmlFor="login-password" required name="password" error={loginForm.errors.password}>
+                <Field label="Kata sandi" htmlFor="login-password" required name="password" error={loginForm.errors.password}>
                   <div className="relative">
                     <Input
                       id="login-password"
@@ -350,7 +350,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
                       aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                      className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-text-secondary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -366,7 +366,7 @@ export default function LoginPage() {
                   {loginForm.submitting ? "Memproses..." : "Masuk"}
                 </Button>
                 <p className="text-[12.5px] leading-relaxed text-text-secondary">
-                  <span className="font-medium text-text-primary">Lupa kata sandi?</span> Client: minta link atur ulang ke WO Anda. Tim
+                  <span className="font-medium text-text-primary">Lupa kata sandi?</span> Klien: minta link atur ulang ke WO Anda. Tim
                   WO: masuk dengan tombol Google di atas.
                 </p>
                 </form>

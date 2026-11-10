@@ -216,7 +216,7 @@ export default function ProjectCreatePage() {
                 <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} onBlur={() => form.blur("groomName")} aria-invalid={invalid("groomName")} />
               </Field>
               <div className="sm:col-span-2">
-                <Field label="Nama project" required name="name" error={errors.name} hint="Terisi otomatis dari nama pasangan; boleh diubah.">
+                <Field label="Nama proyek" required name="name" error={errors.name} hint="Terisi otomatis dari nama pasangan; boleh diubah.">
                   <Input
                     value={values.name}
                     onChange={(e) => {
@@ -257,7 +257,7 @@ export default function ProjectCreatePage() {
                 )}
               </Field>
               <div className="sm:col-span-2">
-                <Field label="Catatan project">
+                <Field label="Catatan proyek">
                   <Textarea rows={3} value={values.description} onChange={(e) => set("description", e.target.value)} />
                 </Field>
               </div>
@@ -283,7 +283,7 @@ export default function ProjectCreatePage() {
                 </Field>
                 {venueId ? (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field label="Harga sewa (Rp)" name="venueRentalPrice" error={venueErrors.venueRentalPrice} hint="Hanya berlaku untuk project ini; harga venue di direktori tidak berubah.">
+                    <Field label="Harga sewa (Rp)" name="venueRentalPrice" error={venueErrors.venueRentalPrice} hint="Hanya berlaku untuk proyek ini; harga venue di direktori tidak berubah.">
                       <CurrencyInput value={rentalPrice} onChange={setRentalPrice} />
                     </Field>
                     <Field label="Biaya tambahan venue (Rp)" name="venueCharge" error={venueErrors.venueCharge}>

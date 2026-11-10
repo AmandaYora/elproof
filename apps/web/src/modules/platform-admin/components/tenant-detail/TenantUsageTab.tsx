@@ -38,8 +38,8 @@ export function TenantUsageTab({ isTrial, staff, projects, clients }: Props) {
         subtitle={isTrial ? "Selama masa coba, tiap sumber daya dibatasi. Batas diatur di halaman Paket." : "Paket berbayar tidak dibatasi, angka ini hanya gambaran pemakaian."}
       />
       <CardContent className="flex flex-col gap-5">
-        <UsageBar label="Staf aktif" item={staff} />
-        <UsageBar label="Project aktif" item={projects} />
+        <UsageBar label="Anggota tim aktif" item={staff} />
+        <UsageBar label="Proyek aktif" item={projects} />
         <UsageBar label="Klien" item={clients} />
       </CardContent>
     </Card>

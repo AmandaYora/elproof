@@ -100,8 +100,8 @@ export default function ClientPortalLayout() {
   if (state === "no-project") {
     return (
       <FullScreenMessage title="Akun Anda belum terhubung ke persiapan pernikahan">
-        <p>Hubungi wedding organizer Anda agar akun ini dihubungkan ke project Anda.</p>
-        <HelpLink message="Halo, akun portal saya belum terhubung ke project. Mohon dibantu." label="Hubungi lewat WhatsApp" />
+        <p>Hubungi wedding organizer Anda agar akun ini dihubungkan ke proyek Anda.</p>
+        <HelpLink message="Halo, akun portal saya belum terhubung ke proyek. Mohon dibantu." label="Hubungi lewat WhatsApp" />
         <Button variant="secondary" onClick={() => void logoutAndRedirect(navigate)}>Keluar</Button>
       </FullScreenMessage>
     );

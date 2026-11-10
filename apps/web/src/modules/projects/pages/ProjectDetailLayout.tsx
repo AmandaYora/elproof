@@ -4,6 +4,7 @@ import { Navigate, Outlet, useParams } from "react-router-dom";
 import { TabNav } from "@/shared/components/ui/TabNav";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { SkeletonRows } from "@/shared/components/ui/Skeleton";
+import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
 import { ProjectHeaderCard } from "@/modules/projects/components/detail/ProjectHeaderCard";
 import { ProjectSidePanel } from "@/modules/projects/components/detail/ProjectSidePanel";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
@@ -15,7 +16,7 @@ export interface ProjectDetailContext {
 
 const TABS = [
   { to: "ringkasan", label: "Ringkasan" },
-  { to: "milestone", label: "Timeline" },
+  { to: "milestone", label: "Jadwal" },
   { to: "vendor", label: "Vendor" },
   { to: "venue", label: "Venue" },
   { to: "pembayaran", label: "Keuangan" },
@@ -57,15 +58,16 @@ export default function ProjectDetailLayout() {
   }
 
   if (status === "error") {
-    return <LoadError message="Project belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />;
+    return <LoadError message="Proyek belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />;
   }
 
   if (status === "loading" || !currentProject || currentProject.id !== projectId) {
-    return <div className="rounded-lg border border-border bg-surface p-5"><SkeletonRows rows={5} label="Memuat project" /></div>;
+    return <div className="rounded-lg border border-border bg-surface p-5"><SkeletonRows rows={5} label="Memuat proyek" /></div>;
   }
 
   return (
     <div className="flex flex-col gap-5">
+      <Breadcrumbs items={[{ label: "Proyek", to: ROUTE_PATHS.projects }, { label: currentProject.name }]} />
       <ProjectHeaderCard projectId={projectId} />
       <TabNav items={TABS} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">

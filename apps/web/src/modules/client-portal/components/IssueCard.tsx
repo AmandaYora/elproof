@@ -3,6 +3,7 @@ import { IssueImpactBadge, IssueStatusBadge } from "@/modules/projects/component
 import { formatDate } from "@/shared/lib/formatters";
 import type { VendorIssue } from "@/modules/projects/types";
 import type { ProofToOpen } from "@/modules/client-portal/components/useProofViewer";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 /**
  * One kendala, always answering the same three questions (FLOW-IDEAL 3.2): what
@@ -60,7 +61,7 @@ export function IssueCard({ issue, onOpenProof, showVendorName = true }: { issue
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
           {issue.evidence.map((e) => (
             <Button key={e.id} variant="outline" size="sm" onClick={() => onOpenProof(e, issue.title)}>
-              Lihat {e.type.toLowerCase()}
+              Lihat {evidenceTypeLabel(e.type).toLowerCase()}
             </Button>
           ))}
         </div>

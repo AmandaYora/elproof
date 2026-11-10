@@ -21,6 +21,7 @@ import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import type { Evidence, EvidenceRelatedKind, EvidenceType } from "@/modules/projects/types";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   // Proofs may be added by whoever edits the project or records finance;
@@ -77,14 +78,14 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   function contextLabel(item: Evidence): string {
     if (item.relatedKind === "vendorMilestone") {
       const milestone = vendorMilestones.find((m) => m.id === item.relatedId);
-      return milestone ? `Timeline: ${milestone.name} — ${vendorNameFor(milestone.projectVendorId)}` : "Timeline";
+      return milestone ? `Tahapan: ${milestone.name} — ${vendorNameFor(milestone.projectVendorId)}` : "Tahapan";
     }
     if (item.relatedKind === "payment") {
       const payment = payments.find((p) => p.id === item.relatedId);
       return payment ? `Pembayaran ${payment.type} — ${vendorNameFor(payment.projectVendorId)}` : "Pembayaran";
     }
     if (item.relatedKind === "projectVendor") {
-      return `Kerja Sama: ${vendorNameFor(item.relatedId)}`;
+      return `Kerja sama: ${vendorNameFor(item.relatedId)}`;
     }
     if (item.relatedKind === "issue") {
       const issue = issues.find((i) => i.id === item.relatedId);
@@ -92,18 +93,18 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     }
     if (item.relatedKind === "clientPayment") {
       const payment = clientPayments.find((p) => p.id === item.relatedId);
-      return payment ? `Pembayaran Client ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran Client";
+      return payment ? `Pembayaran klien ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran klien";
     }
     if (item.relatedKind === "venuePayment") {
       const payment = venuePayments.find((p) => p.id === item.relatedId);
-      return payment ? `Pembayaran Venue ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran Venue";
+      return payment ? `Pembayaran venue ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran venue";
     }
     if (item.relatedKind === "general") {
-      return "Dokumen Umum";
+      return "Dokumen umum";
     }
     if (item.relatedKind === "projectMilestone") {
       const milestone = milestones.find((m) => m.id === item.relatedId);
-      return milestone ? `Timeline: ${milestone.name}` : "Timeline";
+      return milestone ? `Tahapan: ${milestone.name}` : "Tahapan";
     }
     return "-";
   }
@@ -157,12 +158,12 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     <div id="dokumen">
       <Card>
         <CardHeader
-          title="Dokumen & Evidence"
-          subtitle="Seluruh dokumen pendukung timeline, pembayaran, kerja sama vendor, dan kendala pada project ini."
+          title="Dokumen dan bukti"
+          subtitle="Seluruh dokumen dan bukti pendukung jadwal, pembayaran, kerja sama vendor, dan kendala pada proyek ini."
           action={
             (canEdit || canRecordFinance) && (
               <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-                Tambah Evidence
+                Tambah dokumen
               </Button>
             )
           }
@@ -174,21 +175,21 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as "Semua" | EvidenceType)}
             >
-              <option value="Semua">Semua Jenis</option>
+              <option value="Semua">Semua jenis</option>
               {EVIDENCE_TYPE_OPTIONS.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>{evidenceTypeLabel(t)}</option>
               ))}
             </Select>
           )}
 
           {evidence.length === 0 ? (
             <EmptyState
-              title="Belum ada evidence"
-              description="Evidence akan muncul di sini setelah diunggah untuk timeline, pembayaran, kerja sama vendor, atau kendala pada project ini."
+              title="Belum ada dokumen"
+              description="Dokumen dan bukti muncul di sini setelah diunggah untuk jadwal, pembayaran, kerja sama vendor, atau kendala pada proyek ini."
             />
           ) : filteredEvidence.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-              Tidak ada evidence dengan jenis ini.
+              Tidak ada dokumen dengan jenis ini.
             </p>
           ) : (
             <>
@@ -200,25 +201,25 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <span className="font-medium text-text-primary">{item.name}</span>
-                    <Badge tone="neutral">{item.type}</Badge>
+                    <Badge tone="neutral">{evidenceTypeLabel(item.type)}</Badge>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <CardListField label="Tanggal Dokumen" value={formatDate(item.documentDate)} />
-                    <CardListField label="Diunggah Oleh" value={staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"} />
+                    <CardListField label="Tanggal dokumen" value={formatDate(item.documentDate)} />
+                    <CardListField label="Diunggah oleh" value={staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"} />
                     <CardListField label="Konteks" value={contextLabel(item)} />
                     {canEdit && item.relatedKind === "general" && (
                       <CardListField
-                        label="Terlihat Client"
+                        label="Terlihat klien"
                         value={item.isClientVisible ? "Ya" : "Tidak"}
                       />
                     )}
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidence(item)} />
+                    <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidence(item)} />
                     {canEdit && item.relatedKind === "general" && (
                       <IconActionButton
                         icon={item.isClientVisible ? EyeOff : Eye}
-                        label={item.isClientVisible ? "Sembunyikan dari Client" : "Tampilkan ke Client"}
+                        label={item.isClientVisible ? "Sembunyikan dari klien" : "Tampilkan ke klien"}
                         tone={item.isClientVisible ? "success" : "neutral"}
                         onClick={() => void toggleEvidenceClientVisible(projectId, item.id)}
                       />
@@ -231,10 +232,10 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
             <Table>
               <THead>
                 <TR>
-                  <TH>Nama Bukti</TH>
+                  <TH>Nama bukti</TH>
                   <TH>Jenis</TH>
-                  <TH>Tanggal Dokumen</TH>
-                  <TH>Diunggah Oleh</TH>
+                  <TH>Tanggal dokumen</TH>
+                  <TH>Diunggah oleh</TH>
                   <TH>Konteks</TH>
                   <TH>Aksi</TH>
                 </TR>
@@ -243,7 +244,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                 {pageItems.map((item) => (
                   <TR key={item.id}>
                     <TD className="font-medium">{item.name}</TD>
-                    <TD><Badge tone="neutral">{item.type}</Badge></TD>
+                    <TD><Badge tone="neutral">{evidenceTypeLabel(item.type)}</Badge></TD>
                     <TD>{formatDate(item.documentDate)}</TD>
                     <TD>{staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"}</TD>
                     <TD className="text-text-secondary">
@@ -251,18 +252,18 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                         <span>{contextLabel(item)}</span>
                         {canEdit && item.relatedKind === "general" && (
                           <Badge tone={item.isClientVisible ? "success" : "neutral"}>
-                            {item.isClientVisible ? "Terlihat Client" : "Tersembunyi"}
+                            {item.isClientVisible ? "Terlihat klien" : "Tersembunyi"}
                           </Badge>
                         )}
                       </div>
                     </TD>
                     <TD>
                       <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidence(item)} />
+                        <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidence(item)} />
                         {canEdit && item.relatedKind === "general" && (
                           <IconActionButton
                             icon={item.isClientVisible ? EyeOff : Eye}
-                            label={item.isClientVisible ? "Sembunyikan dari Client" : "Tampilkan ke Client"}
+                            label={item.isClientVisible ? "Sembunyikan dari klien" : "Tampilkan ke klien"}
                             tone={item.isClientVisible ? "success" : "neutral"}
                             onClick={() => void toggleEvidenceClientVisible(projectId, item.id)}
                           />

@@ -28,13 +28,14 @@ export function SupportSessionBanner() {
   return (
     <div
       role="status"
-      className="print:hidden fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg bg-warning px-4 py-2.5 text-[13px] font-semibold text-white shadow-xl"
+      // z-70: above dialogs (50) and toasts (60) so the person never forgets whose workspace this is (DESIGN.md §4.4).
+      className="print:hidden fixed inset-x-3 bottom-3 z-[70] mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-warning/50 bg-warning-soft px-4 py-2.5 text-[13px] font-semibold text-warning-text shadow-xl"
     >
       <span className="flex min-w-0 items-center gap-2">
         <Eye className="h-4 w-4 shrink-0" />
         <span className="min-w-0">
           Anda melihat {info.tenantName} sebagai Owner, hanya untuk dilihat.{" "}
-          <span className="font-medium text-white/90">
+          <span className="font-medium">
             {minutesLeft > 0 ? `Berakhir ${formatDateTime(info.expiresAt)} (${minutesLeft} menit lagi).` : "Sesi hampir berakhir."}
           </span>
         </span>

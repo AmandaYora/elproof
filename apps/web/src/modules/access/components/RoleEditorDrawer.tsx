@@ -27,8 +27,8 @@ interface RoleEditorDrawerProps {
 }
 
 const SCOPES: { value: ProjectScope; title: string; body: string }[] = [
-  { value: "all", title: "Semua project", body: "Izin project berlaku di seluruh project workspace." },
-  { value: "assigned", title: "Project yang dipegang", body: "Hanya project di mana orang ini menjadi PIC atau PIC Sales." },
+  { value: "all", title: "Semua proyek", body: "Izin berlaku di seluruh proyek di usaha Anda." },
+  { value: "assigned", title: "Proyek yang dipegang", body: "Hanya proyek yang orang ini pegang sebagai PIC atau PIC Sales." },
 ];
 
 /**
@@ -127,8 +127,8 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
         role
           ? `${role.memberCount} orang memakai peran ini. Perubahan berlaku langsung tanpa perlu masuk ulang.`
           : kind === "staff"
-            ? "Peran untuk tim WO. Setelah dibuat, pilih peran ini saat mengundang atau mengubah pengguna."
-            : "Peran portal client. Pilih peran ini di data client untuk menentukan apa yang mereka lihat."
+            ? "Peran untuk tim WO. Setelah dibuat, pilih peran ini saat mengundang atau mengubah anggota tim."
+            : "Peran portal klien. Pilih peran ini di data klien untuk menentukan apa yang mereka lihat."
       }
       footer={
         readOnly ? (
@@ -191,7 +191,7 @@ export function RoleEditorDrawer({ open, onClose, kind, role, copyFrom }: RoleEd
 
         {kind === "staff" && (
           <fieldset className="flex flex-col gap-2" disabled={readOnly}>
-            <legend className="mb-1 text-[13px] font-semibold text-text-primary">Cakupan project</legend>
+            <legend className="mb-1 text-[13px] font-semibold text-text-primary">Cakupan proyek</legend>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {SCOPES.map((s) => (
                 <label

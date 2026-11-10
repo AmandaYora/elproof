@@ -39,7 +39,7 @@ export function TenantSubscriptionTab({ tenant, planName, activations, onActivat
               { label: "Sisa waktu", value: lc.periodEndsAt ? (lc.daysLeft >= 0 ? `${lc.daysLeft} hari` : `Lewat ${Math.abs(lc.daysLeft)} hari`) : "-" },
               { label: "Menjadi baca-saja pada", value: formatDate(lc.readOnlyAt) },
               { label: "Ditangguhkan pada", value: formatDate(lc.suspendAt) },
-              { label: "Akses staf WO saat ini", value: accessText },
+              { label: "Akses tim WO saat ini", value: accessText },
               { label: "Dibekukan tim ElProof", value: lc.frozen ? "Ya" : "Tidak" },
             ]}
           />

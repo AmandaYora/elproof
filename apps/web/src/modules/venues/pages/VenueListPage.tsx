@@ -326,9 +326,9 @@ export default function VenueListPage() {
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
               {deleteImpact && deleteImpact.length > 0 ? (
                 <span>
-                  Venue ini masih digunakan oleh project berikut:{" "}
+                  Venue ini masih digunakan oleh proyek berikut:{" "}
                   <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, data
-                  venue pada project tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
+                  venue pada proyek tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
                   menghapus venue ini secara permanen?
                 </span>
               ) : (

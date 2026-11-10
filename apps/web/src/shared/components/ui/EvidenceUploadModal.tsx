@@ -10,16 +10,17 @@ import {
 } from "@/modules/projects/schemas/evidence.schema";
 import { todayISO } from "@/modules/projects/lib/dates";
 import type { EvidenceRelatedKind, EvidenceType } from "@/modules/projects/types";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
-  vendorMilestone: "Timeline Vendor",
+  vendorMilestone: "Tahapan vendor",
   payment: "Pembayaran",
-  projectVendor: "Kerja Sama Vendor",
+  projectVendor: "Kerja sama vendor",
   issue: "Kendala",
-  clientPayment: "Pembayaran Client",
-  venuePayment: "Pembayaran Venue",
-  general: "Umum (Tidak Terkait Spesifik)",
-  projectMilestone: "Timeline",
+  clientPayment: "Pembayaran klien",
+  venuePayment: "Pembayaran venue",
+  general: "Umum (tidak terkait spesifik)",
+  projectMilestone: "Tahapan",
 };
 
 interface EvidenceUploadModalProps {
@@ -68,8 +69,8 @@ export function EvidenceUploadModal({
   lockedRelatedKind,
   lockedRelatedId,
   defaultType,
-  title = "Tambah Evidence",
-  description = "Unggah dokumen pendukung dan kaitkan dengan timeline, pembayaran, kerja sama vendor, atau kendala pada project ini.",
+  title = "Tambah dokumen",
+  description = "Unggah dokumen pendukung dan kaitkan dengan jadwal, pembayaran, kerja sama vendor, atau kendala pada proyek ini.",
 }: EvidenceUploadModalProps) {
   const locked = lockedRelatedKind !== undefined;
   const [values, setValues] = useState<EvidenceUploadFormValues>(() =>
@@ -130,7 +131,7 @@ export function EvidenceUploadModal({
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting || (!locked && values.relatedKind !== "general" && options.length === 0)}>
-            {submitting ? "Mengunggah..." : "Simpan Bukti"}
+            {submitting ? "Mengunggah..." : "Simpan bukti"}
           </Button>
         </>
       }
@@ -148,13 +149,13 @@ export function EvidenceUploadModal({
             className="block w-full text-[13px] text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-[12.5px] file:font-semibold file:text-white"
           />
         </Field>
-        <Field label="Nama Bukti" required hint={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Invoice DP Venue" />
+        <Field label="Nama bukti" required hint={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Tagihan DP venue" />
         </Field>
-        <Field label="Jenis Evidence" required>
+        <Field label="Jenis dokumen" required>
           <Select value={values.type} onChange={(e) => set("type", e.target.value as EvidenceType)}>
             {EVIDENCE_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>{evidenceTypeLabel(t)}</option>
             ))}
           </Select>
         </Field>
@@ -179,7 +180,7 @@ export function EvidenceUploadModal({
             )}
           </>
         )}
-        <Field label="Tanggal Dokumen" required hint={errors.documentDate}>
+        <Field label="Tanggal dokumen" required hint={errors.documentDate}>
           <Input type="date" value={values.documentDate} onChange={(e) => set("documentDate", e.target.value)} />
         </Field>
         <Field label="Deskripsi">
@@ -192,7 +193,7 @@ export function EvidenceUploadModal({
               checked={values.isClientVisible}
               onChange={(e) => set("isClientVisible", e.target.checked)}
             />
-            Tampilkan dokumen ini ke Client Portal
+            Tampilkan dokumen ini ke portal klien
           </label>
         )}
       </div>

@@ -7,6 +7,7 @@ import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import type { Evidence } from "@/modules/projects/types";
 import { formatDate } from "@/shared/lib/formatters";
 import type { ClientPortalContext } from "@/modules/client-portal/layouts/ClientPortalLayout";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 // Client Portal's own "Dokumen" tab — general project documents (rundown,
 // buku acara, teks juru bicara, dll) with no other specific vendor/venue/
@@ -65,7 +66,7 @@ export default function DokumenTabPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-semibold text-navy-950">{doc.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-text-secondary">
-                    <Badge tone="neutral">{doc.type}</Badge>
+                    <Badge tone="neutral">{evidenceTypeLabel(doc.type)}</Badge>
                     <span>{formatDate(doc.documentDate)}</span>
                   </div>
                   {doc.description && (

@@ -58,7 +58,7 @@ export default function MyProjectsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold text-text-primary">Proyek saya{name ? `, ${name.split(" ")[0]}` : ""}</h1>
-        <p className="mt-1 text-[13px] text-text-secondary">Project yang Anda pegang, dengan yang perlu Anda tangani lebih dulu.</p>
+        <p className="mt-1 text-[13px] text-text-secondary">Proyek yang Anda pegang, dengan yang perlu Anda tangani lebih dulu.</p>
       </div>
 
       {failed ? (
@@ -69,8 +69,8 @@ export default function MyProjectsPage() {
         <Card>
           <EmptyState
             icon={<FolderKanban className="h-7 w-7" />}
-            title="Belum ada project yang Anda pegang"
-            description="Project muncul di sini setelah Owner menugaskan Anda sebagai penanggung jawab."
+            title="Belum ada proyek yang Anda pegang"
+            description="Proyek muncul di sini setelah Owner menugaskan Anda sebagai penanggung jawab."
           />
         </Card>
       ) : (
@@ -99,7 +99,7 @@ export default function MyProjectsPage() {
                       </div>
                     </div>
 
-                    <ProgressMeter percent={p.progressPercent} segments={[]} caption={`${p.progressPercent}% timeline selesai`} />
+                    <ProgressMeter percent={p.progressPercent} segments={[]} caption={`${p.progressPercent}% tahapan selesai`} />
 
                     {p.overdueTerms > 0 && (
                       <p className="rounded-md bg-danger-soft px-3 py-2 text-[13px] font-medium text-danger-text">

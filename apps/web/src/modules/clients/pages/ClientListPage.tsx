@@ -41,9 +41,9 @@ function clientRecipient(c: Pick<Client, "name" | "phone" | "username">): Access
 const ROLE_OPTIONS: ClientRole[] = ["Bride", "Groom", "Family Representative"];
 
 const ROLE_FILTER_LABEL: Record<ClientRole, string> = {
-  Bride: "Pengantin Wanita",
-  Groom: "Pengantin Pria",
-  "Family Representative": "Wedding Representative",
+  Bride: "Pengantin wanita",
+  Groom: "Pengantin pria",
+  "Family Representative": "Perwakilan keluarga",
 };
 
 // The values the API's loginStatus filter takes, in the words the list's badge uses.
@@ -115,7 +115,7 @@ export default function ClientListPage() {
       await toggleActive(client.projectId, client.id);
       await reload();
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah status client"));
+      setActionError(getApiErrorMessage(err, "Status klien belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -220,9 +220,9 @@ export default function ClientListPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Client</h1>
+          <h1 className="text-xl font-bold text-text-primary">Klien</h1>
           <p className="mt-1 text-[13px] text-text-secondary">
-            Kelola seluruh akun client di semua project — kontak, status akun, dan wedding representative.
+            Kelola seluruh akun klien di semua proyek — kontak, status akun, dan perwakilan keluarga.
           </p>
         </div>
       </div>
@@ -293,7 +293,7 @@ export default function ClientListPage() {
         density={density}
         actions={(c) => (
           <div className="flex items-center gap-1.5">
-            <IconActionButton icon={Pencil} label="Ubah Kontak" tone="neutral" onClick={() => setModalTarget({ client: c, mode: "edit" })} />
+            <IconActionButton icon={Pencil} label="Ubah kontak" tone="neutral" onClick={() => setModalTarget({ client: c, mode: "edit" })} />
             {c.isActive && <IconActionButton icon={Send} label={clientLinkActionLabel(c)} tone="info" onClick={() => void handleSendLink(c)} />}
             {c.isActive ? (
               <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(c)} />
@@ -301,9 +301,9 @@ export default function ClientListPage() {
               <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(c)} />
             )}
             {c.role === "Family Representative" && (
-              <IconActionButton icon={Repeat} label="Ganti Representative" tone="navy" onClick={() => setModalTarget({ client: c, mode: "replace" })} />
+              <IconActionButton icon={Repeat} label="Ganti perwakilan" tone="navy" onClick={() => setModalTarget({ client: c, mode: "replace" })} />
             )}
-            <IconActionButton icon={Trash2} label="Hapus Client" tone="danger" onClick={() => setDeleteTarget(c)} />
+            <IconActionButton icon={Trash2} label="Hapus klien" tone="danger" onClick={() => setDeleteTarget(c)} />
           </div>
         )}
       />
@@ -320,12 +320,12 @@ export default function ClientListPage() {
               : { name: activeTarget.name, phone: activeTarget.phone, email: activeTarget.email, accessRoleId: activeTarget.accessRoleId }
           }
           username={activeTarget.username}
-          title={modalTarget.mode === "replace" ? "Ganti Wedding Representative" : "Ubah Kontak Client"}
+          title={modalTarget.mode === "replace" ? "Ganti perwakilan keluarga" : "Ubah kontak klien"}
           submitLabel={modalTarget.mode === "replace" ? "Ganti dan buat undangan" : undefined}
           description={
             modalTarget.mode === "replace"
               ? "Akses login perwakilan lama langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru."
-              : "Perbarui nama dan informasi kontak client."
+              : "Perbarui nama dan informasi kontak klien."
           }
         />
       )}
@@ -333,7 +333,7 @@ export default function ClientListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title={deleteTarget ? `Hapus ${deleteTarget.name}?` : "Hapus client"}
+        title={deleteTarget ? `Hapus ${deleteTarget.name}?` : "Hapus klien"}
         description="Akun login yang terkait (jika ada) ikut dinonaktifkan. Anda bisa mengurungkannya beberapa detik setelah dihapus."
         size="sm"
         busy={isDeleting}
@@ -343,7 +343,7 @@ export default function ClientListPage() {
               Batal
             </Button>
             <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
-              {isDeleting ? "Menghapus..." : "Hapus client"}
+              {isDeleting ? "Menghapus..." : "Hapus klien"}
             </Button>
           </>
         }

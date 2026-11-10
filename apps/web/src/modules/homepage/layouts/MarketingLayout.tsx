@@ -151,7 +151,7 @@ export default function MarketingLayout() {
               <span className="font-display text-[20px] font-semibold tracking-tight text-navy-950">{APP_NAME}</span>
             </Link>
             <p className="mt-5 text-[14px] leading-relaxed text-text-secondary">
-              Satu portal transparansi untuk wedding organizer, vendor, dan pasangan client — setiap progress,
+              Satu portal transparansi untuk wedding organizer, vendor, dan pasangan klien — setiap progres,
               pembayaran, dan kendala tercatat secara profesional dan modern.
             </p>
           </div>

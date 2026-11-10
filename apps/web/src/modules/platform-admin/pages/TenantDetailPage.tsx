@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, Send, UserCheck, UserX } from "lucide-react";
+import { Navigate, useParams } from "react-router-dom";
+import { Pencil, Send, UserCheck, UserX } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
+import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
 import { Badge } from "@/shared/components/ui/Badge";
 import { TabNav } from "@/shared/components/ui/TabNav";
 import { LoadError } from "@/shared/components/feedback/LoadError";
@@ -77,9 +78,7 @@ export default function TenantDetailPage() {
   if (failed) {
     return (
       <div className="flex flex-col gap-4">
-        <Link to={ROUTE_PATHS.platformTenants} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-text-primary">
-          <ArrowLeft className="h-4 w-4" /> Semua tenant
-        </Link>
+        <Breadcrumbs items={[{ label: "Tenant", to: ROUTE_PATHS.platformTenants }, { label: "Tidak ditemukan" }]} />
         <LoadError message="Tenant tidak ditemukan atau belum bisa dimuat." onRetry={() => void load()} />
       </div>
     );
@@ -94,9 +93,7 @@ export default function TenantDetailPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Link to={ROUTE_PATHS.platformTenants} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-text-primary">
-        <ArrowLeft className="h-4 w-4" /> Semua tenant
-      </Link>
+      <Breadcrumbs items={[{ label: "Tenant", to: ROUTE_PATHS.platformTenants }, { label: tenant.businessName }]} />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

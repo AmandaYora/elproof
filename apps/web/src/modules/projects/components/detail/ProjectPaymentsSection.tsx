@@ -90,24 +90,24 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
     <div id="pembayaran">
       <Card>
         <CardHeader
-          title="Pembayaran ke Vendor"
-          subtitle="Ringkasan nilai kerja sama dan seluruh riwayat pembayaran ke vendor pada project ini."
+          title="Pembayaran ke vendor"
+          subtitle="Ringkasan nilai kerja sama dan seluruh riwayat pembayaran ke vendor pada proyek ini."
           action={
             canRecord && (<Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-              Tambah Pembayaran
+              Tambah pembayaran
             </Button>)
           }
         />
         <CardContent className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            <SummaryStat label="Total Nilai Kerja Sama" value={formatCurrency(totalContractValue)} />
-            <SummaryStat label="Total Sudah Dibayar" value={formatCurrency(totalPaid)} />
-            <SummaryStat label="Sisa Pembayaran" value={formatCurrency(totalRemaining)} />
+            <SummaryStat label="Total nilai kerja sama" value={formatCurrency(totalContractValue)} />
+            <SummaryStat label="Total sudah dibayar" value={formatCurrency(totalPaid)} />
+            <SummaryStat label="Sisa pembayaran" value={formatCurrency(totalRemaining)} />
           </div>
 
           {payments.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-              Belum ada pembayaran tercatat untuk project ini.
+              Belum ada pembayaran tercatat untuk proyek ini.
             </p>
           ) : (
             <>
@@ -122,20 +122,20 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                   <>
                     <div className="flex items-start justify-between gap-3">
                       <span className="font-medium text-text-primary">{vendor?.name ?? "Vendor tidak diketahui"}</span>
-                      {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}
+                      {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum lengkap</Badge>}
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <CardListField label="Jenis" value={payment.type} />
                       <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
                       <CardListField label="Tanggal" value={formatDate(payment.paymentDate)} />
                       <CardListField label="Metode" value={payment.method} />
-                      <CardListField label="No. Referensi" value={payment.referenceNumber} />
+                      <CardListField label="No. referensi" value={payment.referenceNumber} />
                     </div>
                     <div className="flex items-center gap-2 pt-1">
-                      <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                      {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
+                      <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                      {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                       {canDelete && (
-                        <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
+                        <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
                       )}
                     </div>
                   </>
@@ -152,7 +152,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                   <TH>Tanggal</TH>
                   <TH>Metode</TH>
                   <TH>No. Referensi</TH>
-                  <TH>Kelengkapan Bukti</TH>
+                  <TH>Kelengkapan bukti</TH>
                   <TH>Aksi</TH>
                 </TR>
               </THead>
@@ -169,14 +169,14 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
                       <TD>{payment.method}</TD>
                       <TD>{payment.referenceNumber}</TD>
                       <TD>
-                        {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}
+                        {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum lengkap</Badge>}
                       </TD>
                       <TD>
                         <div className="flex items-center gap-2">
-                          <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                          {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
+                          <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                          {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                           {canDelete && (
-                            <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
+                            <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
                           )}
                         </div>
                       </TD>
@@ -203,7 +203,7 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Catat pembayaran vendor"
-        description="Catat pembayaran baru ke vendor untuk proyek ini, beserta invoice dan bukti transfernya."
+        description="Catat pembayaran baru ke vendor untuk proyek ini, beserta tagihan dan bukti transfernya."
         slots={{ invoice: true }}
         vendorOptions={vendorEngagements.map((pv) => {
           const vendor = vendors.find((v) => v.id === pv.vendorId);
@@ -317,8 +317,8 @@ function EditPaymentModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Ubah Pembayaran"
-      description="Perbarui detail pembayaran ini. Berkas evidence yang sudah terlampir tidak berubah."
+      title="Ubah pembayaran"
+      description="Perbarui detail pembayaran ini. Bukti yang sudah terlampir tidak berubah."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
@@ -332,7 +332,7 @@ function EditPaymentModal({
         {error && (
           <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
         )}
-        <Field label="Jenis Pembayaran" required>
+        <Field label="Jenis pembayaran" required>
           <Select value={values.type} onChange={(e) => set("type", e.target.value as PaymentUpdateFormValues["type"])}>
             {PAYMENT_TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -352,7 +352,7 @@ function EditPaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="No. Referensi" hint={errors.referenceNumber}>
+        <Field label="No. referensi" hint={errors.referenceNumber}>
           <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
         </Field>
         <div className="sm:col-span-2">

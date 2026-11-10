@@ -142,10 +142,10 @@ export function useTenantActions(onChanged: () => Promise<void> | void) {
         onClose={() => setSuspension(undefined)}
       >
         {suspension?.isSuspended ? (
-          <p>Staf dan klien {suspension.businessName} bisa masuk dan memakai ElProof lagi, sesuai status langganannya.</p>
+          <p>Anggota tim dan klien {suspension.businessName} bisa masuk dan memakai ElProof lagi, sesuai status langganannya.</p>
         ) : (
           <p>
-            Semua staf dan klien <span className="font-semibold text-text-primary">{suspension?.businessName}</span> langsung keluar dan tidak bisa masuk sampai
+            Semua anggota tim dan klien <span className="font-semibold text-text-primary">{suspension?.businessName}</span> langsung keluar dan tidak bisa masuk sampai
             tenant diaktifkan kembali. Data tetap tersimpan. Gunakan hanya untuk pelanggaran atau penyalahgunaan; tunggakan langganan sudah ditangani otomatis.
           </p>
         )}

@@ -106,12 +106,12 @@ export default function ProjectListPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Project</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh project pernikahan yang sedang dan pernah ditangani.</p>
+          <h1 className="text-xl font-bold text-text-primary">Proyek</h1>
+          <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh proyek pernikahan yang sedang dan pernah ditangani.</p>
         </div>
         {canCreate && (
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => navigate(ROUTE_PATHS.projectNew)}>
-            Tambah Project
+            Tambah proyek
           </Button>
         )}
       </div>

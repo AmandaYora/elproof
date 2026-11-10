@@ -21,7 +21,7 @@ export default function ContactPage() {
             </h1>
             
             <p className="max-w-md text-[16px] leading-relaxed text-text-secondary md:text-[18px]">
-              Aktivasi akun ElProof dibantu langsung secara personal. Ceritakan skala project dan kebutuhan Anda, 
+              Aktivasi akun ElProof dibantu langsung secara personal. Ceritakan skala proyek dan kebutuhan Anda, 
               tim kami siap membantu proses onboarding bisnis Anda.
             </p>
 

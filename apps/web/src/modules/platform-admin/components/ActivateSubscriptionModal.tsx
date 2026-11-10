@@ -117,7 +117,7 @@ export function ActivateSubscriptionModal({
           required
           name="proofReference"
           error={errors.proofReference}
-          hint="No. transfer, no. invoice, atau tautan dokumen kesepakatan."
+          hint="No. transfer, no. tagihan, atau tautan dokumen kesepakatan."
         >
           <Input
             value={values.proofReference}

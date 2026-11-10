@@ -113,3 +113,27 @@ export const DISALLOWED_UI_TERMS: { pattern: RegExp; use: string }[] = [
   { pattern: /\bMilestone(s)?\b/, use: "Tahapan" },
   { pattern: /\bSubmit\b/, use: "kata kerja + objek, mis. \"Simpan pembayaran\"" },
 ];
+
+/**
+ * What a person reads for each document type. The enum value is what the API stores
+ * and stays in English; only this label is shown (DESIGN.md §7).
+ */
+export const EVIDENCE_TYPE_LABELS: Record<string, string> = {
+  Quotation: "Penawaran",
+  Invoice: "Tagihan",
+  Contract: "Kontrak",
+  "Transfer Proof": "Bukti transfer",
+  Receipt: "Kwitansi",
+  "Purchase Order": "Pesanan pembelian",
+  Photo: "Foto",
+  Document: "Dokumen",
+  Screenshot: "Tangkapan layar",
+  "Minutes of Meeting": "Notulen rapat",
+  Other: "Lainnya",
+  "Booking Proof": "Bukti pemesanan",
+};
+
+export function evidenceTypeLabel(type: string): string {
+  return EVIDENCE_TYPE_LABELS[type] ?? type;
+}
+

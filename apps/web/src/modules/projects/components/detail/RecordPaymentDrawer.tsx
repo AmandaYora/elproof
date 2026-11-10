@@ -171,7 +171,7 @@ export function RecordPaymentDrawer({ open, onClose, title, description, vendorO
           <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
         </Field>
         {slots.invoice && (
-          <Field label="Invoice" name="invoiceFile" error={errors.invoiceFile} hint="Foto atau PDF, opsional. Bisa dilampirkan nanti.">
+          <Field label="Berkas tagihan" name="invoiceFile" error={errors.invoiceFile} hint="Foto atau PDF, opsional. Bisa dilampirkan nanti.">
             <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={(e) => set("invoiceFile", e.target.files?.[0] ?? undefined)} className={FILE_CLASS} />
           </Field>
         )}

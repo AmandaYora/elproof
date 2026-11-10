@@ -21,7 +21,7 @@ export function AttentionQueue({ items, counts }: { items: AttentionItem[]; coun
   return (
     <Card>
       <CardHeader
-        title="Perlu Ditindaklanjuti"
+        title="Perlu ditindaklanjuti"
         subtitle="Diurutkan dari yang paling mendesak — klik untuk membuka detail terkait."
       />
       {Object.keys(counts).length > 0 && (
@@ -38,7 +38,7 @@ export function AttentionQueue({ items, counts }: { items: AttentionItem[]; coun
           <EmptyState
             icon={<CheckCircle2 className="h-8 w-8 text-success-text" />}
             title="Tidak ada yang perlu ditindaklanjuti"
-            description="Seluruh project berjalan sesuai rencana tanpa kendala terbuka."
+            description="Seluruh proyek berjalan sesuai rencana tanpa kendala terbuka."
           />
         ) : (
           <ul className="divide-y divide-border-light">

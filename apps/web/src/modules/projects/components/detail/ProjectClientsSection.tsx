@@ -35,9 +35,9 @@ const CREATE_LABELS: Record<string, string> = { ...CONTACT_LABELS, relationNote:
 const ROLE_ORDER: ClientRole[] = ["Bride", "Groom", "Family Representative"];
 
 const ROLE_LABEL: Record<ClientRole, string> = {
-  Bride: "Pengantin Wanita",
-  Groom: "Pengantin Pria",
-  "Family Representative": "Wedding Representative Keluarga",
+  Bride: "Pengantin wanita",
+  Groom: "Pengantin pria",
+  "Family Representative": "Perwakilan keluarga",
 };
 
 type ModalMode = "contact" | "replace";
@@ -95,7 +95,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
     try {
       await toggleActive(projectId, id);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah status client"));
+      setActionError(getApiErrorMessage(err, "Status klien belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -148,8 +148,8 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
     <div id="client">
       <Card>
         <CardHeader
-          title="Client Project"
-          subtitle="Kontak pengantin dan perwakilan keluarga yang terdaftar untuk project ini."
+          title="Klien proyek"
+          subtitle="Kontak pengantin dan perwakilan keluarga yang terdaftar untuk proyek ini."
         />
         <CardContent className="flex flex-col gap-3">
           {actionError && (
@@ -210,7 +210,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                       icon={<Pencil className="h-3.5 w-3.5" />}
                       onClick={() => setModalTarget({ clientId: client.id, mode: "contact" })}
                     >
-                      Ubah Kontak
+                      Ubah kontak
                     </Button>
                     {client.isActive && (
                       <Button
@@ -236,7 +236,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                         icon={<UserCog className="h-3.5 w-3.5" />}
                         onClick={() => setModalTarget({ clientId: client.id, mode: "replace" })}
                       >
-                        Ganti Wedding Representative
+                        Ganti perwakilan keluarga
                       </Button>
                     )}
                     <Button
@@ -245,7 +245,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                       icon={<Trash2 className="h-3.5 w-3.5" />}
                       onClick={() => setDeletingClientId(client.id)}
                     >
-                      Hapus Client
+                      Hapus klien
                     </Button>
                   </div>
                 )}
@@ -322,13 +322,13 @@ function EditContactModal({
   });
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
-  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kontak belum tersimpan. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kontak belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Ubah Kontak"
+      title="Ubah kontak"
       description={`Perbarui informasi kontak untuk ${client.name}.`}
       busy={form.submitting}
       footer={
@@ -378,13 +378,13 @@ function ReplaceRepresentativeModal({
   });
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
-  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Perwakilan belum diganti. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Perwakilan belum diganti. Periksa koneksi Anda, lalu coba lagi." });
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Ganti Wedding Representative"
+      title="Ganti perwakilan keluarga"
       description={`${client.name} akan digantikan. Akses login ${client.name} langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru.`}
       busy={form.submitting}
       footer={
@@ -398,10 +398,10 @@ function ReplaceRepresentativeModal({
     >
       <form id="replace-representative-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={REPLACE_LABELS} root={() => formRef.current} />
-        <Field label="Nama Representative Baru" required name="name" error={errors.name}>
+        <Field label="Nama perwakilan baru" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="Nama lengkap" />
         </Field>
-        <Field label="Hubungan dengan Pengantin" required name="relationNote" error={errors.relationNote}>
+        <Field label="Hubungan dengan pengantin" required name="relationNote" error={errors.relationNote}>
           <Input
             value={values.relationNote}
             onChange={(e) => set("relationNote", e.target.value)}
@@ -435,14 +435,14 @@ function CreateClientModal({
   const form = useZodForm({ schema: clientCreateSchema, initial: { name: "", phone: "", email: "", relationNote: "", username: "", accessRoleId: 0 } });
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
-  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Client belum tersimpan. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Klien belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
   return (
     <Modal
       open
       onClose={onClose}
       title={`Tambah ${ROLE_LABEL[role]}`}
-      description="Client menerima link undangan dan membuat kata sandinya sendiri untuk Client Portal."
+      description="Klien menerima link undangan dan membuat kata sandinya sendiri untuk portal klien."
       busy={form.submitting}
       footer={
         <>
@@ -459,7 +459,7 @@ function CreateClientModal({
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="Nama lengkap" />
         </Field>
         {role === "Family Representative" && (
-          <Field label="Hubungan dengan Pengantin" name="relationNote" error={errors.relationNote}>
+          <Field label="Hubungan dengan pengantin" name="relationNote" error={errors.relationNote}>
             <Input
               value={values.relationNote}
               onChange={(e) => set("relationNote", e.target.value)}
@@ -471,7 +471,7 @@ function CreateClientModal({
         <Field label="Nomor WhatsApp" required name="phone" error={errors.phone} hint="Link undangan dikirim ke nomor ini">
           <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="0812 3456 7890" inputMode="tel" />
         </Field>
-        <Field label="Email" name="email" error={errors.email} hint="Opsional. Client juga bisa masuk memakai email ini.">
+        <Field label="Email" name="email" error={errors.email} hint="Opsional. Klien juga bisa masuk memakai email ini.">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} />
         </Field>
         <div data-field="accessRoleId">

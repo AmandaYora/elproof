@@ -80,7 +80,7 @@ export function TenantSupportTab({ tenantId, tenantName }: { tenantId: string; t
           {canStart ? (
             <form ref={formRef} noValidate onSubmit={(e) => void handleStart(e)} className="flex flex-col gap-4">
               <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
-              <Field label="Alasan melihat workspace ini" required name="reason" error={form.errors.reason} hint="Dicatat di riwayat dan terlihat oleh Owner. Contoh: membantu Owner mengatur timeline default sesuai tiket #123.">
+              <Field label="Alasan melihat workspace ini" required name="reason" error={form.errors.reason} hint="Dicatat di riwayat dan terlihat oleh Owner. Contoh: membantu Owner mengatur jadwal bawaan sesuai tiket #123.">
                 <Textarea rows={3} value={form.values.reason} disabled={!status.grant || starting} onChange={(e) => form.set("reason", e.target.value)} onBlur={() => form.blur("reason")} />
               </Field>
               <div>

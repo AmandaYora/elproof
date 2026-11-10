@@ -6,7 +6,7 @@ import { projectMilestoneSchema, type ProjectMilestoneFormValues } from "@/modul
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
-const FIELD_LABELS: Record<string, string> = { name: "Nama timeline", targetDate: "Target tanggal" };
+const FIELD_LABELS: Record<string, string> = { name: "Nama tahapan", targetDate: "Target tanggal" };
 
 interface ProjectMilestoneFormModalProps {
   open: boolean;
@@ -29,30 +29,30 @@ export function ProjectMilestoneFormModal({ open, onClose, onSubmit }: ProjectMi
     form.reset(emptyValues());
   }, [open]);
 
-  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Timeline belum tersimpan. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Tahapan belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Tambah Timeline"
-      description="Timeline baru akan ditambahkan di urutan paling akhir — gunakan tombol urutkan untuk memindahkannya."
+      title="Tambah tahapan"
+      description="Tahapan baru ditambahkan di urutan paling akhir — gunakan tombol urutkan untuk memindahkannya."
       busy={form.submitting}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
           <Button type="submit" form="project-milestone-form" disabled={form.submitting}>
-            {form.submitting ? "Menyimpan..." : "Simpan timeline"}
+            {form.submitting ? "Menyimpan..." : "Simpan tahapan"}
           </Button>
         </>
       }
     >
       <form id="project-milestone-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
-        <Field label="Nama Timeline" required name="name" error={errors.name}>
+        <Field label="Nama tahapan" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Fitting Baju Pengantin" />
         </Field>
-        <Field label="Target Tanggal" required name="targetDate" error={errors.targetDate}>
+        <Field label="Target tanggal" required name="targetDate" error={errors.targetDate}>
           <Input type="date" value={values.targetDate} onChange={(e) => set("targetDate", e.target.value)} onBlur={() => blur("targetDate")} />
         </Field>
       </form>

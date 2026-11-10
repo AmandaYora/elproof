@@ -80,7 +80,7 @@ export function IssueFormModal({
     set("vendorMilestoneId", "");
   }
 
-  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kendala belum tersimpan. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kendala belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
   const selectedVendor = vendorEngagements.find((pv) => pv.id === values.projectVendorId);
   const milestoneOptions = vendorMilestones.filter((m) => m.projectVendorId === values.projectVendorId);
@@ -90,8 +90,8 @@ export function IssueFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={mode === "create" ? "Tambah Kendala" : "Ubah Kendala"}
-      description="Catat kendala terkait vendor pada project ini."
+      title={mode === "create" ? "Tambah kendala" : "Ubah kendala"}
+      description="Catat kendala terkait vendor pada proyek ini."
       size="lg"
       busy={form.submitting}
       footer={
@@ -107,7 +107,7 @@ export function IssueFormModal({
       <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Field label="Judul Kendala" required name="title" error={errors.title}>
+          <Field label="Judul kendala" required name="title" error={errors.title}>
             <Input value={values.title} onChange={(e) => set("title", e.target.value)} onBlur={() => blur("title")} />
           </Field>
         </div>
@@ -135,13 +135,13 @@ export function IssueFormModal({
         )}
 
         {!values.projectVendorId ? null : milestoneLocked ? (
-          <Field label="Timeline">
+          <Field label="Tahapan">
             <p className="flex h-9 items-center text-[13px] font-medium text-text-primary">{lockedMilestoneName}</p>
           </Field>
         ) : (
-          <Field label="Timeline" name="vendorMilestoneId" error={errors.vendorMilestoneId}>
+          <Field label="Tahapan" name="vendorMilestoneId" error={errors.vendorMilestoneId}>
             <Select value={values.vendorMilestoneId} onChange={(e) => set("vendorMilestoneId", e.target.value)}>
-              <option value="">Umum (tidak terikat ke timeline)</option>
+              <option value="">Umum (tidak terikat ke tahapan)</option>
               {milestoneOptions.map((m) => (
                 <option key={m.id} value={m.id}>{milestoneLabel(m)}</option>
               ))}
@@ -165,10 +165,10 @@ export function IssueFormModal({
             </Select>
           </Field>
         )}
-        <Field label="Tanggal Ditemukan" required name="foundDate" error={errors.foundDate}>
+        <Field label="Tanggal ditemukan" required name="foundDate" error={errors.foundDate}>
           <Input type="date" value={values.foundDate} onChange={(e) => set("foundDate", e.target.value)} onBlur={() => blur("foundDate")} />
         </Field>
-        <Field label="Target Penyelesaian" name="targetResolutionDate" error={errors.targetResolutionDate}>
+        <Field label="Target penyelesaian" name="targetResolutionDate" error={errors.targetResolutionDate}>
           <Input
             type="date"
             value={values.targetResolutionDate}
@@ -198,7 +198,7 @@ export function IssueFormModal({
           </label>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Rencana Penanganan" name="resolutionPlan" error={errors.resolutionPlan}>
+          <Field label="Rencana penanganan" name="resolutionPlan" error={errors.resolutionPlan}>
             <Textarea rows={2} value={values.resolutionPlan} onChange={(e) => set("resolutionPlan", e.target.value)} onBlur={() => blur("resolutionPlan")} />
           </Field>
         </div>

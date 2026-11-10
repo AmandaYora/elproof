@@ -21,7 +21,7 @@ export function PortalRoleSelect({
     void fetchRoles("client").catch(() => undefined);
   }, [fetchRoles]);
   return (
-    <Field label="Akses portal" hint="Menentukan apa yang dilihat client. Atur isinya di Pengaturan → Peran & Akses.">
+    <Field label="Akses portal" hint="Menentukan apa yang dilihat klien. Atur isinya di Pengaturan → Peran & Akses.">
       <Select value={String(value)} onChange={(e) => onChange(Number(e.target.value))}>
         {allowDefault && <option value="0">Bawaan (Pengantin / Keluarga sesuai peran)</option>}
         {roles.map((r) => (

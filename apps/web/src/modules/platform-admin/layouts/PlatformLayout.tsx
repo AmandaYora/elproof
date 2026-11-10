@@ -1,10 +1,14 @@
 import { Toaster } from "@/shared/components/ui/Toaster";
 import { Suspense, useEffect, useState } from "react";
-import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, X, Megaphone, FileLock2, ScrollText, SlidersHorizontal, ImageIcon } from "lucide-react";
-import { cn } from "@/shared/lib/cn";
+import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { LayoutDashboard, Building2, Package, Receipt, UserCog, ShieldCheck, LogOut, Wallet, Boxes, Menu, Megaphone, FileLock2, ScrollText, SlidersHorizontal, ImageIcon } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
+import { Button } from "@/shared/components/kit/button";
+import { AppSidebar } from "@/shared/layouts/nav/AppSidebar";
+import { SidebarProvider, useSidebar } from "@/shared/layouts/nav/SidebarContext";
+import { CommandPalette, CommandTrigger } from "@/shared/layouts/CommandPalette";
+import type { NavSection } from "@/shared/layouts/nav/types";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { getPlatformAdmin } from "@/modules/platform-admin/data";
@@ -69,7 +73,6 @@ function PlatformShell() {
   const platformAdmins = usePlatformAdminStore((s) => s.platformAdmins);
   const fetchPlatformAdmin = usePlatformAdminStore((s) => s.fetchPlatformAdmin);
   const [isLoading, setIsLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     fetchPlatformAdmin(currentPlatformAdminId)
@@ -86,100 +89,74 @@ function PlatformShell() {
     return <Navigate to={ROUTE_PATHS.login} replace />;
   }
 
+  // The sections this admin may see, in the shared menu's shape.
+  const sections: NavSection[] = NAV_GROUPS.map((group, i) => ({
+    id: group.label ?? `main-${i}`,
+    label: group.label ?? undefined,
+    items: group.items.filter((item) => !item.needs || roleCan(admin.role, item.needs)).map(({ to, label, icon }) => ({ to, label, icon })),
+  })).filter((section) => section.items.length > 0);
+
   return (
-    <div className="min-h-screen bg-background" data-density="compact">
-      <Toaster />
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-navy-950/50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
+    <SidebarProvider>
+      <div className="min-h-screen bg-background" data-density="compact">
+        <Toaster />
+        <AppSidebar
+          sections={sections}
+          brand={(collapsed) =>
+            collapsed ? (
+              <ShieldCheck aria-hidden className="size-6 text-warning-text" />
+            ) : (
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
+                <span className="flex items-center gap-1.5 text-[12px] font-medium text-warning-text">
+                  <ShieldCheck aria-hidden className="size-3.5" /> Platform Console
+                </span>
+              </span>
+            )
+          }
+          footer={(collapsed) => (
+            <div className={collapsed ? "flex flex-col items-center gap-2" : "flex items-center gap-2.5"}>
+              <Avatar name={admin.name} size="md" />
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold">{admin.name}</p>
+                  <p className="truncate text-[11.5px] text-muted-foreground">{admin.title}</p>
+                </div>
+              )}
+              <Button variant="ghost" size="icon-sm" onClick={() => void logoutAndRedirect(navigate)}>
+                <LogOut aria-hidden />
+                <span className="sr-only">Keluar</span>
+              </Button>
+            </div>
+          )}
         />
-      )}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 px-5 py-6">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
-            <span className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
-              <ShieldCheck className="h-3.5 w-3.5" /> Platform Console
-            </span>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Tutup menu"
-            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white lg:hidden"
-          >
-            <X className="h-4.5 w-4.5" />
-          </button>
+
+        <div className="transition-[padding] duration-200 lg:pl-(--sidebar-w)">
+          <PlatformTopbar pages={sections.flatMap((s) => s.items)} title={`${admin.role} ElProof`} />
+          <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
+            <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
+              <Outlet />
+            </Suspense>
+          </main>
         </div>
-
-        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">
-          {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((item) => !item.needs || roleCan(admin.role, item.needs));
-            if (items.length === 0) return null;
-            return (
-              <div key={group.label ?? "main"} className="flex flex-col gap-1">
-                {group.label && <p className="px-3 pb-1 text-[11.5px] font-medium text-white/70">{group.label}</p>}
-                {items.map(({ to, label, icon: Icon }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    onClick={() => setSidebarOpen(false)}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
-                        isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
-                      )
-                    }
-                  >
-                    <Icon className="h-[18px] w-[18px] shrink-0" />
-                    {label}
-                  </NavLink>
-                ))}
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="flex items-center gap-2.5 border-t border-white/10 px-5 py-4">
-          <Avatar name={admin.name} size="md" className="bg-white/15 text-white" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold text-white">{admin.name}</p>
-            <p className="truncate text-[11.5px] text-white/55">{admin.title}</p>
-          </div>
-          <button
-            onClick={() => void logoutAndRedirect(navigate)}
-            aria-label="Keluar"
-            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      </aside>
-
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-surface px-4 sm:px-6">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Buka menu"
-            className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-surface-muted lg:hidden"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text-primary">{admin.role} ElProof</span>
-          <span className="hidden shrink-0 text-[13px] font-medium text-text-secondary sm:block">{formatDate(todayISO())}</span>
-        </header>
-        <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
-          <Suspense fallback={<div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>}>
-            <Outlet />
-          </Suspense>
-        </main>
       </div>
-    </div>
+    </SidebarProvider>
+  );
+}
+
+function PlatformTopbar({ pages, title }: { pages: NavSection["items"]; title: string }) {
+  const { toggle } = useSidebar();
+  return (
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b bg-card px-4 sm:px-6">
+      <Button variant="ghost" size="icon" onClick={toggle} className="lg:hidden">
+        <Menu aria-hidden />
+        <span className="sr-only">Buka menu</span>
+      </Button>
+      <span className="hidden min-w-0 truncate text-[13.5px] font-semibold text-foreground sm:block">{title}</span>
+      <div className="ml-auto w-full max-w-xs sm:max-w-sm">
+        <CommandPalette pages={pages} searchRecords={false} trigger={(open) => <CommandTrigger onOpen={open} placeholder="Cari halaman..." />} />
+      </div>
+      <span className="hidden shrink-0 text-[13px] font-medium text-muted-foreground md:block">{formatDate(todayISO())}</span>
+    </header>
   );
 }

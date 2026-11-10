@@ -10,19 +10,19 @@ const PARTIES = [
   {
     icon: ClipboardList,
     title: "Tim WO Console",
-    body: "Mencatat setiap project, vendor, timeline, dan pembayaran di satu tempat, alih-alih tercecer di grup chat.",
+    body: "Mencatat setiap proyek, vendor, jadwal, dan pembayaran di satu tempat, alih-alih tercecer di grup chat.",
     color: "bg-blue-50 text-blue-600",
   },
   {
     icon: Handshake,
     title: "Vendor",
-    body: "Punya rekam jejak keterlibatan yang jelas per project — status booking, tenggat kerja, dan riwayat.",
+    body: "Punya rekam jejak keterlibatan yang jelas per proyek — status booking, tenggat kerja, dan riwayat.",
     color: "bg-amber-50 text-amber-600",
   },
   {
     icon: Eye,
-    title: "Pasangan Client",
-    body: "Memantau progress pernikahan mereka lewat Client Portal yang read-only secara mandiri.",
+    title: "Pasangan klien",
+    body: "Memantau progres pernikahan mereka lewat portal klien yang hanya bisa dilihat (tanpa bisa mengubah data) secara mandiri.",
     color: "bg-emerald-50 text-emerald-600",
   },
 ];
@@ -30,13 +30,13 @@ const PARTIES = [
 const PRINCIPLES = [
   {
     icon: ShieldCheck,
-    title: "Transparansi yang Terukur",
-    body: "Setiap progress, bukti kerja, dan status pembayaran dicatat sebagai data — bukan janji lisan — sehingga bisa dilihat kembali kapan saja oleh pihak yang berhak.",
+    title: "Transparansi yang terukur",
+    body: "Setiap progres, bukti kerja, dan status pembayaran dicatat sebagai data — bukan janji lisan — sehingga bisa dilihat kembali kapan saja oleh pihak yang berhak.",
   },
   {
     icon: Layers,
-    title: "Data Terpisah per Tenant",
-    body: "Setiap bisnis WO yang berlangganan ElProof memiliki ruang data sendiri. Client hanya melihat project miliknya, tidak pernah data project atau tenant lain.",
+    title: "Data terpisah untuk tiap usaha",
+    body: "Setiap bisnis WO yang berlangganan ElProof memiliki ruang data sendiri. Klien hanya melihat proyek miliknya, tidak pernah data proyek atau usaha lain.",
   },
 ];
 
@@ -122,14 +122,14 @@ export default function AboutPage() {
                   <ShieldCheck className="h-6 w-6" />
                 </div>
                 <h2 className="font-display text-[28px] font-semibold tracking-tight text-navy-950 md:text-[36px]">
-                  Mengapa Kami Ada
+                  Mengapa kami ada
                 </h2>
                 <div className="mt-6 space-y-5 text-[15.5px] leading-relaxed text-text-secondary">
                   <p>
                     Persiapan pernikahan melibatkan banyak vendor dan koordinasi yang panjang. Seringkali, informasi tersebut tersebar di grup chat, catatan pribadi, atau sebatas ingatan masing-masing pihak.
                   </p>
                   <p>
-                    Akibatnya, pasangan client sering harus bertanya berulang kali hanya untuk tahu sejauh mana persiapan mereka berjalan. Ketidakpastian ini memicu kecemasan di momen yang seharusnya membahagiakan.
+                    Akibatnya, pasangan klien sering harus bertanya berulang kali hanya untuk tahu sejauh mana persiapan mereka berjalan. Ketidakpastian ini memicu kecemasan di momen yang seharusnya membahagiakan.
                   </p>
                   <p className="font-medium text-navy-900">
                     ElProof menggantikan cara kerja itu dengan satu sumber kebenaran (Single Source of Truth).

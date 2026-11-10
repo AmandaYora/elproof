@@ -242,7 +242,7 @@ export default function VendorListPage() {
         <div className="flex flex-wrap items-center gap-2">
           {!writeLocked && (
             <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
-              Import Bulk
+              Import bulk
             </Button>
           )}
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVendors()} disabled={isExporting}>
@@ -250,7 +250,7 @@ export default function VendorListPage() {
           </Button>
           {!writeLocked && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-              Tambah Vendor
+              Tambah vendor
             </Button>
           )}
         </div>
@@ -323,14 +323,14 @@ export default function VendorListPage() {
         )}
         actions={(vendor) => (
           <div className="flex items-center gap-1.5">
-            <IconActionButton icon={Pencil} label="Ubah Vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
+            <IconActionButton icon={Pencil} label="Ubah vendor" tone="neutral" onClick={() => openEditModal(vendor)} />
             {vendor.isActive ? (
               <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
             ) : (
               <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
             )}
-            <IconActionButton icon={Eye} readOnly label="Lihat Project" tone="info" onClick={() => setHistoryVendor(vendor)} />
-            {isOwner && <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />}
+            <IconActionButton icon={Eye} readOnly label="Lihat proyek" tone="info" onClick={() => setHistoryVendor(vendor)} />
+            {isOwner && <IconActionButton icon={Trash2} label="Hapus permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />}
           </div>
         )}
       />
@@ -348,14 +348,14 @@ export default function VendorListPage() {
       <Modal
         open={historyVendor !== null}
         onClose={() => setHistoryVendor(null)}
-        title={historyVendor ? `Riwayat Project — ${historyVendor.name}` : "Riwayat Project"}
-        description="Daftar project yang pernah menggunakan vendor ini."
+        title={historyVendor ? `Riwayat proyek — ${historyVendor.name}` : "Riwayat proyek"}
+        description="Daftar proyek yang pernah menggunakan vendor ini."
         size="sm"
       >
         {historyLoading ? (
           <p className="text-[13px] text-text-secondary">Memuat...</p>
         ) : history.length === 0 ? (
-          <p className="text-[13px] text-text-secondary">Belum digunakan di project manapun.</p>
+          <p className="text-[13px] text-text-secondary">Belum digunakan di proyek mana pun.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {history.map((item) => (
@@ -383,7 +383,7 @@ export default function VendorListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={closeDeleteConfirm}
-        title={deleteTarget ? `Hapus Vendor — ${deleteTarget.name}` : "Hapus Vendor"}
+        title={deleteTarget ? `Hapus vendor — ${deleteTarget.name}` : "Hapus vendor"}
         size="sm"
       >
         {impactLoading ? (
@@ -394,9 +394,9 @@ export default function VendorListPage() {
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
               {deleteImpact && deleteImpact.length > 0 ? (
                 <span>
-                  Vendor ini masih digunakan oleh project berikut:{" "}
+                  Vendor ini masih digunakan oleh proyek berikut:{" "}
                   <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, data
-                  vendor pada project tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
+                  vendor pada proyek tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
                   menghapus vendor ini secara permanen?
                 </span>
               ) : (
@@ -408,7 +408,7 @@ export default function VendorListPage() {
                 Batal
               </Button>
               <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
-                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                {isDeleting ? "Menghapus..." : "Hapus vendor permanen"}
               </Button>
             </div>
           </div>
@@ -419,7 +419,7 @@ export default function VendorListPage() {
         <ImportBulkModal
           open={importModalOpen}
           onClose={() => setImportModalOpen(false)}
-          title="Import Bulk Vendor"
+          title="Import bulk vendor"
           description="Download template Excel, isi datanya, lalu unggah kembali untuk menambah atau memperbarui banyak vendor sekaligus."
           templateFileName="template-vendor.xlsx"
           entityLabel="vendor"

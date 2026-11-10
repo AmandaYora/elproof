@@ -124,20 +124,20 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     <div id="pembayaran-client">
       <Card>
         <CardHeader
-          title="Uang Masuk dari Client"
-          subtitle="Ringkasan nilai kontrak dan seluruh riwayat pembayaran dari client untuk project ini."
+          title="Uang masuk dari klien"
+          subtitle="Ringkasan nilai kontrak dan seluruh riwayat pembayaran dari klien untuk proyek ini."
           action={
             canRecord && (<Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-              Tambah Pembayaran
+              Tambah pembayaran
             </Button>)
           }
         />
         <CardContent className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            <SummaryStat label="Nilai Kontrak" value={formatCurrency(contractValue)} />
-            <SummaryStat label="Total Diterima" value={formatCurrency(totalReceived)} />
+            <SummaryStat label="Nilai kontrak" value={formatCurrency(contractValue)} />
+            <SummaryStat label="Total diterima" value={formatCurrency(totalReceived)} />
             <SummaryStat
-              label="Sisa Tagihan"
+              label="Sisa tagihan"
               value={formatCurrency(Math.max(totalRemaining, 0))}
               badge={totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : undefined}
             />
@@ -145,7 +145,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
 
           {clientPayments.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-              Belum ada pembayaran client tercatat untuk project ini.
+              Belum ada pembayaran klien tercatat untuk proyek ini.
             </p>
           ) : (
             <>
@@ -163,13 +163,13 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
                     <CardListField label="Tanggal" value={formatDate(payment.paymentDate)} />
                     <CardListField label="Metode" value={payment.method} />
-                    <CardListField label="No. Referensi" value={payment.referenceNumber} />
+                    <CardListField label="No. referensi" value={payment.referenceNumber} />
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                    {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
+                    <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                    {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                     {canDelete && (
-                      <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
+                      <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
                     )}
                   </div>
                 </>
@@ -199,10 +199,10 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
                     <TD><PaymentProofCell payment={payment} canVerify={canRecord} onOpen={() => setViewingEvidencePayment(payment)} onVerify={() => setVerifying(payment)} /></TD>
                     <TD>
                       <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                        {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
+                        <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                        {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                         {canDelete && (
-                          <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
+                          <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
                         )}
                       </div>
                     </TD>
@@ -379,7 +379,7 @@ function EditClientPaymentModal({
     try {
       await onSubmit(result.data);
     } catch (err) {
-      setError(getApiErrorMessage(err, "Gagal memperbarui pembayaran client"));
+      setError(getApiErrorMessage(err, "Pembayaran belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setSubmitting(false);
     }
@@ -389,21 +389,21 @@ function EditClientPaymentModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Ubah Pembayaran Client"
-      description="Perbarui detail pembayaran ini. Berkas evidence yang sudah terlampir tidak berubah."
+      title="Ubah pembayaran klien"
+      description="Perbarui detail pembayaran ini. Bukti yang sudah terlampir tidak berubah."
       busy={submitting}
       error={error}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>Batal</Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+            {submitting ? "Menyimpan..." : "Simpan perubahan"}
           </Button>
         </>
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Jenis Pembayaran" required>
+        <Field label="Jenis pembayaran" required>
           <Select value={values.type} onChange={(e) => set("type", e.target.value as ClientPaymentUpdateFormValues["type"])}>
             {CLIENT_PAYMENT_TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -428,7 +428,7 @@ function EditClientPaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="No. Referensi" hint={errors.referenceNumber}>
+        <Field label="No. referensi" hint={errors.referenceNumber}>
           <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
         </Field>
         <div className="sm:col-span-2">

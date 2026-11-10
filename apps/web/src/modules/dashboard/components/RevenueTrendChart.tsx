@@ -13,7 +13,7 @@ export function RevenueTrendChart({ points }: { points: RevenueTrendPoint[] }) {
 
   return (
     <Card>
-      <CardHeader title="Omzet 12 Bulan Terakhir" subtitle="Total nilai kontrak project berdasarkan bulan pelaksanaan acara." />
+      <CardHeader title="Omzet 12 bulan terakhir" subtitle="Total nilai kontrak proyek berdasarkan bulan pelaksanaan acara." />
       <CardContent>
         <div className="mb-5 flex items-baseline gap-2">
           <span className="text-[28px] font-bold leading-none tabular-nums text-text-primary">{formatCurrencyCompact(total)}</span>

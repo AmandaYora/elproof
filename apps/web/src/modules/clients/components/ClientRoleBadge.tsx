@@ -2,9 +2,9 @@ import { Badge, type BadgeTone } from "@/shared/components/ui/Badge";
 import type { ClientRole } from "@/modules/clients/types";
 
 const ROLE_LABEL: Record<ClientRole, string> = {
-  Bride: "Pengantin Wanita",
-  Groom: "Pengantin Pria",
-  "Family Representative": "Wedding Representative",
+  Bride: "Pengantin wanita",
+  Groom: "Pengantin pria",
+  "Family Representative": "Perwakilan keluarga",
 };
 
 const ROLE_TONE: Record<ClientRole, BadgeTone> = {

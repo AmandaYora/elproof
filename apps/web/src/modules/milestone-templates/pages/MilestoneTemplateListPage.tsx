@@ -69,7 +69,7 @@ export default function MilestoneTemplateListPage() {
       await deleteTemplate(id);
       setConfirmingDeleteId(null);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menghapus timeline default"));
+      setActionError(getApiErrorMessage(err, "Tahapan belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -83,7 +83,7 @@ export default function MilestoneTemplateListPage() {
     try {
       await reorderTemplates(reordered.map((t) => t.id));
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah urutan timeline default"));
+      setActionError(getApiErrorMessage(err, "Urutan belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -93,22 +93,22 @@ export default function MilestoneTemplateListPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Timeline Default</h1>
+          <h1 className="text-xl font-bold text-text-primary">Jadwal bawaan</h1>
           <p className="mt-1 text-[13px] text-text-secondary">
-            Checklist ini otomatis ditambahkan ke tab Timeline setiap kali project baru dibuat.
+            Tahapan di sini otomatis ditambahkan ke tab Jadwal setiap kali proyek baru dibuat.
           </p>
         </div>
         {!writeLocked && (
           <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Tambah Timeline
+            Tambah tahapan
           </Button>
         )}
       </div>
 
       <Card>
         <CardHeader
-          title="Checklist Timeline"
-          subtitle="Urutan di sini menentukan urutan tampil di tab Timeline project baru. Perubahan tidak memengaruhi project yang sudah ada."
+          title="Daftar tahapan"
+          subtitle="Urutan di sini menentukan urutan tampil di tab Jadwal proyek baru. Perubahan tidak memengaruhi proyek yang sudah ada."
         />
         <CardContent>
           {actionError && (
@@ -119,19 +119,19 @@ export default function MilestoneTemplateListPage() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
               <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                Yakin ingin menghapus "{confirmingTemplate.name}"? Project yang sudah dibuat tidak akan terpengaruh.
+                Yakin ingin menghapus "{confirmingTemplate.name}"? Proyek yang sudah dibuat tidak akan terpengaruh.
               </span>
               <span className="flex shrink-0 gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setConfirmingDeleteId(null)}>Batal</Button>
-                <Button variant="danger" size="sm" onClick={() => void handleDelete(confirmingTemplate.id)}>Ya, Hapus</Button>
+                <Button variant="danger" size="sm" onClick={() => void handleDelete(confirmingTemplate.id)}>Hapus tahapan</Button>
               </span>
             </div>
           )}
 
           {templates.length === 0 ? (
             <EmptyState
-              title="Belum ada timeline default"
-              description="Tambahkan item pertama supaya project baru tidak lahir dengan tab Timeline kosong."
+              title="Belum ada tahapan di jadwal bawaan"
+              description="Tambahkan item pertama supaya proyek baru tidak dimulai dengan tab Jadwal kosong."
             />
           ) : (
             <>
@@ -160,11 +160,11 @@ export default function MilestoneTemplateListPage() {
                             disabled={idx === -1 || idx >= templates.length - 1}
                             onClick={() => void handleMove(t.id, "down")}
                           />
-                          <IconActionButton icon={Pencil} label="Ubah timeline" tone="neutral" onClick={() => openEditModal(t)} />
-                          <IconActionButton icon={Trash2} label="Hapus timeline" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
+                          <IconActionButton icon={Pencil} label="Ubah tahapan" tone="neutral" onClick={() => openEditModal(t)} />
+                          <IconActionButton icon={Trash2} label="Hapus tahapan" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
                         </div>
                       </div>
-                      <CardListField label="Hari Sebelum/Setelah Acara" value={formatDaysLabel(t.daysBeforeEvent)} />
+                      <CardListField label="Hari sebelum/setelah acara" value={formatDaysLabel(t.daysBeforeEvent)} />
                     </>
                   );
                 }}
@@ -173,8 +173,8 @@ export default function MilestoneTemplateListPage() {
                 <Table>
                   <THead>
                     <TR>
-                      <TH>Nama Timeline</TH>
-                      <TH>Hari Sebelum/Setelah Acara</TH>
+                      <TH>Nama tahapan</TH>
+                      <TH>Hari sebelum/setelah acara</TH>
                       <TH>Aksi</TH>
                     </TR>
                   </THead>
@@ -199,8 +199,8 @@ export default function MilestoneTemplateListPage() {
                               disabled={idx >= templates.length - 1}
                               onClick={() => void handleMove(t.id, "down")}
                             />
-                            <IconActionButton icon={Pencil} label="Ubah timeline" tone="neutral" onClick={() => openEditModal(t)} />
-                            <IconActionButton icon={Trash2} label="Hapus timeline" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
+                            <IconActionButton icon={Pencil} label="Ubah tahapan" tone="neutral" onClick={() => openEditModal(t)} />
+                            <IconActionButton icon={Trash2} label="Hapus tahapan" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
                           </div>
                         </TD>
                       </TR>

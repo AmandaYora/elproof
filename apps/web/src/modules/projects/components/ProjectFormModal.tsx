@@ -12,7 +12,7 @@ import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 const FIELD_LABELS: Record<string, string> = {
-  name: "Nama project", brideName: "Nama mempelai wanita", groomName: "Nama mempelai pria", eventDate: "Tanggal acara",
+  name: "Nama proyek", brideName: "Nama mempelai wanita", groomName: "Nama mempelai pria", eventDate: "Tanggal acara",
   prepStartDate: "Tanggal booking", venue: "Lokasi / venue", packageName: "Paket / layanan", contractValue: "Nilai kontrak",
   picStaffId: "Penanggung jawab WO", picSalesStaffId: "PIC Sales",
 };
@@ -121,18 +121,18 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
 
   const submit = form.handleSubmit(onSubmit, {
     root: () => formRef.current,
-    fallback: "Project belum tersimpan. Periksa koneksi lalu coba lagi.",
+    fallback: "Proyek belum tersimpan. Periksa koneksi Anda, lalu coba lagi.",
   });
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={mode === "duplicate" ? "Duplikat Project" : initialProject ? "Ubah Project" : "Tambah Project Baru"}
+      title={mode === "duplicate" ? "Duplikat proyek" : initialProject ? "Ubah proyek" : "Tambah proyek baru"}
       description={
         mode === "duplicate"
-          ? "Project baru berdasarkan project ini — timeline dan daftar vendor akan ikut disalin sebagai template. Sesuaikan bagian yang berbeda sebelum menyimpan."
-          : "Informasi dasar project pernikahan yang dikelola WO."
+          ? "Proyek baru berdasarkan proyek ini — jadwal dan daftar vendor ikut disalin sebagai templat. Sesuaikan bagian yang berbeda sebelum menyimpan."
+          : "Informasi dasar proyek pernikahan yang dikelola WO."
       }
       size="lg"
       busy={form.submitting}
@@ -146,7 +146,7 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
                 ? "Buat duplikat"
                 : initialProject
                   ? "Simpan perubahan"
-                  : "Simpan project"}
+                  : "Simpan proyek"}
           </Button>
         </>
       }
@@ -161,28 +161,28 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
           <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         </div>
         <div className="sm:col-span-2">
-          <Field label="Nama Project" required name="name" error={errors.name}>
+          <Field label="Nama proyek" required name="name" error={errors.name}>
             <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Aurelia & Bagas Wedding" />
           </Field>
         </div>
-        <Field label="Nama Mempelai Wanita" required name="brideName" error={errors.brideName}>
+        <Field label="Nama mempelai wanita" required name="brideName" error={errors.brideName}>
           <Input value={values.brideName} onChange={(e) => set("brideName", e.target.value)} onBlur={() => blur("brideName")} />
         </Field>
-        <Field label="Nama Mempelai Pria" required name="groomName" error={errors.groomName}>
+        <Field label="Nama mempelai pria" required name="groomName" error={errors.groomName}>
           <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} onBlur={() => blur("groomName")} />
         </Field>
-        <Field label="Tanggal Acara" required name="eventDate" error={errors.eventDate}>
+        <Field label="Tanggal acara" required name="eventDate" error={errors.eventDate}>
           <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} onBlur={() => blur("eventDate")} />
         </Field>
-        <Field label="Tanggal Booking" required name="prepStartDate" error={errors.prepStartDate}>
+        <Field label="Tanggal booking" required name="prepStartDate" error={errors.prepStartDate}>
           <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} onBlur={() => blur("prepStartDate")} />
         </Field>
         <Field
-          label="Lokasi / Venue"
+          label="Lokasi / venue"
           required
           name="venue"
           error={errors.venue}
-          hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Venue project ini." : undefined}
+          hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Venue proyek ini." : undefined}
         >
           <Input
             value={values.venue}
@@ -191,13 +191,13 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
             disabled={venueFromDirectory}
           />
         </Field>
-        <Field label="Paket / Layanan" required name="packageName" error={errors.packageName}>
+        <Field label="Paket / layanan" required name="packageName" error={errors.packageName}>
           <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} onBlur={() => blur("packageName")} />
         </Field>
-        <Field label="Nilai Kontrak (Rp)" required name="contractValue" error={errors.contractValue}>
+        <Field label="Nilai kontrak (Rp)" required name="contractValue" error={errors.contractValue}>
           <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} aria-invalid={errors.contractValue ? true : undefined} />
         </Field>
-        <Field label="Penanggung Jawab WO (PIC Wedding Planner)" name="picStaffId" error={errors.picStaffId}>
+        <Field label="Penanggung jawab WO (PIC wedding planner)" name="picStaffId" error={errors.picStaffId}>
           {picLocked ? (
             <Input value={staffList.find((s) => s.id === values.picStaffId)?.name ?? "..."} disabled />
           ) : (
@@ -222,7 +222,7 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
           )}
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Deskripsi / Catatan Project" name="description">
+          <Field label="Deskripsi / catatan proyek" name="description">
             <Textarea rows={3} value={values.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
           </Field>
         </div>

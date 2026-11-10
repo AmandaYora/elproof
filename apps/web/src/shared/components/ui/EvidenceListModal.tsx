@@ -7,6 +7,7 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal";
 import { formatDate } from "@/shared/lib/formatters";
 import type { Evidence } from "@/modules/projects/types";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 interface EvidenceListModalProps {
   open: boolean;
@@ -48,7 +49,7 @@ export function EvidenceListModal({ open, onClose, projectId, title, items }: Ev
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium text-text-primary">{item.name}</p>
                   <div className="mt-0.5 flex items-center gap-2 text-[12px] text-text-secondary">
-                    <Badge tone="neutral">{item.type}</Badge>
+                    <Badge tone="neutral">{evidenceTypeLabel(item.type)}</Badge>
                     <span>{formatDate(item.documentDate)}</span>
                   </div>
                 </div>

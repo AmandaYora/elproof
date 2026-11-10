@@ -89,10 +89,10 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
   if (!hasVenue && venuePayments.length === 0) {
     return (
       <Card>
-        <CardHeader title="Pembayaran ke Venue" subtitle="Ringkasan nilai sewa dan riwayat pembayaran ke venue pada project ini." />
+        <CardHeader title="Pembayaran ke venue" subtitle="Ringkasan nilai sewa dan riwayat pembayaran ke venue pada proyek ini." />
         <CardContent>
           <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-            Belum ada venue terpasang untuk project ini. Pasang venue terlebih dahulu di tab Venue.
+            Belum ada venue terpasang untuk proyek ini. Pasang venue terlebih dahulu di tab Venue.
           </p>
         </CardContent>
       </Card>
@@ -103,12 +103,12 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
     <div>
       <Card>
         <CardHeader
-          title="Pembayaran ke Venue"
-          subtitle="Ringkasan nilai sewa dan seluruh riwayat pembayaran ke venue pada project ini."
+          title="Pembayaran ke venue"
+          subtitle="Ringkasan nilai sewa dan seluruh riwayat pembayaran ke venue pada proyek ini."
           action={
             hasVenue && canRecord ? (
               <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-                Tambah Pembayaran
+                Tambah pembayaran
               </Button>
             ) : undefined
           }
@@ -116,18 +116,18 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
         <CardContent className="flex flex-col gap-5">
           {!hasVenue && (
             <p className="rounded-md border border-dashed border-border px-3.5 py-2.5 text-[13px] text-text-secondary">
-              Venue sudah dilepas dari project ini. Riwayat pembayaran berikut tetap ditampilkan sebagai catatan historis.
+              Venue sudah dilepas dari proyek ini. Riwayat pembayaran berikut tetap ditampilkan sebagai catatan historis.
             </p>
           )}
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            <SummaryStat label="Nilai Sewa Venue" value={formatCurrency(venueValue)} />
-            <SummaryStat label="Total Sudah Dibayar" value={formatCurrency(totalPaid)} />
-            <SummaryStat label="Sisa Pembayaran" value={totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : formatCurrency(totalRemaining)} />
+            <SummaryStat label="Nilai sewa venue" value={formatCurrency(venueValue)} />
+            <SummaryStat label="Total sudah dibayar" value={formatCurrency(totalPaid)} />
+            <SummaryStat label="Sisa pembayaran" value={totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : formatCurrency(totalRemaining)} />
           </div>
 
           {venuePayments.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-              Belum ada pembayaran venue tercatat untuk project ini.
+              Belum ada pembayaran venue tercatat untuk proyek ini.
             </p>
           ) : (
             <>
@@ -139,19 +139,19 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <span className="font-medium text-text-primary">{payment.type}</span>
-                    {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}
+                    {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum lengkap</Badge>}
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
                     <CardListField label="Tanggal" value={formatDate(payment.paymentDate)} />
                     <CardListField label="Metode" value={payment.method} />
-                    <CardListField label="No. Referensi" value={payment.referenceNumber} />
+                    <CardListField label="No. referensi" value={payment.referenceNumber} />
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                    {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
+                    <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                    {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                     {canDelete && (
-                      <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
+                      <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
                     )}
                   </div>
                 </>
@@ -166,7 +166,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                   <TH>Tanggal</TH>
                   <TH>Metode</TH>
                   <TH>No. Referensi</TH>
-                  <TH>Kelengkapan Bukti</TH>
+                  <TH>Kelengkapan bukti</TH>
                   <TH>Aksi</TH>
                 </TR>
               </THead>
@@ -178,13 +178,13 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
                     <TD>{formatDate(payment.paymentDate)}</TD>
                     <TD>{payment.method}</TD>
                     <TD>{payment.referenceNumber}</TD>
-                    <TD>{payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum Lengkap</Badge>}</TD>
+                    <TD>{payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum lengkap</Badge>}</TD>
                     <TD>
                       <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} readOnly label="Lihat Bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                        {canRecord && <IconActionButton icon={Pencil} label="Ubah Pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
+                        <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
+                        {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
                         {canDelete && (
-                          <IconActionButton icon={Trash2} label="Hapus Pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
+                          <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
                         )}
                       </div>
                     </TD>
@@ -210,7 +210,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Catat pembayaran venue"
-        description="Catat pembayaran baru ke venue untuk proyek ini, beserta invoice dan bukti transfernya."
+        description="Catat pembayaran baru ke venue untuk proyek ini, beserta tagihan dan bukti transfernya."
         slots={{ invoice: true }}
         owed={() => ({ contractValue: venueValue, existing: venuePayments, owedLabel: "sisa biaya venue" })}
         onSubmit={handleAddPayment}
@@ -315,8 +315,8 @@ function EditVenuePaymentModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Ubah Pembayaran Venue"
-      description="Perbarui detail pembayaran ini. Berkas evidence yang sudah terlampir tidak berubah."
+      title="Ubah pembayaran venue"
+      description="Perbarui detail pembayaran ini. Bukti yang sudah terlampir tidak berubah."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Batal</Button>
@@ -330,7 +330,7 @@ function EditVenuePaymentModal({
         {error && (
           <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
         )}
-        <Field label="Jenis Pembayaran" required>
+        <Field label="Jenis pembayaran" required>
           <Select value={values.type} onChange={(e) => set("type", e.target.value as VenuePaymentUpdateFormValues["type"])}>
             {VENUE_PAYMENT_TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -350,7 +350,7 @@ function EditVenuePaymentModal({
             ))}
           </Select>
         </Field>
-        <Field label="No. Referensi" hint={errors.referenceNumber}>
+        <Field label="No. referensi" hint={errors.referenceNumber}>
           <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
         </Field>
         <div className="sm:col-span-2">

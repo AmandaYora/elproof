@@ -13,6 +13,7 @@ import { LoadError } from "@/shared/components/feedback/LoadError";
 import { CompleteProfileModal } from "@/modules/onboarding/components/CompleteProfileModal";
 import { BusinessDetailsDrawer, type BusinessDetails } from "@/modules/business-profile/components/BusinessDetailsDrawer";
 import { BRAND_COLOR_PRESETS, BRAND_COLOR_PRESET_KEYS, BRAND_COLOR_PRESET_LABELS, isBrandColorPresetKey, type BrandColorPresetKey } from "@/theme/brandPresets";
+import { cn } from "@/shared/lib/cn";
 
 interface Tenant {
   businessName: string;
@@ -135,7 +136,7 @@ export default function BusinessProfilePage() {
           )}
           {details && (
             <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-              <div className="sm:col-span-2"><Item label="Alamat usaha" value={details.address} /></div>
+              <Item label="Alamat usaha" value={details.address} className="sm:col-span-2" />
               <Item label="Bank" value={details.bankName} />
               <Item label="Nomor rekening" value={details.bankAccountNumber} />
               <Item label="Atas nama" value={details.bankAccountHolder} />
@@ -213,9 +214,9 @@ export default function BusinessProfilePage() {
   );
 }
 
-function Item({ label, value }: { label: string; value: string }) {
+function Item({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <dt className="text-[12px] font-medium text-text-secondary">{label}</dt>
       <dd className="mt-0.5 break-words text-[13.5px] font-medium text-text-primary">{value || "—"}</dd>
     </div>

@@ -14,7 +14,7 @@ import { usePageMeta } from "@/shared/hooks/usePageMeta";
 
 const INCLUDED = [
   "Akses penuh semua fitur selama 14 hari",
-  "Portal client untuk pasangan dan keluarga",
+  "Portal klien untuk pasangan dan keluarga",
   "Tanpa kartu kredit, tanpa tagihan otomatis",
 ];
 
@@ -68,8 +68,8 @@ export default function SignupPage() {
           <h1 className="text-[36px] font-bold leading-[1.15] text-white">Rapikan setiap pernikahan yang Anda tangani.</h1>
           <div className="mt-4 h-px w-12 bg-white/40" />
           <p className="mt-4 text-[15px] leading-relaxed text-white/70">
-            Timeline, vendor, pembayaran, dan bukti kerja tercatat di satu tempat, sementara pasangan memantau
-            persiapannya sendiri lewat portal client.
+            Jadwal, vendor, pembayaran, dan bukti kerja tercatat di satu tempat, sementara pasangan memantau
+            persiapannya sendiri lewat portal klien.
           </p>
         </>
       }
@@ -97,7 +97,7 @@ export default function SignupPage() {
           <p className="text-[12px] leading-relaxed text-text-secondary">
             ElProof hanya menerima nama dan alamat email akun Google Anda untuk membuat akun Owner. Baca{" "}
             <Link to={ROUTE_PATHS.homepagePrivacy} target="_blank" className="font-medium text-text-primary underline underline-offset-2">
-              Kebijakan Privasi
+              Kebijakan privasi
             </Link>
             .
           </p>

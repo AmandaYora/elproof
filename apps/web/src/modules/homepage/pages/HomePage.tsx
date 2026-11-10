@@ -10,19 +10,19 @@ const PARTIES = [
   {
     icon: ClipboardList,
     title: "Tim WO Console",
-    body: "Catat setiap project, vendor, dan pembayaran secara real-time — tidak ada lagi laporan manual yang tercecer.",
+    body: "Catat setiap proyek, vendor, dan pembayaran secara real-time — tidak ada lagi laporan manual yang tercecer.",
     color: "bg-blue-50 text-blue-600 ring-blue-100",
   },
   {
     icon: Handshake,
-    title: "Vendor Eksternal",
-    body: "Rekam jejak keterlibatan yang jelas: status booking, tenggat kerja, dan riwayat pembayaran per project.",
+    title: "Vendor eksternal",
+    body: "Rekam jejak keterlibatan yang jelas: status booking, tenggat kerja, dan riwayat pembayaran per proyek.",
     color: "bg-amber-50 text-amber-600 ring-amber-100",
   },
   {
     icon: Eye,
-    title: "Pasangan Client",
-    body: "Portal khusus read-only. Pasangan memantau progress tanpa perlu bertanya berulang kali ke tim Anda.",
+    title: "Pasangan klien",
+    body: "Portal khusus read-only. Pasangan memantau progres tanpa perlu bertanya berulang kali ke tim Anda.",
     color: "bg-emerald-50 text-emerald-600 ring-emerald-100",
   },
 ];
@@ -30,32 +30,32 @@ const PARTIES = [
 const FEATURES = [
   {
     icon: CalendarCheck,
-    title: "Timeline",
-    body: "Setiap tahap persiapan punya timeline dan tenggat yang dipantau bersama.",
+    title: "Jadwal",
+    body: "Setiap tahap persiapan punya jadwal dan tenggat yang dipantau bersama.",
     className: "md:col-span-2 md:row-span-1",
   },
   {
     icon: Wallet,
-    title: "Manajemen Vendor",
+    title: "Manajemen vendor",
     body: "Kelola kontrak dan pembayaran vendor dalam satu dashboard.",
     className: "md:col-span-1 md:row-span-1",
   },
   {
     icon: ShieldCheck,
-    title: "Portal Transparansi",
-    body: "Client melihat bukti kerja secara langsung tanpa akses ke data rahasia.",
+    title: "Portal transparansi",
+    body: "Klien melihat bukti kerja secara langsung tanpa akses ke data rahasia.",
     className: "md:col-span-1 md:row-span-1",
   },
   {
     icon: Receipt,
-    title: "Otomatisasi Tagihan",
+    title: "Otomatisasi tagihan",
     body: "Satu paket langganan dengan pembayaran otomatis untuk seluruh tim.",
     className: "md:col-span-2 md:row-span-1",
   },
 ];
 
 export default function HomePage() {
-  usePageMeta({ title: "Kelola pernikahan klien dengan transparan", description: "ElProof membantu wedding organizer mengelola project, vendor, dan pembayaran, sambil memberi klien portal untuk memantau persiapan pernikahan mereka." });
+  usePageMeta({ title: "Kelola pernikahan klien dengan transparan", description: "ElProof membantu wedding organizer mengelola proyek, vendor, dan pembayaran, sambil memberi klien portal untuk memantau persiapan pernikahan mereka." });
   return (
     <div className="flex flex-col bg-background">
       {/* HERO SECTION */}
@@ -80,8 +80,8 @@ export default function HomePage() {
             </h1>
             
             <p className="mt-6 max-w-xl text-[16px] leading-relaxed text-white/80 md:text-[18px]">
-              ElProof mendokumentasikan progress, vendor, dan pembayaran untuk tim WO — 
-              sementara pasangan client memantau langsung persiapan hari bahagia mereka secara mandiri.
+              ElProof mendokumentasikan progres, vendor, dan pembayaran untuk tim WO — 
+              sementara pasangan klien memantau langsung persiapan hari bahagia mereka secara mandiri.
             </p>
             
             <div className="mt-10 flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row lg:justify-start">
@@ -111,7 +111,7 @@ export default function HomePage() {
               {/* Card 1: Project Header (Top Left Floating) */}
               <div className="absolute left-0 top-6 z-20 w-[260px] animate-pulse rounded-2xl border border-white/10 bg-white/10 p-5 shadow-2xl backdrop-blur-md transition-transform duration-500 hover:scale-105 sm:left-4 lg:-left-4" style={{animationDuration: "4s"}}>
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <span className="text-[12px] font-semibold tracking-wider text-white/50 uppercase">Project Aktif</span>
+                  <span className="text-[12px] font-semibold tracking-wider text-white/50 uppercase">Proyek aktif</span>
                   <span className="flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
                 </div>
                 <h3 className="mt-4 font-display text-[20px] font-bold text-white">Raka & Dinda</h3>
@@ -130,7 +130,7 @@ export default function HomePage() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/20 text-blue-300">
                     <CalendarCheck className="h-4 w-4" />
                   </div>
-                  <span className="text-[14px] font-bold text-white">Timeline Persiapan</span>
+                  <span className="text-[14px] font-bold text-white">Jadwal persiapan</span>
                 </div>
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 border border-white/5">
@@ -206,7 +206,7 @@ export default function HomePage() {
               <div className="max-w-2xl">
                 <p className="text-[13px] font-semibold text-navy-900">Fitur Utama</p>
                 <h2 className="mt-4 font-display text-[32px] font-semibold tracking-tight text-navy-950 md:text-[40px]">
-                  Bekerja rapi, client tenang.
+                  Bekerja rapi, klien tenang.
                 </h2>
               </div>
             </div>
@@ -238,7 +238,7 @@ export default function HomePage() {
             <ProofSeal size={64} className="text-navy-900" />
           </div>
           <h2 className="font-display text-[28px] font-medium italic leading-snug text-navy-950 md:text-[36px]">
-            "Kepercayaan pasangan client dibangun dari apa yang bisa mereka lihat sendiri —
+            "Kepercayaan pasangan klien dibangun dari apa yang bisa mereka lihat sendiri —
             bukan sekadar yang mereka dengar dari tim WO."
           </h2>
           <div className="mt-8 flex items-center gap-3 text-[14px] font-semibold text-navy-900">

@@ -150,7 +150,7 @@ export default function AuditLogPage() {
         <div>
           <h1 className="text-xl font-bold text-text-primary">Audit Log</h1>
           <p className="mt-1 max-w-2xl text-[13px] text-text-secondary">
-            Jejak setiap perubahan yang dilakukan tim ElProof dan staf WO: siapa, kapan, dan hasilnya. Isi data yang diubah tidak disimpan di sini.
+            Jejak setiap perubahan yang dilakukan tim ElProof dan anggota tim WO: siapa, kapan, dan hasilnya. Isi data yang diubah tidak disimpan di sini.
           </p>
         </div>
         <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExport()} disabled={exporting}>
@@ -172,7 +172,7 @@ export default function AuditLogPage() {
         <Select className="w-44" aria-label="Pelaku" value={list.filters.actorType || "Semua"} onChange={(e) => list.setFilter("actorType", e.target.value === "Semua" ? "" : e.target.value)}>
           <option value="Semua">Semua pelaku</option>
           <option value="platform_admin">Tim ElProof</option>
-          <option value="staff">Staf WO</option>
+          <option value="staff">Anggota tim WO</option>
           <option value="client">Klien</option>
         </Select>
         <Select className="w-40" aria-label="Hasil" value={list.filters.outcome || "Semua"} onChange={(e) => list.setFilter("outcome", e.target.value === "Semua" ? "" : e.target.value)}>
@@ -205,7 +205,7 @@ export default function AuditLogPage() {
         onResetFilters={list.reset}
         empty={{
           title: "Belum ada catatan",
-          description: "Setiap perubahan oleh tim ElProof atau staf WO akan tercatat di sini: siapa, kapan, dan hasilnya.",
+          description: "Setiap perubahan oleh tim ElProof atau anggota tim WO akan tercatat di sini: siapa, kapan, dan hasilnya.",
         }}
         density={density}
       />

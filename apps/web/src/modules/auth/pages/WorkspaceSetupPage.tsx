@@ -108,14 +108,14 @@ export default function WorkspaceSetupPage() {
         <div className="mt-8 flex flex-col gap-5">
           {invited && (
             <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-text">
-              Ada undangan staf untuk {email}. Jika Anda staf di sebuah WO, jangan buat workspace baru: buka link undangan yang
+              Ada undangan anggota tim untuk {email}. Jika Anda anggota tim di sebuah WO, jangan buat workspace baru: buka link undangan yang
               dikirim WO Anda (lewat WhatsApp), lalu masuk dengan Google dari sana.
             </p>
           )}
 
           <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
 
-          <Field label="Nama WO" htmlFor="businessName" required name="businessName" error={errors.businessName} hint="Tampil di WO Console dan portal client. Bisa diubah nanti.">
+          <Field label="Nama WO" htmlFor="businessName" required name="businessName" error={errors.businessName} hint="Tampil di WO Console dan portal klien. Bisa diubah nanti.">
             <Input
               id="businessName"
               value={values.businessName}
@@ -174,7 +174,7 @@ export default function WorkspaceSetupPage() {
           <p className="flex gap-2.5 rounded-md border border-border bg-surface-muted px-3.5 py-3 text-[12.5px] leading-relaxed text-text-secondary">
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <span>
-              Staf dari WO yang sudah memakai ElProof? Jangan buat workspace baru. Minta Owner WO Anda menambahkan email ini,
+              Anggota tim dari WO yang sudah memakai ElProof? Jangan buat workspace baru. Minta Owner WO Anda menambahkan email ini,
               lalu{" "}
               <Link to={ROUTE_PATHS.login} className="font-medium text-text-primary underline underline-offset-2">
                 masuk dengan Google

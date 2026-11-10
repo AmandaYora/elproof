@@ -17,16 +17,16 @@ interface TrialLimits {
 }
 
 const FIELDS: { key: keyof TrialLimits; label: string; hint: string }[] = [
-  { key: "maxStaff", label: "Staf selain Owner", hint: "Akun staf aktif" },
-  { key: "maxActiveProjects", label: "Project aktif", hint: "Belum selesai, dibatalkan, atau diarsipkan" },
-  { key: "maxClients", label: "Akun client", hint: "Akun client aktif" },
+  { key: "maxStaff", label: "Anggota tim selain Owner", hint: "Akun anggota tim aktif" },
+  { key: "maxActiveProjects", label: "Proyek aktif", hint: "Belum selesai, dibatalkan, atau diarsipkan" },
+  { key: "maxClients", label: "Akun klien", hint: "Akun klien aktif" },
 ];
 
 function toDraft(l: TrialLimits): Record<keyof TrialLimits, string> {
   return { maxStaff: String(l.maxStaff), maxActiveProjects: String(l.maxActiveProjects), maxClients: String(l.maxClients) };
 }
 
-const FIELD_LABELS: Record<string, string> = { maxStaff: "Staf selain Owner", maxActiveProjects: "Project aktif", maxClients: "Akun client" };
+const FIELD_LABELS: Record<string, string> = { maxStaff: "Anggota tim selain Owner", maxActiveProjects: "Proyek aktif", maxClients: "Akun klien" };
 
 /**
  * Free-trial caps (decision K6): only trialing workspaces are limited;

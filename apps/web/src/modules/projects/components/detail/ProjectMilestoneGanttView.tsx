@@ -32,7 +32,7 @@ export function ProjectMilestoneGanttView({ milestones }: { milestones: ProjectM
   if (tasks.length === 0) {
     return (
       <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-        Belum ada timeline untuk ditampilkan.
+        Belum ada tahapan untuk ditampilkan.
       </p>
     );
   }
@@ -43,7 +43,7 @@ export function ProjectMilestoneGanttView({ milestones }: { milestones: ProjectM
         tasks={tasks}
         readonly
         columns={[
-          { id: "text", header: "Timeline", flexGrow: 2 },
+          { id: "text", header: "Tahapan", flexGrow: 2 },
           {
             id: "status",
             header: "Status",

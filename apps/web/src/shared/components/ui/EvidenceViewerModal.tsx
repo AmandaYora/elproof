@@ -9,6 +9,7 @@ import { API } from "@/shared/services/api-endpoints";
 import { getEvidenceFileKind } from "@/shared/lib/evidence-file";
 import { formatDate } from "@/shared/lib/formatters";
 import type { EvidenceType } from "@/modules/projects/types";
+import { evidenceTypeLabel } from "@/shared/lib/labels";
 
 interface EvidenceViewerModalProps {
   open: boolean;
@@ -103,7 +104,7 @@ export function EvidenceViewerModal({ open, onClose, projectId, evidence, contex
           <div className="min-w-0">
             <DialogTitle className="truncate text-[14.5px] leading-snug font-semibold sm:text-[15px]">{evidence.name}</DialogTitle>
             <DialogDescription render={<div />} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
-              <Badge tone="neutral">{evidence.type}</Badge>
+              <Badge tone="neutral">{evidenceTypeLabel(evidence.type)}</Badge>
               <span>{formatDate(evidence.documentDate)}</span>
               {contextLabel && <span className="hidden sm:inline">· {contextLabel}</span>}
             </DialogDescription>

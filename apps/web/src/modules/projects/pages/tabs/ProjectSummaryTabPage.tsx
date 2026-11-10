@@ -37,7 +37,7 @@ export default function ProjectSummaryTabPage() {
             <EmptyState
               icon={<CircleCheck className="h-6 w-6 text-success-text" />}
               title="Tidak ada yang perlu ditindak"
-              description="Termin, kendala, vendor, dan timeline proyek ini sejauh ini berjalan sesuai rencana."
+              description="Termin, kendala, vendor, dan jadwal proyek ini sejauh ini berjalan sesuai rencana."
             />
           ) : (
             <ul className="flex flex-col divide-y divide-border-light">

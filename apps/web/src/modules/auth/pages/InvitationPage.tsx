@@ -206,7 +206,7 @@ export default function InvitationPage() {
                         type="button"
                         onClick={() => setShowPassword((v) => !v)}
                         aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                        className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-text-secondary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground"
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>

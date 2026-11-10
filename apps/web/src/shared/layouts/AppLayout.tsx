@@ -1,7 +1,8 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/shared/layouts/Sidebar";
+import { SidebarProvider } from "@/shared/layouts/nav/SidebarContext";
 import { Topbar } from "@/shared/layouts/Topbar";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
@@ -14,7 +15,6 @@ import { SupportSessionBanner } from "@/shared/layouts/SupportSessionBanner";
 import { AnnouncementBanner } from "@/shared/layouts/AnnouncementBanner";
 
 export function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
   const brandingHydrated = useTenantBrandingStore((s) => s.hydrated);
   const lifecycle = useSubscriptionStatusStore((s) => s.lifecycle);
@@ -68,12 +68,13 @@ export function AppLayout() {
   }
 
   return (
+    <SidebarProvider>
     <div className="min-h-screen bg-background" data-density="compact">
       <Toaster />
       <SupportSessionBanner />
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="lg:pl-64 print:pl-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} />
+      <Sidebar />
+      <div className="transition-[padding] duration-200 lg:pl-(--sidebar-w) print:pl-0">
+        <Topbar />
         <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
           <AnnouncementBanner />
           {lifecycle && !locked && <SubscriptionBanner lifecycle={lifecycle} canManage={canManageSubscription} />}
@@ -87,5 +88,6 @@ export function AppLayout() {
         </main>
       </div>
     </div>
+    </SidebarProvider>
   );
 }

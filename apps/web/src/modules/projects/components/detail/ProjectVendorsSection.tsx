@@ -178,7 +178,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         status: m.status === "Cancelled" ? "Not Started" : "Cancelled",
       });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui timeline"));
+      setActionError(getApiErrorMessage(err, "Tahapan belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -191,7 +191,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
         completedDate: status === "Completed" ? m.completedDate ?? todayISO() : m.completedDate ?? "",
       });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui status timeline"));
+      setActionError(getApiErrorMessage(err, "Status tahapan belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -292,12 +292,12 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
     <div id="vendor">
       <Card>
         <CardHeader
-          title="Vendor Project"
-          subtitle="Progress setiap vendor berdasarkan pencapaian timeline yang telah diselesaikan."
+          title="Vendor proyek"
+          subtitle="Progres setiap vendor berdasarkan tahapan yang telah diselesaikan."
           action={
             canEdit && (
               <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
-                Tambah Vendor
+                Tambah vendor
               </Button>
             )
           }
@@ -307,7 +307,7 @@ export function ProjectVendorsSection({ projectId }: { projectId: string }) {
             <p className="mx-5 mt-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
           )}
           {vendorEngagements.length === 0 ? (
-            <EmptyState title="Belum ada vendor" description="Tambahkan vendor yang terlibat pada project ini." />
+            <EmptyState title="Belum ada vendor" description="Tambahkan vendor yang terlibat pada proyek ini." />
           ) : (
             <ul className="divide-y divide-border-light">
               {rows.map(({ pv, vendorName, categoryName, picName, milestones, payments: pvPayments, issues: pvIssues }) => (
@@ -447,45 +447,20 @@ function VendorAccordionRow({
     return issues.filter((i) => i.vendorMilestoneId === milestoneId && i.status !== "Resolved" && i.status !== "Closed").length;
   }
 
+  // Sibling buttons, never inside the row's toggle button: nested controls cannot be reached by keyboard or named by a screen reader.
   const actionIcons = canEdit && (
     <>
-      <span
-        onClick={(e) => {
-          e.stopPropagation();
-          onEditVendor();
-        }}
-        role="button"
-        tabIndex={0}
-        className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-white hover:text-navy-900"
-      >
-        <Pencil className="h-4 w-4" />
-      </span>
-      {!vendorCancelled && (
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            setConfirmingCancel(true);
-          }}
-          role="button"
-          tabIndex={0}
-          title="Batalkan vendor"
-          className="shrink-0 rounded-md p-1.5 text-danger-text hover:bg-danger-soft"
-        >
-          <Ban className="h-4 w-4" />
-        </span>
-      )}
+      <IconActionButton icon={Pencil} label={`Ubah ${vendorName}`} onClick={onEditVendor} />
+      {!vendorCancelled && <IconActionButton icon={Ban} label={`Batalkan ${vendorName}`} tone="danger" onClick={() => setConfirmingCancel(true)} />}
     </>
   );
 
   return (
     <li className={vendorCancelled ? "opacity-60" : undefined}>
       {/* Mobile: stacked card header — fixed-width columns don't fit one line on small screens */}
-      <button
-        onClick={onToggle}
-        className="flex w-full flex-col gap-2.5 px-5 py-3.5 text-left transition-colors hover:bg-surface-muted sm:hidden"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
+      <div className="relative transition-colors hover:bg-surface-muted sm:hidden">
+        <button type="button" onClick={onToggle} aria-expanded={isOpen} className="flex w-full flex-col gap-2.5 px-5 py-3.5 text-left">
+          <div className="flex min-w-0 items-center gap-2.5 pr-20">
             {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
             <span className="min-w-0">
               <span className={cn("block truncate text-[13.5px] font-semibold text-text-primary", vendorCancelled && "line-through")}>
@@ -494,44 +469,43 @@ function VendorAccordionRow({
               <span className="block truncate text-[12px] text-text-secondary">{categoryName} · {pv.scope}</span>
             </span>
           </div>
-          <span className="flex shrink-0 items-center gap-1">{actionIcons}</span>
-        </div>
-        <MilestoneRail milestones={milestones} size="sm" />
-        <div className="flex items-center justify-between gap-3">
-          <EngagementStatusBadge status={pv.engagementStatus} />
-          <span className="text-[13px] tabular-nums text-text-primary">{formatCurrency(pv.contractValue)}</span>
-        </div>
-      </button>
+          <MilestoneRail milestones={milestones} size="sm" />
+          <div className="flex items-center justify-between gap-3">
+            <EngagementStatusBadge status={pv.engagementStatus} />
+            <span className="text-[13px] tabular-nums text-text-primary">{formatCurrency(pv.contractValue)}</span>
+          </div>
+        </button>
+        <span className="absolute right-3 top-2.5 flex items-center gap-1">{actionIcons}</span>
+      </div>
 
       {/* Desktop: single-line row */}
-      <button
-        onClick={onToggle}
-        className="hidden w-full items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-surface-muted sm:flex"
-      >
-        {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
-        <span className="min-w-45 flex-1">
-          <span className={cn("block text-[13.5px] font-semibold text-text-primary", vendorCancelled && "line-through")}>
-            {vendorName}
+      <div className="hidden items-center pr-5 transition-colors hover:bg-surface-muted sm:flex">
+        <button type="button" onClick={onToggle} aria-expanded={isOpen} className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 text-left">
+          {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
+          <span className="min-w-45 flex-1">
+            <span className={cn("block text-[13.5px] font-semibold text-text-primary", vendorCancelled && "line-through")}>
+              {vendorName}
+            </span>
+            <span className="block text-[12px] text-text-secondary">{categoryName} · {pv.scope}</span>
           </span>
-          <span className="block text-[12px] text-text-secondary">{categoryName} · {pv.scope}</span>
-        </span>
-        <span className="w-40 shrink-0">
-          <MilestoneRail milestones={milestones} size="sm" />
-        </span>
-        <span className="w-32 shrink-0">
-          <EngagementStatusBadge status={pv.engagementStatus} />
-        </span>
-        <span className="w-32 shrink-0 text-right text-[13px] tabular-nums text-text-primary">
-          {formatCurrency(pv.contractValue)}
-        </span>
-        <span className="flex shrink-0 items-center gap-1">{actionIcons}</span>
-      </button>
+          <span className="w-40 shrink-0">
+            <MilestoneRail milestones={milestones} size="sm" />
+          </span>
+          <span className="w-32 shrink-0">
+            <EngagementStatusBadge status={pv.engagementStatus} />
+          </span>
+          <span className="w-32 shrink-0 text-right text-[13px] tabular-nums text-text-primary">
+            {formatCurrency(pv.contractValue)}
+          </span>
+        </button>
+        <span className="flex shrink-0 items-center gap-1 pl-4">{actionIcons}</span>
+      </div>
 
       {confirmingCancel && (
         <div className="mx-5 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
           <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            Yakin ingin membatalkan kerja sama dengan vendor ini? Timeline, pembayaran, dan kendala yang sudah tercatat tidak akan dihapus.
+            Yakin ingin membatalkan kerja sama dengan vendor ini? Tahapan, pembayaran, dan kendala yang sudah tercatat tidak akan dihapus.
           </span>
           <span className="flex shrink-0 gap-2">
             <Button variant="secondary" size="sm" onClick={() => setConfirmingCancel(false)}>Batal</Button>
@@ -543,7 +517,7 @@ function VendorAccordionRow({
                 setConfirmingCancel(false);
               }}
             >
-              Ya, Batalkan
+              Batalkan kerja sama
             </Button>
           </span>
         </div>
@@ -554,29 +528,29 @@ function VendorAccordionRow({
           <div className="grid grid-cols-1 gap-3 pb-3 text-[12.5px] text-text-secondary sm:grid-cols-4">
             <span>PIC: <span className="font-medium text-text-primary">{picName}</span></span>
             <span>DP: <span className="font-medium text-text-primary">{formatCurrency(pv.dpAmount)}</span></span>
-            <span>Sudah Dibayar: <span className="font-medium text-text-primary">{formatCurrency(pv.paidAmount)}</span></span>
+            <span>Sudah dibayar: <span className="font-medium text-text-primary">{formatCurrency(pv.paidAmount)}</span></span>
             <span>Sisa: <span className="font-medium text-text-primary">{formatCurrency(remaining)}</span></span>
           </div>
 
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Timeline Vendor</p>
+            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Tahapan vendor</p>
             {canEdit && (
               <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={onAddMilestone}>
-                Tambah Timeline
+                Tambah tahapan
               </Button>
             )}
           </div>
 
           {milestones.length === 0 ? (
             <p className="rounded-md border border-dashed border-border bg-white px-4 py-3 text-[13px] text-text-secondary">
-              Belum ada timeline untuk vendor ini.
+              Belum ada tahapan untuk vendor ini.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-md border border-border bg-white">
               <table className="w-full text-left text-[13px]">
                 <thead className="border-b border-border-light">
                   <tr>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Timeline</th>
+                    <th className="px-3 py-2 font-semibold text-text-secondary">Tahapan</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Status</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Target</th>
                     <th className="px-3 py-2 font-semibold text-text-secondary">Selesai</th>
@@ -626,7 +600,7 @@ function VendorAccordionRow({
                           {canEdit && <div className="flex items-center gap-1.5">
                             <IconActionButton
                               icon={Pencil}
-                              label="Edit Timeline"
+                              label="Ubah tahapan"
                               tone="neutral"
                               onClick={() => onEditMilestone(m, vendorName, milestones.length)}
                             />
@@ -640,14 +614,14 @@ function VendorAccordionRow({
                             ) : (
                               <IconActionButton
                                 icon={Ban}
-                                label="Batalkan timeline"
+                                label="Batalkan tahapan"
                                 tone="danger"
                                 onClick={() => onToggleCancelMilestone(m)}
                               />
                             )}
                             <IconActionButton
                               icon={AlertTriangle}
-                              label="Tambah Kendala"
+                              label="Tambah kendala"
                               tone="info"
                               onClick={() => onAddIssue(m)}
                             />
@@ -704,12 +678,12 @@ function VendorAccordionRow({
                         <div className="min-w-0">
                           <span className="block truncate text-[13px] font-medium text-text-primary">{i.title}</span>
                           <span className="block text-[11.5px] text-text-secondary">
-                            {milestones.find((m) => m.id === i.vendorMilestoneId)?.name ?? "Kendala Umum"}
+                            {milestones.find((m) => m.id === i.vendorMilestoneId)?.name ?? "Kendala umum"}
                           </span>
                         </div>
                         <span className="flex shrink-0 items-center gap-1.5">
                           <IssueImpactBadge impact={i.impact} />
-                          {canEdit && <IconActionButton icon={Pencil} label="Ubah Kendala" tone="neutral" onClick={() => onEditIssue(i)} />}
+                          {canEdit && <IconActionButton icon={Pencil} label="Ubah kendala" tone="neutral" onClick={() => onEditIssue(i)} />}
                         </span>
                       </div>
                       <Select

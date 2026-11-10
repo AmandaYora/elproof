@@ -18,12 +18,12 @@ const PURPOSE_COPY: Record<AccessLink["purpose"], { title: string; body: string 
     body: "Penerima membuka link ini lalu masuk dengan akun Google yang emailnya sama dengan yang diundang. Link yang diteruskan ke orang lain tidak bisa dipakai.",
   },
   client_invite: {
-    title: "Link undangan client siap dikirim",
-    body: "Client membuka link ini dan membuat kata sandinya sendiri. Anda tidak perlu mengetahui kata sandinya.",
+    title: "Link undangan klien siap dikirim",
+    body: "Klien membuka link ini dan membuat kata sandinya sendiri. Anda tidak perlu mengetahui kata sandinya.",
   },
   client_reset: {
     title: "Link atur ulang kata sandi siap dikirim",
-    body: "Client membuka link ini dan membuat kata sandi baru. Kata sandi lama dan sesi yang masih terbuka langsung berhenti setelahnya.",
+    body: "Klien membuka link ini dan membuat kata sandi baru. Kata sandi lama dan sesi yang masih terbuka langsung berhenti setelahnya.",
   },
 };
 

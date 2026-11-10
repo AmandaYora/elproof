@@ -133,7 +133,7 @@ export default function UserListPage() {
         notice: user.loginStatus === "invited" ? "Link baru dibuat. Link sebelumnya tidak berlaku lagi." : "Saat link ini diterima, akun Google lama tidak bisa dipakai masuk lagi.",
       });
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal membuat link undangan"));
+      setActionError(getApiErrorMessage(err, "Link undangan belum bisa dibuat. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -155,7 +155,7 @@ export default function UserListPage() {
       await toggleStaffActive(user.id);
       await reload();
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah status pengguna"));
+      setActionError(getApiErrorMessage(err, "Status anggota tim belum bisa diubah. Periksa koneksi Anda, lalu coba lagi."));
     }
   }
 
@@ -188,7 +188,7 @@ export default function UserListPage() {
       closeDeleteConfirm();
       await reload();
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menghapus pengguna"));
+      setActionError(getApiErrorMessage(err, "Anggota tim belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
       closeDeleteConfirm();
     } finally {
       setIsDeleting(false);
@@ -222,12 +222,12 @@ export default function UserListPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-text-primary">Pengguna</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola akun staff internal yang dapat mengakses {businessName}.</p>
+          <h1 className="text-xl font-bold text-text-primary">Tim</h1>
+          <p className="mt-1 text-[13px] text-text-secondary">Kelola anggota tim yang dapat mengakses {businessName}.</p>
         </div>
         {!writeLocked && (
           <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Undang Pengguna
+            Undang anggota tim
           </Button>
         )}
       </div>
@@ -263,7 +263,7 @@ export default function UserListPage() {
       </ListToolbar>
 
       <DataTable
-        label="Daftar pengguna"
+        label="Daftar anggota tim"
         columns={columns}
         rows={users}
         rowId={(u) => u.id}
@@ -278,8 +278,8 @@ export default function UserListPage() {
         onResetFilters={list.reset}
         empty={{
           title: "Belum ada anggota tim",
-          description: "Undang staf agar bisa masuk dan membantu mengelola proyek. Peran menentukan apa yang boleh mereka lakukan.",
-          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Undang pengguna</Button> : undefined,
+          description: "Undang anggota tim agar bisa masuk dan membantu mengelola proyek. Peran menentukan apa yang boleh mereka lakukan.",
+          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Undang anggota tim</Button> : undefined,
         }}
         density={density}
         actions={(user) => {
@@ -288,7 +288,7 @@ export default function UserListPage() {
           if (isOwner && !isSelf) return <span className="text-[12px] text-muted-foreground">Hanya dapat diubah oleh Owner sendiri</span>;
           return (
             <div className="flex items-center gap-1.5">
-              <IconActionButton icon={Pencil} label="Ubah Pengguna" tone="neutral" onClick={() => openEditModal(user)} />
+              <IconActionButton icon={Pencil} label="Ubah anggota tim" tone="neutral" onClick={() => openEditModal(user)} />
               {!isOwner && user.isActive && (
                 <IconActionButton icon={Send} label={reinviteLabel(user)} tone="neutral" onClick={() => void handleReinvite(user)} />
               )}
@@ -298,7 +298,7 @@ export default function UserListPage() {
                 <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
               ))}
               {!isOwner && (
-                <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(user)} />
+                <IconActionButton icon={Trash2} label="Hapus permanen" tone="danger" onClick={() => void openDeleteConfirm(user)} />
               )}
             </div>
           );
@@ -326,7 +326,7 @@ export default function UserListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={closeDeleteConfirm}
-        title={deleteTarget ? `Hapus Pengguna — ${deleteTarget.name}` : "Hapus Pengguna"}
+        title={deleteTarget ? `Hapus anggota tim — ${deleteTarget.name}` : "Hapus anggota tim"}
         size="sm"
       >
         {impactLoading ? (
@@ -337,10 +337,10 @@ export default function UserListPage() {
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
               {deleteImpact && deleteImpact.length > 0 ? (
                 <span>
-                  Pengguna ini masih ditugaskan sebagai PIC pada project berikut:{" "}
+                  Anggota tim ini masih ditugaskan sebagai PIC pada proyek berikut:{" "}
                   <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, penugasan
-                  PIC pada project tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
-                  menghapus pengguna ini secara permanen?
+                  PIC pada proyek tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
+                  menghapus anggota tim ini secara permanen?
                 </span>
               ) : (
                 <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
@@ -351,7 +351,7 @@ export default function UserListPage() {
                 Batal
               </Button>
               <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
-                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                {isDeleting ? "Menghapus..." : "Hapus anggota tim"}
               </Button>
             </div>
           </div>

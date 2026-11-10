@@ -1,212 +1,111 @@
-import { useEffect, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, FolderKanban, Users, Tags, Store, Building2, UserCog, Sparkles, Settings, CalendarClock, ChevronDown, LogOut, X, ShieldCheck, Briefcase } from "lucide-react";
-import { cn } from "@/shared/lib/cn";
+import { useNavigate } from "react-router-dom";
+import { Briefcase, Building2, CalendarClock, FolderKanban, LayoutDashboard, LogOut, Settings, ShieldCheck, Sparkles, Store, Tags, UserCog, Users, BookUser } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
+import { Button } from "@/shared/components/kit/button";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { APP_NAME } from "@/shared/constants/brand";
 import { logoutAndRedirect } from "@/shared/lib/auth-actions";
-import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { usePermissionStore, type Grants } from "@/shared/stores/usePermissionStore";
+import { AppSidebar } from "@/shared/layouts/nav/AppSidebar";
+import type { NavItem, NavSection } from "@/shared/layouts/nav/types";
 
-interface NavLinkItem {
-  kind: "link";
-  to: string;
-  label: string;
-  icon: LucideIcon;
-  // Permissions the role needs to see this item (undefined = everyone).
+interface WoItem extends NavItem {
+  /** Permissions the role needs to see this item (undefined = everyone). */
   requires?: string[];
-  // Also needs a role that reaches every project (tenant-wide pages).
+  /** Also needs a role that reaches every project (tenant-wide pages). */
   allProjects?: boolean;
 }
 
-interface NavGroupItem {
-  kind: "group";
-  label: string;
-  icon: LucideIcon;
-  children: NavLinkItem[];
+interface WoSection extends Omit<NavSection, "items"> {
+  items: WoItem[];
 }
 
-type NavEntry = NavLinkItem | NavGroupItem;
-
-// Items follow the workspace role's permissions (ADR-0026) — the same
-// permissions the pages and their API calls require.
-const NAV_ITEMS: NavEntry[] = [
-  { kind: "link", to: ROUTE_PATHS.dashboard, label: "Beranda", icon: LayoutDashboard },
-  { kind: "link", to: ROUTE_PATHS.projects, label: "Project", icon: FolderKanban },
-  { kind: "link", to: ROUTE_PATHS.clients, label: "Client", icon: Users, requires: ["client.manage"], allProjects: true },
-  { kind: "link", to: ROUTE_PATHS.vendors, label: "Vendor", icon: Store, requires: ["vendor.view"] },
-  { kind: "link", to: ROUTE_PATHS.venues, label: "Venue", icon: Building2, requires: ["vendor.view"] },
+// The menu of FLOW-IDEAL §2.2 in the glossary's words. Items follow the workspace role's permissions (ADR-0026), the same
+// ones the pages and their API calls require. "Keuangan" joins when the finance views exist (PLAN.md E13, backlog).
+const SECTIONS: WoSection[] = [
   {
-    kind: "group",
-    label: "Pengaturan",
-    icon: Settings,
-    children: [
-      { kind: "link", to: ROUTE_PATHS.businessProfile, label: "Profil Usaha", icon: Briefcase, requires: ["business_profile.manage"] },
-      { kind: "link", to: ROUTE_PATHS.users, label: "Pengguna", icon: UserCog, requires: ["team.manage"] },
-      { kind: "link", to: ROUTE_PATHS.roles, label: "Peran & Akses", icon: ShieldCheck, requires: ["role.manage"] },
-      { kind: "link", to: ROUTE_PATHS.subscription, label: "Langganan", icon: Sparkles, requires: ["subscription.manage"] },
-      { kind: "link", to: ROUTE_PATHS.vendorCategories, label: "Kategori Vendor", icon: Tags, requires: ["vendor.category.manage"] },
-      { kind: "link", to: ROUTE_PATHS.milestoneTemplates, label: "Timeline Default", icon: CalendarClock, requires: ["template.manage"] },
+    id: "main",
+    items: [
+      { to: ROUTE_PATHS.dashboard, label: "Beranda", icon: LayoutDashboard },
+      { to: ROUTE_PATHS.projects, label: "Proyek", icon: FolderKanban },
+      { to: ROUTE_PATHS.clients, label: "Klien", icon: Users, requires: ["client.manage"], allProjects: true },
+    ],
+  },
+  {
+    id: "directory",
+    collapsible: { label: "Direktori", icon: BookUser },
+    items: [
+      { to: ROUTE_PATHS.vendors, label: "Vendor", icon: Store, requires: ["vendor.view"] },
+      { to: ROUTE_PATHS.venues, label: "Venue", icon: Building2, requires: ["vendor.view"] },
+    ],
+  },
+  {
+    id: "settings",
+    collapsible: { label: "Pengaturan", icon: Settings },
+    items: [
+      { to: ROUTE_PATHS.businessProfile, label: "Profil usaha", icon: Briefcase, requires: ["business_profile.manage"] },
+      { to: ROUTE_PATHS.users, label: "Tim", icon: UserCog, requires: ["team.manage"] },
+      { to: ROUTE_PATHS.roles, label: "Peran dan akses", icon: ShieldCheck, requires: ["role.manage"] },
+      { to: ROUTE_PATHS.subscription, label: "Langganan", icon: Sparkles, requires: ["subscription.manage"] },
+      { to: ROUTE_PATHS.vendorCategories, label: "Kategori vendor", icon: Tags, requires: ["vendor.category.manage"] },
+      { to: ROUTE_PATHS.milestoneTemplates, label: "Jadwal bawaan", icon: CalendarClock, requires: ["template.manage"] },
     ],
   },
 ];
 
-function canSee(item: NavLinkItem, grants: Grants | null): boolean {
+function canSee(item: WoItem, grants: Grants | null): boolean {
   if (item.requires?.some((p) => !grants?.permissions.includes(p))) return false;
   return !item.allProjects || grants?.projectScope === "all";
 }
 
-interface SidebarProps {
-  open: boolean;
-  onClose: () => void;
+/** The sections this role may see; a group with nothing left to show disappears entirely. */
+export function visibleSections(grants: Grants | null): NavSection[] {
+  return SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => canSee(i, grants)) })).filter((s) => s.items.length > 0);
 }
 
-export function Sidebar({ open, onClose }: SidebarProps) {
+/** The WO Console's menu. */
+export function Sidebar() {
   const navigate = useNavigate();
-  const location = useLocation();
   const session = useAuthStore((s) => s.session);
   const logoUrl = useTenantBrandingStore((s) => s.logoUrl);
   const brandName = useTenantBrandingStore((s) => s.businessName);
   const grants = usePermissionStore((s) => s.grants);
-  // Off-screen on a phone, the menu must not be reachable by Tab either.
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
-
-  // Flat items filtered by their own allowedRoles; a group is filtered by
-  // its children's allowedRoles and dropped entirely if nothing remains
-  // visible (e.g. Pengaturan vanishes for Admin/Wedding Planner, since every
-  // one of its children is Owner-only).
-  const visibleEntries: NavEntry[] = NAV_ITEMS.flatMap((entry): NavEntry[] => {
-    if (entry.kind === "link") {
-      return canSee(entry, grants) ? [entry] : [];
-    }
-    const children = entry.children.filter((child) => canSee(child, grants));
-    return children.length > 0 ? [{ ...entry, children }] : [];
-  });
-
-  // "Pengaturan" is collapsed by default and only ever auto-opens (never
-  // auto-closes) when the current route lands on one of its children -- e.g.
-  // a direct link/reload to /langganan should still show its nav highlighted,
-  // not hidden behind a collapsed group. Sidebar is a persistent element
-  // (see AppLayout.tsx), so this state survives in-app navigation elsewhere.
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  useEffect(() => {
-    const settingsGroup = NAV_ITEMS.find((entry): entry is NavGroupItem => entry.kind === "group");
-    if (settingsGroup?.children.some((child) => location.pathname.startsWith(child.to))) {
-      setSettingsOpen(true);
-    }
-  }, [location.pathname]);
+  const name = brandName ?? APP_NAME;
 
   return (
-    <>
-      {open && (
-        <div
-          className="fixed inset-0 z-30 bg-navy-950/50 lg:hidden"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
-      <aside
-        inert={!open && !isDesktop}
-        className={cn(
-          "print:hidden fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-950 text-white transition-transform duration-200 ease-in-out lg:translate-x-0",
-          open ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 px-5 py-6">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            {logoUrl ? (
-              <>
-                <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-7 w-auto max-w-[160px] object-contain" />
-                <span className="truncate text-[12px] font-medium text-white/55">{brandName ?? APP_NAME}</span>
-              </>
-            ) : (
-              <span className="truncate text-[15px] font-bold tracking-tight">{brandName ?? APP_NAME}</span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Tutup menu"
-            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white lg:hidden"
-          >
-            <X className="h-4.5 w-4.5" />
-          </button>
-        </div>
-
-        <nav className="flex flex-1 flex-col gap-1 px-3">
-          {visibleEntries.map((entry) =>
-            entry.kind === "link" ? (
-              <NavLink
-                key={entry.to}
-                to={entry.to}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors",
-                    isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
-                  )
-                }
-              >
-                <entry.icon className="h-[18px] w-[18px] shrink-0" />
-                {entry.label}
-              </NavLink>
-            ) : (
-              <div key={entry.label}>
-                <button
-                  type="button"
-                  onClick={() => setSettingsOpen((v) => !v)}
-                  aria-expanded={settingsOpen}
-                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-[13.5px] font-medium text-white/70 transition-colors hover:bg-navy-800/60 hover:text-white"
-                >
-                  <entry.icon className="h-[18px] w-[18px] shrink-0" />
-                  <span className="flex-1 text-left">{entry.label}</span>
-                  <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", settingsOpen && "rotate-180")} />
-                </button>
-                {settingsOpen && (
-                  <div className="mt-1 flex flex-col gap-1">
-                    {entry.children.map((child) => (
-                      <NavLink
-                        key={child.to}
-                        to={child.to}
-                        onClick={onClose}
-                        className={({ isActive }) =>
-                          cn(
-                            "flex items-center gap-3 rounded-md py-2.5 pl-10 pr-3 text-[13.5px] font-medium transition-colors",
-                            isActive ? "bg-navy-800 text-white" : "text-white/70 hover:bg-navy-800/60 hover:text-white"
-                          )
-                        }
-                      >
-                        <child.icon className="h-[16px] w-[16px] shrink-0" />
-                        {child.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
+    <AppSidebar
+      sections={visibleSections(grants)}
+      brand={(collapsed) =>
+        collapsed ? (
+          <span aria-hidden className="flex size-9 items-center justify-center rounded-lg bg-primary text-[15px] font-bold text-primary-foreground">
+            {name.trim().charAt(0).toUpperCase()}
+          </span>
+        ) : logoUrl ? (
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <img src={logoUrl} alt={name} className="h-7 w-auto max-w-[160px] object-contain" />
+            <span className="truncate text-[12px] font-medium text-muted-foreground">{name}</span>
+          </span>
+        ) : (
+          <span className="truncate text-[15px] font-bold tracking-tight">{name}</span>
+        )
+      }
+      footer={(collapsed) => (
+        <div className={collapsed ? "flex flex-col items-center gap-2" : "flex items-center gap-2.5"}>
+          <Avatar name={session?.displayName ?? "?"} size="md" />
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold">{session?.displayName ?? "Tidak diketahui"}</p>
+              <p className="truncate text-[11.5px] text-muted-foreground">{grants?.roleName ?? session?.role ?? ""}</p>
+            </div>
           )}
-        </nav>
-
-        <div className="flex items-center gap-2.5 border-t border-white/10 px-5 py-4">
-          <Avatar name={session?.displayName ?? "?"} size="md" className="bg-white/15 text-white" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold text-white">{session?.displayName ?? "Tidak diketahui"}</p>
-            <p className="truncate text-[11.5px] text-white/55">
-              {grants?.roleName ?? session?.role ?? ""}
-            </p>
-          </div>
-          <button
-            onClick={() => void logoutAndRedirect(navigate)}
-            aria-label="Keluar"
-            className="shrink-0 rounded-md p-1.5 text-white/55 hover:bg-navy-800 hover:text-white"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+          <Button variant="ghost" size="icon-sm" onClick={() => void logoutAndRedirect(navigate)}>
+            <LogOut aria-hidden />
+            <span className="sr-only">Keluar</span>
+          </Button>
         </div>
-      </aside>
-    </>
+      )}
+    />
   );
 }

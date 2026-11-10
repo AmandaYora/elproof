@@ -154,7 +154,7 @@ export default function ProjectVenueTabPage() {
           <EmptyState
             title="Belum ada venue terpasang"
             description={canEdit ? "Pilih venue dari direktori untuk project ini." : "Venue project ini belum dipilih."}
-            action={canEdit ? <Button onClick={openPicker}>Pilih Venue</Button> : undefined}
+            action={canEdit ? <Button onClick={openPicker}>Pilih venue</Button> : undefined}
           />
         </Card>
       ) : (
@@ -175,7 +175,7 @@ export default function ProjectVenueTabPage() {
             {canEdit && (
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={openPicker}>
-                  Ubah Venue
+                  Ubah venue
                 </Button>
                 <Button variant="secondary" size="sm" onClick={() => void handleDetach()}>
                   Lepas
@@ -186,7 +186,7 @@ export default function ProjectVenueTabPage() {
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border-light pt-4 sm:grid-cols-3">
             <div>
-              <p className="text-[11.5px] text-text-secondary">Harga Sewa</p>
+              <p className="text-[11.5px] text-text-secondary">Harga sewa</p>
               <p className="text-[13.5px] font-semibold text-text-primary">
                 {currentProject?.venueRentalPrice ? formatCurrency(currentProject.venueRentalPrice) : "Belum diisi"}
               </p>
@@ -206,11 +206,11 @@ export default function ProjectVenueTabPage() {
               <p className="text-[13.5px] font-semibold text-text-primary">{venue.picName}</p>
             </div>
             <div>
-              <p className="text-[11.5px] text-text-secondary">No Tlp PIC</p>
+              <p className="text-[11.5px] text-text-secondary">No tlp PIC</p>
               <p className="text-[13.5px] font-semibold text-text-primary">{venue.phonePic}</p>
             </div>
             <div>
-              <p className="text-[11.5px] text-text-secondary">No Tlp Venue</p>
+              <p className="text-[11.5px] text-text-secondary">No tlp venue</p>
               <p className="text-[13.5px] font-semibold text-text-primary">{venue.phoneVenue ?? "-"}</p>
             </div>
             <div>
@@ -228,7 +228,7 @@ export default function ProjectVenueTabPage() {
 
           {venue.socialMedia && (
             <div className="border-t border-border-light pt-4">
-              <p className="mb-1.5 text-[11.5px] text-text-secondary">Sosial Media</p>
+              <p className="mb-1.5 text-[11.5px] text-text-secondary">Sosial media</p>
               <p className="whitespace-pre-line text-[13px] text-text-primary">{venue.socialMedia}</p>
             </div>
           )}
@@ -246,8 +246,8 @@ export default function ProjectVenueTabPage() {
       <Modal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        title="Pilih Venue"
-        description="Pilih venue dari direktori untuk project ini."
+        title="Pilih venue"
+        description="Pilih venue dari direktori untuk proyek ini."
         size="sm"
         busy={form.submitting}
         footer={
@@ -275,10 +275,10 @@ export default function ProjectVenueTabPage() {
                 ))}
             </Select>
           </Field>
-          <Field label="Harga Sewa (untuk project ini)" name="rentalPrice" error={errors.rentalPrice} hint="Terisi dari harga master venue, bisa diubah sesuai kesepakatan project ini.">
+          <Field label="Harga sewa (untuk proyek ini)" name="rentalPrice" error={errors.rentalPrice} hint="Terisi dari harga master venue, bisa diubah sesuai kesepakatan proyek ini.">
             <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} aria-invalid={errors.rentalPrice ? true : undefined} />
           </Field>
-          <Field label="Charge (untuk project ini)" name="charge" error={errors.charge}>
+          <Field label="Charge (untuk proyek ini)" name="charge" error={errors.charge}>
             <CurrencyInput value={values.charge} onChange={(n) => set("charge", n)} aria-invalid={errors.charge ? true : undefined} />
           </Field>
         </form>

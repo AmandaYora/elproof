@@ -19,30 +19,30 @@ function buildSteps(s: OnboardingStatus, openProfile: () => void): Step[] {
     {
       key: "profile",
       title: "Lengkapi profil WO",
-      body: "Nomor WhatsApp, kota, dan logo untuk WO Console dan portal client.",
+      body: "Nomor WhatsApp, kota, dan logo untuk WO Console dan portal klien.",
       done: s.profileComplete,
       action: { label: "Lengkapi", onClick: openProfile },
     },
     {
       key: "project",
-      title: "Buat project pertama",
-      body: "Tahapan dari Timeline Default langsung terpasang. Sesuaikan di menu Timeline Default bila perlu.",
+      title: "Buat proyek pertama",
+      body: "Tahapan dari jadwal bawaan langsung terpasang. Sesuaikan di menu Jadwal bawaan bila perlu.",
       done: s.usage.activeProjects > 0,
-      action: { label: "Buat project", to: ROUTE_PATHS.projects },
+      action: { label: "Buat proyek", to: ROUTE_PATHS.projects },
     },
     {
       key: "client",
-      title: "Tambahkan client ke portal",
+      title: "Tambahkan klien ke portal",
       body: "Pasangan bisa memantau persiapan tanpa bertanya berulang kali.",
       done: s.usage.clients > 0,
-      action: { label: "Tambah client", to: ROUTE_PATHS.clients },
+      action: { label: "Tambah klien", to: ROUTE_PATHS.clients },
     },
     {
       key: "staff",
       title: "Ajak tim Anda",
-      body: "Tambahkan admin, wedding planner, atau sales di menu Pengguna.",
+      body: "Tambahkan admin, wedding planner, atau sales di menu Tim.",
       done: s.usage.staff > 0,
-      action: { label: "Tambah staf", to: ROUTE_PATHS.users },
+      action: { label: "Tambah anggota tim", to: ROUTE_PATHS.users },
     },
     {
       key: "plan",
@@ -168,9 +168,9 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
             </Link>
           </div>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:gap-6">
-            <UsageMeter label="Staf selain Owner" used={status.usage.staff} limit={limits.maxStaff} />
-            <UsageMeter label="Project aktif" used={status.usage.activeProjects} limit={limits.maxActiveProjects} />
-            <UsageMeter label="Akun client" used={status.usage.clients} limit={limits.maxClients} />
+            <UsageMeter label="Anggota tim selain Owner" used={status.usage.staff} limit={limits.maxStaff} />
+            <UsageMeter label="Proyek aktif" used={status.usage.activeProjects} limit={limits.maxActiveProjects} />
+            <UsageMeter label="Akun klien" used={status.usage.clients} limit={limits.maxClients} />
           </div>
         </div>
       )}

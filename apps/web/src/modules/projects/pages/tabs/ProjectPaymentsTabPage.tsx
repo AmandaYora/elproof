@@ -3,9 +3,9 @@ import { TabNav } from "@/shared/components/ui/TabNav";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 
 const PEMBAYARAN_TABS = [
-  { to: "client", label: "Dari Client" },
-  { to: "vendor", label: "Ke Vendor" },
-  { to: "venue", label: "Ke Venue" },
+  { to: "client", label: "Dari klien" },
+  { to: "vendor", label: "Ke vendor" },
+  { to: "venue", label: "Ke venue" },
 ];
 
 // Layout for the three payment ledgers, mirroring ProjectDetailLayout's own

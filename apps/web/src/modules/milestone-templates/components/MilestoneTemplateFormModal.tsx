@@ -13,7 +13,7 @@ import type { MilestoneTemplate } from "@/modules/milestone-templates/types";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
-const FIELD_LABELS: Record<string, string> = { name: "Nama timeline", daysOffset: "Jumlah hari", daysDirection: "Posisi" };
+const FIELD_LABELS: Record<string, string> = { name: "Nama tahapan", daysOffset: "Jumlah hari", daysDirection: "Posisi" };
 
 interface MilestoneTemplateFormModalProps {
   open: boolean;
@@ -50,15 +50,15 @@ export function MilestoneTemplateFormModal({ open, onClose, onSubmit, initialTem
 
   const submit = form.handleSubmit(
     (parsed) => onSubmit({ name: parsed.name, daysBeforeEvent: toDaysBeforeEvent(parsed.daysOffset, parsed.daysDirection) }),
-    { root: () => formRef.current, fallback: "Timeline default belum tersimpan. Periksa koneksi lalu coba lagi." },
+    { root: () => formRef.current, fallback: "Tahapan belum tersimpan. Periksa koneksi Anda, lalu coba lagi." },
   );
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={initialTemplate ? "Ubah Timeline Default" : "Tambah Timeline Default"}
-      description="Item ini akan otomatis ditambahkan ke tab Timeline setiap project baru yang dibuat."
+      title={initialTemplate ? "Ubah tahapan jadwal bawaan" : "Tambah tahapan jadwal bawaan"}
+      description="Tahapan ini otomatis ditambahkan ke tab Jadwal setiap proyek baru yang dibuat."
       busy={form.submitting}
       footer={
         <>
@@ -66,18 +66,18 @@ export function MilestoneTemplateFormModal({ open, onClose, onSubmit, initialTem
             Batal
           </Button>
           <Button type="submit" form="milestone-template-form" disabled={form.submitting}>
-            {form.submitting ? "Menyimpan..." : initialTemplate ? "Simpan perubahan" : "Simpan timeline"}
+            {form.submitting ? "Menyimpan..." : initialTemplate ? "Simpan perubahan" : "Simpan tahapan"}
           </Button>
         </>
       }
     >
       <form id="milestone-template-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
-        <Field label="Nama Timeline" required name="name" error={errors.name}>
+        <Field label="Nama tahapan" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Survei Venue & Vendor" />
         </Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Jumlah Hari" required name="daysOffset" error={errors.daysOffset}>
+          <Field label="Jumlah hari" required name="daysOffset" error={errors.daysOffset}>
             <Input
               type="number"
               min={0}
@@ -91,8 +91,8 @@ export function MilestoneTemplateFormModal({ open, onClose, onSubmit, initialTem
               value={values.daysDirection}
               onChange={(e) => set("daysDirection", e.target.value as MilestoneTemplateFormValues["daysDirection"])}
             >
-              <option value="before">Sebelum Acara</option>
-              <option value="after">Setelah Acara</option>
+              <option value="before">Sebelum acara</option>
+              <option value="after">Setelah acara</option>
             </Select>
           </Field>
         </div>

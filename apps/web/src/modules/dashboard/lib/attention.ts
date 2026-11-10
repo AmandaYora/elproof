@@ -23,7 +23,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `term-${t.projectId}-${t.label}-${t.dueDate}`,
       tone: "danger",
-      category: "Tagihan Terlambat",
+      category: "Tagihan terlambat",
       title: `Termin ${t.label} terlambat ${Math.abs(daysUntil(t.dueDate))} hari`,
       description: `${t.projectName} · sisa ${formatCurrency(t.remaining)}, jatuh tempo ${formatDate(t.dueDate)}`,
       to: ROUTE_PATHS.projectDetail(t.projectId, "pembayaran/client"),
@@ -34,7 +34,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `issue-${issue.id}`,
       tone: issue.impact === "Critical" || issue.impact === "High" ? "danger" : "warning",
-      category: "Kendala Aktif",
+      category: "Kendala aktif",
       title: `Kendala ${issue.impact}: ${issue.title}`,
       description: `${issue.projectName}${issue.vendorName ? ` — ${issue.vendorName}` : ""}`,
       to: ROUTE_PATHS.projectDetail(issue.projectId, "vendor"),
@@ -45,8 +45,8 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `vm-${m.id}`,
       tone: "warning",
-      category: "Timeline Terlambat",
-      title: `Timeline "${m.name}" terlambat`,
+      category: "Tahapan terlambat",
+      title: `Tahapan "${m.name}" terlambat`,
       description: `${m.projectName} — ${m.vendorName} · target ${formatDate(m.targetDate)}`,
       to: ROUTE_PATHS.projectDetail(m.projectId, "vendor"),
     });
@@ -56,8 +56,8 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `pay-${p.id}`,
       tone: "warning",
-      category: "Evidence Pembayaran",
-      title: `Pembayaran ${p.type} belum memiliki evidence lengkap`,
+      category: "Bukti pembayaran",
+      title: `Pembayaran ${p.type} belum memiliki bukti lengkap`,
       description: `${p.projectName} — ${p.vendorName} · ${formatCurrency(p.amount)}`,
       to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/vendor"),
     });
@@ -72,8 +72,8 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `venuepay-${p.id}`,
       tone: "warning",
-      category: "Evidence Pembayaran",
-      title: `Pembayaran ${p.type} (venue) belum memiliki evidence lengkap`,
+      category: "Bukti pembayaran",
+      title: `Pembayaran ${p.type} (venue) belum memiliki bukti lengkap`,
       description: `${p.projectName} — Venue · ${formatCurrency(p.amount)}`,
       to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/venue"),
     });
@@ -84,7 +84,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `dday-${project.id}`,
       tone: d <= 7 ? "danger" : "info",
-      category: "Mendekati Hari H",
+      category: "Mendekati hari H",
       title: `H-${d} menuju hari H`,
       description: `${project.name} · ${formatDate(project.eventDate)}`,
       to: ROUTE_PATHS.projectDetail(project.id),
@@ -95,9 +95,9 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `lag-${row.project.id}`,
       tone: "warning",
-      category: "Progress Tertinggal",
+      category: "Progres tertinggal",
       title: "Progress persiapan tertinggal dari rencana",
-      description: `${row.project.name} · ${row.overallPercent}% timeline selesai, H-${daysUntil(row.project.eventDate)}`,
+      description: `${row.project.name} · ${row.overallPercent}% tahapan selesai, H-${daysUntil(row.project.eventDate)}`,
       to: ROUTE_PATHS.projectDetail(row.project.id),
     });
   }
@@ -108,7 +108,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
     items.push({
       id: `unconfirmed-${v.projectId}-${v.vendorName}`,
       tone: "warning",
-      category: "Vendor Belum Pasti",
+      category: "Vendor belum pasti",
       title: `${v.vendorName} belum terkonfirmasi`,
       description: `${v.projectName} · acara ${formatDate(v.eventDate)} (H-${Math.max(daysUntil(v.eventDate), 0)})`,
       to: ROUTE_PATHS.projectDetail(v.projectId, "vendor"),

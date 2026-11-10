@@ -100,7 +100,7 @@ export function CompleteProfileModal({ open, onClose, onSaved }: { open: boolean
       open={open}
       onClose={onClose}
       title="Lengkapi profil WO"
-      description="Nomor WhatsApp dipakai untuk tautan undangan dan pengingat ke client."
+      description="Nomor WhatsApp dipakai untuk tautan undangan dan pengingat ke klien."
       size="sm"
       busy={form.submitting}
       footer={
