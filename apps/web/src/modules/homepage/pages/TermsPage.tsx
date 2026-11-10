@@ -24,7 +24,7 @@ const SECTIONS: LegalSection[] = [
     title: "3. Pendaftaran dan Akun",
     body: [
       `Owner mendaftarkan Workspace sendiri melalui halaman Daftar dengan akun Google. Workspace juga dapat dibuatkan oleh tim ElProof atas permintaan WO. Owner menjamin bahwa ia berwenang mewakili usaha WO yang didaftarkan dan bahwa data yang diberikan benar.`,
-      `Owner dan Staff masuk menggunakan akun Google. Client masuk menggunakan nama pengguna dan kata sandi yang diberikan Tenant. Setiap pengguna wajib menjaga keamanan akses akunnya dan segera melapor bila ada dugaan akses tidak sah.`,
+      `Owner dan Staff masuk menggunakan akun Google. Client masuk menggunakan nama pengguna yang dibuatkan Tenant dan kata sandi yang dibuat Client sendiri melalui tautan undangan dari Tenant. Setiap pengguna wajib menjaga keamanan akses akunnya dan segera melapor bila ada dugaan akses tidak sah.`,
       `Setiap Tenant hanya dapat mengakses data miliknya sendiri. Data antar-Tenant terpisah dan tidak dapat diakses lintas akun bisnis. Client hanya dapat melihat data project-nya sendiri.`,
     ],
   },
@@ -41,7 +41,7 @@ const SECTIONS: LegalSection[] = [
     title: "5. Langganan dan Pembayaran",
     body: [
       `Akses penuh setelah masa coba diberikan per paket langganan dengan masa aktif tertentu. Harga yang berlaku adalah harga yang tampil saat tagihan dibuat. Pembayaran dilakukan oleh Owner melalui menu Langganan di WO Console.`,
-      `Pembayaran diproses oleh mitra payment gateway pihak ketiga. ElProof tidak menyimpan data kartu atau rekening pembayaran Tenant.`,
+      `Pembayaran diproses oleh mitra pembayaran pihak ketiga. ElProof tidak menyimpan data kartu atau rekening pembayaran Tenant.`,
       `Bila masa coba atau langganan berakhir tanpa pembayaran, akses dikurangi bertahap: 7 hari pertama akses tetap penuh dengan pengingat; 23 hari berikutnya hanya baca dan ekspor data; setelah itu Staff hanya dapat membuka halaman Langganan untuk membayar. Client Portal tetap dapat dibaca selama masa tersebut. Akses penuh kembali segera setelah pembayaran diterima.`,
     ],
   },
