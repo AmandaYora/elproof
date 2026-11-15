@@ -1,6 +1,7 @@
 import { expect, state, test, visit } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 const API = (path: string) => `${apiURL()}/api/v1${path}`;
 
@@ -14,7 +15,7 @@ test("a WO's logo shows in its console, and the per-WO colour is gone from the A
   await expect(page.getByText("Warna merek")).toHaveCount(0);
   await expect(page.getByRole("radiogroup")).toHaveCount(0);
 
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
 
   // The colour endpoint and field no longer exist.

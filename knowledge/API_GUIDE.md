@@ -16,6 +16,20 @@ The `shared` auth middleware verifies the token and injects `principal_type`, `p
 `tenant_id` (nullable), `role` into the request context. Tenant-scoped modules read `tenant_id`
 from context — never from a request parameter or body.
 
+The refresh token is never in a JSON body: sign-in endpoints set it as an HttpOnly, SameSite=Strict
+cookie scoped to `/api/v1/auth`, and `/auth/refresh` and `/auth/logout` read it from there and need
+`X-Requested-With` (CSRF). Cross-site browser requests to all of these get 403 `csrf_refused`
+(`middleware.SameOrigin`). Rotation, reuse detection and the grace: ADR-0044.
+
+## Security headers
+
+`middleware.SecurityHeaders` wraps the whole server (`cmd/server/security.go`): `nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`,
+HSTS outside development, and a Content-Security-Policy — `default-src 'none'; frame-ancestors 'none'`
+for `/api/*`, and for the app a policy built from config (the object-storage endpoint for presigned
+links). A new third-party script, image host, frame or upload target must be added to
+`AppContentSecurityPolicy` (and its test) or the browser blocks it (ADR-0044).
+
 `/api/v1/public/*` is registered outside `authed` by each owning module's `RegisterPublicRoutes`
 (`platform`: login slides, signup; `billing`: `GET /public/plans`, the homepage price list) and
 returns only what an anonymous visitor may see.

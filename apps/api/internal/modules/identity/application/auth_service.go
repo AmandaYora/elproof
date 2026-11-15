@@ -10,6 +10,7 @@ import (
 
 	"elproof/internal/modules/identity/domain"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/logger"
 	"elproof/internal/shared/middleware"
 )
 
@@ -58,6 +59,12 @@ type RefreshTokenRepository interface {
 	// Revoke reports whether this call revoked the token (false: it was
 	// already revoked, e.g. by a concurrent refresh).
 	Revoke(ctx context.Context, id int64) (bool, error)
+	// RevokeFamily ends one sign-in: the family root and every token rotated
+	// from it (ADR-0044).
+	RevokeFamily(ctx context.Context, familyID int64) error
+	// FamilyActive reports whether one sign-in still has an unrevoked,
+	// unexpired token.
+	FamilyActive(ctx context.Context, familyID int64, now time.Time) (bool, error)
 	// RevokeAllForCredential ends every open session of one login identity
 	// (used when the owning module deactivates that principal).
 	RevokeAllForCredential(ctx context.Context, credentialID int64) error
@@ -101,13 +108,18 @@ type AuthService struct {
 	hasher        PasswordHasher
 	accessTTL     time.Duration
 	refreshTTL    time.Duration
-	tenantGuard   TenantGuard
-	mfa           MFAEngine
-	google        GoogleVerifier
-	links         AccessLinkRepository
-	tenantNames   TenantNameResolver
-	challenges    *mfaChallenges
-	sessions      *SessionChecker
+	// reuseGrace is how long a refresh token that was just rotated may
+	// still be redeemed (two tabs refreshing at once, a response lost on
+	// the way back). Past it, presenting that token revokes its family.
+	reuseGrace  time.Duration
+	now         func() time.Time
+	tenantGuard TenantGuard
+	mfa         MFAEngine
+	google      GoogleVerifier
+	links       AccessLinkRepository
+	tenantNames TenantNameResolver
+	challenges  *mfaChallenges
+	sessions    *SessionChecker
 	// Failed attempts are counted per credential (not per typed string,
 	// which accent/case variants and username-vs-email could multiply), so
 	// an account's budget is the same from any IP and any spelling.
@@ -172,11 +184,31 @@ func NewAuthService(
 		hasher:        hasher,
 		accessTTL:     accessTTL,
 		refreshTTL:    refreshTTL,
+		reuseGrace:    DefaultRefreshReuseGrace,
+		now:           time.Now,
 		challenges:    newMFAChallenges(),
 
 		passwordFailures: middleware.NewRateLimiter(maxPasswordFailures, failureWindow),
 		totpFailures:     middleware.NewRateLimiter(maxTOTPFailures, failureWindow),
 	}
+}
+
+// DefaultRefreshReuseGrace covers two tabs refreshing with the same cookie
+// and a client retrying after a response was lost; it is short enough that
+// a token stolen from an earlier rotation is useless (ADR-0044).
+const DefaultRefreshReuseGrace = 30 * time.Second
+
+// RefreshTokenTTL is how long a refresh token (and so its cookie) lives.
+func (s *AuthService) RefreshTokenTTL() time.Duration {
+	return s.refreshTTL
+}
+
+// SetRefreshReuseGrace overrides DefaultRefreshReuseGrace (negative = 0).
+func (s *AuthService) SetRefreshReuseGrace(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	s.reuseGrace = d
 }
 
 // SetMFAEngine plugs in the TOTP implementation (identity.module.go).
@@ -272,14 +304,43 @@ func (s *AuthService) completeLogin(ctx context.Context, cred *domain.Credential
 	return &LoginResult{Session: session}, nil
 }
 
+func sessionEnded() error {
+	return apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
+}
+
+// Refresh rotates a refresh token (ADR-0005, ADR-0044): the presented token
+// is revoked and a new one of the same family is issued with a new access
+// token. A token that was already rotated is accepted again only within the
+// reuse grace and while its family is still signed in; later, it is treated
+// as stolen and the whole family is revoked.
 func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*Session, error) {
+	if refreshTokenPlain == "" {
+		return nil, sessionEnded()
+	}
 	hash := s.issuer.HashToken(refreshTokenPlain)
 	record, err := s.refreshTokens.FindByTokenHash(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
-	if record == nil || record.RevokedAt != nil || record.ExpiresAt.Before(time.Now()) {
-		return nil, apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
+	now := s.now()
+	if record == nil || !record.ExpiresAt.After(now) {
+		return nil, sessionEnded()
+	}
+
+	if record.RevokedAt != nil {
+		if !s.withinReuseGrace(record, now) {
+			return nil, s.revokeReusedFamily(ctx, record, now)
+		}
+		// Rotated a moment ago (another tab, a retried request): fine only
+		// while the sign-in itself is live — a logout or a revocation of
+		// every session ends that too.
+		active, err := s.refreshTokens.FamilyActive(ctx, record.Family(), now)
+		if err != nil {
+			return nil, err
+		}
+		if !active {
+			return nil, sessionEnded()
+		}
 	}
 
 	cred, err := s.credentials.FindByID(ctx, record.CredentialID)
@@ -287,20 +348,45 @@ func (s *AuthService) Refresh(ctx context.Context, refreshTokenPlain string) (*S
 		return nil, err
 	}
 	if cred == nil || !cred.IsActive {
-		return nil, apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
+		return nil, sessionEnded()
 	}
+	// The successor is stored before the presented token is revoked, so a
+	// concurrent request that finds the token already revoked always sees a
+	// live family. The refreshed session keeps exactly the second-factor
+	// status of the session that created this token, and loses it if
+	// two-factor was reset since.
+	session, issueErr := s.issueSessionInFamily(ctx, cred, record.MFA && cred.TOTPEnabled, record.Family())
+	if record.RevokedAt == nil {
+		revoked, err := s.refreshTokens.Revoke(ctx, record.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !revoked && issueErr == nil && s.reuseGrace == 0 {
+			// Redeemed concurrently and no grace is allowed: that is reuse.
+			return nil, s.revokeReusedFamily(ctx, record, now)
+		}
+	}
+	if issueErr != nil {
+		return nil, issueErr
+	}
+	return session, nil
+}
 
-	revoked, err := s.refreshTokens.Revoke(ctx, record.ID)
-	if err != nil {
-		return nil, err
+func (s *AuthService) withinReuseGrace(record *domain.RefreshToken, now time.Time) bool {
+	return s.reuseGrace > 0 && now.Sub(*record.RevokedAt) <= s.reuseGrace
+}
+
+// revokeReusedFamily handles a rotated token presented after the grace: two
+// parties hold tokens of one sign-in and one of them is not the user, so the
+// sign-in ends for both.
+func (s *AuthService) revokeReusedFamily(ctx context.Context, record *domain.RefreshToken, now time.Time) error {
+	if active, err := s.refreshTokens.FamilyActive(ctx, record.Family(), now); err == nil && active {
+		logger.Info("identity: rotated refresh token reused; signing out family %d of credential %d", record.Family(), record.CredentialID)
 	}
-	if !revoked { // redeemed concurrently by another request
-		return nil, apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
+	if err := s.refreshTokens.RevokeFamily(ctx, record.Family()); err != nil {
+		return err
 	}
-	// The refreshed session keeps exactly the second-factor status of the
-	// session that created this token, and loses it if two-factor was
-	// reset since.
-	return s.issueSession(ctx, cred, record.MFA && cred.TOTPEnabled)
+	return sessionEnded()
 }
 
 // IssueServiceToken mints a bearer access token for a principal the caller
@@ -341,6 +427,9 @@ func (s *AuthService) IssueSupportToken(ctx context.Context, staffPrincipalID, a
 }
 
 func (s *AuthService) Logout(ctx context.Context, refreshTokenPlain string) error {
+	if refreshTokenPlain == "" {
+		return nil
+	}
 	hash := s.issuer.HashToken(refreshTokenPlain)
 	record, err := s.refreshTokens.FindByTokenHash(ctx, hash)
 	if err != nil {
@@ -349,11 +438,19 @@ func (s *AuthService) Logout(ctx context.Context, refreshTokenPlain string) erro
 	if record == nil {
 		return nil // idempotent — already gone
 	}
-	_, err = s.refreshTokens.Revoke(ctx, record.ID)
-	return err
+	// Signing out ends the sign-in, including a token rotated a moment ago
+	// that another tab may still present.
+	return s.refreshTokens.RevokeFamily(ctx, record.Family())
 }
 
+// issueSession starts a new sign-in (a new refresh-token family).
 func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential, mfa bool) (*Session, error) {
+	return s.issueSessionInFamily(ctx, cred, mfa, 0)
+}
+
+// issueSessionInFamily issues an access token and a refresh token; familyID
+// 0 makes the new refresh token the root of a new family.
+func (s *AuthService) issueSessionInFamily(ctx context.Context, cred *domain.Credential, mfa bool, familyID int64) (*Session, error) {
 	// Both Login (after the password matched) and Refresh funnel through
 	// here, so a frozen tenant can neither start nor extend a session.
 	if cred.TenantID != nil && s.tenantGuard != nil {
@@ -373,9 +470,10 @@ func (s *AuthService) issueSession(ctx context.Context, cred *domain.Credential,
 
 	record := &domain.RefreshToken{
 		CredentialID: cred.ID,
+		FamilyID:     familyID,
 		TokenHash:    hash,
 		MFA:          mfa,
-		ExpiresAt:    time.Now().Add(s.refreshTTL),
+		ExpiresAt:    s.now().Add(s.refreshTTL),
 	}
 	if err := s.refreshTokens.Create(ctx, record); err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, state, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL, config } from "../lib/config";
+import { browserSession } from "../lib/session";
 import { sql } from "../lib/sql";
 
 // T-20261110-17 (ADR-0041): vouchers. The Platform Console creates and switches them off; a WO Owner applies one in the
@@ -13,7 +14,7 @@ const ELPROOF = "platform-billing";
 const PLAN_NAME = "Paket 1 Tahun"; // ElProof's seeded plan, Rp2.000.000 (migration 000045)
 
 async function auth(page: Page) {
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string });
+  const session = await browserSession(page);
   return { Authorization: `Bearer ${session.accessToken}` };
 }
 

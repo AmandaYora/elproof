@@ -1,6 +1,7 @@
 import { expect, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 // PLAN Tahap 6: bulk activate/deactivate. These tests WRITE data, so they run in the "mutating" project.
 
@@ -9,7 +10,7 @@ const API = (path: string) => `${apiURL()}/api/v1${path}`;
 test("selecting vendors and pressing Nonaktifkan changes them all in one call", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const cats = (await (await page.request.get(API("/vendor-categories?all=true"), { headers: auth })).json()).data as Array<{ id: number }>;
   for (const name of ["Uji Massal A", "Uji Massal B"]) {

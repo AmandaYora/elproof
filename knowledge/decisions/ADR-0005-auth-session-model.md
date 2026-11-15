@@ -113,3 +113,11 @@ test data per the account owner, one kept as the sole holder of that email) — 
 no automatic dedup logic of its own; if this ever recurs, it must be resolved the same
 way (by hand) before the migration can apply, since a `UNIQUE KEY` cannot be added over existing
 duplicates.
+
+## Update — 2026-11-15: refresh token in an HttpOnly cookie (ADR-0044)
+
+The refresh token is no longer returned in JSON or sent in request bodies: sign-in endpoints set it as an
+HttpOnly, Secure, SameSite=Strict cookie scoped to `/api/v1/auth`, and `/auth/refresh` / `/auth/logout` read it
+from there (CSRF-guarded). Rotation now tracks a family per sign-in (`refresh_tokens.family_id`): a rotated token
+presented after a short grace revokes the whole family. The web app keeps the access token in memory only. See
+ADR-0044.

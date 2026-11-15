@@ -1,6 +1,7 @@
 import { expect, state, test, visit } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 // PLAN Tahap 4: a project is created in one all-or-nothing call, and a payment is recorded together with its proof in
 // one call that can be retried safely. These tests WRITE data, so they run in the "mutating" project (see config).
@@ -11,7 +12,7 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
 test("project creation is one all-or-nothing call; a bad row creates nothing", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const body = {
     name: "Uji Atomik", brideName: "Ani Lestari", groomName: "Budi Santoso", eventDate: "2027-05-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
@@ -46,7 +47,7 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
   test.skip(!state().storage, "needs object storage (MinIO)");
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const made = await page.request.post(API("/projects"), {
     headers: auth,

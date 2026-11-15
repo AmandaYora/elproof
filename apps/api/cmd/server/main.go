@@ -263,6 +263,7 @@ func serve(cfg config.Config) {
 	}
 	identityModule := identity.NewModule(db, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL,
 		identity.GoogleConfig{ClientID: cfg.GoogleClientID, JWKSURL: googleJWKS})
+	identityModule.ConfigureSessions(sessionOptions(cfg))
 	identityModule.RegisterRoutes(mux)
 
 	// Public, non-secret settings the web app needs before sign-in.
@@ -446,7 +447,7 @@ func serve(cfg config.Config) {
 	// runs on its own Vite dev server (`npm run dev:web`) instead.
 	mux.Handle("/", spaFileServer("./public"))
 
-	handler := middleware.CORS(cfg.AppEnv == "development")(mux)
+	handler := securityHeaders(cfg)(middleware.CORS(cfg.AppEnv == "development")(mux))
 
 	log.Printf("%s api listening on :%s (%s)", cfg.AppName, cfg.AppPort, cfg.AppEnv)
 	server := &http.Server{

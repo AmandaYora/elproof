@@ -67,11 +67,22 @@ parentheses hold the details.
 
 ## `identity`
 
+**Session cookie (ADR-0044, EP-07).** Every response below that returns "a session" carries the refresh token **only**
+in a cookie, never in the JSON body: `Set-Cookie: __Secure-elproof_refresh=<opaque>; Path=/api/v1/auth; Max-Age=<JWT_REFRESH_TTL>;
+HttpOnly; Secure; SameSite=Strict` (with `APP_ENV=development` over http: name `elproof_refresh`, no `Secure`), plus
+`Cache-Control: no-store`. A session body is `{accessToken, principalType, principalId, tenantId, role, displayName, mfa,
+mfaSetupRequired}` (no `refreshToken` field any more). The access token is kept in memory by the web app.
+Browser requests to these endpoints are refused with **403 `errors.code = csrf_refused`** when the browser marks them as
+cross-site (`Sec-Fetch-Site: cross-site`, or an `Origin` that is not this server; in development any loopback origin is
+fine). `/auth/refresh` and `/auth/logout` read the cookie and additionally **require the header `X-Requested-With`**
+(any non-empty value; the web app sends `XMLHttpRequest`). API clients without a browser (curl, Postman) send no
+`Origin` and pass, as long as they keep the cookie (Postman's cookie jar does) and add that header.
+
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/auth/login` | *public*; rate limited per IP (429 `rate_limited`, `Retry-After`). body `{username, password}` — `username` accepts either a real username or an email; tried as username first, then as email (against every credential sharing that email, since email isn't unique the way username is — see ADR-0005) → a session `{accessToken, refreshToken, principalType, principalId, tenantId, role, displayName, mfa, mfaSetupRequired}`, **or**, when the account has two-factor on, `{mfaRequired: true, mfaToken}` to be answered at `/auth/mfa/verify`. `mfaSetupRequired` is true for a platform admin who has not enrolled yet |
-| POST | `/auth/refresh` | *public*. body `{refreshToken}` → a new session (same shape as login), rotates the old refresh token |
-| POST | `/auth/logout` | *public*. body `{refreshToken}`; revokes the refresh token; always 200 |
+| POST | `/auth/login` | *public*; rate limited per IP (429 `rate_limited`, `Retry-After`). body `{username, password}` — `username` accepts either a real username or an email; tried as username first, then as email (against every credential sharing that email, since email isn't unique the way username is — see ADR-0005) → a session (body above + refresh cookie), **or**, when the account has two-factor on, `{mfaRequired: true, mfaToken}` to be answered at `/auth/mfa/verify` (no cookie). `mfaSetupRequired` is true for a platform admin who has not enrolled yet |
+| POST | `/auth/refresh` | *public*, cookie + `X-Requested-With`; no body (a body is ignored). Rotates: the cookie's token is revoked and a new session + new cookie of the same sign-in ("family") are returned. A token rotated less than `REFRESH_REUSE_GRACE` (default 30 s) ago is accepted once more while its sign-in is live (two tabs, a lost response); presented later, it is treated as stolen and the **whole sign-in is revoked**. Any 4xx (`401` session ended, `403 tenant_frozen`) also clears the cookie (`Max-Age=-1`); a 5xx keeps it |
+| POST | `/auth/logout` | *public*, cookie + `X-Requested-With`; no body. Revokes every token of the cookie's sign-in (also one rotated a moment ago) and clears the cookie; always 200, also without a cookie |
 | GET | `/auth/me` | any authenticated principal — the caller's token claims. The one route a platform admin without two-factor may still call (besides `mfa/setup\|enable`) |
 | POST | `/auth/mfa/verify` | *public*, rate limited like login. body `{mfaToken, code}` (6-digit TOTP) → a session with `mfa: true` |
 | POST | `/auth/mfa/setup` | authenticated, platform admin not yet enrolled → `{secret, otpauthUrl}` |

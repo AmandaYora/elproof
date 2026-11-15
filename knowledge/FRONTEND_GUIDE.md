@@ -69,6 +69,17 @@ of resetting to seed data on every mount (the bug found throughout the pre-integ
 role, display name — populated from `identity` module's login response, not from a hardcoded
 default. A logged-out state is a real, distinct state (no default-valid staff ID).
 
+Tokens are never written to storage (ADR-0044, EP-07). The refresh token is an HttpOnly cookie the
+API sets on sign-in (path `/api/v1/auth`); the access token lives only in memory. `localStorage`
+keeps a token-free profile (`elproof.profile`: principal type/id, tenant, role, name, MFA flags) so
+the first paint after a reload shows the right console; the store removes the old
+`elproof.session` key (which held both tokens) on load. After a reload the access token is `""`:
+the HTTP client's request interceptor calls `POST /auth/refresh` (cookie, `withCredentials`,
+`X-Requested-With`) before the first API call, and again on a 401. Several tabs may refresh at once
+(the API accepts a token rotated a moment ago), so there is no cross-tab lock; a tab that sees the
+profile removed or replaced by another principal (`storage` event) reloads. A refresh refused with
+4xx ends the session; a network error or 5xx keeps it.
+
 ## HTTP
 
 All requests go through `shared/services/http-client.ts` — one Axios instance, with a request
@@ -208,9 +219,13 @@ have no permission of their own. The API still refuses writes with `subscription
   the list and the detail page alike. Per-tenant data is returned by `useConsoleStore` calls, not cached.
 - **Forms** keep the module pattern: Zod schemas in `schemas/console.schema.ts`, field errors from
   `safeParse`, server messages through `getApiErrorMessage`.
-- **Support session** (`shared/lib/impersonation.ts`): `enterSupportSession` stores the admin's own session in
-  `session.impersonation.returnTo`, signs the browser in as the Owner (no refresh token) and reloads;
-  `endSupportSession` restores it (without its refresh token, so a script in the tenant's page cannot read one) and tells the API; the banner also ends the session when the hour is up. `useCan`/`useWriteLocked` treat a support session as
+- **Support session** (`shared/lib/impersonation.ts`): `enterSupportSession` keeps the admin's own session in
+  `session.impersonation.returnTo`, hands the Owner's read-only token over the full page load in this tab's
+  `sessionStorage` (deleted as soon as the new page reads it; it then lives in memory only) and reloads; the
+  admin's refresh token stays in its HttpOnly cookie, out of reach of the tenant's pages. `endSupportSession` restores
+  the admin (whose access token is fetched again from the cookie) and tells the API. A reload during a support session
+  ends it: the store moves the address back to the workspace's Platform Console page before the router starts, and
+  `finishInterruptedSupportSession` (loaded on demand from `App`) tells the API and shows a toast. The banner also ends the session when the hour is up. `useCan`/`useWriteLocked` treat a support session as
   read-only, the http client turns `impersonation_read_only` into a toast and, when the token lapses, returns
   the admin to their own session instead of refreshing. `SupportSessionBanner` is always visible in the WO
   Console during a session.
