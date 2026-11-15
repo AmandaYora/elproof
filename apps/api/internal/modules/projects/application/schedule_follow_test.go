@@ -178,7 +178,7 @@ func TestEventDateChangeShiftsFollowingSteps(t *testing.T) {
 	}
 	found := false
 	for _, e := range mem.entries {
-		if strings.Contains(e.Description, "2 tahapan timeline mengikuti tanggal acara") {
+		if strings.Contains(e.Description, "2 tahapan mengikuti tanggal acara") {
 			found = true
 		}
 	}

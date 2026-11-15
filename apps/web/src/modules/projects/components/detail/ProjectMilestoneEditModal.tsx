@@ -8,6 +8,7 @@ import { todayISO } from "@/modules/projects/lib/dates";
 import { projectMilestoneEditSchema, MILESTONE_STATUS_OPTIONS } from "@/modules/projects/schemas/project-milestone.schema";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+import { formatDayCountdown } from "@/shared/lib/formatters";
 
 const STATUS_OPTIONS: MilestoneStatus[] = [...MILESTONE_STATUS_OPTIONS];
 const FIELD_LABELS: Record<string, string> = { status: "Status", targetDate: "Target tanggal", completedDate: "Tanggal selesai" };
@@ -29,7 +30,7 @@ interface ProjectMilestoneEditModalProps {
 /** Says that the target follows the event date (EP-06), and that setting it by hand stops that. */
 function followHint(daysBeforeEvent: number | null | undefined): string | undefined {
   if (daysBeforeEvent === null || daysBeforeEvent === undefined) return undefined;
-  const offset = daysBeforeEvent === 0 ? "Hari H" : daysBeforeEvent > 0 ? `H-${daysBeforeEvent}` : `H+${-daysBeforeEvent}`;
+  const offset = formatDayCountdown(daysBeforeEvent);
   return `Mengikuti tanggal acara (${offset}). Bila diubah di sini, tanggal ini tidak lagi ikut bergeser saat tanggal acara berubah.`;
 }
 

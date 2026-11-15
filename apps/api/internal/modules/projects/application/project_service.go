@@ -785,7 +785,7 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	}
 	if moved > 0 {
 		s.activity.Record(ctx, &fresh.ID, domain.ActivityMilestoneUpdated, actor.StaffID, "project_milestone", "", fresh.Name,
-			strconv.Itoa(moved)+" tahapan timeline mengikuti tanggal acara yang baru")
+			strconv.Itoa(moved)+" tahapan mengikuti tanggal acara yang baru")
 	}
 	if len(ch.keys) == 1 && ch.has("isArchived") {
 		action := "diarsipkan"
