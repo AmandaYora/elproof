@@ -183,7 +183,7 @@ func (s *IssueService) Patch(ctx context.Context, projectID, id int64, actorStaf
 		vendor = Some(int64(0))
 	}
 	setVal(&ch, "projectVendorId", "vendor", &issue.ProjectVendorID, vendor)
-	setNullable(&ch, "vendorMilestoneId", "timeline vendor", &issue.VendorMilestoneID, patch.VendorMilestoneID)
+	setNullable(&ch, "vendorMilestoneId", "tahapan vendor", &issue.VendorMilestoneID, patch.VendorMilestoneID)
 	setVal(&ch, "title", "judul", &issue.Title, patch.Title)
 	setVal(&ch, "description", "deskripsi", &issue.Description, patch.Description)
 	setVal(&ch, "impact", "dampak", &issue.Impact, patch.Impact)
@@ -192,7 +192,7 @@ func (s *IssueService) Patch(ctx context.Context, projectID, id int64, actorStaf
 	setVal(&ch, "picStaffId", "PIC", &issue.PICStaffID, patch.PICStaffID)
 	setNullableDate(&ch, "targetResolutionDate", "target penyelesaian", &issue.TargetResolutionDate, patch.TargetResolutionDate)
 	setVal(&ch, "status", "status", &issue.Status, patch.Status)
-	setVal(&ch, "isClientVisible", "tampil ke client", &issue.IsClientVisible, patch.IsClientVisible)
+	setVal(&ch, "isClientVisible", "tampil ke klien", &issue.IsClientVisible, patch.IsClientVisible)
 	if err := refuseIfBehind(&ch, expected, loaded.UpdatedAt, &loaded); err != nil {
 		return nil, err
 	}

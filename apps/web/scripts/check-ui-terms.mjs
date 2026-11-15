@@ -27,6 +27,9 @@ const TERMS = [
   [/\bUpload\b/i, "Unggah"],
   [/\bPassword\b/i, "Kata sandi"],
   [/\bReset\b(?! filter)/i, "Atur ulang"],
+  // A vendor's price package (QA EP-15): one word per package, the stored field is priceAkad.
+  [/\bPemberkatan\b/i, "Akad (paket harga vendor)"],
+  [/\bResepsi Only\b/i, "Resepsi saja"],
 ];
 const DISPLAY_ATTRS = new Set(["aria-label", "title", "placeholder", "alt", "label", "description", "subtitle", "hint", "error", "message", "header", "confirmLabel", "emptyText", "caption", "tooltip", "text", "heading"]);
 const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail"]);
@@ -85,6 +88,17 @@ for (const file of walk(ROOT)) {
       report(node, node.text);
     } else if (ts.isTemplateExpression(node) && (isDisplayLiteral(node) || isDisplayCall(node))) {
       report(node, [node.head.text, ...node.templateSpans.map((s) => s.literal.text)].join(" "));
+    }
+    // A countdown ("H-5", "Hari H", "H+3") is built only by formatDayCountdown in shared/lib/formatters.ts: a template
+    // with "H-" or "H+" right before a value prints "H--3" once the day has passed (QA EP-15).
+    if (ts.isTemplateExpression(node) && !rel.endsWith("shared/lib/formatters.ts")) {
+      const parts = [node.head.text, ...node.templateSpans.map((s) => s.literal.text)];
+      if (parts.slice(0, -1).some((p) => /(^|[^A-Za-z])H[-+]$/.test(p))) {
+        const line = sf.getLineAndCharacterOfPosition(node.getStart()).line;
+        if (!/ui-terms-ok/.test(lines[line])) {
+          found.push({ file: rel, line: line + 1, term: "H-${…}", use: "formatDayCountdown(days)", text: node.getText().slice(0, 90) });
+        }
+      }
     }
     ts.forEachChild(node, visit);
   };

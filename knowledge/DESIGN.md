@@ -288,6 +288,7 @@ FLOW-IDEAL §0 menetapkan Bahasa Indonesia penuh dengan "Anda", tetapi UI sekara
 | issue | **Kendala** | Issue |
 | timeline / milestone | **Jadwal** (daftar), **tahapan** (butir) — D15 | Timeline, Milestone |
 | vendor, venue | **Vendor**, **Venue** (lazim di industri WO, dipertahankan) | — |
+| paket harga vendor (`pricingTier`) | **Akad**, **Akad + Resepsi**, **Resepsi saja**; kolom harganya "Harga Akad", "Harga Akad + Resepsi", "Harga Resepsi saja" (label di `PRICING_TIER_LABELS`) | Pemberkatan, Resepsi Only |
 | tenant (hanya Platform Console internal) | **Tenant**; untuk WO sendiri: "usaha Anda" | — |
 
 **Aturan tulisan:**
@@ -298,7 +299,8 @@ FLOW-IDEAL §0 menetapkan Bahasa Indonesia penuh dengan "Anda", tetapi UI sekara
   "Nominal melebihi sisa tagihan (Rp2.500.000). Ubah nominal atau pilih jenis Tambahan." Bukan "Input tidak valid".
 - Sapaan "Anda" (kapital) di Portal dan pesan ke klien; console boleh label ringkas tanpa sapaan.
 - Uang "Rp1.500.000" (T18); tanggal "9 Nov 2026" (ringkas) / "Senin, 9 November 2026" (lengkap); jarak acara "H-30",
-  "Hari H", "H+3".
+  "Hari H", "H+3", selalu lewat `formatDayCountdown` (`shared/lib/formatters.ts`) sehingga tidak pernah "H--3"; antrean
+  "Mendekati hari H" hanya memuat acara yang belum lewat.
 - Status untuk klien selalu bahasa awam dan tidak menyalahkan (FLOW-IDEAL §4, D12).
 
 ## 8. Bantuan dan onboarding (baru di revisi 2)

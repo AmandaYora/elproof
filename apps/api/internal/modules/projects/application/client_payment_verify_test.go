@@ -137,7 +137,7 @@ func TestVerifySetsWhoAndWhenOnceAndLogsIt(t *testing.T) {
 	if err != nil || !p.IsVerified() || p.VerifiedByStaffID != 5 || !p.VerifiedAt.Equal(at) {
 		t.Fatalf("verify: %+v %v", p, err)
 	}
-	if f.lastActivity() != "Pembayaran client diverifikasi" {
+	if f.lastActivity() != "Pembayaran klien diverifikasi" {
 		t.Errorf("activity = %q", f.lastActivity())
 	}
 	logged := len(f.activity.entries)
@@ -211,7 +211,7 @@ func TestRemovingTheLastProofClearsVerification(t *testing.T) {
 	if f.payments.rows[0].IsVerified() {
 		t.Fatal("a verified payment must never be left without proof")
 	}
-	if f.lastActivity() != "Verifikasi pembayaran client dibatalkan karena bukti terakhir dihapus" {
+	if f.lastActivity() != "Verifikasi pembayaran klien dibatalkan karena bukti terakhir dihapus" {
 		t.Errorf("activity = %q", f.lastActivity())
 	}
 	// And it cannot be re-verified until proof is attached again.

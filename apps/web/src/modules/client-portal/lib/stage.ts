@@ -1,4 +1,5 @@
 import type { ProjectStatus } from "@/modules/projects/types";
+import { formatDayCountdown } from "@/shared/lib/formatters";
 
 /** The four steps a couple sees (FLOW-IDEAL 3.2), like an order tracker. */
 export const STAGE_LABELS = ["Sedang dipersiapkan", "Persiapan akhir", "Hari bahagia Anda", "Selesai"] as const;
@@ -30,7 +31,7 @@ export function countdown(status: ProjectStatus, daysToEvent: number): Countdown
       ? { figure: "Selesai", caption: `Sudah ${Math.abs(daysToEvent)} hari sejak hari bahagia Anda. Terima kasih sudah mempercayakannya kepada kami.` }
       : { figure: "Selesai", caption: "Seluruh persiapan telah selesai. Terima kasih." };
   }
-  if (daysToEvent > 0) return { figure: `H-${daysToEvent}`, caption: daysToEvent === 1 ? "Besok hari bahagia Anda" : "hari menuju hari bahagia Anda" };
+  if (daysToEvent > 0) return { figure: formatDayCountdown(daysToEvent), caption: daysToEvent === 1 ? "Besok hari bahagia Anda" : "hari menuju hari bahagia Anda" };
   if (daysToEvent === 0) return { figure: "Hari ini", caption: "Selamat menempuh hidup baru!" };
-  return { figure: `H+${Math.abs(daysToEvent)}`, caption: "Selamat atas pernikahan Anda. Kami sedang merapikan hal-hal terakhir." };
+  return { figure: formatDayCountdown(daysToEvent), caption: "Selamat atas pernikahan Anda. Kami sedang merapikan hal-hal terakhir." };
 }

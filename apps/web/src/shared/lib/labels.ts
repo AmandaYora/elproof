@@ -2,7 +2,7 @@
 // PLAN.md Fase 3b). The database keeps English enum values; staff and
 // clients each read their own wording. `null` for a client means "do not
 // show this to the client" (internal detail).
-import type { EngagementStatus, IssueImpact, IssueStatus, MilestoneStatus, PaymentTermStatus, ProjectStatus } from "@/modules/projects/types";
+import type { EngagementStatus, IssueImpact, IssueStatus, MilestoneStatus, PaymentTermStatus, ProjectStatus, VendorPricingTier } from "@/modules/projects/types";
 
 export type Audience = "staff" | "client";
 
@@ -62,6 +62,13 @@ export const ISSUE_IMPACT_LABELS: Labels<IssueImpact> = {
   client: { Low: null, Medium: null, High: null, Critical: null },
 };
 
+/** A vendor's price package (DESIGN.md §7: "Akad", not "Pemberkatan"; "saja", not "Only"). The price fields carry the same words: "Harga Akad". */
+export const PRICING_TIER_LABELS: Record<VendorPricingTier, string> = {
+  Akad: "Akad",
+  AkadResepsi: "Akad + Resepsi",
+  Resepsi: "Resepsi saja",
+};
+
 /** Payment-schedule installment status (FLOW-IDEAL §4). */
 export const TERM_STATUS_LABELS: Labels<PaymentTermStatus> = {
   staff: { paid: "Lunas", overdue: "Terlambat", partial: "Dibayar sebagian", due_soon: "Segera jatuh tempo", upcoming: "Belum jatuh tempo" },
@@ -73,6 +80,49 @@ export const TERM_STATUS_LABELS: Labels<PaymentTermStatus> = {
     upcoming: "Menunggu pembayaran",
   },
 };
+
+// Activity entries are written by the server as text. Older ones used English words ("Project baru dibuat",
+// "Pembayaran client dicatat", "Timeline vendor ...", raw project statuses); new ones are Indonesian at the source
+// (QA EP-15). activityText rewrites the stored wording of old entries when they are shown, longest prefix first.
+const LEGACY_ACTIVITY_PREFIXES: [string, string][] = [
+  ["Project baru dibuat dari duplikasi project: ", "Proyek baru dibuat dari duplikat proyek: "],
+  ["Project baru dibuat: ", "Proyek baru dibuat: "],
+  ["Project diarsipkan", "Proyek diarsipkan"],
+  ["Project dipulihkan dari arsip", "Proyek dipulihkan dari arsip"],
+  ["Project dibatalkan", "Proyek dibatalkan"],
+  ["Informasi project diperbarui: ", "Informasi proyek diperbarui: "],
+  ["Status project diubah: ", "Status proyek diubah: "],
+  ["Timeline project ditambahkan: ", "Tahapan proyek ditambahkan: "],
+  ["Timeline project diperbarui: ", "Tahapan proyek diperbarui: "],
+  ["Urutan timeline diubah", "Urutan tahapan diubah"],
+  ["Vendor ditambahkan ke project", "Vendor ditambahkan ke proyek"],
+  ["Timeline vendor ditambahkan: ", "Tahapan vendor ditambahkan: "],
+  ["Timeline vendor diperbarui: ", "Tahapan vendor diperbarui: "],
+  ["Evidence diunggah: ", "Dokumen diunggah: "],
+  ["Evidence dihapus: ", "Dokumen dihapus: "],
+  ["Jadwal pembayaran client diperbarui", "Jadwal termin klien diperbarui"],
+  ["Verifikasi pembayaran client ", "Verifikasi pembayaran klien "],
+  ["Pembayaran client ", "Pembayaran klien "],
+];
+
+/** An activity entry's text as a person reads it (see LEGACY_ACTIVITY_PREFIXES). */
+export function activityText(description: string): string {
+  let text = description;
+  for (const [from, to] of LEGACY_ACTIVITY_PREFIXES) {
+    if (text.startsWith(from)) {
+      text = to + text.slice(from.length);
+      break;
+    }
+  }
+  if (text.startsWith("Status proyek diubah: ")) {
+    const statuses = PROJECT_STATUS_LABELS.staff as Record<string, string>;
+    text = text.replace(/: (\S+) → (\S+)$/, (whole, from: string, to: string) =>
+      statuses[from] || statuses[to] ? `: ${statuses[from] ?? from} → ${statuses[to] ?? to}` : whole,
+    );
+  }
+  // Field names inside "...diperbarui: a, b" summaries.
+  return text.replace(/\btampil ke client\b/g, "tampil ke klien").replace(/\btimeline vendor\b/g, "tahapan vendor");
+}
 
 /** The label for one value, or null when the audience must not see it. */
 export function labelFor<T extends string>(labels: Labels<T>, value: T, audience: Audience = "staff"): string | null {

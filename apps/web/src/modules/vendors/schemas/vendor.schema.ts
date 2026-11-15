@@ -5,7 +5,7 @@ import { isValidCity } from "@/shared/constants/cities";
 // not set" convention as VenueFormModal's rentalPrice — converted to/from
 // null at the store boundary (0 <-> null), not modeled as optional here.
 export const vendorSchema = z.object({
-  name: z.string().min(2, "Nama vendor wajib diisi"),
+  name: z.string().trim().min(2, "Isi nama vendor, minimal 2 huruf").max(150, "Nama vendor maksimal 150 karakter"),
   categoryId: z.string().min(1, "Kategori wajib dipilih"),
   picName: z.string().min(2, "Nama PIC wajib diisi"),
   phone: z.string().min(6, "Nomor telepon tidak valid"),
@@ -13,12 +13,12 @@ export const vendorSchema = z.object({
   socialMedia: z.string().optional().default(""),
   city: z.string().optional().default(""),
   address: z.string().optional().default(""),
-  priceAkad: z.coerce.number().min(0, "Harga akad tidak valid"),
-  priceAkadResepsi: z.coerce.number().min(0, "Harga akad+resepsi tidak valid"),
+  priceAkad: z.coerce.number().min(0, "Harga Akad tidak boleh kurang dari 0"),
+  priceAkadResepsi: z.coerce.number().min(0, "Harga Akad + Resepsi tidak boleh kurang dari 0"),
   // "Resepsi Only" package preset (PLAN.md revisi-timeline-vendor-role-sales)
   // — same optional-at-DB convention as the two fields above; not required
   // even on create (only Akad/AkadResepsi are, per the "DATA VENDOR" slide).
-  priceResepsi: z.coerce.number().min(0, "Harga resepsi only tidak valid").optional().default(0),
+  priceResepsi: z.coerce.number().min(0, "Harga Resepsi saja tidak boleh kurang dari 0").optional().default(0),
   notes: z.string().optional().default(""),
 });
 
@@ -29,8 +29,8 @@ export type VendorFormValues = z.infer<typeof vendorSchema>;
 // tetap bisa diedit dengan field ini kosong.
 export const vendorCreateSchema = vendorSchema.extend({
   city: z.string().refine(isValidCity, "Pilih kota dari daftar yang tersedia"),
-  priceAkad: z.coerce.number().min(1, "Harga akad wajib diisi"),
-  priceAkadResepsi: z.coerce.number().min(1, "Harga akad+resepsi wajib diisi"),
+  priceAkad: z.coerce.number().min(1, "Isi Harga Akad lebih dari 0"),
+  priceAkadResepsi: z.coerce.number().min(1, "Isi Harga Akad + Resepsi lebih dari 0"),
 });
 
 export type VendorCreateFormValues = z.infer<typeof vendorCreateSchema>;

@@ -97,7 +97,7 @@ func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, a
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(projectID), p.Name,
-		"Jadwal pembayaran client diperbarui")
+		"Jadwal termin klien diperbarui")
 	return s.progress(ctx, projectID, today)
 }
 

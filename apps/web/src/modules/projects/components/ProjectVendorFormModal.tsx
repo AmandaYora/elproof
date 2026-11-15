@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ENGAGEMENT_STATUS_LABELS } from "@/shared/lib/labels";
+import { ENGAGEMENT_STATUS_LABELS, PRICING_TIER_LABELS } from "@/shared/lib/labels";
 import { Plus, Eye } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
@@ -11,6 +11,7 @@ import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal"
 import {
   projectVendorSchema,
   ENGAGEMENT_STATUS_OPTIONS,
+  PRICING_TIER_OPTIONS,
   EVENT_HOURS_PRESETS,
   type ProjectVendorFormValues,
 } from "@/modules/projects/schemas/project-vendor.schema";
@@ -244,17 +245,17 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
           </Select>
           {selectedVendor && (
             <p className="mt-1 text-[12px] text-text-secondary">
-              Harga Pemberkatan: {selectedVendor.priceAkad != null ? formatCurrency(selectedVendor.priceAkad) : "belum diisi"} · Harga
-              Pemberkatan+Resepsi: {selectedVendor.priceAkadResepsi != null ? formatCurrency(selectedVendor.priceAkadResepsi) : "belum diisi"} · Harga
-              Resepsi Only: {selectedVendor.priceResepsi != null ? formatCurrency(selectedVendor.priceResepsi) : "belum diisi"}
+              Harga {PRICING_TIER_LABELS.Akad}: {selectedVendor.priceAkad != null ? formatCurrency(selectedVendor.priceAkad) : "belum diisi"} · Harga{" "}
+              {PRICING_TIER_LABELS.AkadResepsi}: {selectedVendor.priceAkadResepsi != null ? formatCurrency(selectedVendor.priceAkadResepsi) : "belum diisi"} · Harga{" "}
+              {PRICING_TIER_LABELS.Resepsi}: {selectedVendor.priceResepsi != null ? formatCurrency(selectedVendor.priceResepsi) : "belum diisi"}
             </p>
           )}
         </Field>
         <Field label="Paket" required name="pricingTier" error={errors.pricingTier}>
           <Select value={values.pricingTier} onChange={(e) => set("pricingTier", e.target.value as ProjectVendorFormValues["pricingTier"])}>
-            <option value="Akad">Pemberkatan</option>
-            <option value="AkadResepsi">Pemberkatan + Resepsi</option>
-            <option value="Resepsi">Resepsi Only</option>
+            {PRICING_TIER_OPTIONS.map((t) => (
+              <option key={t} value={t}>{PRICING_TIER_LABELS[t]}</option>
+            ))}
           </Select>
         </Field>
         <Field label="Status Keterlibatan" required name="engagementStatus" error={errors.engagementStatus}>
@@ -308,7 +309,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
             </div>
           </Field>
         )}
-        <Field label="Jumlah DP (Rp)" name="dpAmount" error={errors.dpAmount}>
+        <Field label="Jumlah DP (Rp)" name="dpAmount" error={errors.dpAmount} hint="Tidak melebihi nilai kerja sama.">
           <CurrencyInput value={values.dpAmount} onChange={(n) => set("dpAmount", n)} />
         </Field>
         <div className="sm:col-span-2">

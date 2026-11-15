@@ -12,7 +12,7 @@ import { RevenueTrendChart } from "@/modules/dashboard/components/RevenueTrendCh
 import { buildAttentionItems, type AttentionItem } from "@/modules/dashboard/lib/attention";
 import { useDashboardStore } from "@/modules/dashboard/stores/useDashboardStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { SkeletonRows } from "@/shared/components/ui/Skeleton";
@@ -60,7 +60,7 @@ function FullDashboard() {
           to: ROUTE_PATHS.projectDetail(p.id),
           title: p.name,
           subtitle: `${formatDate(p.eventDate)} · ${p.venue}`,
-          trailing: `H-${daysUntil(p.eventDate)}`,
+          trailing: formatDayCountdown(daysUntil(p.eventDate)),
         })),
     [stats],
   );
