@@ -182,6 +182,7 @@ export const API = {
     transition: (id: string) => `/api/v1/projects/${id}/transition`,
     closingChecklist: (id: string) => `/api/v1/projects/${id}/closing-checklist`,
     paymentTerms: (id: string) => `/api/v1/projects/${id}/payment-terms`,
+    paymentTermsRecalculate: (id: string) => `/api/v1/projects/${id}/payment-terms/recalculate`,
     duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
     milestone: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}`,

@@ -10,6 +10,7 @@ import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+import { todayISO } from "@/shared/lib/formatters";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nama proyek", brideName: "Nama mempelai wanita", groomName: "Nama mempelai pria", eventDate: "Tanggal acara",
@@ -102,6 +103,8 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
   // One place for the venue: while one is attached from the directory its name
   // is the location, so this text is not edited here (a duplicate starts free).
   const venueFromDirectory = Boolean(initialProject?.venueId) && mode !== "duplicate";
+  // A past event date is allowed (a project already held), but a changed one is pointed out (EP-10).
+  const eventMovedToPast = values.eventDate !== "" && values.eventDate !== initialProject?.eventDate && values.eventDate < todayISO();
 
   useEffect(() => {
     void fetchStaff();
@@ -171,7 +174,13 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
         <Field label="Nama mempelai pria" required name="groomName" error={errors.groomName}>
           <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} onBlur={() => blur("groomName")} />
         </Field>
-        <Field label="Tanggal acara" required name="eventDate" error={errors.eventDate}>
+        <Field
+          label="Tanggal acara"
+          required
+          name="eventDate"
+          error={errors.eventDate}
+          hint={eventMovedToPast ? "Tanggal ini sudah lewat. Pastikan memang benar sebelum menyimpan." : undefined}
+        >
           <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} onBlur={() => blur("eventDate")} />
         </Field>
         <Field label="Tanggal booking" required name="prepStartDate" error={errors.prepStartDate}>
@@ -195,7 +204,17 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
           <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} onBlur={() => blur("packageName")} />
         </Field>
         <Field label="Nilai kontrak (Rp)" required name="contractValue" error={errors.contractValue}>
-          <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} aria-invalid={errors.contractValue ? true : undefined} />
+          <CurrencyInput
+            signed
+            value={values.contractValue}
+            onChange={(n) => {
+              set("contractValue", n);
+              // A minus sign is answered at once (EP-10), not dropped.
+              if (n < 0) blur("contractValue");
+            }}
+            onBlur={() => blur("contractValue")}
+            aria-invalid={errors.contractValue ? true : undefined}
+          />
         </Field>
         <Field label="Penanggung jawab WO (PIC wedding planner)" name="picStaffId" error={errors.picStaffId}>
           {picLocked ? (

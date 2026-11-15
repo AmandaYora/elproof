@@ -15,6 +15,7 @@ import type { ProjectFormValues } from "@/modules/projects/schemas/project.schem
 import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
+import { termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
 import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { toast } from "@/shared/stores/useToastStore";
@@ -41,6 +42,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const setProjectArchived = useProjectStore((s) => s.setProjectArchived);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
+  const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
+  const fetchPaymentTerms = useProjectStore((s) => s.fetchPaymentTerms);
+  const recalculatePaymentTerms = useProjectStore((s) => s.recalculatePaymentTerms);
+  const canRecordFinance = useCan("finance.record");
   // Actions follow the workspace role's permissions (ADR-0026).
   const canDelete = useCan("project.delete");
   const canEdit = useCan("project.edit");
@@ -65,6 +70,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [closing, setClosing] = useState<{ checklist: ClosingChecklist | null; error: string | null } | null>(null);
   const [completing, setCompleting] = useState(false);
   const closingToken = useRef(0);
+  // The schedule no longer adds up to a contract value just saved: offer to fit it (EP-05).
+  const [termsMismatch, setTermsMismatch] = useState<{ total: number; contractValue: number } | null>(null);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcError, setRecalcError] = useState<string | null>(null);
 
   if (!project) {
     return <div className="text-sm text-text-secondary">Proyek tidak ditemukan.</div>;
@@ -87,9 +96,40 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   // The two form handlers throw on failure so the modal can show the
   // message next to the form, with what the user typed still in place.
   async function handleEdit(values: ProjectFormValues) {
-    await updateProject(projectId, values, editVersion);
+    const before = project!;
+    const saved = await updateProject(projectId, values, editVersion);
     setEditOpen(false);
     toast.success("Perubahan proyek disimpan");
+    // Timeline steps that follow the event date were moved by the server (EP-06).
+    if (saved.eventDate !== before.eventDate || saved.prepStartDate !== before.prepStartDate) void fetchMilestones(projectId).catch(() => undefined);
+    // A new contract value no longer matches the schedule: offer to fit it (EP-05).
+    if (saved.contractValue !== before.contractValue && canRecordFinance) void offerRecalculation(saved.contractValue);
+  }
+
+  async function offerRecalculation(contractValue: number) {
+    try {
+      await fetchPaymentTerms(projectId);
+    } catch {
+      return; // the Keuangan tab still shows the difference when it loads
+    }
+    const terms = useProjectStore.getState().paymentTerms;
+    const total = termsTotal(terms);
+    const standing = termsVsContract(total, contractValue, terms.length);
+    if (standing === "under" || standing === "over") setTermsMismatch({ total, contractValue });
+  }
+
+  async function handleRecalculate() {
+    setRecalcError(null);
+    setRecalculating(true);
+    try {
+      await recalculatePaymentTerms(projectId);
+      setTermsMismatch(null);
+      toast.success("Jadwal termin dihitung ulang");
+    } catch (err) {
+      setRecalcError(getApiErrorMessage(err, "Jadwal termin belum dihitung ulang. Periksa koneksi Anda, lalu coba lagi."));
+    } finally {
+      setRecalculating(false);
+    }
   }
 
   async function handleTransition(action: ProjectStatusAction, successMessage: string) {
@@ -351,6 +391,28 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
         <p>
           Seluruh jadwal, vendor, pembayaran, kendala, dan bukti proyek ini ikut terhapus dan tidak bisa dipulihkan.
         </p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={termsMismatch !== null}
+        title="Hitung ulang jadwal termin?"
+        confirmLabel="Hitung ulang termin"
+        tone="primary"
+        isSubmitting={recalculating}
+        error={recalcError}
+        onConfirm={() => void handleRecalculate()}
+        onClose={() => {
+          setTermsMismatch(null);
+          setRecalcError(null);
+        }}
+      >
+        {termsMismatch && (
+          <p>
+            Nilai kontrak sekarang {formatCurrency(termsMismatch.contractValue)}, sedangkan jumlah termin{" "}
+            {formatCurrency(termsMismatch.total)}. Termin yang sudah ada pembayarannya tidak berubah; termin yang belum
+            dibayar dihitung ulang sesuai porsinya sampai jumlahnya sama dengan nilai kontrak. Pilih Batal untuk mengatur
+            termin sendiri di tab Keuangan.
+          </p>
+        )}
       </ConfirmDialog>
       <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
       <ProjectFormModal

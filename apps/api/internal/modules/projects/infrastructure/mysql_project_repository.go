@@ -428,13 +428,14 @@ func NewMySQLMilestoneRepository(db *sql.DB) *MySQLMilestoneRepository {
 	return &MySQLMilestoneRepository{db: db}
 }
 
-const milestoneColumns = `id, project_id, sort_order, name, status, target_date, completed_date, updated_at`
+const milestoneColumns = `id, project_id, sort_order, name, status, target_date, completed_date, days_before_event, updated_at`
 
 func scanMilestone(scan func(dest ...interface{}) error) (*domain.ProjectMilestone, error) {
 	var m domain.ProjectMilestone
 	var status string
 	var completedDate sql.NullTime
-	err := scan(&m.ID, &m.ProjectID, &m.SortOrder, &m.Name, &status, &m.TargetDate, &completedDate, &m.UpdatedAt)
+	var daysBeforeEvent sql.NullInt64
+	err := scan(&m.ID, &m.ProjectID, &m.SortOrder, &m.Name, &status, &m.TargetDate, &completedDate, &daysBeforeEvent, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -444,6 +445,10 @@ func scanMilestone(scan func(dest ...interface{}) error) (*domain.ProjectMilesto
 	m.Status = domain.MilestoneStatus(status)
 	if completedDate.Valid {
 		m.CompletedDate = &completedDate.Time
+	}
+	if daysBeforeEvent.Valid {
+		n := int(daysBeforeEvent.Int64)
+		m.DaysBeforeEvent = &n
 	}
 	return &m, nil
 }
@@ -498,8 +503,8 @@ func (r *MySQLMilestoneRepository) FindByID(ctx context.Context, projectID, id i
 
 func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.ProjectMilestone) error {
 	result, err := conn(ctx, r.db).ExecContext(ctx,
-		`INSERT INTO project_milestones (project_id, sort_order, name, status, target_date) VALUES (?, ?, ?, ?, ?)`,
-		m.ProjectID, m.SortOrder, m.Name, string(m.Status), m.TargetDate,
+		`INSERT INTO project_milestones (project_id, sort_order, name, status, target_date, days_before_event) VALUES (?, ?, ?, ?, ?, ?)`,
+		m.ProjectID, m.SortOrder, m.Name, string(m.Status), m.TargetDate, m.DaysBeforeEvent,
 	)
 	if err != nil {
 		return err
@@ -513,9 +518,10 @@ func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.Project
 }
 
 var milestonePatchColumns = map[string]column[domain.ProjectMilestone]{
-	"status":        col("status", func(m *domain.ProjectMilestone) any { return string(m.Status) }),
-	"targetDate":    col("target_date", func(m *domain.ProjectMilestone) any { return m.TargetDate }),
-	"completedDate": col("completed_date", func(m *domain.ProjectMilestone) any { return m.CompletedDate }),
+	"status":          col("status", func(m *domain.ProjectMilestone) any { return string(m.Status) }),
+	"targetDate":      col("target_date", func(m *domain.ProjectMilestone) any { return m.TargetDate }),
+	"completedDate":   col("completed_date", func(m *domain.ProjectMilestone) any { return m.CompletedDate }),
+	"daysBeforeEvent": col("days_before_event", func(m *domain.ProjectMilestone) any { return m.DaysBeforeEvent }),
 }
 
 // Patch writes the changed fields of a project milestone (see patchRow).

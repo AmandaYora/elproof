@@ -249,6 +249,7 @@ interface RawMilestone {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string | null;
+  daysBeforeEvent?: number | null;
   evidence?: RawEvidenceRef[] | null;
 }
 
@@ -261,6 +262,7 @@ function toMilestone(raw: RawMilestone): ProjectMilestone {
     status: raw.status,
     targetDate: raw.targetDate,
     completedDate: raw.completedDate,
+    daysBeforeEvent: raw.daysBeforeEvent ?? null,
     evidence: toEvidenceRefs(raw.evidence),
   };
 }
@@ -706,6 +708,8 @@ interface ProjectState {
   paymentTermsFor: string | null;
   fetchPaymentTerms: (projectId: string) => Promise<void>;
   savePaymentTerms: (projectId: string, terms: PaymentTermInput[]) => Promise<void>;
+  /** Fits the schedule to the current contract value: paid installments stay, unpaid ones share the rest (EP-05). */
+  recalculatePaymentTerms: (projectId: string) => Promise<void>;
   /** Sets the archive state explicitly (ADR-0036): repeating it, or two people doing it, cannot undo it. */
   setProjectArchived: (id: string, isArchived: boolean) => Promise<void>;
   // Hard delete (ADR-0013) — Owner-only and requires the project already be
@@ -945,6 +949,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   savePaymentTerms: async (projectId, terms) => {
     const res = await httpClient.put(API.projects.paymentTerms(projectId), { terms });
+    set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
+  },
+
+  recalculatePaymentTerms: async (projectId) => {
+    const res = await httpClient.post(API.projects.paymentTermsRecalculate(projectId));
     set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
   },
 

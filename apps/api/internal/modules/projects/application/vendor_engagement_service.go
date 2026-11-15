@@ -389,9 +389,10 @@ type VendorMilestonePatch struct {
 }
 
 // PatchMilestone changes the fields of a vendor milestone that were sent, and only
-// those. A patch that changes nothing writes nothing; with `expected` the write is
+// those. A status change without a completedDate stamps or clears the completed
+// date as for a project step (domain.StampCompletion, EP-06). A patch that changes nothing writes nothing; with `expected` the write is
 // a compare-and-set on the milestone's updated_at (a stale one is a 409).
-func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID, projectVendorID, milestoneID int64, actorStaffID int64, patch VendorMilestonePatch, expected *time.Time) (*domain.VendorMilestone, error) {
+func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID, projectVendorID, milestoneID int64, actorStaffID int64, patch VendorMilestonePatch, expected *time.Time, today time.Time) (*domain.VendorMilestone, error) {
 	if _, err := s.Get(ctx, projectID, projectVendorID); err != nil {
 		return nil, err
 	}
@@ -412,6 +413,9 @@ func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID,
 	setDate(&ch, "targetDate", "tanggal target", &m.TargetDate, patch.TargetDate)
 	setNullableDate(&ch, "completedDate", "tanggal selesai", &m.CompletedDate, patch.CompletedDate)
 	setVal(&ch, "picStaffId", "PIC", &m.PICStaffID, patch.PICStaffID)
+	if !patch.CompletedDate.Present() && domain.StampCompletion(loaded.Status, m.Status, &m.CompletedDate, today) {
+		ch.note("completedDate", "tanggal selesai")
+	}
 	setVal(&ch, "description", "deskripsi", &m.Description, patch.Description)
 	setVal(&ch, "notes", "catatan", &m.Notes, patch.Notes)
 	if !ch.any() {
