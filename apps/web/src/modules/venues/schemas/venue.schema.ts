@@ -6,16 +6,16 @@ import { isValidCity } from "@/shared/constants/cities";
 // the store boundary (0 <-> null), not modeled as optional here. facilities/
 // socialMedia are plain free text now (Revisi) — no array/chip-list state.
 export const venueSchema = z.object({
-  name: z.string().min(2, "Isi nama venue"),
+  name: z.string().trim().min(2, "Isi nama venue, minimal 2 huruf").max(150, "Nama venue maksimal 150 karakter"),
   picName: z.string().min(2, "Isi nama PIC"),
   phonePic: z.string().min(6, "Isi nomor telepon PIC, minimal 6 angka"),
   phoneVenue: z.string().optional().default(""),
   email: z.union([z.literal(""), z.string().email("Periksa email, contoh: nama@email.com")]).default(""),
   address: z.string().optional().default(""),
   city: z.string().optional().default(""),
-  rentalPrice: z.coerce.number().min(0, "Harga sewa tidak boleh negatif"),
-  charge: z.coerce.number().min(0, "Charge tidak boleh negatif"),
-  capacity: z.coerce.number().min(0, "Kapasitas tidak boleh negatif"),
+  rentalPrice: z.coerce.number().min(0, "Harga sewa tidak boleh kurang dari 0"),
+  charge: z.coerce.number().min(0, "Charge tidak boleh kurang dari 0"),
+  capacity: z.coerce.number().min(0, "Kapasitas tidak boleh kurang dari 0").max(4294967295, "Kapasitas terlalu besar. Periksa lagi angkanya."),
   facilities: z.string().optional().default(""),
   socialMedia: z.string().optional().default(""),
   notes: z.string().optional().default(""),
