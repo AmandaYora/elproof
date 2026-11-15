@@ -11,6 +11,7 @@ import { useRouteTitle } from "@/shared/hooks/useRouteTitle";
 import { CommandPalette, CommandTrigger } from "@/shared/layouts/CommandPalette";
 import type { NavSection } from "@/shared/layouts/nav/types";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { AppLogoMark } from "@/shared/components/AppLogoMark";
 import { APP_NAME } from "@/shared/constants/brand";
 import { getPlatformAdmin } from "@/modules/platform-admin/data";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
@@ -107,12 +108,15 @@ function PlatformShell() {
           sections={sections}
           brand={(collapsed) =>
             collapsed ? (
-              <ShieldCheck aria-hidden className="size-6 text-primary" />
+              <AppLogoMark className="size-7" alt={APP_NAME} />
             ) : (
-              <span className="flex flex-col gap-0.5">
-                <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
-                <span className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
-                  <ShieldCheck aria-hidden className="size-3.5" /> Platform Console
+              <span className="flex items-center gap-2.5">
+                <AppLogoMark />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
+                  <span className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
+                    <ShieldCheck aria-hidden className="size-3.5" /> Platform Console
+                  </span>
                 </span>
               </span>
             )
