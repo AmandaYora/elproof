@@ -33,11 +33,14 @@ type entryResponse struct {
 	ActorRole  string `json:"actorRole"`
 	TenantID   *int64 `json:"tenantId"`
 	Action     string `json:"action"`
-	Method     string `json:"method"`
-	Path       string `json:"path"`
-	StatusCode int    `json:"statusCode"`
-	Succeeded  bool   `json:"succeeded"`
-	IP         string `json:"ip"`
+	// Description is the action as a sentence (domain.Describe), "" when the
+	// route is unknown: the console then shows Action (EP-16).
+	Description string `json:"description"`
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	StatusCode  int    `json:"statusCode"`
+	Succeeded   bool   `json:"succeeded"`
+	IP          string `json:"ip"`
 }
 
 func isSuperAdmin(w http.ResponseWriter, r *http.Request) (*middleware.Claims, bool) {
@@ -101,7 +104,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func toEntryResponse(e domain.Entry) entryResponse {
 	return entryResponse{
 		ID: e.ID, OccurredAt: e.OccurredAt.In(wib).Format("2006-01-02T15:04:05Z07:00"), ActorType: e.ActorType,
-		ActorID: e.ActorID, ActorRole: e.ActorRole, TenantID: e.TenantID, Action: e.Action, Method: e.Method, Path: e.Path,
+		ActorID: e.ActorID, ActorRole: e.ActorRole, TenantID: e.TenantID, Action: e.Action, Description: domain.Describe(e.Method, e.Path), Method: e.Method, Path: e.Path,
 		StatusCode: e.StatusCode, Succeeded: e.Succeeded(), IP: e.IP,
 	}
 }
@@ -138,7 +141,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="audit-log-`+time.Now().In(wib).Format("2006-01-02")+`.csv"`)
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"ID", "Waktu", "Jenis pelaku", "ID pelaku", "Peran", "Tenant", "Aksi", "Metode", "Path", "Status", "Berhasil", "IP"})
+	_ = cw.Write([]string{"ID", "Waktu", "Jenis pelaku", "ID pelaku", "Peran", "Tenant", "Keterangan", "Aksi", "Metode", "Path", "Status", "Berhasil", "IP"})
 	for _, e := range entries {
 		tenant := ""
 		if e.TenantID != nil {
@@ -150,7 +153,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = cw.Write([]string{
 			strconv.FormatInt(e.ID, 10), e.OccurredAt.In(wib).Format("2006-01-02 15:04:05"), e.ActorType, csvCell(e.ActorID), csvCell(e.ActorRole),
-			tenant, csvCell(e.Action), e.Method, csvCell(e.Path), strconv.Itoa(e.StatusCode), ok, e.IP,
+			tenant, csvCell(domain.Describe(e.Method, e.Path)), csvCell(e.Action), e.Method, csvCell(e.Path), strconv.Itoa(e.StatusCode), ok, e.IP,
 		})
 	}
 	cw.Flush()

@@ -4,6 +4,7 @@ import { AUTH, AUTH_DIR, BASE_DAY, type Session, type State } from "./config";
 import { call, must } from "./api";
 import { sql } from "./sql";
 import { totp } from "./totp";
+import { sessionOf, storageStateFor } from "./session";
 
 const PASSWORD_KLIEN = "Kata-sandi-klien-123";
 export const ADMIN_LOGIN = { username: "superadmin", password: "superadmin" };
@@ -31,23 +32,22 @@ async function signUp(s: Seeder, key: string, business: string, owner: string) {
   const cred = await googleToken(s, `${key}@contoh.test`, owner, `g-sub-${key}`);
   must(`signup ${key}`, await call(s.api, null, "POST", "/api/v1/public/signup/workspace", { credential: cred, businessName: business, acceptTerms: true }));
   const login = must(`login ${key}`, await call(s.api, null, "POST", "/api/v1/auth/google", { credential: cred }));
-  const session = login.json.data as Session;
+  const session = sessionOf(login);
   return { session, token: session.accessToken, staffId: Number(session.principalId), tenantId: Number(session.tenantId) };
 }
 
 function writeAuth(file: string, webURL: string, session: Session | null) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
-  const origins = session ? [{ origin: webURL, localStorage: [{ name: "elproof.session", value: JSON.stringify(session) }] }] : [];
-  fs.writeFileSync(file, JSON.stringify({ cookies: [], origins }, null, 2));
+  fs.writeFileSync(file, JSON.stringify(storageStateFor(webURL, session), null, 2));
 }
 
 async function platformAdminSession(s: Seeder): Promise<Session> {
   const login = must("admin login", await call(s.api, null, "POST", "/api/v1/auth/login", ADMIN_LOGIN));
-  const first = login.json.data as Session;
+  const first = sessionOf(login);
   const setup = must("mfa setup", await call(s.api, first.accessToken, "POST", "/api/v1/auth/mfa/setup"));
   const secret = setup.json.data.secret as string;
   const enable = must("mfa enable", await call(s.api, first.accessToken, "POST", "/api/v1/auth/mfa/enable", { code: totp(secret) }));
-  return enable.json.data as Session;
+  return sessionOf(enable);
 }
 
 const pdf = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF").toString("base64");
@@ -166,7 +166,7 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
   void groom;
   const link = bride.json.data.accessLink.token as string;
   const clientLogin = must("client password", await call(s.api, null, "POST", `/api/v1/auth/links/${link}/password`, { password: PASSWORD_KLIEN }));
-  const clientSession = clientLogin.json.data as Session;
+  const clientSession = sessionOf(clientLogin);
 
   // ---- WO Berbayar: a paying tenant for the Platform Console ----
   const paying = await signUp(s, "berbayar", "WO Berbayar", "Hadi Susanto");

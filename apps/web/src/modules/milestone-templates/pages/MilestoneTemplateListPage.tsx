@@ -10,12 +10,12 @@ import { MilestoneTemplateFormModal } from "@/modules/milestone-templates/compon
 import type { MilestoneTemplateSubmitValues } from "@/modules/milestone-templates/schemas/milestone-template.schema";
 import { useMilestoneTemplateStore } from "@/modules/milestone-templates/stores/useMilestoneTemplateStore";
 import type { MilestoneTemplate } from "@/modules/milestone-templates/types";
+import { formatDayCountdown } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 
 function formatDaysLabel(daysBeforeEvent: number): string {
-  if (daysBeforeEvent === 0) return "Hari-H";
-  return daysBeforeEvent > 0 ? `H-${daysBeforeEvent}` : `H+${Math.abs(daysBeforeEvent)}`;
+  return formatDayCountdown(daysBeforeEvent);
 }
 
 export default function MilestoneTemplateListPage() {

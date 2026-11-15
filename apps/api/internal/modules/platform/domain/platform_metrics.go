@@ -44,7 +44,9 @@ type AttentionTenant struct {
 // PlatformMetrics follows the definitions in FLOW-IDEAL.md §1.3.
 type PlatformMetrics struct {
 	TotalTenants int
-	// Counts by lifecycle state (a tenant is in exactly one; Frozen is separate).
+	// Counts by state: every tenant is in exactly one of these, so they add up
+	// to TotalTenants. A tenant frozen by the platform team counts only as
+	// Frozen, whatever its subscription dates say (EP-09).
 	Trialing    int
 	Active      int // paid: active + expiring_soon
 	PastDue     int // past the end, within grace (still full access)
@@ -52,7 +54,7 @@ type PlatformMetrics struct {
 	Suspended   int // billing only
 	NoPeriod    int
 	Frozen      int
-	PaidTenants int // paid period, not free, status active/expiring_soon/past_due
+	PaidTenants int // paid period, not free, not frozen, status active/expiring_soon/past_due
 
 	// MRR: monthly value of paid (non-free) subscriptions; trial and free grants excluded.
 	MRR  int64
@@ -121,10 +123,17 @@ func ComputePlatformMetrics(in MetricsInput) PlatformMetrics {
 	}
 
 	for _, t := range in.Tenants {
-		lc := ComputeLifecycle(t, in.Now, in.Policy)
+		// A frozen workspace cannot be used and is not a paying customer while
+		// the freeze lasts, so it is left out of every lifecycle count, MRR,
+		// churn, new-paid and attention list (EP-09). Its subscription dates
+		// are kept untouched: reactivating it brings it back into the figures
+		// exactly where its dates put it. Revenue already received (the paid
+		// ledger above) still counts — that money did come in.
 		if t.IsSuspended {
 			m.Frozen++
+			continue
 		}
+		lc := ComputeLifecycle(t, in.Now, in.Policy)
 		paidPeriod := t.SubscriptionExpiresAt != nil
 		free := in.FreeTenants[t.ID]
 		monthly := in.PlanMonthly[planOf(t)]

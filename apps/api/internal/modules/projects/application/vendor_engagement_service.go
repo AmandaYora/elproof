@@ -46,10 +46,13 @@ type VendorEngagementService struct {
 	repo       VendorEngagementRepository
 	milestones VendorMilestoneRepository
 	activity   *ActivityService
+	// payments is read to keep the agreed price at or above what is already
+	// paid to the vendor (QA EP-04).
+	payments PaymentRepository
 }
 
-func NewVendorEngagementService(repo VendorEngagementRepository, milestones VendorMilestoneRepository, activity *ActivityService) *VendorEngagementService {
-	return &VendorEngagementService{repo: repo, milestones: milestones, activity: activity}
+func NewVendorEngagementService(repo VendorEngagementRepository, milestones VendorMilestoneRepository, activity *ActivityService, payments PaymentRepository) *VendorEngagementService {
+	return &VendorEngagementService{repo: repo, milestones: milestones, activity: activity, payments: payments}
 }
 
 func (s *VendorEngagementService) List(ctx context.Context, projectID int64) ([]domain.ProjectVendor, error) {
@@ -85,6 +88,11 @@ type VendorEngagementInput struct {
 }
 
 func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, actorStaffID int64, input VendorEngagementInput) (*domain.ProjectVendor, error) {
+	fe := newFieldErrors()
+	checkEngagementMoney(fe, input.ContractValue, input.DPAmount)
+	if err := fe.err(); err != nil {
+		return nil, err
+	}
 	pv := &domain.ProjectVendor{
 		ProjectID: projectID, VendorID: input.VendorID, CategoryID: input.CategoryID, Scope: input.Scope,
 		ContractValue: input.ContractValue, PricingTier: input.PricingTier, EngagementStatus: input.EngagementStatus, BookingDate: input.BookingDate,
@@ -96,7 +104,7 @@ func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, a
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityVendorAdded, actorStaffID, "project_vendor", formatID(pv.ID), input.Scope,
-		"Vendor ditambahkan ke project")
+		"Vendor ditambahkan ke proyek")
 	return pv, nil
 }
 
@@ -157,6 +165,31 @@ func (s *VendorEngagementService) Patch(ctx context.Context, projectID, id int64
 	}{{patch.EventStartTime, "eventStartTime"}, {patch.EventEndTime, "eventEndTime"}} {
 		if f.o.Present() && !f.o.IsNull() && !hhmm.MatchString(f.o.Value()) {
 			fe.add("Gunakan format HH:MM", f.key)
+		}
+	}
+	// The DP stays within the agreed price, and the agreed price is not set
+	// under what was already paid (QA EP-04). Checked only when either amount
+	// changes, so an older row that breaks the rule can still have its other
+	// fields edited.
+	if fe.empty() {
+		contract, dp := pv.ContractValue, pv.DPAmount
+		if patch.ContractValue.Present() {
+			contract = patch.ContractValue.Value()
+		}
+		if patch.DPAmount.Present() {
+			dp = patch.DPAmount.Value()
+		}
+		if (contract != pv.ContractValue || dp != pv.DPAmount) && contract > 0 && dp > contract {
+			fe.add(dpOverContractMessage(dp, contract), "dpAmount")
+		}
+		if contract != pv.ContractValue {
+			paid, err := s.paidTowardsContract(ctx, projectID, id)
+			if err != nil {
+				return nil, err
+			}
+			if msg := contractBelowPaid(pv.ContractValue, contract, paid); msg != "" {
+				fe.add(msg, "contractValue")
+			}
 		}
 	}
 	if err := fe.err(); err != nil {
@@ -326,7 +359,7 @@ func (s *VendorEngagementService) CreateMilestone(ctx context.Context, projectID
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(m.ID), m.Name,
-		"Timeline vendor ditambahkan: "+m.Name)
+		"Tahapan vendor ditambahkan: "+m.Name)
 	return m, nil
 }
 
@@ -356,9 +389,10 @@ type VendorMilestonePatch struct {
 }
 
 // PatchMilestone changes the fields of a vendor milestone that were sent, and only
-// those. A patch that changes nothing writes nothing; with `expected` the write is
+// those. A status change without a completedDate stamps or clears the completed
+// date as for a project step (domain.StampCompletion, EP-06). A patch that changes nothing writes nothing; with `expected` the write is
 // a compare-and-set on the milestone's updated_at (a stale one is a 409).
-func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID, projectVendorID, milestoneID int64, actorStaffID int64, patch VendorMilestonePatch, expected *time.Time) (*domain.VendorMilestone, error) {
+func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID, projectVendorID, milestoneID int64, actorStaffID int64, patch VendorMilestonePatch, expected *time.Time, today time.Time) (*domain.VendorMilestone, error) {
 	if _, err := s.Get(ctx, projectID, projectVendorID); err != nil {
 		return nil, err
 	}
@@ -379,6 +413,9 @@ func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID,
 	setDate(&ch, "targetDate", "tanggal target", &m.TargetDate, patch.TargetDate)
 	setNullableDate(&ch, "completedDate", "tanggal selesai", &m.CompletedDate, patch.CompletedDate)
 	setVal(&ch, "picStaffId", "PIC", &m.PICStaffID, patch.PICStaffID)
+	if !patch.CompletedDate.Present() && domain.StampCompletion(loaded.Status, m.Status, &m.CompletedDate, today) {
+		ch.note("completedDate", "tanggal selesai")
+	}
 	setVal(&ch, "description", "deskripsi", &m.Description, patch.Description)
 	setVal(&ch, "notes", "catatan", &m.Notes, patch.Notes)
 	if !ch.any() {
@@ -398,6 +435,6 @@ func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID,
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(fresh.ID), fresh.Name,
-		"Timeline vendor diperbarui: "+ch.summary())
+		"Tahapan vendor diperbarui: "+ch.summary())
 	return fresh, nil
 }

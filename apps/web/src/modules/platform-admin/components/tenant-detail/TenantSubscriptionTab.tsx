@@ -3,6 +3,7 @@ import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { formatDate } from "@/shared/lib/formatters";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
+import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import type { Tenant } from "@/modules/platform-admin/data/types";
 import type { ManualActivation } from "@/modules/platform-admin/data/console.types";
 import { DefinitionList } from "@/modules/platform-admin/components/tenant-detail/TenantProfileTab";
@@ -33,7 +34,11 @@ export function TenantSubscriptionTab({ tenant, planName, activations, onActivat
         <CardContent>
           <DefinitionList
             rows={[
-              { label: "Status", value: <TenantStatusBadge status={tenant.subscriptionStatus} /> },
+              { label: "Status", value: <TenantStatusBadge status={tenant.subscriptionStatus} frozen={lc.frozen} /> },
+              // Freezing keeps the subscription as it was, so unfreezing restores it (EP-09).
+              ...(lc.frozen
+                ? [{ label: "Langganan tersimpan", value: `${TENANT_STATUS_LABEL[tenant.subscriptionStatus]}, berlaku lagi setelah tenant diaktifkan kembali` }]
+                : []),
               { label: "Paket", value: planName || (lc.isTrial ? "Masa coba" : "-") },
               { label: lc.isTrial ? "Masa coba berakhir" : "Langganan berakhir", value: formatDate(lc.periodEndsAt) },
               { label: "Sisa waktu", value: lc.periodEndsAt ? (lc.daysLeft >= 0 ? `${lc.daysLeft} hari` : `Lewat ${Math.abs(lc.daysLeft)} hari`) : "-" },

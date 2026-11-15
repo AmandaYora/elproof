@@ -42,12 +42,12 @@ func TestComputePlatformMetrics(t *testing.T) {
 	if m.TotalTenants != 10 {
 		t.Errorf("total %d", m.TotalTenants)
 	}
-	// Paying: 3, 4, 6 (grace, still counts), 8, 10 (frozen is still a paying tenant). Not 5 (free).
-	if m.PaidTenants != 5 {
-		t.Errorf("paid tenants %d, want 5", m.PaidTenants)
+	// Paying: 3, 4, 6 (grace, still counts), 8. Not 5 (free), not 10 (frozen: not a paying customer while frozen, EP-09).
+	if m.PaidTenants != 4 {
+		t.Errorf("paid tenants %d, want 4", m.PaidTenants)
 	}
-	// 100k + 90k + 100k + 100k + 100k
-	if m.MRR != 490_000 || m.ARPA != 98_000 {
+	// 100k + 90k + 100k + 100k (the frozen tenant adds nothing)
+	if m.MRR != 390_000 || m.ARPA != 97_500 {
 		t.Errorf("MRR %d ARPA %d", m.MRR, m.ARPA)
 	}
 	if m.TrialsEnded30d != 2 || m.TrialsConverted30d != 1 {
@@ -75,8 +75,8 @@ func TestComputePlatformMetrics(t *testing.T) {
 	if m.Frozen != 1 || m.Trialing != 2 {
 		t.Errorf("frozen %d trialing %d", m.Frozen, m.Trialing)
 	}
-	// Churn base: 5 paying now + 1 churned - 1 new = 5 -> 20%.
-	if got := m.ChurnPct(); got == nil || *got != 20 {
+	// Churn base: 4 paying now + 1 churned - 1 new = 4 -> 25%.
+	if got := m.ChurnPct(); got == nil || *got != 25 {
 		t.Errorf("churn %v", got)
 	}
 }
@@ -120,5 +120,45 @@ func TestMetricsTenantWithoutPlanDoesNotDiluteARPA(t *testing.T) {
 	})
 	if m.PaidTenants != 2 || m.MRR != 100_000 || m.ARPA != 100_000 {
 		t.Fatalf("paid %d mrr %d arpa %d, want 2, 100000, 100000", m.PaidTenants, m.MRR, m.ARPA)
+	}
+}
+
+// EP-09: freezing a paying tenant takes it out of Aktif, MRR and the attention
+// lists; unfreezing (the dates were never touched) puts it straight back.
+func TestMetricsFrozenTenantIsNotActiveOrPaying(t *testing.T) {
+	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	days := func(n int) *time.Time { d := now.AddDate(0, 0, n); return &d }
+	tenants := []Tenant{
+		{ID: 1, BusinessName: "Berbayar", PlanID: ptr(int64(1)), SubscriptionExpiresAt: days(20)},
+		{ID: 2, BusinessName: "Berbayar dibekukan", PlanID: ptr(int64(1)), SubscriptionExpiresAt: days(20), IsSuspended: true},
+		{ID: 3, BusinessName: "Menunggak dibekukan", PlanID: ptr(int64(1)), SubscriptionExpiresAt: days(-3), IsSuspended: true},
+		{ID: 4, BusinessName: "Trial dibekukan", TrialEndsAt: days(1), IsSuspended: true},
+	}
+	in := MetricsInput{
+		Now: now, Policy: DefaultSubscriptionPolicy, Tenants: tenants,
+		PlanMonthly: map[int64]int64{1: 149_000}, PlanPrice: map[int64]int64{1: 149_000},
+	}
+	m := ComputePlatformMetrics(in)
+	if m.TotalTenants != 4 || m.Frozen != 3 {
+		t.Fatalf("total %d frozen %d, want 4 and 3", m.TotalTenants, m.Frozen)
+	}
+	if m.Active != 1 || m.PastDue != 0 || m.Trialing != 0 {
+		t.Errorf("active %d past due %d trialing %d: a frozen tenant must not count in any lifecycle state", m.Active, m.PastDue, m.Trialing)
+	}
+	if sum := m.Trialing + m.Active + m.PastDue + m.ReadOnly + m.Suspended + m.NoPeriod + m.Frozen; sum != m.TotalTenants {
+		t.Errorf("state counts add up to %d, want %d", sum, m.TotalTenants)
+	}
+	if m.PaidTenants != 1 || m.MRR != 149_000 {
+		t.Errorf("paid %d MRR %d, want 1 and 149000", m.PaidTenants, m.MRR)
+	}
+	if m.OverdueValue != 0 || len(m.OverdueTenants) != 0 || len(m.TrialsEndingSoon) != 0 {
+		t.Errorf("frozen tenants must not be on the attention lists: overdue %d %+v, trials %+v", m.OverdueValue, m.OverdueTenants, m.TrialsEndingSoon)
+	}
+
+	// Unfreeze tenant 2: its untouched dates make it active and paying again.
+	in.Tenants[1].IsSuspended = false
+	m = ComputePlatformMetrics(in)
+	if m.Active != 2 || m.PaidTenants != 2 || m.MRR != 298_000 || m.Frozen != 2 {
+		t.Errorf("after unfreezing: active %d paid %d MRR %d frozen %d", m.Active, m.PaidTenants, m.MRR, m.Frozen)
 	}
 }

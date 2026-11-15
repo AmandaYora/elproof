@@ -133,6 +133,9 @@ type milestoneResponse struct {
 	Status        string  `json:"status"`
 	TargetDate    string  `json:"targetDate"`
 	CompletedDate *string `json:"completedDate"`
+	// DaysBeforeEvent is the Jadwal bawaan offset the target follows (H-14 = 14,
+	// H+3 = -3); null when the date is fixed (added or dated by hand). EP-06.
+	DaysBeforeEvent *int `json:"daysBeforeEvent"`
 	// Evidence is filled by GET /projects/{id}/milestones (all attachments for
 	// staff, only the ones the client may see for a client); `[]` elsewhere.
 	Evidence []evidenceRefResponse `json:"evidence"`
@@ -144,7 +147,7 @@ type milestoneResponse struct {
 func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 	return milestoneResponse{
 		ID: m.ID, SortOrder: m.SortOrder, Name: m.Name, Status: string(m.Status),
-		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate),
+		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate), DaysBeforeEvent: m.DaysBeforeEvent,
 		Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(m.UpdatedAt),
 	}
 }

@@ -8,6 +8,7 @@ import { todayISO } from "@/modules/projects/lib/dates";
 import { projectMilestoneEditSchema, MILESTONE_STATUS_OPTIONS } from "@/modules/projects/schemas/project-milestone.schema";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
+import { formatDayCountdown } from "@/shared/lib/formatters";
 
 const STATUS_OPTIONS: MilestoneStatus[] = [...MILESTONE_STATUS_OPTIONS];
 const FIELD_LABELS: Record<string, string> = { status: "Status", targetDate: "Target tanggal", completedDate: "Tanggal selesai" };
@@ -26,6 +27,13 @@ interface ProjectMilestoneEditModalProps {
   onSave: (fields: ProjectMilestoneEditFields) => Promise<void>;
 }
 
+/** Says that the target follows the event date (EP-06), and that setting it by hand stops that. */
+function followHint(daysBeforeEvent: number | null | undefined): string | undefined {
+  if (daysBeforeEvent === null || daysBeforeEvent === undefined) return undefined;
+  const offset = formatDayCountdown(daysBeforeEvent);
+  return `Mengikuti tanggal acara (${offset}). Bila diubah di sini, tanggal ini tidak lagi ikut bergeser saat tanggal acara berubah.`;
+}
+
 export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: ProjectMilestoneEditModalProps) {
   const form = useZodForm({
     schema: projectMilestoneEditSchema,
@@ -37,6 +45,8 @@ export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: 
   function setStatus(status: MilestoneStatus) {
     set("status", status);
     if (status === "Completed" && !values.completedDate) set("completedDate", todayISO());
+    // Not done any more: it has no completed date (the server clears it the same way).
+    if (status !== "Completed" && values.completedDate) set("completedDate", "");
   }
 
   const submit = form.handleSubmit(onSave, { root: () => formRef.current, fallback: "Timeline belum tersimpan. Periksa koneksi lalu coba lagi." });
@@ -67,7 +77,12 @@ export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: 
             ))}
           </Select>
         </Field>
-        <Field label="Target Tanggal" name="targetDate" error={errors.targetDate}>
+        <Field
+          label="Target Tanggal"
+          name="targetDate"
+          error={errors.targetDate}
+          hint={followHint(milestone.daysBeforeEvent)}
+        >
           <Input type="date" value={values.targetDate} onChange={(e) => set("targetDate", e.target.value)} onBlur={() => blur("targetDate")} />
         </Field>
         <Field label="Tanggal Selesai" name="completedDate" error={errors.completedDate}>

@@ -15,7 +15,7 @@ Read this before touching a screen. Layers, from the bottom:
 | Tokens | `src/theme/theme.css` | Semantic names only (`bg-card`, `text-muted-foreground`, `text-danger-text`, `border-input`). No hex or palette colours in a component; text in a status colour uses the `-text` token (4.5:1). One palette for every surface, no per-tenant colour (ADR-0039); the public site only swaps its surface tokens in `marketing.css`. A control that hides the browser outline adds `focus-visible:outline-solid` with `outline-2` (Tailwind 4 `outline-none` sets `--tw-outline-style: none`). |
 | Primitives | `src/shared/components/kit/` | shadcn copies on **Base UI**. Add one with the shadcn CLI only when a screen needs it; delete what nothing imports. |
 | App components | `src/shared/components/ui/` | `Button`, `Input`, `Field`, `Modal`, `Drawer`, `ConfirmDialog`, `Badge`, `Table`, `IconActionButton`, `TrendBarChart`, `ProofStamp`… The API screens use. Domain-agnostic. |
-| Forms | `src/shared/forms/` | `useZodForm(schema, …)` + `<Field name="…">` + `FormErrorSummary`; types with `z.infer`; a 422's `errors` keys land on the same fields; the first error takes focus. |
+| Forms | `src/shared/forms/` | `useZodForm(schema, …)` + `<Field name="…">` + `FormErrorSummary`; types with `z.infer`; a 422's `errors` keys land on the same fields; the first error takes focus. Money fields use `CurrencyInput` (whole rupiah with dots); a field the schema must refuse when negative passes `signed`, so a typed minus stays visible and the schema's message shows instead of the sign being dropped (ADR-0042). "Today" is `todayISO()`, the WIB calendar day the server also judges lateness by. |
 | Lists | `src/shared/data-table/` | `useListState` (page, sort, search, filters in the URL) + `DataTable`. The server sorts, filters and pages (ADR-0035); never load `all=true` to filter in the browser. |
 | Layout | `src/shared/layouts/` | `AppSidebar`/`Sidebar`/`Topbar`, `Breadcrumbs`, ⌘K palette. Sheet, palette dialog, tooltips on the rail, conflict dialog and toaster load on demand. |
 
@@ -68,6 +68,17 @@ of resetting to seed data on every mount (the bug found throughout the pre-integ
 `shared/stores/useAuthStore.ts` holds the current session: access token, principal type, tenant ID,
 role, display name — populated from `identity` module's login response, not from a hardcoded
 default. A logged-out state is a real, distinct state (no default-valid staff ID).
+
+Tokens are never written to storage (ADR-0044, EP-07). The refresh token is an HttpOnly cookie the
+API sets on sign-in (path `/api/v1/auth`); the access token lives only in memory. `localStorage`
+keeps a token-free profile (`elproof.profile`: principal type/id, tenant, role, name, MFA flags) so
+the first paint after a reload shows the right console; the store removes the old
+`elproof.session` key (which held both tokens) on load. After a reload the access token is `""`:
+the HTTP client's request interceptor calls `POST /auth/refresh` (cookie, `withCredentials`,
+`X-Requested-With`) before the first API call, and again on a 401. Several tabs may refresh at once
+(the API accepts a token rotated a moment ago), so there is no cross-tab lock; a tab that sees the
+profile removed or replaced by another principal (`storage` event) reloads. A refresh refused with
+4xx ends the session; a network error or 5xx keeps it.
 
 ## HTTP
 
@@ -208,16 +219,27 @@ have no permission of their own. The API still refuses writes with `subscription
   the list and the detail page alike. Per-tenant data is returned by `useConsoleStore` calls, not cached.
 - **Forms** keep the module pattern: Zod schemas in `schemas/console.schema.ts`, field errors from
   `safeParse`, server messages through `getApiErrorMessage`.
-- **Support session** (`shared/lib/impersonation.ts`): `enterSupportSession` stores the admin's own session in
-  `session.impersonation.returnTo`, signs the browser in as the Owner (no refresh token) and reloads;
-  `endSupportSession` restores it (without its refresh token, so a script in the tenant's page cannot read one) and tells the API; the banner also ends the session when the hour is up. `useCan`/`useWriteLocked` treat a support session as
+- **Support session** (`shared/lib/impersonation.ts`): `enterSupportSession` keeps the admin's own session in
+  `session.impersonation.returnTo`, hands the Owner's read-only token over the full page load in this tab's
+  `sessionStorage` (deleted as soon as the new page reads it; it then lives in memory only) and reloads; the
+  admin's refresh token stays in its HttpOnly cookie, out of reach of the tenant's pages. `endSupportSession` restores
+  the admin (whose access token is fetched again from the cookie) and tells the API. A reload during a support session
+  ends it: the store moves the address back to the workspace's Platform Console page before the router starts, and
+  `finishInterruptedSupportSession` (loaded on demand from `App`) tells the API and shows a toast. The banner also ends the session when the hour is up. `useCan`/`useWriteLocked` treat a support session as
   read-only, the http client turns `impersonation_read_only` into a toast and, when the token lapses, returns
   the admin to their own session instead of refreshing. `SupportSessionBanner` is always visible in the WO
   Console during a session.
 - **WO side**: `AnnouncementBanner` (dismissible, remembered per browser) and `SupportAccessCard` in
   Profil Usaha (grant/revoke consent, session history).
-- **Per-page meta**: `usePageMeta({title, description, noindex})` sets the tab title and search/share tags and
-  restores them on unmount; marketing and auth pages use it.
+- **Per-page meta**: `usePageMeta({title, description, noindex, path})` sets the tab title, description, share tags
+  and (with `path`, indexable pages only) the canonical link on `SITE_URL`, and restores them on unmount. The public
+  pages pass their entry of `app/routes/public-pages.ts`, the same entry the build writes into their HTML.
+- **Prerendered public pages (ADR-0043)**: `npm run build` ends with `npm run prerender`, which renders every page of
+  `PUBLIC_PAGES` to `dist/prerendered/*.html` and writes `dist/routes.json` and `dist/sitemap.xml`. `main.tsx`
+  hydrates when `#root[data-prerendered]` is the opened path. What a public page renders on its first pass must not
+  depend on the browser (window, storage, query string, viewport): read those in an effect, or with
+  `useSyncExternalStore` and a server snapshot (`useMediaQuery`). A new route needs nothing else: the route list the Go
+  server answers 404 from is generated from `app/routes/routes.tsx`.
 - **QR code**: `shared/components/ui/QrCode` draws in the browser with the `qrcode` package; the text never
   leaves the page. **Receipt**: `/langganan/kuitansi/:id` is a plain page; `print:` utilities hide the console
   chrome and `window.print()` is the "Simpan sebagai PDF".

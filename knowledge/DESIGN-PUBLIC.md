@@ -78,6 +78,32 @@ Sumber `GET /api/v1/public/plans` (ADR-0038). Baris per paket, urut durasi; "RpX
 harga per bulan termurah (tidak ada bila seri); "Hemat X%" terhadap paket terpendek. Memuat = kerangka tanpa angka; galat
 atau kosong = ajakan bertanya lewat WhatsApp.
 
+Judul dan pengantar bagian harga mengikuti data (`pricingIntro`, EP-14), tidak pernah menjanjikan pilihan yang tidak ada:
+
+| Paket aktif | Judul | Pengantar |
+|---|---|---|
+| belum terbaca / galat / kosong | Harga terbuka | Mulai dengan coba gratis 14 hari. Tanpa kartu kredit. |
+| satu paket | Harga terbuka, satu paket | … lanjutkan dengan paket {nama}, ditagih per bulan / per N bulan. |
+| beberapa paket, satu durasi | Harga terbuka, pilih paketnya | … pilih paket yang sesuai kebutuhan tim Anda; semuanya ditagih … |
+| beberapa durasi | Harga terbuka, pilih lamanya | … pilih paket sesuai lama yang Anda butuhkan. |
+
+Satu paket saja → tombol "Pilih paket" berwarna utama. Fitur paket ditulis admin di Platform Console (data, bukan teks
+UI); formulir paket ElProof mengingatkan agar ditulis dalam bahasa Indonesia.
+
+**Daftar dengan paket (`/daftar?paket=<id>`):** kotak "Paket pilihan Anda" (nama, harga, periode, tautan "Ganti paket" ke
+`/#harga`) dan catatan bahwa pendaftaran dimulai dengan coba gratis 14 hari tanpa tagihan; paket dibayar nanti di menu
+Langganan dan masa langganannya dimulai setelah masa coba habis (`SubscriptionPage`: sisa masa coba dipertahankan).
+Id yang tidak dikenal, paket nonaktif, atau API gagal → Daftar biasa tanpa kotak. Kotak muncul setelah data paket
+terbaca (render pertama sama dengan HTML prarender).
+
+## 6a. Mesin pencari (ADR-0043)
+
+Sepuluh halaman (`PUBLIC_PAGES`: Beranda, Tentang Kami, FAQ, Kontak, empat halaman hukum, Daftar, Masuk) ditulis ke HTML
+saat build dengan judul, deskripsi, canonical, Open Graph/Twitter, dan isinya sendiri, lalu dihidrasi di browser.
+`sitemap.xml` memuat halaman yang boleh diindeks (tanpa Masuk); alamat yang tidak dikenal router dijawab 404 oleh server.
+Render pertama halaman publik tidak boleh bergantung pada browser (ukuran layar, storage, query string): baca di efek
+atau lewat `useMediaQuery`.
+
 ## 7. Anti-pola
 
 Gradien/kaca dekoratif, satu frasa diwarnai beda di judul, label huruf kapital di atas judul, kartu ikon seragam, angka

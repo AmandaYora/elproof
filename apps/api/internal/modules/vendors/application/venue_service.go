@@ -13,6 +13,7 @@ import (
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/filetype"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
@@ -116,8 +117,8 @@ func (s *VenueService) Get(ctx context.Context, tenantID, id int64) (*domain.Ven
 
 // VenueInput is shared by Create and Update, mirroring VendorInput's shape.
 // City/RentalPrice are enforced as required only by the frontend's create
-// schema (see ADR-0016) -- this layer doesn't re-check non-emptiness, same as
-// every other "required" text field in this codebase (e.g. VendorInput.Name).
+// schema (see ADR-0016). This layer requires Name and keeps text within its
+// column and numbers at 0 or more (validateVenueInput, QA EP-03).
 // It DOES validate City against domain.IsValidCity whenever non-empty,
 // since that's a fixed-enum correctness check, not a mere required-ness rule.
 type VenueInput struct {
@@ -151,6 +152,9 @@ func validateVenueCity(city string) error {
 }
 
 func (s *VenueService) Create(ctx context.Context, tenantID int64, input VenueInput) (*domain.Venue, error) {
+	if err := validateVenueInput(&input); err != nil {
+		return nil, err
+	}
 	if err := validateVenueCity(input.City); err != nil {
 		return nil, err
 	}
@@ -169,6 +173,9 @@ func (s *VenueService) Create(ctx context.Context, tenantID int64, input VenueIn
 }
 
 func (s *VenueService) Update(ctx context.Context, tenantID, id int64, input VenueInput) (*domain.Venue, error) {
+	if err := validateVenueInput(&input); err != nil {
+		return nil, err
+	}
 	if err := validateVenueCity(input.City); err != nil {
 		return nil, err
 	}
@@ -254,6 +261,10 @@ func (s *VenueService) UploadAttachment(ctx context.Context, tenantID, venueID i
 	}
 	if len(decoded) > maxVenueAttachmentDecodedSize {
 		return nil, apperror.Validation("Ukuran lampiran terlalu besar", map[string][]string{"base64Data": {"Maksimal 15 MB"}})
+	}
+	if !filetype.Matches(decoded, input.MimeType) {
+		msg := "Lampiran ini tidak bisa dibuka sebagai PNG, JPEG, WebP, atau PDF. Pilih berkas aslinya."
+		return nil, apperror.Validation(msg, map[string][]string{"base64Data": {msg}})
 	}
 
 	// compress.Image passes non-image mimeTypes (e.g. application/pdf)
@@ -391,6 +402,10 @@ func (s *VenueService) ImportVenues(ctx context.Context, tenantID int64, rows []
 		rowNum := i + 2 // header occupies row 1
 		if row.Name == "" || row.PICName == "" || row.PhonePIC == "" || row.City == "" {
 			result.Errors = append(result.Errors, VenueImportRowError{Row: rowNum, Message: "Nama Venue, Nama PIC, No Tlp PIC, dan Kota wajib diisi"})
+			continue
+		}
+		if msg := importRowProblem(row.Name, labeledNumber{label: "Harga sewa", value: row.RentalPrice}, labeledNumber{label: "Charge", value: row.Charge}, capacityNumber(row.Capacity)); msg != "" {
+			result.Errors = append(result.Errors, VenueImportRowError{Row: rowNum, Message: msg})
 			continue
 		}
 		if !domain.IsValidCity(row.City) {

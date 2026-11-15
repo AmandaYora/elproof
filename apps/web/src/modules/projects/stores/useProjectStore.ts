@@ -12,6 +12,7 @@ import type { VenuePaymentFormValues, VenuePaymentUpdateFormValues } from "@/mod
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { uploadFile } from "@/shared/lib/direct-upload";
+import { renameApiFieldErrors } from "@/shared/lib/api-error";
 import type {
   OverviewAction,
   PaymentTerm,
@@ -67,13 +68,31 @@ async function savePaymentWithProof(
   slots: Array<{ file: File | undefined; type: "Invoice" | "Transfer Proof" }>,
   idempotencyKey?: string,
 ): Promise<void> {
+  // The form names its file inputs; the server names them by position in `evidence`.
+  const fieldOf = (type: "Invoice" | "Transfer Proof") => (type === "Invoice" ? "invoiceFile" : "proofFile");
   const evidence: Array<{ uploadToken: string; type: string }> = [];
+  const fieldByIndex: string[] = [];
   for (const slot of slots) {
-    if (slot.file) evidence.push({ uploadToken: await uploadFile(projectId, slot.file), type: slot.type });
+    if (!slot.file) continue;
+    try {
+      evidence.push({ uploadToken: await uploadFile(projectId, slot.file), type: slot.type });
+    } catch (err) {
+      // Whatever the upload refused (type, size, content) is about this one file.
+      throw renameApiFieldErrors(err, () => fieldOf(slot.type));
+    }
+    fieldByIndex.push(fieldOf(slot.type));
   }
-  await httpClient.post(url, evidence.length > 0 ? { ...body, evidence } : body, {
-    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
-  });
+  try {
+    await httpClient.post(url, evidence.length > 0 ? { ...body, evidence } : body, {
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    });
+  } catch (err) {
+    // `evidence[1].uploadToken` → the input that file came from, so the message shows under it (EP-01).
+    throw renameApiFieldErrors(err, (key) => {
+      const m = /^evidence\[(\d+)\](?:\.uploadToken)?$/.exec(key);
+      return m ? fieldByIndex[Number(m[1])] : undefined;
+    });
+  }
 }
 
 // --- Raw wire shapes (see apps/api .../projects/presentation/dto.go) ---
@@ -230,6 +249,7 @@ interface RawMilestone {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string | null;
+  daysBeforeEvent?: number | null;
   evidence?: RawEvidenceRef[] | null;
 }
 
@@ -242,6 +262,7 @@ function toMilestone(raw: RawMilestone): ProjectMilestone {
     status: raw.status,
     targetDate: raw.targetDate,
     completedDate: raw.completedDate,
+    daysBeforeEvent: raw.daysBeforeEvent ?? null,
     evidence: toEvidenceRefs(raw.evidence),
   };
 }
@@ -687,6 +708,8 @@ interface ProjectState {
   paymentTermsFor: string | null;
   fetchPaymentTerms: (projectId: string) => Promise<void>;
   savePaymentTerms: (projectId: string, terms: PaymentTermInput[]) => Promise<void>;
+  /** Fits the schedule to the current contract value: paid installments stay, unpaid ones share the rest (EP-05). */
+  recalculatePaymentTerms: (projectId: string) => Promise<void>;
   /** Sets the archive state explicitly (ADR-0036): repeating it, or two people doing it, cannot undo it. */
   setProjectArchived: (id: string, isArchived: boolean) => Promise<void>;
   // Hard delete (ADR-0013) — Owner-only and requires the project already be
@@ -926,6 +949,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   savePaymentTerms: async (projectId, terms) => {
     const res = await httpClient.put(API.projects.paymentTerms(projectId), { terms });
+    set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
+  },
+
+  recalculatePaymentTerms: async (projectId) => {
+    const res = await httpClient.post(API.projects.paymentTermsRecalculate(projectId));
     set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
   },
 

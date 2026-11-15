@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"elproof/internal/modules/projects/domain"
@@ -464,6 +465,7 @@ func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor
 
 	fe := newFieldErrors()
 	fe.mergeFields(setup.FieldErrors)
+	checkContractValue(fe, input.ContractValue)
 	if err := s.checkPICs(ctx, tenantID, input.PICStaffID, picSalesStaffID); err != nil && !fe.mergeErr(err) {
 		return nil, err
 	}
@@ -517,10 +519,10 @@ func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor
 			}
 		}
 		s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
-			"Project baru dibuat: "+p.Name)
+			"Proyek baru dibuat: "+p.Name)
 		if len(terms) > 0 {
 			s.activity.Record(ctx, &p.ID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(p.ID), p.Name,
-				"Jadwal pembayaran client diperbarui")
+				"Jadwal termin klien diperbarui")
 		}
 		return nil
 	})
@@ -605,6 +607,16 @@ func (s *ProjectService) checkSetupTerms(contractValue int64, inputs []PaymentTe
 	return terms, nil
 }
 
+// checkContractValue refuses a contract value below zero or beyond MaxMoney
+// (EP-10: a negative value used to be saved as typed), keyed "contractValue".
+func checkContractValue(fe *fieldErrors, value int64) {
+	if value < 0 {
+		fe.add("Nilai kontrak tidak boleh negatif", "contractValue")
+	} else if value > domain.MaxMoney {
+		fe.add("Nilai kontrak terlalu besar", "contractValue")
+	}
+}
+
 // checkPICs confirms every named PIC is a staff member of this workspace (0 =
 // none). Without it a body could attach another workspace's staff id to a
 // project and read that person's name back through the project's responses.
@@ -669,8 +681,8 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	requiredText(fe, "brideName", "Nama pengantin wanita wajib diisi", patch.BrideName)
 	requiredText(fe, "groomName", "Nama pengantin pria wajib diisi", patch.GroomName)
 	requiredText(fe, "packageName", "Nama paket wajib diisi", patch.PackageName)
-	if patch.ContractValue.Present() && (patch.ContractValue.Value() < 0 || patch.ContractValue.Value() > domain.MaxMoney) {
-		fe.add("Nilai kontrak harus 0 atau lebih dan wajar", "contractValue")
+	if patch.ContractValue.Present() {
+		checkContractValue(fe, patch.ContractValue.Value())
 	}
 	for _, f := range []struct {
 		o   Opt[int64]
@@ -742,7 +754,26 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 		return p, nil
 	}
 
-	wrote, err := s.repo.Patch(ctx, p, ch.keys, expected)
+	// The Timeline steps that follow the event date move with it, in the same
+	// transaction as the project's own write (EP-06). Nothing moves when the write
+	// did not happen (a stale If-Match is answered by finishPatch below).
+	var wrote bool
+	moved := 0
+	tx := s.tx
+	if tx == nil {
+		tx = noTransactor{}
+	}
+	err = tx.InTx(ctx, func(ctx context.Context) error {
+		w, err := s.repo.Patch(ctx, p, ch.keys, expected)
+		if err != nil {
+			return err
+		}
+		wrote = w
+		if w && (ch.has("eventDate") || ch.has("prepStartDate")) {
+			moved, err = s.shiftMilestones(ctx, p.ID, p.EventDate, p.PrepStartDate)
+		}
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -752,15 +783,19 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	if err != nil {
 		return nil, err
 	}
+	if moved > 0 {
+		s.activity.Record(ctx, &fresh.ID, domain.ActivityMilestoneUpdated, actor.StaffID, "project_milestone", "", fresh.Name,
+			strconv.Itoa(moved)+" tahapan mengikuti tanggal acara yang baru")
+	}
 	if len(ch.keys) == 1 && ch.has("isArchived") {
 		action := "diarsipkan"
 		if !fresh.IsArchived {
 			action = "dipulihkan dari arsip"
 		}
-		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectStatusChanged, actor.StaffID, "project", formatID(fresh.ID), fresh.Name, "Project "+action)
+		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectStatusChanged, actor.StaffID, "project", formatID(fresh.ID), fresh.Name, "Proyek "+action)
 	} else {
 		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectUpdated, actor.StaffID, "project", formatID(fresh.ID), fresh.Name,
-			"Informasi project diperbarui: "+ch.summary())
+			"Informasi proyek diperbarui: "+ch.summary())
 	}
 	return fresh, nil
 }
@@ -918,7 +953,7 @@ func (s *ProjectService) Transition(ctx context.Context, tenantID, id, actorStaf
 	}
 	p.Status = next
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
-		fmt.Sprintf("Status project diubah: %s → %s", projectStatusLabel(from), projectStatusLabel(next)))
+		fmt.Sprintf("Status proyek diubah: %s → %s", projectStatusLabel(from), projectStatusLabel(next)))
 	return s.afterWrite(ctx, tenantID, p), nil
 }
 
@@ -943,7 +978,7 @@ func (s *ProjectService) Cancel(ctx context.Context, tenantID, id, actorStaffID 
 	}
 	p.Status = domain.StatusCancelled
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Project dibatalkan")
+		"Proyek dibatalkan")
 	return s.afterWrite(ctx, tenantID, p), nil
 }
 
@@ -1020,15 +1055,22 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 // clients — all historical/transactional data tied to what actually happened
 // on the source project, not to a template. Every cloned row is reset to its
 // initial state (milestone status, engagement status, paid/DP amounts);
-// every date (including the source's own milestone/booking/due dates) is
-// copied verbatim, not shifted — the user adjusts whatever's stale by hand
-// afterward, same as any other edit.
+// every date (booking/due dates, and Timeline steps dated by hand) is copied
+// verbatim, not shifted — the user adjusts whatever's stale by hand afterward,
+// same as any other edit. The exception is a Timeline step that follows the
+// event date (EP-06): it keeps its offset and is dated from the new project's
+// own event and booking dates.
 func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorStaffID int64, sourceID int64, input ProjectInput) (*domain.Project, error) {
 	source, err := s.Get(ctx, tenantID, sourceID)
 	if err != nil {
 		return nil, err
 	}
 	input.Status = domain.StatusDraft // a copy always starts as Draft (ADR-0027)
+	fe := newFieldErrors()
+	checkContractValue(fe, input.ContractValue)
+	if err := fe.err(); err != nil {
+		return nil, err
+	}
 	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
 		return nil, err
 	}
@@ -1043,7 +1085,7 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 		return nil, err
 	}
 
-	if err := s.cloneMilestonesFrom(ctx, sourceID, p.ID); err != nil {
+	if err := s.cloneMilestonesFrom(ctx, sourceID, p); err != nil {
 		return nil, err
 	}
 	if err := s.cloneVendorEngagementsFrom(ctx, sourceID, p.ID, p.EventDate); err != nil {
@@ -1051,19 +1093,24 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 	}
 
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Project baru dibuat dari duplikasi project: "+source.Name)
+		"Proyek baru dibuat dari duplikat proyek: "+source.Name)
 	return p, nil
 }
 
-func (s *ProjectService) cloneMilestonesFrom(ctx context.Context, sourceProjectID, newProjectID int64) error {
+func (s *ProjectService) cloneMilestonesFrom(ctx context.Context, sourceProjectID int64, target *domain.Project) error {
 	milestones, err := s.milestones.ListByProject(ctx, sourceProjectID)
 	if err != nil {
 		return err
 	}
 	for _, m := range milestones {
 		clone := &domain.ProjectMilestone{
-			ProjectID: newProjectID, SortOrder: m.SortOrder, Name: m.Name,
+			ProjectID: target.ID, SortOrder: m.SortOrder, Name: m.Name,
 			Status: domain.MilestoneNotStarted, TargetDate: m.TargetDate,
+		}
+		if m.DaysBeforeEvent != nil {
+			offset := *m.DaysBeforeEvent
+			clone.DaysBeforeEvent = &offset
+			clone.TargetDate = domain.MilestoneTarget(target.EventDate, target.PrepStartDate, offset)
 		}
 		if err := s.milestones.Create(ctx, clone); err != nil {
 			return err
@@ -1144,7 +1191,7 @@ func (s *ProjectService) CreateMilestone(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(m.ID), m.Name,
-		"Timeline project ditambahkan: "+m.Name)
+		"Tahapan proyek ditambahkan: "+m.Name)
 	return m, nil
 }
 
@@ -1174,11 +1221,17 @@ type MilestonePatch struct {
 }
 
 // PatchMilestone lets the WO managing this project correct one step of its own
-// schedule. Status, TargetDate and CompletedDate are set directly from what was
-// sent (no server-side auto-stamping of CompletedDate); fields left out keep their
-// value. A patch that changes nothing writes nothing; with `expected` the write is
-// a compare-and-set on the milestone's updated_at (a stale one is a 409).
-func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID, milestoneID int64, actorStaffID int64, patch MilestonePatch, expected *time.Time) (*domain.ProjectMilestone, error) {
+// schedule. Status, TargetDate and CompletedDate are set from what was sent;
+// fields left out keep their value, with two rules (EP-06):
+//   - a status change without a completedDate keeps the date in line: becoming
+//     Completed stamps `today` (WIB) when the step has no date yet, leaving
+//     Completed clears it (domain.StampCompletion);
+//   - a target date set by hand fixes the step: it no longer follows the event
+//     date (DaysBeforeEvent becomes nil).
+//
+// A patch that changes nothing writes nothing; with `expected` the write is a
+// compare-and-set on the milestone's updated_at (a stale one is a 409).
+func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID, milestoneID int64, actorStaffID int64, patch MilestonePatch, expected *time.Time, today time.Time) (*domain.ProjectMilestone, error) {
 	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
 		return nil, err
 	}
@@ -1198,6 +1251,13 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 	setVal(&ch, "status", "status", &m.Status, patch.Status)
 	setDate(&ch, "targetDate", "tanggal target", &m.TargetDate, patch.TargetDate)
 	setNullableDate(&ch, "completedDate", "tanggal selesai", &m.CompletedDate, patch.CompletedDate)
+	if !patch.CompletedDate.Present() && domain.StampCompletion(loaded.Status, m.Status, &m.CompletedDate, today) {
+		ch.note("completedDate", "tanggal selesai")
+	}
+	if ch.has("targetDate") && m.DaysBeforeEvent != nil {
+		m.DaysBeforeEvent = nil
+		ch.note("daysBeforeEvent", "")
+	}
 	if !ch.any() {
 		return m, nil
 	}
@@ -1215,7 +1275,7 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(fresh.ID), fresh.Name,
-		"Timeline project diperbarui: "+fresh.Name+" ("+ch.summary()+")")
+		"Tahapan proyek diperbarui: "+fresh.Name+" ("+ch.summary()+")")
 	return fresh, nil
 }
 
@@ -1249,7 +1309,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 		return err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", "", "",
-		"Urutan timeline diubah")
+		"Urutan tahapan diubah")
 	return nil
 }
 

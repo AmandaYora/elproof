@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# build-time renderer of the public pages (apps/web: npm run prerender, ADR-0043)
+dist-ssr/
 build/
 tmp/
 .env

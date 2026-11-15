@@ -9,6 +9,7 @@ import { PreviewFallback } from "@/modules/homepage/components/home/PreviewWindo
 import { Pricing } from "@/modules/homepage/components/home/Pricing";
 import { StoryStatic } from "@/modules/homepage/components/home/StoryStatic";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 // Interactive parts below the fold load in their own chunks; their fallbacks already carry the text.
 const Story = lazy(() => import("@/modules/homepage/components/home/Story"));
@@ -48,11 +49,7 @@ const SCREENS = [
 ];
 
 export default function HomePage() {
-  usePageMeta({
-    title: "Bukti kerja WO yang bisa dilihat klien",
-    description:
-      "ElProof membantu wedding organizer mencatat tahapan, vendor, dan termin pembayaran beserta buktinya, lalu menunjukkannya ke klien lewat Portal Klien.",
-  });
+  usePageMeta(PUBLIC_PAGES.home);
 
   return (
     <>
@@ -155,13 +152,7 @@ export default function HomePage() {
 
       <section id="harga" className="scroll-mt-24 py-20 md:py-28">
         <Container>
-          <div className="max-w-[640px]">
-            <h2 className={H2}>Harga terbuka, pilih lamanya</h2>
-            <p className={LEAD}>Mulai dengan coba gratis 14 hari. Setelah itu pilih paket sesuai lama yang Anda butuhkan.</p>
-          </div>
-          <div className="mt-10">
-            <Pricing />
-          </div>
+          <Pricing headingClassName={H2} leadClassName={LEAD} />
         </Container>
       </section>
 

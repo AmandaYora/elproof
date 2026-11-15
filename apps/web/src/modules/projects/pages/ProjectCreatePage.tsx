@@ -5,12 +5,13 @@ import { Card, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { useAllProjects } from "@/shared/stores/usePermissionStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { toast } from "@/shared/stores/useToastStore";
 import { getApiFieldErrors, getApiErrorMessage } from "@/shared/lib/api-error";
 import { newIdempotencyKey } from "@/shared/lib/direct-upload";
-import { formatCurrency } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { useZodForm, focusField } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import { projectSchema } from "@/modules/projects/schemas/project.schema";
@@ -68,7 +69,12 @@ export default function ProjectCreatePage() {
   const [charge, setCharge] = useState(0);
   const [useSchedule, setUseSchedule] = useState(true);
   const [terms, setTerms] = useState<PaymentTermInput[]>([]);
-  const seededTerms = useRef<PaymentTermInput[]>([]);
+  // Until the person edits a row, the schedule is the 30/40/30 template of the contract value and dates as they are
+  // now, so it follows a contract value typed (or changed) after the rows were first filled (EP-05).
+  const [termsEdited, setTermsEdited] = useState(false);
+  // A past event date is allowed (recording a project that already happened) but must be confirmed once (EP-10).
+  const [confirmingPast, setConfirmingPast] = useState(false);
+  const [pastConfirmedFor, setPastConfirmedFor] = useState<string | null>(null);
   const [termErrors, setTermErrors] = useState<Record<number, string>>({});
   const [venueErrors, setVenueErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -97,17 +103,30 @@ export default function ProjectCreatePage() {
     }
   }
 
+  useEffect(() => {
+    if (!termsEdited) setTerms(defaultTermTemplate(values.contractValue, values.prepStartDate, values.eventDate));
+  }, [termsEdited, values.contractValue, values.prepStartDate, values.eventDate]);
+
+  // Any change made in the editor itself means the person now owns the rows.
+  const editTerms: typeof setTerms = (next) => {
+    setTermsEdited(true);
+    setTerms(next);
+  };
+
+  const eventInPast = values.eventDate !== "" && values.eventDate < todayISO();
+
+  function showStep2() {
+    setStep(2);
+    window.scrollTo({ top: 0 });
+  }
+
   const goToStep2 = form.handleSubmit(
     () => {
-      // Start the schedule from the usual template for the values just entered.
-      // Going back and changing the contract or dates re-seeds it, unless the
-      // user already edited the rows by hand (then their edits stay).
-      const template = defaultTermTemplate(values.contractValue, values.prepStartDate, values.eventDate);
-      const untouched = terms.length === 0 || JSON.stringify(terms) === JSON.stringify(seededTerms.current);
-      if (untouched) setTerms(template);
-      seededTerms.current = template;
-      setStep(2);
-      window.scrollTo({ top: 0 });
+      if (eventInPast && pastConfirmedFor !== values.eventDate) {
+        setConfirmingPast(true);
+        return;
+      }
+      showStep2();
     },
     { root: () => formRef.current },
   );
@@ -228,7 +247,13 @@ export default function ProjectCreatePage() {
                   />
                 </Field>
               </div>
-              <Field label="Tanggal acara" required name="eventDate" error={errors.eventDate}>
+              <Field
+                label="Tanggal acara"
+                required
+                name="eventDate"
+                error={errors.eventDate}
+                hint={eventInPast ? "Tanggal ini sudah lewat. Lanjutkan hanya bila Anda mencatat proyek yang sudah berlangsung." : undefined}
+              >
                 <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} aria-invalid={invalid("eventDate")} />
               </Field>
               <Field label="Tanggal booking" required name="prepStartDate" error={errors.prepStartDate}>
@@ -238,7 +263,17 @@ export default function ProjectCreatePage() {
                 <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} onBlur={() => form.blur("packageName")} aria-invalid={invalid("packageName")} />
               </Field>
               <Field label="Nilai kontrak (Rp)" required name="contractValue" error={errors.contractValue}>
-                <CurrencyInput value={values.contractValue} onChange={(n) => set("contractValue", n)} aria-invalid={invalid("contractValue")} />
+                <CurrencyInput
+                  signed
+                  value={values.contractValue}
+                  onChange={(n) => {
+                    set("contractValue", n);
+                    // A minus sign is answered at once, not when the person leaves the field.
+                    if (n < 0) form.blur("contractValue");
+                  }}
+                  onBlur={() => form.blur("contractValue")}
+                  aria-invalid={invalid("contractValue")}
+                />
               </Field>
               <Field label="Penanggung jawab WO (PIC Wedding Planner)">
                 <Select value={values.picStaffId} onChange={(e) => set("picStaffId", e.target.value)}>
@@ -302,6 +337,9 @@ export default function ProjectCreatePage() {
                   <div>
                     <h2 id="terms-heading" className="text-[15px] font-semibold text-text-primary">Jadwal pembayaran klien</h2>
                     <p className="mt-0.5 text-[13px] text-text-secondary">Dengan jadwal, termin yang terlambat langsung terlihat di Beranda.</p>
+                    {useSchedule && !termsEdited && (
+                      <p className="mt-0.5 text-[13px] text-text-secondary">Nominal termin mengikuti nilai kontrak sampai Anda mengubahnya.</p>
+                    )}
                   </div>
                   <label className="flex items-center gap-2 text-[13px] text-text-primary">
                     <input type="checkbox" checked={useSchedule} onChange={(e) => setUseSchedule(e.target.checked)} className="h-4 w-4" />
@@ -311,7 +349,8 @@ export default function ProjectCreatePage() {
                 {useSchedule && (
                   <PaymentTermsEditor
                     rows={terms}
-                    setRows={setTerms}
+                    setRows={editTerms}
+                    onApplyTemplate={() => setTermsEdited(false)}
                     rowErrors={termErrors}
                     contractValue={values.contractValue}
                     bookingDate={values.prepStartDate}
@@ -333,6 +372,24 @@ export default function ProjectCreatePage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmingPast}
+        title="Tanggal acara sudah lewat"
+        confirmLabel="Lanjutkan"
+        tone="primary"
+        onConfirm={() => {
+          setPastConfirmedFor(values.eventDate);
+          setConfirmingPast(false);
+          showStep2();
+        }}
+        onClose={() => setConfirmingPast(false)}
+      >
+        <p>
+          Tanggal acara {formatDate(values.eventDate)} sudah lewat. Lanjutkan bila Anda memang mencatat proyek yang sudah
+          berlangsung; bila salah ketik, pilih Batal lalu perbaiki tanggalnya.
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -67,7 +67,7 @@ func TestProjectActionsFollowTheRulesTheWebHadInTheBrowser(t *testing.T) {
 	if byID["vendor-11"].Title != "Vendor belum terkonfirmasi" {
 		t.Errorf("an unresolved vendor name falls back to \"Vendor\": %q", byID["vendor-11"].Title)
 	}
-	if a := byID["ms-20"]; a.Title != `Timeline "Fitting" lewat tenggat` || a.Detail != "Target 9 Nov 2026" || a.Tab != "milestone" || a.Kind != ActionMilestoneLate {
+	if a := byID["ms-20"]; a.Title != `Tahapan "Fitting" lewat tenggat` || a.Detail != "Target 9 Nov 2026" || a.Tab != "milestone" || a.Kind != ActionMilestoneLate {
 		t.Errorf("milestone action: %+v", a)
 	}
 }

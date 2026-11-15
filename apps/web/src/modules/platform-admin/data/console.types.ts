@@ -47,6 +47,8 @@ export interface TenantMember {
   email: string;
   role: string;
   isActive: boolean;
+  /** Active and not the Owner: one of the seats the Pemakaian tab and the trial cap count (EP-12). */
+  countsTowardSeats: boolean;
 }
 
 export interface ManualActivation {
@@ -165,6 +167,8 @@ export interface AuditEntry {
   actorRole: string;
   tenantId: number | null;
   action: string;
+  /** The action as a sentence ("Mengubah paket #3"); "" for a route the API does not describe, then show `action` (EP-16). */
+  description: string;
   method: string;
   path: string;
   statusCode: number;

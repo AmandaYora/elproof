@@ -74,3 +74,15 @@ from base64 itself — an acceptable trade given compression already ran before 
 - Object storage always holds the *compressed* bytes (post backend re-compression), never the raw
   upload — `evidence.storage_path` points at what was actually compressed and stored, and download
   always serves exactly those bytes back (no on-the-fly re-processing on read).
+
+## Amendment (2026-11-15, QA EP-01 / EP-02)
+- **Re-compression never grows a file.** `compress.Image` returns the input unchanged when the
+  re-encoded bytes are not smaller. A photo the browser already compressed with libjpeg-turbo often
+  comes out of Go's encoder (no optimized Huffman tables) *bigger*; with signed uploads
+  (ADR-0033) the stored object is checked against the size the browser declared, so every JPEG proof
+  through the API route was refused (422) while PNG/PDF passed.
+- **The bytes must be the declared type.** `internal/shared/filetype` checks the signature (magic
+  bytes) and, for JPEG/PNG/WebP, decodes the image header. Every upload path runs it: the signed
+  upload's API route (before storing), the payment's proof resolution (reads the object from
+  storage, so a direct upload is checked too), the base64 evidence route, vendor/venue attachments
+  and the WO logo. A renamed binary declared as `image/jpeg` is a 422 with a message on the file.

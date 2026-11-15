@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import { expect, state, test, visit } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 // PLAN Tahap 4: a project is created in one all-or-nothing call, and a payment is recorded together with its proof in
 // one call that can be retried safely. These tests WRITE data, so they run in the "mutating" project (see config).
@@ -11,7 +13,7 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
 test("project creation is one all-or-nothing call; a bad row creates nothing", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const body = {
     name: "Uji Atomik", brideName: "Ani Lestari", groomName: "Budi Santoso", eventDate: "2027-05-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
@@ -46,7 +48,7 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
   test.skip(!state().storage, "needs object storage (MinIO)");
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/dashboard");
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const made = await page.request.post(API("/projects"), {
     headers: auth,
@@ -103,6 +105,43 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
   await close();
 });
 
+test("a JPG transfer proof is saved, and a file only named .jpg is refused under its own field (EP-01, EP-02)", async ({ browser }, info) => {
+  test.skip(!state().storage, "needs object storage (MinIO)");
+  const { page, close } = await open(browser, info, "paying");
+  await visit(page, "/dashboard");
+  const session = await browserSession(page);
+  const made = await page.request.post(API("/projects"), {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: {
+      name: "Uji Bukti JPG", brideName: "Wulan Sari", groomName: "Bayu Aji", eventDate: "2027-07-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
+      packageName: "Paket Uji", contractValue: 10_000_000, status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
+    },
+  });
+  expect(made.status()).toBe(201);
+  const projectId = ((await made.json()).data as { id: number }).id;
+
+  await visit(page, `/projects/${projectId}/pembayaran/client`);
+  await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
+  const drawer = page.getByRole("dialog");
+  await drawer.getByLabel(/Nominal/).fill("1000000");
+
+  // A binary renamed to .jpg: refused, with the reason under "Bukti transfer", the drawer stays open (was silent before).
+  const file = drawer.locator('input[type="file"]');
+  await file.setInputFiles({ name: "bukti.jpg", mimeType: "image/jpeg", buffer: Buffer.from("MZ\x90 not a photo at all, whatever the name says") });
+  await drawer.getByRole("button", { name: "Simpan pembayaran" }).click();
+  await expect(drawer.getByText(/bukan foto JPG yang bisa dibuka/)).toBeVisible();
+  await expect(drawer).toBeVisible();
+
+  // A real phone-style JPG: saved with its proof.
+  await file.setInputFiles({ name: "IMG_2041.jpg", mimeType: "image/jpeg", buffer: readFileSync(new URL("../lib/files/bukti-transfer.jpg", import.meta.url)) });
+  await drawer.getByRole("button", { name: "Simpan pembayaran" }).click();
+  await expect(drawer).toBeHidden();
+  const rows = page.getByRole("row").filter({ hasText: "Rp1.000.000" });
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Bukti ada");
+  await close();
+});
+
 test("a project can be created with the keyboard alone, from the first field to the last button", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/projects/baru");
@@ -123,5 +162,37 @@ test("a project can be created with the keyboard alone, from the first field to 
   await create.focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 20_000 });
+  await close();
+});
+
+test("new project: a minus sign is refused, a past event date is confirmed, the schedule follows the contract value", async ({ browser }, info) => {
+  // EP-10 and EP-05 (QA report). Nothing is created: the test stops on step 2.
+  const { page, close } = await open(browser, info, "paying");
+  await visit(page, "/projects/baru");
+  await page.getByLabel(/Nama mempelai wanita/).fill("Tari Anggraini");
+  await page.getByLabel(/Nama mempelai pria/).fill("Galih Pratama");
+  await page.getByLabel(/Tanggal acara/).fill("2026-01-10");
+  await expect(page.getByText(/Tanggal ini sudah lewat/)).toBeVisible();
+  await page.getByLabel(/Paket/).fill("Paket Lampau");
+  const contract = page.getByLabel(/Nilai kontrak/);
+  await contract.fill("-5000000");
+  await expect(contract, "the minus sign stays visible").toHaveValue("-5.000.000");
+  await expect(page.getByText("Nilai kontrak tidak boleh negatif")).toBeVisible();
+  await contract.fill("10000000");
+  await expect(page.getByText("Nilai kontrak tidak boleh negatif")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Lanjut", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByText("Tanggal acara sudah lewat")).toBeVisible();
+  await dialog.getByRole("button", { name: "Lanjutkan" }).click();
+  await expect(page.getByText(/Langkah 2 dari 2/)).toBeVisible();
+  await expect(page.getByLabel(/Nominal/).first(), "DP is 30% of the contract").toHaveValue("3.000.000");
+
+  // Back to step 1, a different contract value: the untouched schedule follows it (the date was confirmed already).
+  await page.getByRole("button", { name: "Kembali" }).click();
+  await page.getByLabel(/Nilai kontrak/).fill("20000000");
+  await page.getByRole("button", { name: "Lanjut", exact: true }).click();
+  await expect(page.getByText(/Langkah 2 dari 2/)).toBeVisible();
+  await expect(page.getByLabel(/Nominal/).first()).toHaveValue("6.000.000");
   await close();
 });

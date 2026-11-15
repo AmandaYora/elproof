@@ -2,8 +2,8 @@ import { Link } from "react-router-dom";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { ctaClass } from "@/modules/homepage/components/cta";
 import { CONTACT } from "@/modules/homepage/data/contact";
-import { usePublicPlans } from "@/modules/homepage/hooks/usePublicPlans";
-import { cheapestPerMonth, monthlyPrice, savingPercent } from "@/modules/homepage/lib/planMath";
+import { usePublicPlans, type PublicPlansState } from "@/modules/homepage/hooks/usePublicPlans";
+import { cheapestPerMonth, monthlyPrice, pricingIntro, savingPercent } from "@/modules/homepage/lib/planMath";
 import type { PublicPlan } from "@/modules/homepage/schemas/plan.schema";
 import { formatCurrency } from "@/shared/lib/formatters";
 
@@ -47,7 +47,7 @@ function PlanRow({ plan, plans, best }: { plan: PublicPlan; plans: PublicPlan[];
       <Link
         to={`${ROUTE_PATHS.signup}?paket=${plan.id}`}
         aria-label={`Pilih paket ${plan.name}`}
-        className={ctaClass(best ? "primary" : "outline", "md", "w-full md:w-auto")}
+        className={ctaClass(best || plans.length === 1 ? "primary" : "outline", "md", "w-full md:w-auto")}
       >
         Pilih paket
       </Link>
@@ -73,10 +73,28 @@ function SkeletonRows() {
   );
 }
 
-/** The price list, read from the active public plans. No price is ever written by hand. */
-export function Pricing() {
+/**
+ * The price section: heading, lead and the list, read from the active public plans. No price is ever written by hand,
+ * and the heading follows what is on sale (pricingIntro).
+ */
+export function Pricing({ headingClassName, leadClassName }: { headingClassName: string; leadClassName: string }) {
   const state = usePublicPlans();
+  const intro = pricingIntro(state.status === "ready" ? state.plans : null);
 
+  return (
+    <>
+      <div className="max-w-[640px]">
+        <h2 className={headingClassName}>{intro.heading}</h2>
+        <p className={leadClassName}>{intro.lead}</p>
+      </div>
+      <div className="mt-10">
+        <PlanList state={state} />
+      </div>
+    </>
+  );
+}
+
+function PlanList({ state }: { state: PublicPlansState }) {
   if (state.status === "loading") return <SkeletonRows />;
 
   if (state.status === "unavailable") {

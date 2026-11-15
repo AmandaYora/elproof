@@ -104,7 +104,12 @@ export function RecordPaymentDrawer({ open, onClose, title, description, vendorO
       await onSubmit({ ...parsed, projectVendorId: parsed.projectVendorId ?? "" }, { idempotencyKey: keyRef.current });
       keyRef.current = newIdempotencyKey();
     },
-    { root: () => formRef.current, fallback: "Pembayaran belum tersimpan. Periksa koneksi lalu coba lagi." },
+    {
+      root: () => formRef.current,
+      fallback: "Pembayaran belum tersimpan. Periksa koneksi lalu coba lagi.",
+      // A server message about a key this form has no input for must still be shown, never swallowed (EP-01).
+      known: (key) => key in values,
+    },
   );
 
   return (

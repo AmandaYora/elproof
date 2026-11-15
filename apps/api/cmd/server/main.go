@@ -7,9 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"elproof/internal/adminseed"
@@ -265,6 +263,7 @@ func serve(cfg config.Config) {
 	}
 	identityModule := identity.NewModule(db, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL,
 		identity.GoogleConfig{ClientID: cfg.GoogleClientID, JWKSURL: googleJWKS})
+	identityModule.ConfigureSessions(sessionOptions(cfg))
 	identityModule.RegisterRoutes(mux)
 
 	// Public, non-secret settings the web app needs before sign-in.
@@ -448,7 +447,7 @@ func serve(cfg config.Config) {
 	// runs on its own Vite dev server (`npm run dev:web`) instead.
 	mux.Handle("/", spaFileServer("./public"))
 
-	handler := middleware.CORS(cfg.AppEnv == "development")(mux)
+	handler := securityHeaders(cfg)(middleware.CORS(cfg.AppEnv == "development")(mux))
 
 	log.Printf("%s api listening on :%s (%s)", cfg.AppName, cfg.AppPort, cfg.AppEnv)
 	server := &http.Server{
@@ -464,27 +463,7 @@ func serve(cfg config.Config) {
 	log.Fatal(server.ListenAndServe())
 }
 
-// spaFileServer serves static assets from root, falling back to
-// root/index.html for any path that doesn't match a real file — required so
-// React Router's client-side routes resolve on a hard refresh/direct link.
-// Registered on "/", it would otherwise also swallow any unmatched
-// /api/v1/... request into a fake 200 HTML response instead of a real 404,
-// so those are rejected before falling back.
-func spaFileServer(root string) http.Handler {
-	fileServer := http.FileServer(http.Dir(root))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
-			return
-		}
-		fullPath := filepath.Join(root, filepath.Clean(r.URL.Path))
-		if info, err := os.Stat(fullPath); err != nil || info.IsDir() {
-			http.ServeFile(w, r, filepath.Join(root, "index.html"))
-			return
-		}
-		fileServer.ServeHTTP(w, r)
-	})
-}
+// spaFileServer lives in spa.go (prerendered public pages, 404 for unknown paths, ADR-0043).
 
 // isLocalURL reports whether raw points at this machine (loopback only).
 func isLocalURL(raw string) bool {

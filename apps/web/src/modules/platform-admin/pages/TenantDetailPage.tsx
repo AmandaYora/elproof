@@ -3,7 +3,6 @@ import { Navigate, useParams } from "react-router-dom";
 import { Pencil, Send, UserCheck, UserX } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
 import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
-import { Badge } from "@/shared/components/ui/Badge";
 import { TabNav } from "@/shared/components/ui/TabNav";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -99,8 +98,7 @@ export default function TenantDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-bold text-text-primary">{tenant.businessName}</h1>
-            <TenantStatusBadge status={tenant.subscriptionStatus} />
-            {tenant.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
+            <TenantStatusBadge status={tenant.subscriptionStatus} frozen={tenant.isSuspended} />
           </div>
           <p className="mt-1 text-[13px] text-text-secondary">
             {tenant.ownerName} · {tenant.email} · {tenant.city}

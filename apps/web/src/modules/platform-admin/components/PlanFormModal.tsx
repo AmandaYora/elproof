@@ -127,7 +127,17 @@ export function PlanFormModal({ open, onClose, onSubmit, initialPlan, apps, defa
             placeholder="2000000"
           />
         </Field>
-        <Field label="Fitur Paket" required name="features" error={errors.features}>
+        <Field
+          label="Fitur Paket"
+          required
+          name="features"
+          error={errors.features}
+          hint={
+            values.appId === ELPROOF_APP_ID
+              ? "Tampil apa adanya di halaman harga situs publik. Tulis dalam bahasa Indonesia, mis. Semua fitur, Proyek tanpa batas."
+              : undefined
+          }
+        >
           <div className="flex flex-col gap-2">
             {values.features.map((feature, index) => (
               <div key={index} className="flex items-center gap-2">
@@ -140,7 +150,7 @@ export function PlanFormModal({ open, onClose, onSubmit, initialPlan, apps, defa
                   type="button"
                   onClick={() => removeFeature(index)}
                   disabled={values.features.length <= 1}
-                  aria-label="Hapus fitur"
+                  aria-label={`Hapus fitur ${index + 1}`}
                   className="shrink-0 rounded-md p-2 text-text-secondary hover:bg-surface-muted hover:text-danger-text disabled:pointer-events-none disabled:opacity-40"
                 >
                   <X className="h-4 w-4" />

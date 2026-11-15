@@ -6,6 +6,7 @@ import { Container } from "@/modules/homepage/components/Container";
 import { ctaClass } from "@/modules/homepage/components/cta";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 const GREETING = "Halo ElProof, saya ingin bertanya tentang ElProof untuk usaha WO saya: ";
 
@@ -25,7 +26,7 @@ function Row({ term, children }: { term: string; children: ReactNode }) {
 }
 
 export default function ContactPage() {
-  usePageMeta({ title: "Hubungi kami", description: "Hubungi tim ElProof untuk pertanyaan, bantuan, atau permintaan terkait data Anda." });
+  usePageMeta(PUBLIC_PAGES.contact);
   const [main, second] = CONTACT.phones;
 
   return (

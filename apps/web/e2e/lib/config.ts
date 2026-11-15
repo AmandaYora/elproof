@@ -41,7 +41,8 @@ export const FIXED_NOW = "2026-11-09T10:00:00+07:00";
 
 export interface Session {
   accessToken: string;
-  refreshToken: string;
+  /** The refresh token, from the reply's Set-Cookie (never in the JSON body, ADR-0044). */
+  refreshCookie: string;
   principalType: string;
   principalId: string;
   tenantId: number | null;

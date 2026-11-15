@@ -3,8 +3,9 @@
 // tenant's own logo/name — see useTenantBrandingStore) — this makes those two match.
 // Captured once at module load, before any tenant ever overrides it, so
 // resetTabIdentity() has the real default to revert to without hardcoding a
-// second copy of index.html's <title> text.
-const DEFAULT_TITLE = document.title;
+// second copy of index.html's <title> text. (No document when the public pages
+// are rendered at build time, ADR-0043; nothing reads the value there.)
+const DEFAULT_TITLE = typeof document === "undefined" ? "" : document.title;
 
 let faviconLink: HTMLLinkElement | null = null;
 

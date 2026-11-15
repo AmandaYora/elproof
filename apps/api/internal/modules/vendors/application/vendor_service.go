@@ -12,6 +12,7 @@ import (
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/filetype"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
@@ -114,9 +115,9 @@ func (s *VendorService) Get(ctx context.Context, tenantID, id int64) (*domain.Ve
 
 // VendorInput is shared by Create and Update. City/PriceAkad/PriceAkadResepsi
 // are enforced as required only by the frontend's create schema (see the
-// "DATA VENDOR" slide plan) -- this layer doesn't re-check non-emptiness,
-// same as every other "required" text field in this codebase. It DOES
-// validate City against domain.IsValidCity whenever non-empty, matching
+// "DATA VENDOR" slide plan). This layer requires Name, keeps every text within
+// its column and prices at 0 or more (validateVendorInput, QA EP-03), and
+// validates City against domain.IsValidCity whenever non-empty, matching
 // Venue's validateVenueCity rule exactly.
 type VendorInput struct {
 	Name             string
@@ -152,6 +153,9 @@ func (s *VendorService) validateCategory(ctx context.Context, tenantID, category
 }
 
 func (s *VendorService) Create(ctx context.Context, tenantID int64, input VendorInput) (*domain.Vendor, error) {
+	if err := validateVendorInput(&input); err != nil {
+		return nil, err
+	}
 	if err := s.validateCategory(ctx, tenantID, input.CategoryID); err != nil {
 		return nil, err
 	}
@@ -171,6 +175,9 @@ func (s *VendorService) Create(ctx context.Context, tenantID int64, input Vendor
 }
 
 func (s *VendorService) Update(ctx context.Context, tenantID, id int64, input VendorInput) (*domain.Vendor, error) {
+	if err := validateVendorInput(&input); err != nil {
+		return nil, err
+	}
 	vendor, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
@@ -260,6 +267,10 @@ func (s *VendorService) UploadAttachment(ctx context.Context, tenantID, vendorID
 	}
 	if len(decoded) > maxVendorAttachmentDecodedSize {
 		return nil, apperror.Validation("Ukuran lampiran terlalu besar", map[string][]string{"base64Data": {"Maksimal 15 MB"}})
+	}
+	if !filetype.Matches(decoded, input.MimeType) {
+		msg := "Lampiran ini tidak bisa dibuka sebagai PNG, JPEG, WebP, atau PDF. Pilih berkas aslinya."
+		return nil, apperror.Validation(msg, map[string][]string{"base64Data": {msg}})
 	}
 
 	// compress.Image passes non-image mimeTypes (e.g. application/pdf)
@@ -387,6 +398,10 @@ func (s *VendorService) ImportVendors(ctx context.Context, tenantID int64, rows 
 		if row.Name == "" || row.PICName == "" || row.Phone == "" || row.City == "" || row.CategoryName == "" ||
 			row.PriceAkad == nil || *row.PriceAkad < 1 || row.PriceAkadResepsi == nil || *row.PriceAkadResepsi < 1 {
 			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: "Nama Vendor, Kategori, Nama PIC, No Tlp Vendor, Kota, Harga Akad, dan Harga Akad+Resepsi wajib diisi dengan nilai yang valid"})
+			continue
+		}
+		if msg := importRowProblem(row.Name); msg != "" {
+			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: msg})
 			continue
 		}
 		if !domain.IsValidCity(row.City) {

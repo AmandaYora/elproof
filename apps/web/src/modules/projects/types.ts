@@ -173,6 +173,11 @@ export interface ProjectMilestone {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string | null;
+  /**
+   * The Jadwal bawaan offset the target follows (H-14 = 14, H+3 = -3): the target moves with the event date. null when
+   * the date is fixed (added or dated by hand).
+   */
+  daysBeforeEvent?: number | null;
   /** Files attached to this step (the Portal gets only those the WO shared). */
   evidence: EvidenceRef[];
 }

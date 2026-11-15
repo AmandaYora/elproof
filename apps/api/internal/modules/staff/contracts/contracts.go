@@ -44,6 +44,9 @@ type MemberSummary struct {
 	Email    string
 	Role     string
 	IsActive bool
+	// CountsTowardSeats: active and not the Owner (domain.StaffMember.CountsTowardSeats,
+	// EP-12) — the members CountActiveStaff counts.
+	CountsTowardSeats bool
 }
 
 type Contracts interface {
@@ -62,7 +65,8 @@ type Contracts interface {
 	// FindOwner returns the tenant's Owner staff id ("" when none yet) —
 	// lets workspace provisioning resume without creating a second Owner.
 	FindOwner(ctx context.Context, tenantID int64) (string, error)
-	// CountActiveStaff counts active staff other than the Owner.
+	// CountActiveStaff counts the seats in use: active staff other than the Owner
+	// (the same rule as MemberSummary.CountsTowardSeats).
 	CountActiveStaff(ctx context.Context, tenantID int64) (int, error)
 }
 
@@ -116,7 +120,7 @@ func (c *impl) ListMembers(ctx context.Context, tenantID int64) ([]MemberSummary
 	}
 	out := make([]MemberSummary, 0, len(members))
 	for _, m := range members {
-		out = append(out, MemberSummary{ID: m.ID, Name: m.Name, Email: m.Email, Role: string(m.Role), IsActive: m.IsActive})
+		out = append(out, MemberSummary{ID: m.ID, Name: m.Name, Email: m.Email, Role: string(m.Role), IsActive: m.IsActive, CountsTowardSeats: m.CountsTowardSeats()})
 	}
 	return out, nil
 }

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import type { ActivityLogEntry } from "@/modules/projects/types";
 import { formatDateTime } from "@/shared/lib/formatters";
+import { activityText } from "@/shared/lib/labels";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 export function RecentActivity({ activity }: { activity: ActivityLogEntry[] }) {
@@ -14,7 +15,7 @@ export function RecentActivity({ activity }: { activity: ActivityLogEntry[] }) {
             const row = (
               <span className="block px-5 py-3">
                 <span className="block text-[13px] text-text-primary">
-                  <span className="font-semibold">{entry.actorName || "Sistem"}</span> {entry.description}
+                  <span className="font-semibold">{entry.actorName || "Sistem"}</span> {activityText(entry.description)}
                 </span>
                 <span className="mt-0.5 block text-[12px] text-text-secondary">{formatDateTime(entry.timestamp)}</span>
               </span>

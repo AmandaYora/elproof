@@ -220,9 +220,13 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
+	// Agreed price and DP (QA EP-04): checked again by the service.
+	for k, v := range application.EngagementMoneyErrors(body.ContractValue, body.DPAmount) {
+		fields[k] = append(fields[k], v...)
+	}
 	if len(fields) > 0 {
 		msg := "Data vendor belum lengkap atau tidak sesuai"
-		for _, k := range []string{"vendorId", "categoryId", "eventDate", "picStaffId"} {
+		for _, k := range []string{"vendorId", "categoryId", "eventDate", "picStaffId", "contractValue", "dpAmount"} {
 			if m := fields[k]; len(m) > 0 {
 				msg = m[0]
 				break
@@ -499,7 +503,7 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 	}
-	m, err := h.vendors.PatchMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, patch, expected)
+	m, err := h.vendors.PatchMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, patch, expected, nowWIB())
 	if err != nil {
 		writePatchError(w, err, func(cur any) (any, error) {
 			return toVendorMilestoneResponse(*cur.(*domain.VendorMilestone)), nil

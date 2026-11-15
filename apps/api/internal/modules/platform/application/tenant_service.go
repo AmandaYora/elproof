@@ -23,6 +23,7 @@ import (
 	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/filetype"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 	"elproof/internal/shared/utils"
@@ -433,6 +434,10 @@ func (s *TenantService) UploadLogo(ctx context.Context, tenantID int64, input Up
 	}
 	if len(decoded) > maxLogoDecodedSize {
 		return nil, apperror.Validation("Ukuran logo terlalu besar", map[string][]string{"base64Data": {"Maksimal 2 MB"}})
+	}
+	if !filetype.Matches(decoded, input.MimeType) {
+		msg := "Berkas ini bukan gambar PNG, JPEG, atau WebP yang bisa dibuka."
+		return nil, apperror.Validation(msg, map[string][]string{"base64Data": {msg}})
 	}
 
 	// Same backend re-compression pass evidence uploads get (ADR-0010) —

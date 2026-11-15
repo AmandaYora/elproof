@@ -25,15 +25,30 @@ const (
 // Image re-compresses JPEG/PNG bytes per the rules above. For any other
 // mimeType it returns the input unchanged — this is intentional, not a
 // fallback for an unhandled case (see ADR-0010).
+//
+// Re-encoding never makes a file bigger: when the result is not smaller than
+// the input (a photo the browser already compressed well, re-encoded by Go's
+// encoder, often is), the input is returned as it is. A signed upload declares
+// its size up front and is checked against it later, so a bigger stored file
+// used to make every JPEG proof fail (QA EP-01).
 func Image(data []byte, mimeType string) ([]byte, error) {
+	var out []byte
+	var err error
 	switch mimeType {
 	case "image/jpeg", "image/jpg":
-		return recompressJPEG(data)
+		out, err = recompressJPEG(data)
 	case "image/png":
-		return recompressPNG(data)
+		out, err = recompressPNG(data)
 	default:
 		return data, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	if len(out) >= len(data) {
+		return data, nil
+	}
+	return out, nil
 }
 
 func recompressJPEG(data []byte) ([]byte, error) {

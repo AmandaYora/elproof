@@ -4,7 +4,7 @@ import { Button } from "@/shared/components/ui/Button";
 import { Input, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { formatCurrency } from "@/shared/lib/formatters";
-import { defaultTermTemplate } from "@/modules/projects/lib/terms";
+import { defaultTermTemplate, termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
 import type { PaymentTermInput } from "@/modules/projects/types";
 
 /**
@@ -19,6 +19,7 @@ export function PaymentTermsEditor({
   contractValue,
   bookingDate,
   eventDate,
+  onApplyTemplate,
 }: {
   rows: PaymentTermInput[];
   setRows: Dispatch<SetStateAction<PaymentTermInput[]>>;
@@ -26,9 +27,11 @@ export function PaymentTermsEditor({
   contractValue: number;
   bookingDate: string;
   eventDate: string;
+  /** Replaces "Pakai templat 30/40/30" (the wizard uses it to let the rows follow the contract value again). */
+  onApplyTemplate?: () => void;
 }) {
-  const total = rows.reduce((sum, r) => sum + r.amount, 0);
-  const over = contractValue > 0 && total > contractValue;
+  const total = termsTotal(rows);
+  const standing = termsVsContract(total, contractValue, rows.length);
 
   function update(index: number, patch: Partial<PaymentTermInput>) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -37,14 +40,30 @@ export function PaymentTermsEditor({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={`text-[13px] font-medium tabular-nums ${over ? "text-danger-text" : "text-text-secondary"}`}>
+        <p className={`text-[13px] font-medium tabular-nums ${standing === "over" ? "text-danger-text" : "text-text-secondary"}`}>
           Total {formatCurrency(total)} dari {formatCurrency(contractValue)}
-          {!over && contractValue > 0 && ` · sisa ${formatCurrency(contractValue - total)}`}
+          {standing === "under" && ` · sisa ${formatCurrency(contractValue - total)}`}
         </p>
-        <Button variant="ghost" size="sm" onClick={() => setRows(defaultTermTemplate(contractValue, bookingDate, eventDate))}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => (onApplyTemplate ? onApplyTemplate() : setRows(defaultTermTemplate(contractValue, bookingDate, eventDate)))}
+        >
           Pakai templat 30/40/30
         </Button>
       </div>
+      {standing === "under" && (
+        <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] text-warning-text">
+          Jumlah termin belum sama dengan nilai kontrak: masih kurang {formatCurrency(contractValue - total)}. Tambah
+          nominal termin, atau biarkan bila sisanya memang ditagih belakangan.
+        </p>
+      )}
+      {standing === "over" && (
+        <p role="status" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger-text">
+          Jumlah termin melebihi nilai kontrak sebesar {formatCurrency(total - contractValue)}. Kurangi nominal salah satu
+          termin sebelum menyimpan.
+        </p>
+      )}
 
       {rows.map((row, i) => (
         <fieldset key={i} className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-start">

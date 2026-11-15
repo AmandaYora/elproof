@@ -7,7 +7,7 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { TrendBarChart } from "@/shared/components/ui/TrendBarChart";
 import { PeriodToggle } from "@/modules/platform-admin/components/PeriodToggle";
-import { TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
+import { TENANT_FROZEN_FILTER, TENANT_FROZEN_LABEL, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import type { AttentionTenant } from "@/modules/platform-admin/data/console.types";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import { useConsoleStore } from "@/modules/platform-admin/stores/useConsoleStore";
@@ -98,6 +98,8 @@ export default function PlatformDashboardPage() {
     { key: "past_due", label: TENANT_STATUS_LABEL.past_due, value: metrics.pastDue },
     { key: "read_only", label: TENANT_STATUS_LABEL.read_only, value: metrics.readOnly },
     { key: "suspended", label: TENANT_STATUS_LABEL.suspended, value: metrics.suspended },
+    // A frozen tenant counts here only, never in the rows above, MRR or the lists below (EP-09).
+    { key: TENANT_FROZEN_FILTER, label: TENANT_FROZEN_LABEL, value: metrics.frozen },
   ];
 
   return (

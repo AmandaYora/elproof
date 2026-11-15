@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 // Dated separately from TERMS_UPDATED (data/legal.ts): this policy has its own revision.
 const UPDATED = "18 Juli 2026";
@@ -59,7 +60,7 @@ const SECTIONS: LegalSection[] = [
 ];
 
 export default function RefundPolicyPage() {
-  usePageMeta({ title: "Kebijakan refund", description: "Ketentuan pengembalian dana untuk langganan ElProof." });
+  usePageMeta(PUBLIC_PAGES.refund);
   return (
     <LegalDocument
       title="Kebijakan Refund"

@@ -148,8 +148,65 @@ func TestPublicPlans_HanyaKatalogElProof(t *testing.T) {
 func TestPublicPlans_HeaderCache(t *testing.T) {
 	w := servePublicPlans(t, &stubPublicPlanRepo{})
 
-	if got := w.Header().Get("Cache-Control"); got != "public, max-age=300" {
-		t.Fatalf("Cache-Control = %q, want %q", got, "public, max-age=300")
+	if got := w.Header().Get("Cache-Control"); got != "public, no-cache" {
+		t.Fatalf("Cache-Control = %q, want %q", got, "public, no-cache")
+	}
+	if w.Header().Get("ETag") == "" {
+		t.Fatal("ETag kosong: tanpa validator, no-cache berarti unduh ulang penuh setiap kali")
+	}
+}
+
+// EP-11: a plan deactivated (or created, or edited) in the console must leave
+// the homepage on the next request — no five-minute cache. The browser's stored
+// copy is revalidated with If-None-Match: unchanged → 304, changed → 200 with the
+// new catalog and a new ETag.
+func TestPublicPlans_RevalidasiSetelahPaketBerubah(t *testing.T) {
+	repo := &stubPublicPlanRepo{public: []domain.Plan{
+		{ID: 1, AppID: application.TenantPlansApp, Name: "Basic", DurationMonths: 1, Price: 149_000, IsActive: true},
+		{ID: 2, AppID: application.TenantPlansApp, Name: "Pro", DurationMonths: 1, Price: 299_000, IsActive: true},
+	}}
+	h := NewPublicPlanHandler(application.NewPlanService(repo))
+	get := func(ifNoneMatch string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/public/plans", nil)
+		if ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", ifNoneMatch)
+		}
+		w := httptest.NewRecorder()
+		h.List(w, req)
+		return w
+	}
+
+	first := get("")
+	tag := first.Header().Get("ETag")
+	if first.Code != http.StatusOK || tag == "" {
+		t.Fatalf("pertama: status %d ETag %q", first.Code, tag)
+	}
+	if again := get(tag); again.Code != http.StatusNotModified || again.Body.Len() != 0 {
+		t.Fatalf("katalog sama: status %d body %q, want 304 kosong", again.Code, again.Body.String())
+	}
+	if weak := get(`"lain", W/` + tag); weak.Code != http.StatusNotModified {
+		t.Fatalf("daftar tag dengan W/: status %d, want 304", weak.Code)
+	}
+
+	// The team deactivates Basic.
+	repo.public[0].IsActive = false
+	after := get(tag)
+	if after.Code != http.StatusOK {
+		t.Fatalf("setelah paket dinonaktifkan: status %d, want 200 (cache lama harus gugur)", after.Code)
+	}
+	if after.Header().Get("ETag") == tag {
+		t.Fatal("ETag tidak berubah setelah katalog berubah")
+	}
+	env := decodePublicPlans(t, after)
+	if len(env.Data) != 1 || string(env.Data[0]["name"]) != `"Pro"` {
+		t.Fatalf("katalog setelah nonaktif = %s, want hanya Pro", after.Body.String())
+	}
+
+	// A price edit changes the tag too.
+	tag = after.Header().Get("ETag")
+	repo.public[1].Price = 279_000
+	if edited := get(tag); edited.Code != http.StatusOK || edited.Header().Get("ETag") == tag {
+		t.Fatalf("setelah harga diubah: status %d ETag sama=%v", edited.Code, edited.Header().Get("ETag") == tag)
 	}
 }
 

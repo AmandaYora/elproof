@@ -4,6 +4,7 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { formatDateTime } from "@/shared/lib/formatters";
+import { activityText } from "@/shared/lib/labels";
 
 /** Riwayat aktivitas, page by page from the server; the actor's name comes with each entry. */
 export function ProjectActivitySection({ projectId }: { projectId: string }) {
@@ -36,7 +37,7 @@ export function ProjectActivitySection({ projectId }: { projectId: string }) {
                       </div>
                       <div className="pb-5">
                         <p className="text-[13.5px] text-text-primary">
-                          <strong className="font-semibold">{entry.actorName || "Sistem"}</strong> {entry.description}
+                          <strong className="font-semibold">{entry.actorName || "Sistem"}</strong> {activityText(entry.description)}
                         </p>
                         <p className="mt-0.5 text-[12px] text-text-secondary">{formatDateTime(entry.timestamp)}</p>
                       </div>

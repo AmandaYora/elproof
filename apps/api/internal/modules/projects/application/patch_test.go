@@ -106,7 +106,7 @@ func TestPaymentPatchWritesNothingWhenNothingChanges(t *testing.T) {
 	if f.payments.patches != 1 || len(f.activity.entries) != logged+1 {
 		t.Errorf("one change: %d writes, %d entries", f.payments.patches, len(f.activity.entries)-logged)
 	}
-	if got := f.lastActivity(); got != "Pembayaran client diperbarui: catatan" {
+	if got := f.lastActivity(); got != "Pembayaran klien diperbarui: catatan" {
 		t.Errorf("activity = %q", got)
 	}
 }

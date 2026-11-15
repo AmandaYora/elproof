@@ -49,7 +49,7 @@ test.describe("Tambah vendor", () => {
     await page.getByRole("option", { name: "Kota Bandung" }).first().click();
     const money = dialog.getByLabel(/Harga Akad \(Rp\)/);
     await money.fill("5000000");
-    await dialog.getByLabel(/Harga Akad\+Resepsi/).fill("12000000");
+    await dialog.getByLabel(/Harga Akad \+ Resepsi/).fill("12000000");
     await dialog.getByRole("button", { name: "Simpan vendor" }).click();
     await expect(dialog.getByText("Nama vendor sudah dipakai. Gunakan nama lain.")).toBeVisible();
     await expect(dialog).toBeVisible();

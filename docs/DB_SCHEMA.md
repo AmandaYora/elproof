@@ -32,7 +32,9 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
 | credential_id | BIGINT UNSIGNED `FK` → credentials.id | same-module FK, allowed |
+| family_id | BIGINT UNSIGNED NULL | id of the first token of the sign-in this one was rotated from; NULL = this token is the family root (migration `000076`, ADR-0044). Indexed; logout and reuse detection revoke `id = f OR family_id = f` |
 | token_hash | VARCHAR(255) | sha256 of the opaque refresh token |
+| mfa | BOOLEAN | the sign-in used a second factor (migration `000052`) |
 | expires_at | TIMESTAMP | |
 | revoked_at | TIMESTAMP NULL | |
 | created_at | TIMESTAMP | |
@@ -336,6 +338,7 @@ cross-module reference to these rows was already a primitive, un-enforced ID.
 | status | ENUM('Pending','In Progress','Completed','Cancelled') | see `MilestoneStatus` |
 | target_date | DATE | |
 | completed_date | DATE NULL | |
+| days_before_event | INT NULL (signed) | migration `000075` (ADR-0042, EP-06): the Jadwal bawaan offset the step's `target_date` follows (`event_date` minus this many days; pulled to `prep_start_date` only when earlier than it and the booking is on or before the event). `NULL` = fixed date (added by hand, or target set by hand). Re-dated in the same transaction when the project's `event_date`/`prep_start_date` changes, unless the step is Completed/Cancelled. `completed_date` is stamped/cleared by the server when only the status changes |
 
 Displayed in the UI as "Timeline" (Project Timeline), not "Milestone" — a display-text-only rename;
 this table, its Go domain type (`ProjectMilestone`), and every internal identifier keep the
@@ -355,7 +358,7 @@ hardcoded 6-item list shared by every tenant.
 | tenant_id | BIGINT UNSIGNED NOT NULL | |
 | sort_order | INT | |
 | name | VARCHAR(255) | |
-| days_before_event | INT (signed) | target date = project's `event_date` minus this many days. **Can be negative** ("Setelah Acara"/H+ — target = `event_date` **plus** `abs(days_before_event)` days, e.g. "Pengembalian Kotak Seserahan" 3 days after the event); positive values (H-) are clamped to `prep_start_date` for short-notice projects — a negative value's target is always after `event_date`, which is always ≥ `prep_start_date`, so the clamp never applies to H+ rows. Frontend represents this as a Sebelum Acara/Setelah Acara toggle + a non-negative day count, converting to/from the signed column value only at the form boundary — the API body itself is unchanged, still one signed integer |
+| days_before_event | INT (signed) | target date = project's `event_date` minus this many days. **Can be negative** ("Setelah Acara"/H+ — target = `event_date` **plus** `abs(days_before_event)` days, e.g. "Pengembalian Kotak Seserahan" 3 days after the event); positive values (H-) are pulled to `prep_start_date` for short-notice projects, only when the booking is on or before the event (ADR-0042) — Hari H (0) is always the event day, and a project recorded after its event keeps the real offsets. The offset is copied into `project_milestones.days_before_event`. Frontend represents this as a Sebelum Acara/Setelah Acara toggle + a non-negative day count, converting to/from the signed column value only at the form boundary — the API body itself is unchanged, still one signed integer |
 | created_at, updated_at | TIMESTAMP | |
 
 No `is_active` column (unlike `vendor_categories`/`vendors`/`venues`) — items are hard-deleted, one

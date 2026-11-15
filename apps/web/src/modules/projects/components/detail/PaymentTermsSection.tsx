@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Pencil, Plus } from "lucide-react";
+import { CalendarClock, Pencil, Plus, RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { Drawer } from "@/shared/components/ui/Drawer";
+import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { SkeletonRows } from "@/shared/components/ui/Skeleton";
@@ -14,7 +15,7 @@ import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
-import { defaultTermTemplate } from "@/modules/projects/lib/terms";
+import { defaultTermTemplate, termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
 import { PaymentTermsEditor, validateTermRows } from "@/modules/projects/components/PaymentTermsEditor";
 import type { PaymentTerm, PaymentTermInput } from "@/modules/projects/types";
 
@@ -47,6 +48,28 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
     [terms],
   );
   const contractValue = project?.contractValue ?? 0;
+  const total = termsTotal(terms);
+  // The schedule should add up to the contract; when the contract changed after the schedule was made it no longer
+  // does (EP-05): say so, and offer to fit the unpaid installments.
+  const standing = loaded ? termsVsContract(total, contractValue, terms.length) : "none";
+  const [confirmingRecalc, setConfirmingRecalc] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcError, setRecalcError] = useState<string | null>(null);
+  const recalculate = useProjectStore((s) => s.recalculatePaymentTerms);
+
+  async function handleRecalculate() {
+    setRecalcError(null);
+    setRecalculating(true);
+    try {
+      await recalculate(projectId);
+      setConfirmingRecalc(false);
+      toast.success("Jadwal termin dihitung ulang");
+    } catch (err) {
+      setRecalcError(getApiErrorMessage(err, "Jadwal termin belum dihitung ulang. Periksa koneksi Anda, lalu coba lagi."));
+    } finally {
+      setRecalculating(false);
+    }
+  }
 
   return (
     <>
@@ -82,31 +105,69 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
               }
             />
           ) : (
-            <ul className="flex flex-col divide-y divide-border-light">
-              {sorted.map((t) => (
-                <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
-                  <div className="min-w-0">
-                    <p className="text-[13.5px] font-semibold text-text-primary">{t.label}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-text-secondary">
-                      <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-                      Jatuh tempo {formatDate(t.dueDate)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-[13.5px] font-semibold tabular-nums text-text-primary">{formatCurrency(t.amount)}</p>
-                      {t.status !== "paid" && t.paid > 0 && (
-                        <p className="text-[12px] tabular-nums text-text-secondary">Sisa {formatCurrency(t.remaining)}</p>
-                      )}
+            <>
+              {(standing === "under" || standing === "over") && (
+                <div
+                  role="status"
+                  className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] text-warning-text"
+                >
+                  <p className="min-w-0 flex-1">
+                    Jumlah termin {formatCurrency(total)} tidak sama dengan nilai kontrak {formatCurrency(contractValue)}
+                    {standing === "under" ? ` (kurang ${formatCurrency(contractValue - total)}).` : ` (lebih ${formatCurrency(total - contractValue)}).`}
+                  </p>
+                  {canRecord && (
+                    <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => setConfirmingRecalc(true)}>
+                      Hitung ulang termin
+                    </Button>
+                  )}
+                </div>
+              )}
+              <ul className="flex flex-col divide-y divide-border-light">
+                {sorted.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="text-[13.5px] font-semibold text-text-primary">{t.label}</p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-text-secondary">
+                        <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+                        Jatuh tempo {formatDate(t.dueDate)}
+                      </p>
                     </div>
-                    <Badge tone={TERM_STATUS_TONE[t.status]}>{TERM_STATUS_LABELS.staff[t.status]}</Badge>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-[13.5px] font-semibold tabular-nums text-text-primary">{formatCurrency(t.amount)}</p>
+                        {t.status !== "paid" && t.paid > 0 && (
+                          <p className="text-[12px] tabular-nums text-text-secondary">Sisa {formatCurrency(t.remaining)}</p>
+                        )}
+                      </div>
+                      <Badge tone={TERM_STATUS_TONE[t.status]}>{TERM_STATUS_LABELS.staff[t.status]}</Badge>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmingRecalc}
+        title="Hitung ulang jadwal termin?"
+        confirmLabel="Hitung ulang termin"
+        tone="primary"
+        isSubmitting={recalculating}
+        error={recalcError}
+        onConfirm={() => void handleRecalculate()}
+        onClose={() => {
+          setConfirmingRecalc(false);
+          setRecalcError(null);
+        }}
+      >
+        <p>
+          Termin yang sudah ada pembayarannya tidak berubah. Termin yang belum dibayar dihitung ulang sesuai porsinya
+          sampai jumlah semua termin sama dengan nilai kontrak {formatCurrency(contractValue)}. Nama dan tanggal jatuh
+          tempo tetap.
+        </p>
+      </ConfirmDialog>
 
       {editing && loaded && project && (
         <PaymentTermsDrawer

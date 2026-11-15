@@ -11,6 +11,7 @@ import { useAppsStore, type PaymentApp, type AppSubscription } from "@/modules/p
 import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanStore";
 import { PlanFormModal } from "@/modules/platform-admin/components/PlanFormModal";
 import { PlanTable } from "@/modules/platform-admin/components/PlanTable";
+import { usePlanActiveActions } from "@/modules/platform-admin/hooks/usePlanActiveActions";
 import type { PlanFormValues } from "@/modules/platform-admin/schemas/plan.schema";
 import type { SubscriptionPlan } from "@/shared/data/subscriptionPlans";
 
@@ -36,7 +37,6 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
   const fetchPlansForApp = useSubscriptionPlanStore((s) => s.fetchPlansForApp);
   const createPlan = useSubscriptionPlanStore((s) => s.createPlan);
   const updatePlan = useSubscriptionPlanStore((s) => s.updatePlan);
-  const togglePlanActive = useSubscriptionPlanStore((s) => s.togglePlanActive);
   const apps = useAppsStore((s) => s.apps);
   const fetchAppSubscriptions = useAppsStore((s) => s.fetchAppSubscriptions);
 
@@ -86,6 +86,9 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
       .finally(() => setIsLoadingSubscription(false));
   }, [open, appId, loadPlans, fetchAppSubscriptions]);
 
+  // A hook: before the early return, so every render calls the same hooks (React #310).
+  const planState = usePlanActiveActions(() => loadPlans(appId as string), setPlansError);
+
   if (!app) return null;
 
   function openPlanForm(plan?: SubscriptionPlan) {
@@ -107,16 +110,6 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
     }
     closePlanForm();
     await loadPlans(appId as string);
-  }
-
-  async function handleToggleActive(planId: string) {
-    setPlansError(null);
-    try {
-      await togglePlanActive(planId);
-      await loadPlans(appId as string);
-    } catch (err) {
-      setPlansError(getApiErrorMessage(err, "Gagal mengubah status paket"));
-    }
   }
 
   return (
@@ -191,7 +184,7 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
               <p className="py-8 text-center text-sm text-text-secondary">Aplikasi ini belum punya paket.</p>
             ) : (
               <div className="-mx-6 border-y border-border-light">
-                <PlanTable plans={appPlans} onEdit={(plan) => openPlanForm(plan)} onToggleActive={(id) => void handleToggleActive(id)} />
+                <PlanTable plans={appPlans} onEdit={(plan) => openPlanForm(plan)} onActivate={(plan) => void planState.activate(plan)} onDeactivate={planState.askDeactivate} />
               </div>
             )}
             {/* Inside the detail dialog so the two stack: Escape closes the plan form first. */}
@@ -205,6 +198,7 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
               defaultAppId={app.appId}
               lockApp={!editingPlan}
             />
+            {planState.dialog}
           </div>
         )}
 

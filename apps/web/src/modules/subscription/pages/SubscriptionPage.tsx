@@ -22,6 +22,7 @@ import { TRANSACTION_STATUS_TONE, TRANSACTION_STATUS_LABEL, TRANSACTION_TYPE_LAB
 import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
 import { FieldLabel, Input } from "@/shared/components/ui/Input";
 import type { VoucherQuote } from "@/modules/platform-admin/stores/usePlatformAdminStore";
+import { AppLogoMark } from "@/shared/components/AppLogoMark";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -413,9 +414,7 @@ export default function SubscriptionPage() {
                   <CardContent className="flex flex-col gap-4 py-5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-[15px] font-bold text-primary-foreground">
-                          EP
-                        </span>
+                        <AppLogoMark className="size-11" />
                         <p className="text-[15px] font-bold text-text-primary">{p.name}</p>
                       </div>
                       {isCurrentPlan && <Badge tone="success">Paket Aktif Anda</Badge>}

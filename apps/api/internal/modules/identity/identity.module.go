@@ -12,6 +12,7 @@ import (
 	"elproof/internal/modules/identity/infrastructure"
 	"elproof/internal/modules/identity/presentation"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/middleware"
 )
 
 type Module struct {
@@ -19,6 +20,27 @@ type Module struct {
 	contracts contracts.Contracts
 	auth      *application.AuthService
 	sessions  *application.SessionChecker
+	// sameOrigin refuses cross-site calls to the endpoints that set or read
+	// the refresh-token cookie (ADR-0044).
+	sameOrigin middleware.SameOrigin
+}
+
+// SessionOptions configures the refresh-token cookie and its rotation.
+type SessionOptions struct {
+	// Development: local http, so the cookie is not Secure and loopback
+	// origins on other ports count as ElProof's own pages.
+	Development bool
+	// ReuseGrace overrides application.DefaultRefreshReuseGrace when > 0.
+	ReuseGrace time.Duration
+}
+
+// ConfigureSessions applies opts; call it before RegisterRoutes.
+func (m *Module) ConfigureSessions(opts SessionOptions) {
+	m.handler.SetCookieSecure(!opts.Development)
+	m.sameOrigin = middleware.SameOrigin{DevMode: opts.Development}
+	if opts.ReuseGrace > 0 {
+		m.auth.SetRefreshReuseGrace(opts.ReuseGrace)
+	}
 }
 
 // SessionValidator is plugged into middleware.RequireLiveSession so a token
@@ -86,15 +108,35 @@ func (m *Module) Contracts() contracts.Contracts {
 }
 
 // RegisterRoutes registers this module's public (unauthenticated) endpoints.
+//
+// Endpoints that read the refresh-token cookie (refresh, logout) demand
+// X-Requested-With and a same-origin request; endpoints that set it (every
+// sign-in) refuse cross-site browser requests, so another site cannot sign
+// a visitor into an account of its choosing.
 func (m *Module) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/api/v1/auth/login", httpx.Method(http.MethodPost, m.handler.Login))
-	mux.HandleFunc("/api/v1/auth/refresh", httpx.Method(http.MethodPost, m.handler.Refresh))
-	mux.HandleFunc("/api/v1/auth/logout", httpx.Method(http.MethodPost, m.handler.Logout))
-	mux.HandleFunc("/api/v1/auth/mfa/verify", httpx.Method(http.MethodPost, m.handler.VerifyMFA))
-	mux.HandleFunc("/api/v1/auth/google", httpx.Method(http.MethodPost, m.handler.LoginGoogle))
-	mux.HandleFunc("/api/v1/auth/google/link", httpx.Method(http.MethodPost, m.handler.LinkGoogle))
-	// One-time invitation / password-reset links (Fase 3).
-	mux.HandleFunc("/api/v1/auth/links/", m.handler.Links)
+	readsCookie := func(h http.HandlerFunc) http.HandlerFunc { return m.sameOrigin.Guard(true, h) }
+	setsCookie := func(h http.HandlerFunc) http.HandlerFunc { return m.sameOrigin.Guard(false, h) }
+	mux.HandleFunc("/api/v1/auth/login", httpx.Method(http.MethodPost, setsCookie(m.handler.Login)))
+	mux.HandleFunc("/api/v1/auth/refresh", httpx.Method(http.MethodPost, readsCookie(m.handler.Refresh)))
+	mux.HandleFunc("/api/v1/auth/logout", httpx.Method(http.MethodPost, readsCookie(m.handler.Logout)))
+	mux.HandleFunc("/api/v1/auth/mfa/verify", httpx.Method(http.MethodPost, setsCookie(m.handler.VerifyMFA)))
+	mux.HandleFunc("/api/v1/auth/google", httpx.Method(http.MethodPost, setsCookie(m.handler.LoginGoogle)))
+	mux.HandleFunc("/api/v1/auth/google/link", httpx.Method(http.MethodPost, setsCookie(m.handler.LinkGoogle)))
+	// One-time invitation / password-reset links (Fase 3); accepting one signs in.
+	mux.HandleFunc("/api/v1/auth/links/", m.linksGuard(m.handler.Links))
+}
+
+// linksGuard applies the sign-in check to the POSTs under /auth/links/ (the
+// GET only describes the link).
+func (m *Module) linksGuard(next http.HandlerFunc) http.HandlerFunc {
+	guarded := m.sameOrigin.Guard(false, next)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			next(w, r)
+			return
+		}
+		guarded(w, r)
+	}
 }
 
 // RegisterAuthedRoutes registers endpoints that need a signed-in principal.

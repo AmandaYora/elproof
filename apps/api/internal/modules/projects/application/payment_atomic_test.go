@@ -138,7 +138,8 @@ func newAtomicFixture(contracts fakeContracts, terms []domain.PaymentTerm) *atom
 
 func (f *atomicFixture) token(t *testing.T, project int64, name string) string {
 	t.Helper()
-	return grantAndPut(t, f.uploads, f.store, 1, project, []byte("bytes-of-"+name), "image/jpeg")
+	_ = name
+	return grantAndPut(t, f.uploads, f.store, 1, project, testJPEG(t, 8, 8, 80), "image/jpeg")
 }
 
 func clientInput(amount int64) ClientPaymentInput {

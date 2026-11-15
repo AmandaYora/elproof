@@ -2,6 +2,7 @@ import type { Browser, Page, TestInfo } from "@playwright/test";
 import { expect, prepareContext, test, visit } from "../lib/fixtures";
 import { call, must } from "../lib/api";
 import { apiURL, config, webURL, type Session } from "../lib/config";
+import { sessionOf, storageStateFor } from "../lib/session";
 
 // T-20261110-12: what a role's screen offers matches what the API lets it do (ADR-0026). Each test signs up its own
 // workspace (no golden data is touched) and signs in as staff of the role under test, so it WRITES data: "mutating".
@@ -35,7 +36,7 @@ async function workspace(): Promise<Workspace> {
       continue;
     }
     must("signup", signup);
-    const owner = must("owner login", await call(apiURL(), null, "POST", "/api/v1/auth/google", { credential: cred })).json.data as Session;
+    const owner = sessionOf(must("owner login", await call(apiURL(), null, "POST", "/api/v1/auth/google", { credential: cred })));
     const roles = must("roles", await call(apiURL(), owner.accessToken, "GET", "/api/v1/access/roles?kind=staff")).json.data as Workspace["roles"];
     return { owner, key, roles };
   }
@@ -53,13 +54,13 @@ async function staff(ws: Workspace, name: string, role: number): Promise<Session
   const made = must(`staff ${name}`, await call(apiURL(), ws.owner.accessToken, "POST", "/api/v1/staff", { name, title: name, roleId: role, email, phone: "081200000000" }));
   const token = made.json.data.invitation.token as string;
   const cred = await googleCredential(email, name);
-  return must(`accept ${name}`, await call(apiURL(), null, "POST", `/api/v1/auth/links/${token}/google`, { credential: cred })).json.data as Session;
+  return sessionOf(must(`accept ${name}`, await call(apiURL(), null, "POST", `/api/v1/auth/links/${token}/google`, { credential: cred })));
 }
 
 async function as(browser: Browser, info: TestInfo, session: Session): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({
     ...info.project.use,
-    storageState: { cookies: [], origins: [{ origin: webURL(), localStorage: [{ name: "elproof.session", value: JSON.stringify(session) }] }] },
+    storageState: storageStateFor(webURL(), session),
   });
   const page = await context.newPage();
   await prepareContext(page);

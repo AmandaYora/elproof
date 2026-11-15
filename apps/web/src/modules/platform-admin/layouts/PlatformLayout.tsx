@@ -11,6 +11,7 @@ import { useRouteTitle } from "@/shared/hooks/useRouteTitle";
 import { CommandPalette, CommandTrigger } from "@/shared/layouts/CommandPalette";
 import type { NavSection } from "@/shared/layouts/nav/types";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { AppLogoMark } from "@/shared/components/AppLogoMark";
 import { APP_NAME } from "@/shared/constants/brand";
 import { getPlatformAdmin } from "@/modules/platform-admin/data";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
@@ -107,12 +108,15 @@ function PlatformShell() {
           sections={sections}
           brand={(collapsed) =>
             collapsed ? (
-              <ShieldCheck aria-hidden className="size-6 text-primary" />
+              <AppLogoMark className="size-7" alt={APP_NAME} />
             ) : (
-              <span className="flex flex-col gap-0.5">
-                <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
-                <span className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
-                  <ShieldCheck aria-hidden className="size-3.5" /> Platform Console
+              <span className="flex items-center gap-2.5">
+                <AppLogoMark />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>
+                  <span className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
+                    <ShieldCheck aria-hidden className="size-3.5" /> Platform Console
+                  </span>
                 </span>
               </span>
             )
@@ -126,9 +130,8 @@ function PlatformShell() {
                   <p className="truncate text-[11.5px] text-muted-foreground">{admin.title}</p>
                 </div>
               )}
-              <Button variant="ghost" size="icon-sm" onClick={() => void logoutAndRedirect(navigate)}>
+              <Button variant="ghost" size="icon-sm" aria-label="Keluar" title="Keluar" onClick={() => void logoutAndRedirect(navigate)}>
                 <LogOut aria-hidden />
-                <span className="sr-only">Keluar</span>
               </Button>
             </div>
           )}
@@ -151,9 +154,8 @@ function PlatformTopbar({ pages, title }: { pages: NavSection["items"]; title: s
   const { toggle } = useSidebar();
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b bg-card px-4 sm:px-6">
-      <Button variant="ghost" size="icon" onClick={toggle} className="lg:hidden">
+      <Button variant="ghost" size="icon" aria-label="Buka menu" onClick={toggle} className="lg:hidden">
         <Menu aria-hidden />
-        <span className="sr-only">Buka menu</span>
       </Button>
       <span className="hidden min-w-0 truncate text-[13.5px] font-semibold text-foreground sm:block">{title}</span>
       <div className="ml-auto w-full max-w-xs sm:max-w-sm">

@@ -47,12 +47,14 @@ export function toDateOnly(dateStr: string): Date {
   return new Date(y, m - 1, d);
 }
 
-// Real "today" (ISO date, local time) — the single source of truth for
-// "today" across the frontend, replacing the pre-integration mock's fixed
-// TODAY constant now that all consoles talk to a real, live backend.
+// Real "today" (ISO date) — the single source of truth for "today" across the
+// frontend, replacing the pre-integration mock's fixed TODAY constant now that
+// all consoles talk to a real, live backend. It is the Indonesian (WIB) calendar
+// day, the same "today" the server judges lateness by (ADR-0007), whatever
+// timezone the browser is set to: a step due today is late only from tomorrow.
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 export function todayISO(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return new Date(Date.now() + WIB_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 export function daysBetween(fromISO: string, toISO: string): number {
@@ -60,6 +62,16 @@ export function daysBetween(fromISO: string, toISO: string): number {
   const to = toDateOnly(toISO);
   const msPerDay = 1000 * 60 * 60 * 24;
   return Math.round((to.getTime() - from.getTime()) / msPerDay);
+}
+
+/**
+ * Distance to a day as DESIGN.md §7 writes it: "H-5" before, "Hari H" on the day, "H+3" after. The only place
+ * countdown text is built, so a past day can never read "H--3". `todayLabel` replaces "Hari H" where the day is
+ * not an event (e.g. "hari ini" for a subscription that ends today).
+ */
+export function formatDayCountdown(days: number, todayLabel = "Hari H"): string {
+  if (days === 0) return todayLabel;
+  return days > 0 ? `H-${days}` : `H+${Math.abs(days)}`;
 }
 
 export function initialsFromName(name: string): string {

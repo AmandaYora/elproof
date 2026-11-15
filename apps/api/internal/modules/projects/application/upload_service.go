@@ -15,6 +15,7 @@ import (
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/filetype"
 	"elproof/internal/shared/logger"
 )
 
@@ -188,6 +189,11 @@ func (s *UploadService) Store(ctx context.Context, tenantID, projectID int64, to
 	if int64(len(data)) > claims.MaxSize {
 		return 0, errUploadTooLarge(claims.MaxSize)
 	}
+	// The bytes must be what was declared: a renamed binary is never stored (EP-02).
+	if !filetype.Matches(data, claims.MimeType) {
+		msg := notTheDeclaredType(claims.MimeType)
+		return 0, apperror.Validation(msg, map[string][]string{"file": {msg}})
+	}
 	compressed, err := compress.Image(data, claims.MimeType)
 	if err != nil {
 		return 0, apperror.Internal("Gagal memproses file")
@@ -306,6 +312,17 @@ func (s *UploadService) Resolve(ctx context.Context, tenantID, projectID int64, 
 			fe.add("Jenis berkas yang terunggah tidak sama dengan yang dinyatakan. Unggah ulang berkasnya.", itemKey, tokenKey)
 			continue
 		}
+		// A direct upload never passed through this API: read what is really
+		// stored before anything can claim it as proof (EP-02).
+		readable, err := s.contentMatches(ctx, claims.Key, claims.MimeType)
+		if err != nil {
+			return nil, err
+		}
+		if !readable {
+			s.discard(ctx, claims.Key)
+			fe.add(notTheDeclaredType(claims.MimeType), itemKey, tokenKey)
+			continue
+		}
 		out = append(out, ResolvedProof{Claims: claims, Type: it.Type, Name: strings.TrimSpace(it.Name)})
 	}
 	if !fe.empty() {
@@ -320,6 +337,32 @@ func joinTypes(types []domain.EvidenceType) string {
 		parts[i] = string(t)
 	}
 	return strings.Join(parts, " atau ")
+}
+
+// notTheDeclaredType is the message for a file whose bytes are not the type it
+// claims to be (a renamed file, a damaged photo).
+func notTheDeclaredType(mimeType string) string {
+	what := "foto"
+	switch mimeType {
+	case "application/pdf":
+		what = "PDF"
+	case "image/jpeg":
+		what = "foto JPG"
+	case "image/png":
+		what = "gambar PNG"
+	}
+	return "Berkas ini bukan " + what + " yang bisa dibuka. Pilih berkas aslinya, lalu unggah ulang."
+}
+
+// contentMatches opens a stored upload and checks its bytes against the declared type.
+func (s *UploadService) contentMatches(ctx context.Context, key, mimeType string) (bool, error) {
+	obj, err := s.storage.Open(ctx, key)
+	if err != nil {
+		logger.Error("failed to open upload %q: %v", key, err)
+		return false, apperror.Internal("Gagal memeriksa berkas yang diunggah")
+	}
+	defer obj.Close()
+	return filetype.MatchesReader(obj, mimeType), nil
 }
 
 // discard deletes an object that can never be used (best effort).

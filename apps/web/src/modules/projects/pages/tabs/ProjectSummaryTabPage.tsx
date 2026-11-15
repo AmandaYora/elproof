@@ -8,14 +8,14 @@ import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
 import { TERM_STATUS_LABELS } from "@/shared/lib/labels";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 
 function relativeDay(dateISO: string): string {
   const d = daysUntil(dateISO);
   if (d === 0) return "hari ini";
-  return d > 0 ? `H-${d}` : `terlambat ${Math.abs(d)} hari`;
+  return d > 0 ? formatDayCountdown(d) : `terlambat ${Math.abs(d)} hari`;
 }
 
 /** First tab of a project: what needs doing now, what comes next. All of it comes from the overview (E1), computed by the server. */

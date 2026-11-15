@@ -62,7 +62,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
 	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, venuePaymentRepo, evidenceService, activityService, staff)
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
-	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService)
+	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService, paymentRepo)
 	contractReader := application.NewContractReader(projectService, vendorEngagementRepo)
 	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService, contractReader)
 	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService, contractReader)

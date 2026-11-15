@@ -21,9 +21,10 @@ export function landingPathFor(session: AuthSession): string {
 
 // Shared by every console's logout button (WO Console, Client Portal, Platform
 // Console) so the three don't drift: clear local session immediately for a
-// snappy redirect, then best-effort revoke the refresh token server-side.
+// snappy redirect, then best-effort revoke the sign-in server-side. The
+// refresh token is an HttpOnly cookie (ADR-0044): the logout call carries it
+// and the API removes it.
 export async function logoutAndRedirect(navigate: NavigateFunction) {
-  const refreshToken = useAuthStore.getState().session?.refreshToken;
   useAuthStore.getState().logout();
   useTenantBrandingStore.getState().reset();
   useSubscriptionStatusStore.getState().reset();
@@ -33,11 +34,11 @@ export async function logoutAndRedirect(navigate: NavigateFunction) {
   disableGoogleAutoSelect();
   navigate(ROUTE_PATHS.login);
 
-  if (refreshToken) {
-    try {
-      await httpClient.post(API.auth.logout, { refreshToken });
-    } catch {
-      // Best-effort — local session is already cleared either way.
-    }
+  // Always sent, also from a support session: signing out of the browser
+  // ends the admin's own sign-in too, as it did when the token was stored.
+  try {
+    await httpClient.post(API.auth.logout);
+  } catch {
+    // Best-effort — local session is already cleared either way.
   }
 }
