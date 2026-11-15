@@ -125,3 +125,35 @@ test("a project can be created with the keyboard alone, from the first field to 
   await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 20_000 });
   await close();
 });
+
+test("new project: a minus sign is refused, a past event date is confirmed, the schedule follows the contract value", async ({ browser }, info) => {
+  // EP-10 and EP-05 (QA report). Nothing is created: the test stops on step 2.
+  const { page, close } = await open(browser, info, "paying");
+  await visit(page, "/projects/baru");
+  await page.getByLabel(/Nama mempelai wanita/).fill("Tari Anggraini");
+  await page.getByLabel(/Nama mempelai pria/).fill("Galih Pratama");
+  await page.getByLabel(/Tanggal acara/).fill("2026-01-10");
+  await expect(page.getByText(/Tanggal ini sudah lewat/)).toBeVisible();
+  await page.getByLabel(/Paket/).fill("Paket Lampau");
+  const contract = page.getByLabel(/Nilai kontrak/);
+  await contract.fill("-5000000");
+  await expect(contract, "the minus sign stays visible").toHaveValue("-5.000.000");
+  await expect(page.getByText("Nilai kontrak tidak boleh negatif")).toBeVisible();
+  await contract.fill("10000000");
+  await expect(page.getByText("Nilai kontrak tidak boleh negatif")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Lanjut", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByText("Tanggal acara sudah lewat")).toBeVisible();
+  await dialog.getByRole("button", { name: "Lanjutkan" }).click();
+  await expect(page.getByText(/Langkah 2 dari 2/)).toBeVisible();
+  await expect(page.getByLabel(/Nominal/).first(), "DP is 30% of the contract").toHaveValue("3.000.000");
+
+  // Back to step 1, a different contract value: the untouched schedule follows it (the date was confirmed already).
+  await page.getByRole("button", { name: "Kembali" }).click();
+  await page.getByLabel(/Nilai kontrak/).fill("20000000");
+  await page.getByRole("button", { name: "Lanjut", exact: true }).click();
+  await expect(page.getByText(/Langkah 2 dari 2/)).toBeVisible();
+  await expect(page.getByLabel(/Nominal/).first()).toHaveValue("6.000.000");
+  await close();
+});
