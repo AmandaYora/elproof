@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, state, test, visit } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
@@ -101,6 +102,43 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
   // The file went to storage with a PUT (direct or through the API), never as base64 inside the payment.
   expect(posts.some((p) => p.method === "PUT")).toBe(true);
   expect(payments.every((p) => !(p.body ?? "").includes("base64"))).toBe(true);
+  await close();
+});
+
+test("a JPG transfer proof is saved, and a file only named .jpg is refused under its own field (EP-01, EP-02)", async ({ browser }, info) => {
+  test.skip(!state().storage, "needs object storage (MinIO)");
+  const { page, close } = await open(browser, info, "paying");
+  await visit(page, "/dashboard");
+  const session = await browserSession(page);
+  const made = await page.request.post(API("/projects"), {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: {
+      name: "Uji Bukti JPG", brideName: "Wulan Sari", groomName: "Bayu Aji", eventDate: "2027-07-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
+      packageName: "Paket Uji", contractValue: 10_000_000, status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
+    },
+  });
+  expect(made.status()).toBe(201);
+  const projectId = ((await made.json()).data as { id: number }).id;
+
+  await visit(page, `/projects/${projectId}/pembayaran/client`);
+  await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
+  const drawer = page.getByRole("dialog");
+  await drawer.getByLabel(/Nominal/).fill("1000000");
+
+  // A binary renamed to .jpg: refused, with the reason under "Bukti transfer", the drawer stays open (was silent before).
+  const file = drawer.locator('input[type="file"]');
+  await file.setInputFiles({ name: "bukti.jpg", mimeType: "image/jpeg", buffer: Buffer.from("MZ\x90 not a photo at all, whatever the name says") });
+  await drawer.getByRole("button", { name: "Simpan pembayaran" }).click();
+  await expect(drawer.getByText(/bukan foto JPG yang bisa dibuka/)).toBeVisible();
+  await expect(drawer).toBeVisible();
+
+  // A real phone-style JPG: saved with its proof.
+  await file.setInputFiles({ name: "IMG_2041.jpg", mimeType: "image/jpeg", buffer: readFileSync(new URL("../lib/files/bukti-transfer.jpg", import.meta.url)) });
+  await drawer.getByRole("button", { name: "Simpan pembayaran" }).click();
+  await expect(drawer).toBeHidden();
+  const rows = page.getByRole("row").filter({ hasText: "Rp1.000.000" });
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Bukti ada");
   await close();
 });
 
