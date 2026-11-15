@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { AUTH } from "../lib/config";
 import { prepareContext, settle, state } from "../lib/fixtures";
 import type { AuthKey } from "../lib/pages";
@@ -114,6 +114,12 @@ for (const r of ROUTES) {
       }
     }
 
+    // A page load first gets its access token from the refresh cookie (ADR-0044): session bootstrap, not the screen's
+    // data, so it is outside the per-screen call budget — but never more than once per load.
+    const isRefresh = (a: { method: string; path: string }) => a.method === "POST" && a.path === "/api/v1/auth/refresh";
+    expect(api.filter(isRefresh).length, `${r.id}: at most one session refresh per page load`).toBeLessThanOrEqual(1);
+    const screenCalls = api.filter((a) => !isRefresh(a));
+
     const bundle = state().bundle;
     const gz = new Map((bundle?.chunks ?? []).map((c) => [c.file, c.gzip]));
     const jsGzip = m.js.reduce((n, j) => n + (gz.get(j.file) ?? 0), 0);
@@ -123,8 +129,8 @@ for (const r of ROUTES) {
         id: r.id,
         label: r.label,
         route: r.route,
-        apiCalls: api.length,
-        apiBytes: api.reduce((n, a) => n + a.bytes, 0),
+        apiCalls: screenCalls.length,
+        apiBytes: screenCalls.reduce((n, a) => n + a.bytes, 0),
         apiRequests: api.map((a) => `${a.method} ${a.path} (${a.bytes} B)`),
         jsChunks: m.js.length,
         jsTransfer: m.js.reduce((n, j) => n + j.transfer, 0),
