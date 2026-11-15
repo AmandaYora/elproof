@@ -13,6 +13,7 @@ import (
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/filetype"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
 )
@@ -254,6 +255,10 @@ func (s *VenueService) UploadAttachment(ctx context.Context, tenantID, venueID i
 	}
 	if len(decoded) > maxVenueAttachmentDecodedSize {
 		return nil, apperror.Validation("Ukuran lampiran terlalu besar", map[string][]string{"base64Data": {"Maksimal 15 MB"}})
+	}
+	if !filetype.Matches(decoded, input.MimeType) {
+		msg := "Lampiran ini tidak bisa dibuka sebagai PNG, JPEG, WebP, atau PDF. Pilih berkas aslinya."
+		return nil, apperror.Validation(msg, map[string][]string{"base64Data": {msg}})
 	}
 
 	// compress.Image passes non-image mimeTypes (e.g. application/pdf)

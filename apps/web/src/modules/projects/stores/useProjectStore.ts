@@ -12,6 +12,7 @@ import type { VenuePaymentFormValues, VenuePaymentUpdateFormValues } from "@/mod
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { uploadFile } from "@/shared/lib/direct-upload";
+import { renameApiFieldErrors } from "@/shared/lib/api-error";
 import type {
   OverviewAction,
   PaymentTerm,
@@ -67,13 +68,31 @@ async function savePaymentWithProof(
   slots: Array<{ file: File | undefined; type: "Invoice" | "Transfer Proof" }>,
   idempotencyKey?: string,
 ): Promise<void> {
+  // The form names its file inputs; the server names them by position in `evidence`.
+  const fieldOf = (type: "Invoice" | "Transfer Proof") => (type === "Invoice" ? "invoiceFile" : "proofFile");
   const evidence: Array<{ uploadToken: string; type: string }> = [];
+  const fieldByIndex: string[] = [];
   for (const slot of slots) {
-    if (slot.file) evidence.push({ uploadToken: await uploadFile(projectId, slot.file), type: slot.type });
+    if (!slot.file) continue;
+    try {
+      evidence.push({ uploadToken: await uploadFile(projectId, slot.file), type: slot.type });
+    } catch (err) {
+      // Whatever the upload refused (type, size, content) is about this one file.
+      throw renameApiFieldErrors(err, () => fieldOf(slot.type));
+    }
+    fieldByIndex.push(fieldOf(slot.type));
   }
-  await httpClient.post(url, evidence.length > 0 ? { ...body, evidence } : body, {
-    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
-  });
+  try {
+    await httpClient.post(url, evidence.length > 0 ? { ...body, evidence } : body, {
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    });
+  } catch (err) {
+    // `evidence[1].uploadToken` → the input that file came from, so the message shows under it (EP-01).
+    throw renameApiFieldErrors(err, (key) => {
+      const m = /^evidence\[(\d+)\](?:\.uploadToken)?$/.exec(key);
+      return m ? fieldByIndex[Number(m[1])] : undefined;
+    });
+  }
 }
 
 // --- Raw wire shapes (see apps/api .../projects/presentation/dto.go) ---

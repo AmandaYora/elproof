@@ -3,6 +3,9 @@ package application
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"sort"
 	"strings"
@@ -12,6 +15,22 @@ import (
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/apperror"
 )
+
+// testJPEG is a real, decodable JPEG of the given size, encoded at quality q.
+func testJPEG(t *testing.T, w, h, q int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{uint8(x * 7), uint8(y * 13), uint8((x ^ y) * 3), 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: q}); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
 
 // objStorage is an in-memory object store with the optional capabilities.
 type objStorage struct {
@@ -30,7 +49,9 @@ func (o *objStorage) Save(_ context.Context, key string, data []byte, ct string)
 	o.objs[key], o.types[key] = data, ct
 	return key, nil
 }
-func (o *objStorage) Open(context.Context, string) (io.ReadCloser, error) { return nil, nil }
+func (o *objStorage) Open(_ context.Context, key string) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(o.objs[key])), nil
+}
 func (o *objStorage) Delete(_ context.Context, key string) error {
 	delete(o.objs, key)
 	o.deleted = append(o.deleted, key)
@@ -182,9 +203,10 @@ func TestResolveCollectsEveryProblemAtOnce(t *testing.T) {
 	files := &proofFiles{}
 	u := newUploads(store, files)
 
-	good := grantAndPut(t, u, store, 1, 10, []byte("jpegbytes"), "image/jpeg")
-	foreign := grantAndPut(t, u, store, 1, 11, []byte("jpegbytes"), "image/jpeg") // another project
-	otherTenant := grantAndPut(t, u, store, 2, 10, []byte("jpegbytes"), "image/jpeg")
+	photo := testJPEG(t, 16, 16, 80)
+	good := grantAndPut(t, u, store, 1, 10, photo, "image/jpeg")
+	foreign := grantAndPut(t, u, store, 1, 11, photo, "image/jpeg") // another project
+	otherTenant := grantAndPut(t, u, store, 2, 10, photo, "image/jpeg")
 	notUploaded, _ := u.Grant(ctx, 1, 10, UploadInput{FileName: "x.jpg", MimeType: "image/jpeg", Size: 5})
 	// Declared 5 bytes, 9 sent.
 	g2, _ := u.Grant(ctx, 1, 10, UploadInput{FileName: "big.jpg", MimeType: "image/jpeg", Size: 5})
@@ -305,5 +327,67 @@ func TestStoreOnTheAPIRoute(t *testing.T) {
 	}
 	if string(store.objs[claims.Key]) != "%PDF-1.4 tiny" {
 		t.Error("the recorded proof must not change")
+	}
+}
+
+// EP-02: a file renamed to .jpg is refused on both routes, and the object is removed.
+func TestUploadRefusesBytesThatAreNotTheDeclaredType(t *testing.T) {
+	ctx := context.Background()
+	fake := []byte("MZ\x90\x00 this is a binary, not a photo, whatever its name says")
+
+	// Direct upload: storage accepted the PUT; Resolve reads the object and refuses it.
+	direct := newObjStorage(true)
+	u := newUploads(direct, &proofFiles{})
+	tok := grantAndPut(t, u, direct, 1, 10, fake, "image/jpeg")
+	_, err := u.Resolve(ctx, 1, 10, []ProofItem{{UploadToken: tok, Type: domain.EvidenceTransferProof}}, clientProofTypes)
+	f := fieldsOf(t, err)
+	if len(f["evidence[0]"]) == 0 || !strings.Contains(f["evidence[0]"][0], "bukan foto JPG") {
+		t.Fatalf("a fake JPEG must be refused with a clear message: %v", f)
+	}
+	if len(direct.objs) != 0 {
+		t.Error("the fake object must be deleted")
+	}
+
+	// A JPEG signature followed by garbage is not a picture either.
+	tok = grantAndPut(t, u, direct, 1, 10, append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, fake...), "image/jpeg")
+	if _, err := u.Resolve(ctx, 1, 10, []ProofItem{{UploadToken: tok, Type: domain.EvidenceTransferProof}}, clientProofTypes); err == nil {
+		t.Error("a JPEG header with nothing decodable behind it must be refused")
+	}
+
+	// Through the API: refused before anything is stored.
+	proxy := newObjStorage(false)
+	u = newUploads(proxy, &proofFiles{})
+	g, _ := u.Grant(ctx, 1, 10, UploadInput{FileName: "bukti.jpg", MimeType: "image/jpeg", Size: int64(len(fake))})
+	if _, err := u.Store(ctx, 1, 10, g.Token, "image/jpeg", bytes.NewReader(fake)); err == nil {
+		t.Error("the API route must refuse a fake JPEG")
+	} else if f := fieldsOf(t, err); len(f["file"]) == 0 {
+		t.Errorf("on the file: %v", f)
+	}
+	if len(proxy.objs) != 0 {
+		t.Error("nothing may be stored")
+	}
+}
+
+// EP-01: a JPEG the browser already compressed well can come out of Go's
+// re-encoder bigger than declared; it must still be stored and accepted.
+func TestJPEGThroughTheAPIRouteIsAcceptedAsProof(t *testing.T) {
+	ctx := context.Background()
+	store := newObjStorage(false)
+	u := newUploads(store, &proofFiles{})
+	photo := testJPEG(t, 640, 480, 25) // low quality: re-encoding at 82 would grow it
+	g, err := u.Grant(ctx, 1, 10, UploadInput{FileName: "IMG_0001.jpg", MimeType: "image/jpeg", Size: int64(len(photo))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := u.Store(ctx, 1, 10, g.Token, "image/jpeg", bytes.NewReader(photo)); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	out, err := u.Resolve(ctx, 1, 10, []ProofItem{{UploadToken: g.Token, Type: domain.EvidenceTransferProof}}, clientProofTypes)
+	if err != nil || len(out) != 1 {
+		t.Fatalf("a JPEG proof must resolve: %v", err)
+	}
+	claims, _ := testSigner("secret-one").Verify(g.Token, 1, 10)
+	if int64(len(store.objs[claims.Key])) > int64(len(photo)) {
+		t.Errorf("the stored file must never be bigger than what was sent: %d > %d", len(store.objs[claims.Key]), len(photo))
 	}
 }

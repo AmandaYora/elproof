@@ -12,6 +12,26 @@ export function getApiErrorMessage(err: unknown, fallback: string): string {
 }
 
 /**
+ * Renames the field keys of a 422 in place, so a form can show a server
+ * message under its own input (e.g. `evidence[0].uploadToken` → `proofFile`).
+ * `rename` returns the new key, or undefined to keep the key as it is.
+ * Anything that is not an API error passes through untouched.
+ */
+export function renameApiFieldErrors(err: unknown, rename: (key: string) => string | undefined): unknown {
+  if (!axios.isAxiosError(err)) return err;
+  const data = err.response?.data as { errors?: Record<string, unknown> } | undefined;
+  if (!data?.errors || typeof data.errors !== "object") return err;
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data.errors)) {
+    const to = rename(key) ?? key;
+    // Two server keys can land on one field (`evidence[0]` and `evidence[0].uploadToken` say the same): keep the first.
+    if (!(to in next)) next[to] = value;
+  }
+  data.errors = next;
+  return err;
+}
+
+/**
  * The per-field messages of a 422 (`errors: { field: [message] }`), first
  * message of each, so a form can show each one under its own input.
  */

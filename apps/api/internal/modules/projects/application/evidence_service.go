@@ -14,6 +14,7 @@ import (
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/compress"
+	"elproof/internal/shared/filetype"
 	"elproof/internal/shared/logger"
 )
 
@@ -279,6 +280,11 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 	}
 	if len(decoded) > maxDecodedSize {
 		return nil, apperror.Validation("Ukuran file terlalu besar", map[string][]string{"base64Data": {"Maksimal 15 MB"}})
+	}
+	// A renamed file is not proof of anything: the bytes must be the declared type (EP-02).
+	if !filetype.Matches(decoded, input.MimeType) {
+		msg := "Berkas ini tidak bisa dibuka sebagai " + input.MimeType + ". Pilih berkas aslinya, lalu unggah ulang."
+		return nil, apperror.Validation(msg, map[string][]string{"base64Data": {msg}})
 	}
 
 	// Backend re-compression is the authoritative pass — see ADR-0010. Runs
