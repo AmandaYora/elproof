@@ -86,6 +86,9 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
       .finally(() => setIsLoadingSubscription(false));
   }, [open, appId, loadPlans, fetchAppSubscriptions]);
 
+  // A hook: before the early return, so every render calls the same hooks (React #310).
+  const planState = usePlanActiveActions(() => loadPlans(appId as string), setPlansError);
+
   if (!app) return null;
 
   function openPlanForm(plan?: SubscriptionPlan) {
@@ -108,8 +111,6 @@ export function AppDetailModal({ open, onClose, app }: AppDetailModalProps) {
     closePlanForm();
     await loadPlans(appId as string);
   }
-
-  const planState = usePlanActiveActions(() => loadPlans(appId as string), setPlansError);
 
   return (
     <Modal
