@@ -46,10 +46,13 @@ type VendorEngagementService struct {
 	repo       VendorEngagementRepository
 	milestones VendorMilestoneRepository
 	activity   *ActivityService
+	// payments is read to keep the agreed price at or above what is already
+	// paid to the vendor (QA EP-04).
+	payments PaymentRepository
 }
 
-func NewVendorEngagementService(repo VendorEngagementRepository, milestones VendorMilestoneRepository, activity *ActivityService) *VendorEngagementService {
-	return &VendorEngagementService{repo: repo, milestones: milestones, activity: activity}
+func NewVendorEngagementService(repo VendorEngagementRepository, milestones VendorMilestoneRepository, activity *ActivityService, payments PaymentRepository) *VendorEngagementService {
+	return &VendorEngagementService{repo: repo, milestones: milestones, activity: activity, payments: payments}
 }
 
 func (s *VendorEngagementService) List(ctx context.Context, projectID int64) ([]domain.ProjectVendor, error) {
@@ -85,6 +88,11 @@ type VendorEngagementInput struct {
 }
 
 func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, actorStaffID int64, input VendorEngagementInput) (*domain.ProjectVendor, error) {
+	fe := newFieldErrors()
+	checkEngagementMoney(fe, input.ContractValue, input.DPAmount)
+	if err := fe.err(); err != nil {
+		return nil, err
+	}
 	pv := &domain.ProjectVendor{
 		ProjectID: projectID, VendorID: input.VendorID, CategoryID: input.CategoryID, Scope: input.Scope,
 		ContractValue: input.ContractValue, PricingTier: input.PricingTier, EngagementStatus: input.EngagementStatus, BookingDate: input.BookingDate,
@@ -157,6 +165,31 @@ func (s *VendorEngagementService) Patch(ctx context.Context, projectID, id int64
 	}{{patch.EventStartTime, "eventStartTime"}, {patch.EventEndTime, "eventEndTime"}} {
 		if f.o.Present() && !f.o.IsNull() && !hhmm.MatchString(f.o.Value()) {
 			fe.add("Gunakan format HH:MM", f.key)
+		}
+	}
+	// The DP stays within the agreed price, and the agreed price is not set
+	// under what was already paid (QA EP-04). Checked only when either amount
+	// changes, so an older row that breaks the rule can still have its other
+	// fields edited.
+	if fe.empty() {
+		contract, dp := pv.ContractValue, pv.DPAmount
+		if patch.ContractValue.Present() {
+			contract = patch.ContractValue.Value()
+		}
+		if patch.DPAmount.Present() {
+			dp = patch.DPAmount.Value()
+		}
+		if (contract != pv.ContractValue || dp != pv.DPAmount) && contract > 0 && dp > contract {
+			fe.add(dpOverContractMessage(dp, contract), "dpAmount")
+		}
+		if contract != pv.ContractValue {
+			paid, err := s.paidTowardsContract(ctx, projectID, id)
+			if err != nil {
+				return nil, err
+			}
+			if msg := contractBelowPaid(pv.ContractValue, contract, paid); msg != "" {
+				fe.add(msg, "contractValue")
+			}
 		}
 	}
 	if err := fe.err(); err != nil {

@@ -308,7 +308,7 @@ export function ProjectVendorFormModal({ projectId, open, onClose, onSubmit, ini
             </div>
           </Field>
         )}
-        <Field label="Jumlah DP (Rp)" name="dpAmount" error={errors.dpAmount}>
+        <Field label="Jumlah DP (Rp)" name="dpAmount" error={errors.dpAmount} hint="Tidak melebihi nilai kerja sama.">
           <CurrencyInput value={values.dpAmount} onChange={(n) => set("dpAmount", n)} />
         </Field>
         <div className="sm:col-span-2">

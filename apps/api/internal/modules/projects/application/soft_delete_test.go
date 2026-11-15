@@ -243,7 +243,7 @@ func (f *fakeEngagements) Restore(_ context.Context, _, id int64, notBefore time
 
 func TestEngagementSoftDeleteAndRestoreWithCheck(t *testing.T) {
 	repo := &fakeEngagements{rows: []domain.ProjectVendor{{ID: 1, VendorID: 5, Scope: "Dekor"}}}
-	svc := NewVendorEngagementService(repo, nil, nil)
+	svc := NewVendorEngagementService(repo, nil, nil, nil)
 	ctx := context.Background()
 	if _, err := svc.Get(ctx, 10, 1); err != nil {
 		t.Fatal(err)
