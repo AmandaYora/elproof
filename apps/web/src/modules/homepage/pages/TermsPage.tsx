@@ -1,6 +1,7 @@
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 const SECTIONS: LegalSection[] = [
   {
@@ -79,6 +80,6 @@ const SECTIONS: LegalSection[] = [
 ];
 
 export default function TermsPage() {
-  usePageMeta({ title: "Syarat dan ketentuan", description: "Syarat dan ketentuan penggunaan layanan ElProof untuk wedding organizer dan klien mereka." });
+  usePageMeta(PUBLIC_PAGES.terms);
   return <LegalDocument title="Syarat & Ketentuan" updated={TERMS_UPDATED} sections={SECTIONS} />;
 }

@@ -114,3 +114,41 @@ test.describe("vendor rows", () => {
   });
 });
 
+test.describe("harga and Daftar (EP-14)", () => {
+  const BASIC = { id: 1, name: "Basic", durationMonths: 1, price: 149000, features: ["Semua fitur"] };
+  const plans = (data: unknown[]) => ({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, message: "ok", data }) });
+  const PLANS_API = /\/api\/v1\/public\/plans$/;
+
+  test("the price heading follows the plans on sale and Pilih paket carries the plan to Daftar", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "anon");
+    await page.route(PLANS_API, (route) => route.fulfill(plans([BASIC])));
+    await visit(page, "/");
+    const harga = page.locator("#harga");
+    // One monthly plan: no "pilih lamanya".
+    await expect(harga.getByRole("heading", { level: 2 })).toHaveText("Harga terbuka, satu paket");
+    await expect(harga).toContainText("lanjutkan dengan paket Basic, ditagih per bulan");
+    await harga.getByRole("link", { name: "Pilih paket Basic" }).click();
+    await expect(page).toHaveURL(/\/daftar\?paket=1$/);
+    const summary = page.getByRole("region", { name: "Paket pilihan Anda" });
+    await expect(summary).toContainText("Basic");
+    await expect(summary).toContainText("Rp149.000 per bulan");
+    await expect(summary).toContainText("coba gratis 14 hari");
+    await expect(summary.getByRole("link", { name: "Ganti paket" })).toHaveAttribute("href", "/#harga");
+    await close();
+  });
+
+  test("several lengths keep 'pilih lamanya'; an unknown plan id leaves Daftar the plain trial signup", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "anon");
+    const yearly = { id: 2, name: "Tahunan", durationMonths: 12, price: 1490000, features: ["Semua fitur"] };
+    await page.route(PLANS_API, (route) => route.fulfill(plans([BASIC, yearly])));
+    await visit(page, "/");
+    await expect(page.locator("#harga").getByRole("heading", { level: 2 })).toHaveText("Harga terbuka, pilih lamanya");
+    const answered = page.waitForResponse(PLANS_API);
+    await visit(page, "/daftar?paket=99");
+    await answered;
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Coba ElProof gratis 14 hari");
+    await expect(page.getByRole("region", { name: "Paket pilihan Anda" })).toHaveCount(0);
+    await close();
+  });
+});
+

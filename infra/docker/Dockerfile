@@ -4,6 +4,10 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY apps/web ./apps/web
 RUN npm install --workspace=apps/web --include-workspace-root=false
+# Base of canonical links and sitemap.xml in the prerendered public pages (ADR-0042); empty = production address.
+ARG VITE_SITE_URL=
+# Builds the app, then prerenders the public pages into dist/prerendered/ with dist/routes.json and dist/sitemap.xml;
+# all of dist/ is copied below as before.
 RUN npm run build -w apps/web
 
 FROM golang:1.25-alpine AS api

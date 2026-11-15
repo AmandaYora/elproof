@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run prerender",
+    "prerender": "vite build --ssr src/entry-server.tsx --outDir dist-ssr --emptyOutDir && node scripts/prerender.mjs",
     "preview": "vite preview",
     "e2e": "playwright test -c e2e/playwright.config.ts --project=desktop --project=mobile --project=behavior --project=mutating",
     "e2e:update": "playwright test -c e2e/playwright.config.ts --update-snapshots --project=desktop --project=mobile",

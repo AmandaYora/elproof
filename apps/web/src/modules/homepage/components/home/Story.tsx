@@ -4,6 +4,7 @@ import { STORY_STEPS } from "@/modules/homepage/components/home/storySteps";
 import { MockItem, PhoneFrame, StatusChip } from "@/modules/homepage/components/home/mock";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { cn } from "@/shared/lib/cn";
+import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 
 const DESKTOP = "(min-width: 1024px)";
 
@@ -81,17 +82,6 @@ function StoryScreen({ index }: { index: number }) {
   );
 }
 
-function useIsDesktop() {
-  const [desktop, setDesktop] = useState(() => window.matchMedia(DESKTOP).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(DESKTOP);
-    const onChange = () => setDesktop(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return desktop;
-}
-
 /**
  * "Cara kerja": on a computer the phone stays in view (sticky) and follows the
  * step in the middle of the screen; each step is also a button that shows its
@@ -99,7 +89,9 @@ function useIsDesktop() {
  * own small screen, one under the other.
  */
 export default function Story() {
-  const desktop = useIsDesktop();
+  // The prerendered page (ADR-0042) carries the phone layout; useSyncExternalStore hydrates with that and then switches
+  // to the computer layout without a hydration mismatch.
+  const desktop = useMediaQuery(DESKTOP);
   const [active, setActive] = useState(0);
   const [announcement, setAnnouncement] = useState("");
   const stepRefs = useRef<(HTMLLIElement | null)[]>([]);

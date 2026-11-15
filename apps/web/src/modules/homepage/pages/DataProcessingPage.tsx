@@ -1,6 +1,7 @@
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 const SECTIONS: LegalSection[] = [
   {
@@ -57,7 +58,7 @@ const SECTIONS: LegalSection[] = [
 ];
 
 export default function DataProcessingPage() {
-  usePageMeta({ title: "Perjanjian pemrosesan data", description: "Perjanjian pemrosesan data antara wedding organizer sebagai pengendali data dan ElProof sebagai prosesor." });
+  usePageMeta(PUBLIC_PAGES.dataProcessing);
   return (
     <LegalDocument
       title="Perjanjian Pemrosesan Data"

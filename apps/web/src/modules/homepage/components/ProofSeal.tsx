@@ -38,12 +38,12 @@ export function ProofSeal({ size = 128, animate = false, className }: ProofSealP
       role="img"
       aria-label="Segel ElProof — satu pintu, semua terbukti"
       className={cn(
-        "overflow-visible",
+        // A class, not a style attribute: the prerendered HTML (ADR-0042) then needs no inline style under a strict CSP.
+        "origin-center overflow-visible",
         animate && "motion-safe:transition-[transform,opacity] motion-safe:duration-700 motion-safe:ease-out",
         animate && (played ? "motion-safe:scale-100 motion-safe:opacity-100" : "motion-safe:scale-[0.6] motion-safe:opacity-0 motion-safe:rotate-[-14deg]"),
         className
       )}
-      style={{ transformOrigin: "50% 50%" }}
     >
       <defs>
         <path id="proof-seal-ring" d={circlePath} fill="none" />

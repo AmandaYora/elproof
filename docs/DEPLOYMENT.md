@@ -63,9 +63,13 @@ Open `http://localhost:5173`.
 
 The image is a multi-stage build: it compiles the frontend to static assets
 and the API to a single Go binary, then serves both from one Alpine
-container — the Go server hosts `/api/v1/*` and falls back to the built
-frontend (with an SPA fallback to `index.html`) for everything else, so
-there's no separate frontend server or reverse proxy to configure.
+container — the Go server hosts `/api/v1/*` and serves the built frontend
+for everything else, so there's no separate frontend server or reverse proxy
+to configure. Public pages come from their prerendered HTML, the app's own
+routes from the `index.html` shell, and any path the router doesn't know gets
+the shell with HTTP 404 (`dist/routes.json`, ADR-0042). The build writes
+canonical links and `sitemap.xml` for `VITE_SITE_URL` (default
+`https://elproof.elcodelabs.com`); set it as a build variable for a staging copy.
 
 ```bash
 docker compose up --build

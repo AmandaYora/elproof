@@ -216,8 +216,15 @@ have no permission of their own. The API still refuses writes with `subscription
   Console during a session.
 - **WO side**: `AnnouncementBanner` (dismissible, remembered per browser) and `SupportAccessCard` in
   Profil Usaha (grant/revoke consent, session history).
-- **Per-page meta**: `usePageMeta({title, description, noindex})` sets the tab title and search/share tags and
-  restores them on unmount; marketing and auth pages use it.
+- **Per-page meta**: `usePageMeta({title, description, noindex, path})` sets the tab title, description, share tags
+  and (with `path`, indexable pages only) the canonical link on `SITE_URL`, and restores them on unmount. The public
+  pages pass their entry of `app/routes/public-pages.ts`, the same entry the build writes into their HTML.
+- **Prerendered public pages (ADR-0042)**: `npm run build` ends with `npm run prerender`, which renders every page of
+  `PUBLIC_PAGES` to `dist/prerendered/*.html` and writes `dist/routes.json` and `dist/sitemap.xml`. `main.tsx`
+  hydrates when `#root[data-prerendered]` is the opened path. What a public page renders on its first pass must not
+  depend on the browser (window, storage, query string, viewport): read those in an effect, or with
+  `useSyncExternalStore` and a server snapshot (`useMediaQuery`). A new route needs nothing else: the route list the Go
+  server answers 404 from is generated from `app/routes/routes.tsx`.
 - **QR code**: `shared/components/ui/QrCode` draws in the browser with the `qrcode` package; the text never
   leaves the page. **Receipt**: `/langganan/kuitansi/:id` is a plain page; `print:` utilities hide the console
   chrome and `window.print()` is the "Simpan sebagai PDF".

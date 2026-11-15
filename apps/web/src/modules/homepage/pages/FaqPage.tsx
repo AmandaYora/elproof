@@ -7,6 +7,7 @@ import { ctaClass } from "@/modules/homepage/components/cta";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 const WHATSAPP_URL = `https://wa.me/${CONTACT.phones[0].number}?text=${encodeURIComponent(
   "Halo ElProof, saya punya pertanyaan yang belum ada di halaman FAQ: ",
@@ -295,10 +296,7 @@ function FaqItem({ item, open, onToggle }: { item: Faq; open: boolean; onToggle:
 }
 
 export default function FaqPage() {
-  usePageMeta({
-    title: "Pertanyaan umum",
-    description: "Jawaban singkat soal ElProof: untuk siapa, cara mulai dan coba gratis, harga dan cara membayar, keamanan data, dan Portal Klien.",
-  });
+  usePageMeta(PUBLIC_PAGES.faq);
   const { hash } = useLocation();
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
 
