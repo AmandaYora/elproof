@@ -27,6 +27,32 @@ func csvCell(v string) string {
 	return v
 }
 
+// statusLabels are the console's words for each subscription status (the same
+// as apps/web/src/modules/platform-admin/lib/status.ts TENANT_STATUS_LABEL).
+var statusLabels = map[domain.SubscriptionStatus]string{
+	domain.StatusTrialing:       "Masa Coba",
+	domain.StatusActive:         "Aktif",
+	domain.StatusExpiringSoon:   "Segera Berakhir",
+	domain.StatusPastDue:        "Masa Tenggang",
+	domain.StatusReadOnly:       "Baca-saja",
+	domain.StatusSuspended:      "Ditangguhkan",
+	domain.StatusPendingPayment: "Belum Berlangganan",
+	domain.StatusExpired:        "Berakhir",
+}
+
+// exportStatus is the "Status langganan" cell: a tenant frozen by the platform
+// team reads "Dibekukan" whatever its dates say (EP-09) — the dates are kept, so
+// the status it returns to on unfreezing is still visible in "Berakhir".
+func exportStatus(lc domain.Lifecycle) string {
+	if lc.Frozen {
+		return "Dibekukan"
+	}
+	if label, ok := statusLabels[lc.Status]; ok {
+		return label
+	}
+	return string(lc.Status)
+}
+
 // Export is GET /tenants/export: the filtered tenant list as CSV (Platform
 // Console admins; recorded in the audit log).
 func (h *TenantHandler) Export(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +96,7 @@ func (h *TenantHandler) Export(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = cw.Write([]string{
 			strconv.FormatInt(t.ID, 10), csvCell(t.BusinessName), csvCell(t.OwnerName), csvCell(t.Email), csvCell(t.Phone), csvCell(t.City),
-			csvCell(plan), string(lc.Status), ends, string(t.SignupSource), t.JoinedAt.Format("2006-01-02"),
+			csvCell(plan), exportStatus(lc), ends, string(t.SignupSource), t.JoinedAt.Format("2006-01-02"),
 		})
 	}
 	cw.Flush()

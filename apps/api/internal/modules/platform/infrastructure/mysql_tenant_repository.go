@@ -93,8 +93,13 @@ func tenantWhere(f domain.TenantFilter) (string, []interface{}) {
 		like := "%" + utils.EscapeLike(f.Search) + "%"
 		args = append(args, like, like, like)
 	}
-	if f.Status != "" {
-		conditions = append(conditions, `subscription_status = ?`)
+	switch {
+	case f.Status == domain.FilterFrozen:
+		conditions = append(conditions, `is_suspended = TRUE`)
+	case f.Status != "":
+		// A frozen tenant is not "Aktif" (or any other lifecycle state) while
+		// frozen — same rule as the Ringkasan's counts (EP-09).
+		conditions = append(conditions, `subscription_status = ? AND is_suspended = FALSE`)
 		args = append(args, f.Status)
 	}
 	if f.PlanID != nil {

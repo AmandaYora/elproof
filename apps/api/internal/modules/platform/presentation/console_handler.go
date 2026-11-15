@@ -122,6 +122,9 @@ type memberResponse struct {
 	Email    string `json:"email"`
 	Role     string `json:"role"`
 	IsActive bool   `json:"isActive"`
+	// CountsTowardSeats: this member is one of the "Anggota tim aktif selain Owner"
+	// the usage figure counts (EP-12).
+	CountsTowardSeats bool `json:"countsTowardSeats"`
 }
 
 type activationResponse struct {
@@ -186,7 +189,7 @@ func (h *ConsoleHandler) overview(w http.ResponseWriter, r *http.Request, s []st
 		})
 	}
 	for _, m := range o.Members {
-		res.Members = append(res.Members, memberResponse{ID: m.ID, Name: m.Name, Email: m.Email, Role: m.Role, IsActive: m.IsActive})
+		res.Members = append(res.Members, memberResponse{ID: m.ID, Name: m.Name, Email: m.Email, Role: m.Role, IsActive: m.IsActive, CountsTowardSeats: m.CountsTowardSeats})
 	}
 	limited := o.Usage.Limits != nil
 	capOf := func(max int) *int {

@@ -12,7 +12,7 @@ import { useSubscriptionPlanStore } from "@/shared/stores/useSubscriptionPlanSto
 import { useAppsStore } from "@/modules/platform-admin/stores/useAppsStore";
 import { PlanTable } from "@/modules/platform-admin/components/PlanTable";
 import type { PlanFormValues } from "@/modules/platform-admin/schemas/plan.schema";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
+import { usePlanActiveActions } from "@/modules/platform-admin/hooks/usePlanActiveActions";
 
 /** The URL keeps the App filter (?aplikasi=), so the view survives a reload and the Back button. */
 const APP_PARAM = "aplikasi";
@@ -23,7 +23,6 @@ export default function PlanListPage() {
   const fetchPlans = useSubscriptionPlanStore((s) => s.fetchPlans);
   const createPlan = useSubscriptionPlanStore((s) => s.createPlan);
   const updatePlan = useSubscriptionPlanStore((s) => s.updatePlan);
-  const togglePlanActive = useSubscriptionPlanStore((s) => s.togglePlanActive);
   const apps = useAppsStore((s) => s.apps);
   const fetchApps = useAppsStore((s) => s.fetchApps);
 
@@ -83,14 +82,8 @@ export default function PlanListPage() {
     closeModal();
   }
 
-  async function handleToggleActive(planId: string) {
-    setActionError(null);
-    try {
-      await togglePlanActive(planId);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal mengubah status paket"));
-    }
-  }
+  // The store reloads the catalog after each change, so there is nothing else to refresh here.
+  const planState = usePlanActiveActions(() => undefined, setActionError);
 
   // Sections in the order of Manajemen Aplikasi, ElProof's own catalog first. With a filter there is one section,
   // even when it is empty; without one, an App with no plans yet has no section.
@@ -171,7 +164,7 @@ export default function PlanListPage() {
                 {isLoading ? "Memuat paket..." : "Belum ada paket untuk aplikasi ini."}
               </p>
             ) : (
-              <PlanTable plans={section.plans} onEdit={openEditModal} onToggleActive={(id) => void handleToggleActive(id)} />
+              <PlanTable plans={section.plans} onEdit={openEditModal} onActivate={(plan) => void planState.activate(plan)} onDeactivate={planState.askDeactivate} />
             )}
           </Card>
         ))
@@ -186,6 +179,7 @@ export default function PlanListPage() {
         apps={apps}
         defaultAppId={newPlanAppId}
       />
+      {planState.dialog}
     </div>
   );
 }

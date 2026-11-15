@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Pencil, Send, Zap, UserX, UserCheck, Download, ArrowUpRight } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
-import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
@@ -18,7 +17,7 @@ import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatfo
 import { useTenantActions } from "@/modules/platform-admin/hooks/useTenantActions";
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import type { TenantCreateFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
-import { TENANT_STATUS_FILTERS, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
+import { TENANT_FROZEN_FILTER, TENANT_FROZEN_LABEL, TENANT_STATUS_FILTERS, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
 import { formatDate } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { downloadFile } from "@/shared/lib/download";
@@ -158,10 +157,7 @@ export default function TenantListPage() {
       header: "Status",
       sortKey: "status",
       cell: (t) => (
-        <div className="flex flex-col items-start gap-1">
-          <TenantStatusBadge status={t.subscriptionStatus} />
-          {t.isSuspended && <Badge tone="danger">Dibekukan</Badge>}
-        </div>
+        <TenantStatusBadge status={t.subscriptionStatus} frozen={t.isSuspended} />
       ),
     },
     { id: "trial", header: "Masa coba berakhir", sortKey: "trialEndsAt", cell: (t) => (t.trialEndsAt ? formatDate(t.trialEndsAt) : <span className="text-muted-foreground">-</span>) },
@@ -231,6 +227,7 @@ export default function TenantListPage() {
               {TENANT_STATUS_LABEL[status]}
             </option>
           ))}
+          <option value={TENANT_FROZEN_FILTER}>{TENANT_FROZEN_LABEL}</option>
         </Select>
         <Select className="w-52" aria-label="Paket" value={list.filters.planId || "Semua"} onChange={(e) => list.setFilter("planId", e.target.value === "Semua" ? "" : e.target.value)}>
           <option value="Semua">Semua paket</option>

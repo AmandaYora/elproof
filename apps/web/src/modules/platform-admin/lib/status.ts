@@ -23,7 +23,13 @@ export const TENANT_STATUS_LABEL: Record<TenantSubscriptionStatus, string> = {
   expired: "Berakhir",
 };
 
-/** Statuses shown as filters on the tenant list, in lifecycle order. */
+/** A tenant frozen by the platform team: not a subscription status, shown instead of one while the freeze lasts (EP-09). */
+export const TENANT_FROZEN_LABEL = "Dibekukan";
+
+/** The tenant list's ?status= value for frozen tenants (the API's domain.FilterFrozen). */
+export const TENANT_FROZEN_FILTER = "frozen";
+
+/** Statuses shown as filters on the tenant list, in lifecycle order. A lifecycle filter never lists frozen tenants. */
 export const TENANT_STATUS_FILTERS: TenantSubscriptionStatus[] = [
   "trialing",
   "active",
