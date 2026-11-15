@@ -89,6 +89,10 @@ func BuildProjectActions(in ActionInput) []ProjectAction {
 		})
 	}
 	if d := daysBetween(in.Today, in.EventDate); d >= 0 && d <= vendorConfirmWindowDay {
+		when := "Acara H-" + strconv.Itoa(d)
+		if d == 0 {
+			when = "Acara hari ini" // not "H-0" (DESIGN.md §7: H-30, Hari H, H+3)
+		}
 		for _, e := range in.Engagement {
 			if !e.IsUnconfirmed() {
 				continue
@@ -100,7 +104,7 @@ func BuildProjectActions(in ActionInput) []ProjectAction {
 			items = append(items, ProjectAction{
 				Kind: ActionVendorUnconfirm, ID: "vendor-" + strconv.FormatInt(e.ID, 10), Tone: ActionToneWarning,
 				Title:  name + " belum terkonfirmasi",
-				Detail: "Acara H-" + strconv.Itoa(d) + ", status masih belum dipesan",
+				Detail: when + ", status masih belum dipesan",
 				Tab:    TabVendors,
 			})
 		}
@@ -111,7 +115,7 @@ func BuildProjectActions(in ActionInput) []ProjectAction {
 		}
 		items = append(items, ProjectAction{
 			Kind: ActionMilestoneLate, ID: "ms-" + strconv.FormatInt(m.ID, 10), Tone: ActionToneWarning,
-			Title: "Timeline \"" + m.Name + "\" lewat tenggat", Detail: "Target " + FormatDateID(m.TargetDate), Tab: TabMilestones,
+			Title: "Tahapan \"" + m.Name + "\" lewat tenggat", Detail: "Target " + FormatDateID(m.TargetDate), Tab: TabMilestones,
 		})
 	}
 	sort.SliceStable(items, func(i, j int) bool {

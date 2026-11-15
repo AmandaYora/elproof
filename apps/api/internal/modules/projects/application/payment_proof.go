@@ -108,7 +108,7 @@ func (p *ProofSupport) attach(ctx context.Context, t proofTarget, proofs []Resol
 			return nil, err
 		}
 		p.evidence.activity.Record(ctx, &t.ProjectID, domain.ActivityEvidenceUploaded, t.ActorStaffID, "evidence", formatID(e.ID), e.Name,
-			"Evidence diunggah: "+e.Name)
+			"Bukti diunggah: "+e.Name)
 		out = append(out, e)
 	}
 	if !fe.empty() {

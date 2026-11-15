@@ -11,7 +11,7 @@ import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import type { ProjectStatus } from "@/modules/projects/types";
 
@@ -94,7 +94,7 @@ export default function MyProjectsPage() {
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        <span className="text-[22px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-primary">{days >= 0 ? `H-${days}` : `H+${Math.abs(days)}`}</span>
+                        <span className="text-[22px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-primary">{formatDayCountdown(days)}</span>
                         <ProjectStatusBadge status={p.status} />
                       </div>
                     </div>

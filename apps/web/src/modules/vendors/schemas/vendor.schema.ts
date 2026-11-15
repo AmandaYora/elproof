@@ -18,7 +18,7 @@ export const vendorSchema = z.object({
   // "Resepsi Only" package preset (PLAN.md revisi-timeline-vendor-role-sales)
   // — same optional-at-DB convention as the two fields above; not required
   // even on create (only Akad/AkadResepsi are, per the "DATA VENDOR" slide).
-  priceResepsi: z.coerce.number().min(0, "Harga Resepsi tidak boleh kurang dari 0").optional().default(0),
+  priceResepsi: z.coerce.number().min(0, "Harga Resepsi saja tidak boleh kurang dari 0").optional().default(0),
   notes: z.string().optional().default(""),
 });
 
@@ -29,8 +29,8 @@ export type VendorFormValues = z.infer<typeof vendorSchema>;
 // tetap bisa diedit dengan field ini kosong.
 export const vendorCreateSchema = vendorSchema.extend({
   city: z.string().refine(isValidCity, "Pilih kota dari daftar yang tersedia"),
-  priceAkad: z.coerce.number().min(1, "Harga akad wajib diisi"),
-  priceAkadResepsi: z.coerce.number().min(1, "Harga akad+resepsi wajib diisi"),
+  priceAkad: z.coerce.number().min(1, "Isi Harga Akad lebih dari 0"),
+  priceAkadResepsi: z.coerce.number().min(1, "Isi Harga Akad + Resepsi lebih dari 0"),
 });
 
 export type VendorCreateFormValues = z.infer<typeof vendorCreateSchema>;

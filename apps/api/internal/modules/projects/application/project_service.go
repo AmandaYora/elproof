@@ -517,10 +517,10 @@ func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor
 			}
 		}
 		s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
-			"Project baru dibuat: "+p.Name)
+			"Proyek baru dibuat: "+p.Name)
 		if len(terms) > 0 {
 			s.activity.Record(ctx, &p.ID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(p.ID), p.Name,
-				"Jadwal pembayaran client diperbarui")
+				"Jadwal termin klien diperbarui")
 		}
 		return nil
 	})
@@ -757,10 +757,10 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 		if !fresh.IsArchived {
 			action = "dipulihkan dari arsip"
 		}
-		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectStatusChanged, actor.StaffID, "project", formatID(fresh.ID), fresh.Name, "Project "+action)
+		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectStatusChanged, actor.StaffID, "project", formatID(fresh.ID), fresh.Name, "Proyek "+action)
 	} else {
 		s.activity.Record(ctx, &fresh.ID, domain.ActivityProjectUpdated, actor.StaffID, "project", formatID(fresh.ID), fresh.Name,
-			"Informasi project diperbarui: "+ch.summary())
+			"Informasi proyek diperbarui: "+ch.summary())
 	}
 	return fresh, nil
 }
@@ -918,7 +918,7 @@ func (s *ProjectService) Transition(ctx context.Context, tenantID, id, actorStaf
 	}
 	p.Status = next
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
-		fmt.Sprintf("Status project diubah: %s → %s", projectStatusLabel(from), projectStatusLabel(next)))
+		fmt.Sprintf("Status proyek diubah: %s → %s", projectStatusLabel(from), projectStatusLabel(next)))
 	return s.afterWrite(ctx, tenantID, p), nil
 }
 
@@ -943,7 +943,7 @@ func (s *ProjectService) Cancel(ctx context.Context, tenantID, id, actorStaffID 
 	}
 	p.Status = domain.StatusCancelled
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectStatusChanged, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Project dibatalkan")
+		"Proyek dibatalkan")
 	return s.afterWrite(ctx, tenantID, p), nil
 }
 
@@ -1051,7 +1051,7 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 	}
 
 	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Project baru dibuat dari duplikasi project: "+source.Name)
+		"Proyek baru dibuat dari duplikat proyek: "+source.Name)
 	return p, nil
 }
 
@@ -1144,7 +1144,7 @@ func (s *ProjectService) CreateMilestone(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(m.ID), m.Name,
-		"Timeline project ditambahkan: "+m.Name)
+		"Tahapan proyek ditambahkan: "+m.Name)
 	return m, nil
 }
 
@@ -1215,7 +1215,7 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(fresh.ID), fresh.Name,
-		"Timeline project diperbarui: "+fresh.Name+" ("+ch.summary()+")")
+		"Tahapan proyek diperbarui: "+fresh.Name+" ("+ch.summary()+")")
 	return fresh, nil
 }
 
@@ -1249,7 +1249,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 		return err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", "", "",
-		"Urutan timeline diubah")
+		"Urutan tahapan diubah")
 	return nil
 }
 

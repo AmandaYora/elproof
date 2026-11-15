@@ -112,7 +112,7 @@ func (s *ClientPaymentService) Create(ctx context.Context, tenantID, projectID i
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran client dicatat")
+		"Pembayaran klien dicatat")
 	return p, nil
 }
 
@@ -180,7 +180,7 @@ func (s *ClientPaymentService) Patch(ctx context.Context, tenantID, projectID, i
 			return err
 		}
 		out = fresh
-		desc := "Pembayaran client diperbarui: " + ch.summary()
+		desc := "Pembayaran klien diperbarui: " + ch.summary()
 		if cleared {
 			desc += ". Verifikasi pembayaran dibatalkan karena data pembayaran diubah"
 		}
@@ -233,7 +233,7 @@ func (s *ClientPaymentService) Verify(ctx context.Context, projectID, id, actorS
 		return s.repo.FindByID(ctx, projectID, id)
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityPaymentUpdated, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-		"Pembayaran client diverifikasi")
+		"Pembayaran klien diverifikasi")
 	// The version after this write, not the one loaded before it (ADR-0036).
 	if fresh, err := s.repo.FindByID(ctx, projectID, id); err == nil && fresh != nil {
 		return fresh, nil
@@ -261,7 +261,7 @@ func (s *ClientPaymentService) AfterEvidenceRemoved(ctx context.Context, e domai
 	}
 	pid := e.ProjectID
 	s.activity.Record(ctx, &pid, domain.ActivityPaymentUpdated, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-		"Verifikasi pembayaran client dibatalkan karena bukti terakhir dihapus")
+		"Verifikasi pembayaran klien dibatalkan karena bukti terakhir dihapus")
 }
 
 // Delete soft-deletes the payment (ADR-0034): it disappears from the list, the
@@ -293,7 +293,7 @@ func (s *ClientPaymentService) Delete(ctx context.Context, tenantID, projectID, 
 		}
 		until = domain.RestorableUntil(now)
 		s.activity.Record(ctx, &projectID, domain.ActivityPaymentDeleted, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-			"Pembayaran client dihapus")
+			"Pembayaran klien dihapus")
 		return nil
 	})
 	return until, err
@@ -333,7 +333,7 @@ func (s *ClientPaymentService) Restore(ctx context.Context, tenantID, projectID,
 		p.DeletedAt = nil
 		restored = p
 		s.activity.Record(ctx, &projectID, domain.ActivityRestored, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-			"Pembayaran client dipulihkan")
+			"Pembayaran klien dipulihkan")
 		return nil
 	})
 	return restored, err
@@ -412,7 +412,7 @@ func (s *ClientPaymentService) CreateWithProof(ctx context.Context, tenantID, pr
 			return err
 		}
 		s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-			"Pembayaran client dicatat")
+			"Pembayaran klien dicatat")
 		ledger, terms, err := s.ledgerAndTerms(ctx, tenantID, projectID, today)
 		if err != nil {
 			return err

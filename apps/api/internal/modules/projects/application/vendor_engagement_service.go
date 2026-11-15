@@ -104,7 +104,7 @@ func (s *VendorEngagementService) Create(ctx context.Context, projectID int64, a
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityVendorAdded, actorStaffID, "project_vendor", formatID(pv.ID), input.Scope,
-		"Vendor ditambahkan ke project")
+		"Vendor ditambahkan ke proyek")
 	return pv, nil
 }
 
@@ -359,7 +359,7 @@ func (s *VendorEngagementService) CreateMilestone(ctx context.Context, projectID
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(m.ID), m.Name,
-		"Timeline vendor ditambahkan: "+m.Name)
+		"Tahapan vendor ditambahkan: "+m.Name)
 	return m, nil
 }
 
@@ -431,6 +431,6 @@ func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID,
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "vendor_milestone", formatID(fresh.ID), fresh.Name,
-		"Timeline vendor diperbarui: "+ch.summary())
+		"Tahapan vendor diperbarui: "+ch.summary())
 	return fresh, nil
 }

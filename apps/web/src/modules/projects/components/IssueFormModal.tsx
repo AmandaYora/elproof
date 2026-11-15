@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ISSUE_STATUS_LABELS } from "@/shared/lib/labels";
+import { ISSUE_IMPACT_LABELS, ISSUE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
@@ -152,7 +152,7 @@ export function IssueFormModal({
         <Field label="Dampak" required name="impact" error={errors.impact}>
           <Select value={values.impact} onChange={(e) => set("impact", e.target.value as IssueImpact)}>
             {ISSUE_IMPACT_OPTIONS.map((i) => (
-              <option key={i} value={i}>{i}</option>
+              <option key={i} value={i}>{ISSUE_IMPACT_LABELS.staff[i]}</option>
             ))}
           </Select>
         </Field>

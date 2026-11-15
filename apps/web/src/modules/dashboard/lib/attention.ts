@@ -1,7 +1,8 @@
 import type { DashboardStats } from "@/modules/dashboard/types";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { formatDate, formatCurrency } from "@/shared/lib/formatters";
+import { formatDate, formatCurrency, formatDayCountdown } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { ISSUE_IMPACT_LABELS } from "@/shared/lib/labels";
 
 export type AttentionTone = "danger" | "warning" | "info";
 
@@ -35,7 +36,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       id: `issue-${issue.id}`,
       tone: issue.impact === "Critical" || issue.impact === "High" ? "danger" : "warning",
       category: "Kendala aktif",
-      title: `Kendala ${issue.impact}: ${issue.title}`,
+      title: `Kendala dampak ${ISSUE_IMPACT_LABELS.staff[issue.impact].toLowerCase()}: ${issue.title}`,
       description: `${issue.projectName}${issue.vendorName ? ` — ${issue.vendorName}` : ""}`,
       to: ROUTE_PATHS.projectDetail(issue.projectId, "vendor"),
     });
@@ -81,11 +82,14 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
 
   for (const project of stats.nearDDayProjects) {
     const d = daysUntil(project.eventDate);
+    // The server lists only events still ahead; the browser's "today" can be a day later (time zone), and an event
+    // that has passed is not "approaching" any more.
+    if (d < 0) continue;
     items.push({
       id: `dday-${project.id}`,
       tone: d <= 7 ? "danger" : "info",
       category: "Mendekati hari H",
-      title: `H-${d} menuju hari H`,
+      title: d === 0 ? "Hari ini hari H" : `${formatDayCountdown(d)} menuju hari H`,
       description: `${project.name} · ${formatDate(project.eventDate)}`,
       to: ROUTE_PATHS.projectDetail(project.id),
     });
@@ -96,8 +100,8 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       id: `lag-${row.project.id}`,
       tone: "warning",
       category: "Progres tertinggal",
-      title: "Progress persiapan tertinggal dari rencana",
-      description: `${row.project.name} · ${row.overallPercent}% tahapan selesai, H-${daysUntil(row.project.eventDate)}`,
+      title: "Progres persiapan tertinggal dari rencana",
+      description: `${row.project.name} · ${row.overallPercent}% tahapan selesai, ${formatDayCountdown(daysUntil(row.project.eventDate))}`,
       to: ROUTE_PATHS.projectDetail(row.project.id),
     });
   }
@@ -110,7 +114,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       tone: "warning",
       category: "Vendor belum pasti",
       title: `${v.vendorName} belum terkonfirmasi`,
-      description: `${v.projectName} · acara ${formatDate(v.eventDate)} (H-${Math.max(daysUntil(v.eventDate), 0)})`,
+      description: `${v.projectName} · acara ${formatDate(v.eventDate)} (${formatDayCountdown(daysUntil(v.eventDate))})`,
       to: ROUTE_PATHS.projectDetail(v.projectId, "vendor"),
     });
   }

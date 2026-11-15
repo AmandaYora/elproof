@@ -62,6 +62,16 @@ export function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((to.getTime() - from.getTime()) / msPerDay);
 }
 
+/**
+ * Distance to a day as DESIGN.md §7 writes it: "H-5" before, "Hari H" on the day, "H+3" after. The only place
+ * countdown text is built, so a past day can never read "H--3". `todayLabel` replaces "Hari H" where the day is
+ * not an event (e.g. "hari ini" for a subscription that ends today).
+ */
+export function formatDayCountdown(days: number, todayLabel = "Hari H"): string {
+  if (days === 0) return todayLabel;
+  return days > 0 ? `H-${days}` : `H+${Math.abs(days)}`;
+}
+
 export function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();

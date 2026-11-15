@@ -19,7 +19,7 @@ import { useTenantActions } from "@/modules/platform-admin/hooks/useTenantAction
 import { usePlatformCan } from "@/modules/platform-admin/lib/capabilities";
 import type { TenantCreateFormValues } from "@/modules/platform-admin/schemas/tenant.schema";
 import { TENANT_STATUS_FILTERS, TENANT_STATUS_LABEL } from "@/modules/platform-admin/lib/status";
-import { formatDate } from "@/shared/lib/formatters";
+import { formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { downloadFile } from "@/shared/lib/download";
 import { toast } from "@/shared/stores/useToastStore";
@@ -178,7 +178,7 @@ export default function TenantListPage() {
             {t.lifecycle?.isTrial && <span className="ml-1 text-[12px] text-muted-foreground">(masa coba)</span>}
             {d !== null && (
               <span className={`ml-1.5 text-[12px] font-semibold ${d < 0 ? "text-danger-text" : "text-muted-foreground"}`}>
-                ({d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`})
+                ({formatDayCountdown(d, "hari ini")})
               </span>
             )}
           </>

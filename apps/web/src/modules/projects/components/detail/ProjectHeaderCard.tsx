@@ -15,7 +15,7 @@ import type { ProjectFormValues } from "@/modules/projects/schemas/project.schem
 import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { toast } from "@/shared/stores/useToastStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -240,7 +240,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <InfoField label="Tanggal acara" value={formatDate(project.eventDate)} />
           <InfoField
             label="Countdown"
-            value={isOpenProject ? (d >= 0 ? `H-${d}` : `H+${Math.abs(d)}`) : project.status === "Completed" ? "Selesai" : "Dibatalkan"}
+            value={isOpenProject ? formatDayCountdown(d) : project.status === "Completed" ? "Selesai" : "Dibatalkan"}
             emphasize
           />
           <InfoField label="Tanggal booking" value={formatDate(project.prepStartDate)} />

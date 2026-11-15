@@ -149,7 +149,7 @@ func (s *EvidenceService) Delete(ctx context.Context, projectID, id, actorStaffI
 	}
 	s.DeleteStorageObjects(ctx, []domain.Evidence{*e})
 	s.activity.Record(ctx, &projectID, domain.ActivityEvidenceDeleted, actorStaffID, "evidence", formatID(e.ID), e.Name,
-		"Evidence dihapus: "+e.Name)
+		"Dokumen dihapus: "+e.Name)
 	for _, o := range s.removed {
 		o.AfterEvidenceRemoved(ctx, *e, actorStaffID)
 	}
@@ -314,7 +314,7 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityEvidenceUploaded, actorStaffID, "evidence", formatID(e.ID), e.Name,
-		"Evidence diunggah: "+e.Name)
+		"Dokumen diunggah: "+e.Name)
 	return e, nil
 }
 

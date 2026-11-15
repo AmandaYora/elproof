@@ -19,7 +19,7 @@ import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nama vendor", categoryId: "Kategori", picName: "Nama PIC", phone: "No. telepon", email: "Email", city: "Kota",
-  priceAkad: "Harga akad", priceAkadResepsi: "Harga akad + resepsi", priceResepsi: "Harga resepsi saja", address: "Alamat", socialMedia: "Sosial media",
+  priceAkad: "Harga Akad", priceAkadResepsi: "Harga Akad + Resepsi", priceResepsi: "Harga Resepsi saja", address: "Alamat", socialMedia: "Sosial media",
 };
 
 function toFormValues(vendor?: Vendor, defaultCategoryId = ""): VendorFormValues {
@@ -168,10 +168,10 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
         <Field label="Harga Akad (Rp)" required={!isEditing} name="priceAkad" error={errors.priceAkad}>
           <CurrencyInput value={values.priceAkad} onChange={(n) => set("priceAkad", n)} />
         </Field>
-        <Field label="Harga Akad+Resepsi (Rp)" required={!isEditing} name="priceAkadResepsi" error={errors.priceAkadResepsi}>
+        <Field label="Harga Akad + Resepsi (Rp)" required={!isEditing} name="priceAkadResepsi" error={errors.priceAkadResepsi}>
           <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} />
         </Field>
-        <Field label="Harga Resepsi Only (Rp)" name="priceResepsi" error={errors.priceResepsi}>
+        <Field label="Harga Resepsi saja (Rp)" name="priceResepsi" error={errors.priceResepsi}>
           <CurrencyInput value={values.priceResepsi} onChange={(n) => set("priceResepsi", n)} />
         </Field>
         <div className="sm:col-span-2">

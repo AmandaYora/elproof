@@ -211,7 +211,7 @@ export default function VendorListPage() {
       ),
     },
     { id: "city", header: "Kota", sortKey: "city", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
-    { id: "price", header: "Harga akad", sortKey: "priceAkad", align: "right", cell: (v) => (v.priceAkad ? formatCurrency(v.priceAkad) : "-") },
+    { id: "price", header: "Harga Akad", sortKey: "priceAkad", align: "right", cell: (v) => (v.priceAkad ? formatCurrency(v.priceAkad) : "-") },
     { id: "status", header: "Status", sortKey: "isActive", cell: (v) => <VendorStatusBadge isActive={v.isActive} /> },
   ];
 
