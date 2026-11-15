@@ -17,6 +17,7 @@ import { GoogleSignInButton } from "@/shared/components/auth/GoogleSignInButton"
 import { landingPathFor } from "@/shared/lib/auth-actions";
 import type { GoogleAuthOutcome, GoogleSignupState } from "@/modules/auth/types";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 // The sign-in screen uses the public site's surface (AuthSplitLayout, ADR-0038)
 // and the one ElProof palette (ADR-0039).
@@ -36,7 +37,7 @@ const LINK_FIELDS = (key: string) => key === "password";
 const MFA_FIELDS = (key: string) => key === "code";
 
 export default function LoginPage() {
-  usePageMeta({ title: "Masuk", description: "Masuk ke ElProof sebagai tim WO, klien, atau admin platform.", noindex: true });
+  usePageMeta(PUBLIC_PAGES.login);
   const navigate = useNavigate();
   // Three small forms, one per step; the page shows the message of the one on screen.
   const loginForm = useZodForm({ schema: loginSchema, initial: { username: "", password: "" } });

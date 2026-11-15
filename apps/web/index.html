@@ -11,15 +11,16 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Portal Klien" />
+    <!-- page-meta: the app's defaults. scripts/prerender.mjs replaces this block with each public page's own tags
+         (ADR-0043) and usePageMeta keeps them in step while the app runs. -->
     <title>ElProof — Portal transparansi klien</title>
-    <!-- Defaults for crawlers that do not run JavaScript; each page refines
-         them at runtime with usePageMeta. -->
     <meta name="description" content="ElProof membantu wedding organizer mengelola proyek, vendor, dan pembayaran, sambil memberi klien portal untuk memantau persiapan pernikahan mereka." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ElProof" />
     <meta property="og:title" content="ElProof — Portal transparansi klien" />
     <meta property="og:description" content="Transparansi persiapan pernikahan Anda, dari WO hingga hari H." />
     <meta property="og:image" content="/icons/icon-512.png" />
+    <!-- /page-meta -->
   </head>
   <body>
     <div id="root"></div>

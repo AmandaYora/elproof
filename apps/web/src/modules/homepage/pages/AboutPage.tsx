@@ -5,6 +5,7 @@ import { ctaClass } from "@/modules/homepage/components/cta";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
 const H2 = "text-[26px] leading-[1.15] font-extrabold tracking-[-0.03em] md:text-[32px]";
 
@@ -24,11 +25,7 @@ const PRINCIPLES = [
 ];
 
 export default function AboutPage() {
-  usePageMeta({
-    title: "Tentang kami",
-    description:
-      "Kenapa ElProof dibuat: agar wedding organizer bisa menunjukkan pembayaran, vendor, dan progres persiapan kepada klien, lengkap dengan buktinya.",
-  });
+  usePageMeta(PUBLIC_PAGES.about);
 
   return (
     <article className="py-14 md:py-24">
