@@ -94,6 +94,10 @@ type ProjectMilestone struct {
 	Status        MilestoneStatus
 	TargetDate    time.Time
 	CompletedDate *time.Time
+	// DaysBeforeEvent is the Jadwal bawaan offset the target follows (H-14 = 14,
+	// H+3 = -3; see MilestoneTarget). nil: the date is fixed — the step was
+	// added by hand or its target was set by hand.
+	DaysBeforeEvent *int
 
 	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
 	// the ETag / `updatedAt` of ADR-0036.

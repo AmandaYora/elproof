@@ -25,11 +25,16 @@ type MilestoneLike struct {
 // IsMilestoneOverdue takes "now" explicitly (asOf) rather than reading the
 // wall clock — see ADR-0007: the caller (application layer) is responsible
 // for supplying the single, consistent "now" for a whole computation.
+//
+// Late means the Indonesian calendar day of asOf is strictly after the target
+// day: a step due today is not late yet (dates are compared, not instants —
+// comparing the target's midnight with the current time made every step due
+// today count as late).
 func IsMilestoneOverdue(status MilestoneStatus, targetDate time.Time, asOf time.Time) bool {
 	if status == MilestoneCompleted || status == MilestoneCancelled {
 		return false
 	}
-	return targetDate.Before(asOf)
+	return dayOf(targetDate).Before(TodayWIB(asOf))
 }
 
 func ComputeMilestoneStats(milestones []MilestoneLike, asOf time.Time) MilestoneStats {

@@ -88,3 +88,17 @@ func (h *Handler) replacePaymentTerms(w http.ResponseWriter, r *http.Request, cl
 	}
 	response.OK(w, "Jadwal pembayaran disimpan", toPaymentTermResponses(list))
 }
+
+// recalculatePaymentTerms (POST .../payment-terms/recalculate, EP-05) fits the
+// schedule to the project's current contract value: installments with money on
+// them keep their amount, the unpaid ones share the rest in proportion (whole
+// rupiah, remainder on the last). No body. A schedule that cannot be fitted is a
+// 422 on "terms".
+func (h *Handler) recalculatePaymentTerms(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	list, err := h.terms.Recalculate(r.Context(), claims.tenantID, projectID, claims.staffID, nowWIB())
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Jadwal termin dihitung ulang", toPaymentTermResponses(list))
+}

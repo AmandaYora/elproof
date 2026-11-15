@@ -88,7 +88,9 @@ func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Conte
 		JOIN projects p ON p.id = pv.project_id
 		WHERE p.tenant_id = ? AND vm.target_date < ? AND vm.status NOT IN ('Completed','Cancelled') AND pv.deleted_at IS NULL
 		ORDER BY vm.target_date ASC`,
-		tenantID, asOf,
+		// Late = strictly after the target day, compared as WIB dates (a DATE column
+		// against a timestamp counted every step due today as late).
+		tenantID, domain.TodayWIB(asOf).Format("2006-01-02"),
 	)
 	if err != nil {
 		return nil, err

@@ -499,7 +499,7 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 	}
-	m, err := h.vendors.PatchMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, patch, expected)
+	m, err := h.vendors.PatchMilestone(r.Context(), projectID, pvID, milestoneID, claims.staffID, patch, expected, nowWIB())
 	if err != nil {
 		writePatchError(w, err, func(cur any) (any, error) {
 			return toVendorMilestoneResponse(*cur.(*domain.VendorMilestone)), nil

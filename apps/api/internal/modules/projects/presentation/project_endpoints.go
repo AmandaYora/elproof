@@ -635,7 +635,7 @@ func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	m, err := h.projects.PatchMilestone(r.Context(), claims.tenantID, projectID, milestoneID, claims.staffID, patch, expected)
+	m, err := h.projects.PatchMilestone(r.Context(), claims.tenantID, projectID, milestoneID, claims.staffID, patch, expected, nowWIB())
 	if err != nil {
 		writePatchError(w, err, func(cur any) (any, error) {
 			return h.milestoneItem(r.Context(), claims, projectID, *cur.(*domain.ProjectMilestone))

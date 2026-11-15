@@ -157,6 +157,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listPaymentTerms(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "payment-terms" && r.Method == http.MethodPut:
 		h.replacePaymentTerms(w, r, claims, projectID)
+	case len(rest) == 2 && rest[0] == "payment-terms" && rest[1] == "recalculate" && r.Method == http.MethodPost:
+		h.recalculatePaymentTerms(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "closing-checklist" && r.Method == http.MethodGet:
 		h.closingChecklist(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "duplicate" && r.Method == http.MethodPost:

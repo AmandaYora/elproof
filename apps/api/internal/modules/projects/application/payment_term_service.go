@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -99,6 +100,59 @@ func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, a
 	s.activity.Record(ctx, &projectID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(projectID), p.Name,
 		"Jadwal pembayaran client diperbarui")
 	return s.progress(ctx, projectID, today)
+}
+
+// Recalculate fits the schedule to the project's current contract value after
+// that value changed (EP-05), without touching money already received: the
+// installments with any payment on them keep their amount, the ones with nothing
+// paid share what is left in proportion to their current amounts, in whole
+// rupiah with the remainder on the last (domain.RecalculateTerms). It is judged
+// against the payments as they are now, which is why it is done here and not by
+// the browser sending a rebuilt schedule. A schedule that cannot be fitted is a
+// 422 on "terms" saying why and what to do instead.
+func (s *PaymentTermService) Recalculate(ctx context.Context, tenantID, projectID, actorStaffID int64, today time.Time) ([]domain.TermProgress, error) {
+	p, err := s.projects.Get(ctx, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	terms, err := s.repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	payments, err := s.clientPayments.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	next, err := domain.RecalculateTerms(terms, appliedFromPayments(payments), p.ContractValue)
+	if err != nil {
+		msg := recalcRefusal(err)
+		return nil, apperror.Validation(msg, map[string][]string{"terms": {msg}})
+	}
+	for i := range next {
+		next[i].ID = 0
+		next[i].ProjectID = projectID
+	}
+	if err := s.repo.ReplaceAll(ctx, projectID, next); err != nil {
+		return nil, err
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(projectID), p.Name,
+		"Jadwal pembayaran client dihitung ulang mengikuti nilai kontrak "+formatRupiah(p.ContractValue))
+	return s.progressWith(ctx, projectID, payments, today)
+}
+
+// recalcRefusal says, in the person's words, why the schedule cannot follow the
+// contract value and what to do instead.
+func recalcRefusal(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrRecalcNoContract):
+		return "Isi nilai kontrak proyek dulu, lalu hitung ulang termin."
+	case errors.Is(err, domain.ErrRecalcNoTerms):
+		return "Belum ada jadwal termin untuk dihitung ulang."
+	case errors.Is(err, domain.ErrRecalcAllPaid):
+		return "Semua termin sudah ada pembayarannya, jadi tidak ada yang bisa dihitung ulang. Ubah jadwal termin secara manual."
+	default:
+		return "Nilai kontrak lebih kecil dari termin yang sudah dibayar. Periksa nilai kontrak atau ubah jadwal termin secara manual."
+	}
 }
 
 // buildTerms validates every row and reports every problem at once, keyed by
