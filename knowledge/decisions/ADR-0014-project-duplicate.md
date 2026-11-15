@@ -44,6 +44,10 @@ afterward, the same way they'd edit any other field. This was a deliberate simpl
 (the alternative — requiring a new event date upfront and recomputing every downstream date's
 offset — was considered and explicitly not chosen) rather than an oversight.
 
+*Amended by ADR-0042:* a Timeline step that follows the event date (`daysBeforeEvent` set — a step
+seeded from the Jadwal bawaan and never dated by hand) keeps its offset in the copy and is dated from
+the new project's own event and booking dates. Steps dated by hand are still copied verbatim.
+
 One field is *not* "copied verbatim" despite this: `ProjectVendor.EventDate` is a denormalized
 mirror of the parent project's own event date (every other creation path sets it that way — see
 `useProjectStore.ts`'s `vendorEngagementInputBody`, which always fills it from
