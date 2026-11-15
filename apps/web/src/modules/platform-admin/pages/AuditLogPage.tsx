@@ -126,8 +126,11 @@ export default function AuditLogPage() {
       primary: true,
       cell: (e) => (
         <>
-          <span className="block font-medium text-text-primary">{e.action}</span>
-          <span className="block max-w-xs truncate font-mono text-[11.5px] font-normal text-muted-foreground" title={e.path}>{e.path}</span>
+          <span className="block font-medium text-text-primary">{e.description || e.action}</span>
+          {/* The raw endpoint stays visible for technical staff (EP-16). */}
+          <span className="block max-w-xs truncate font-mono text-[11.5px] font-normal text-muted-foreground" title={e.path}>
+            {e.description ? e.action : e.path}
+          </span>
         </>
       ),
     },

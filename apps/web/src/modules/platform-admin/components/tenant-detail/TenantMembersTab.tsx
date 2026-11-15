@@ -13,8 +13,15 @@ export function TenantMembersTab({ members }: { members: TenantMember[] }) {
       </Card>
     );
   }
+  // The same definition as the Pemakaian tab and the trial cap: active members other than the Owner (EP-12).
+  const seats = members.filter((m) => m.countsTowardSeats).length;
+  const active = members.filter((m) => m.isActive).length;
   return (
     <Card>
+      <p className="border-b border-border-light px-5 py-3 text-[13px] text-text-secondary">
+        <span className="font-semibold text-text-primary">{active} aktif</span>, termasuk Owner. Yang dihitung untuk batas anggota tim:{" "}
+        <span className="font-semibold text-text-primary">{seats} anggota tim aktif selain Owner</span>.
+      </p>
       <Table>
         <THead>
           <TR>
@@ -29,7 +36,10 @@ export function TenantMembersTab({ members }: { members: TenantMember[] }) {
             <TR key={m.id}>
               <TD className="font-semibold text-text-primary">{m.name}</TD>
               <TD>{m.email}</TD>
-              <TD>{m.role}</TD>
+              <TD>
+                {m.role}
+                {m.isActive && !m.countsTowardSeats && <span className="block text-[12px] text-muted-foreground">Tidak dihitung untuk batas</span>}
+              </TD>
               <TD>
                 <Badge tone={m.isActive ? "success" : "neutral"}>{m.isActive ? "Aktif" : "Nonaktif"}</Badge>
               </TD>

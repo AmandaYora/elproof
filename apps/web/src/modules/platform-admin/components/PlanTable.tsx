@@ -9,11 +9,13 @@ import { formatCurrency } from "@/shared/lib/formatters";
 interface PlanTableProps {
   plans: SubscriptionPlan[];
   onEdit: (plan: SubscriptionPlan) => void;
-  onToggleActive: (planId: string) => void;
+  onActivate: (plan: SubscriptionPlan) => void;
+  /** Asks for confirmation first (the page opens a ConfirmDialog), like Voucher. */
+  onDeactivate: (plan: SubscriptionPlan) => void;
 }
 
 // One table per App section (ADR-0040): every plan belongs to exactly one App.
-export function PlanTable({ plans, onEdit, onToggleActive }: PlanTableProps) {
+export function PlanTable({ plans, onEdit, onActivate, onDeactivate }: PlanTableProps) {
   return (
     <>
       <CardList
@@ -34,11 +36,11 @@ export function PlanTable({ plans, onEdit, onToggleActive }: PlanTableProps) {
               <CardListField label="Fitur" value={`${plan.features.length} fitur`} />
             </div>
             <div className="flex items-center gap-1.5 pt-1">
-              <IconActionButton icon={Pencil} label="Ubah Paket" tone="neutral" onClick={() => onEdit(plan)} />
+              <IconActionButton icon={Pencil} label={`Ubah paket ${plan.name}`} tone="neutral" onClick={() => onEdit(plan)} />
               {plan.isActive ? (
-                <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => onToggleActive(plan.id)} />
+                <IconActionButton icon={Ban} label={`Nonaktifkan paket ${plan.name}`} tone="danger" onClick={() => onDeactivate(plan)} />
               ) : (
-                <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => onToggleActive(plan.id)} />
+                <IconActionButton icon={CheckCircle2} label={`Aktifkan paket ${plan.name}`} tone="success" onClick={() => onActivate(plan)} />
               )}
             </div>
           </>
@@ -72,11 +74,11 @@ export function PlanTable({ plans, onEdit, onToggleActive }: PlanTableProps) {
                 <TD>{plan.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}</TD>
                 <TD>
                   <div className="flex items-center gap-1.5">
-                    <IconActionButton icon={Pencil} label="Ubah Paket" tone="neutral" onClick={() => onEdit(plan)} />
+                    <IconActionButton icon={Pencil} label={`Ubah paket ${plan.name}`} tone="neutral" onClick={() => onEdit(plan)} />
                     {plan.isActive ? (
-                      <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => onToggleActive(plan.id)} />
+                      <IconActionButton icon={Ban} label={`Nonaktifkan paket ${plan.name}`} tone="danger" onClick={() => onDeactivate(plan)} />
                     ) : (
-                      <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => onToggleActive(plan.id)} />
+                      <IconActionButton icon={CheckCircle2} label={`Aktifkan paket ${plan.name}`} tone="success" onClick={() => onActivate(plan)} />
                     )}
                   </div>
                 </TD>

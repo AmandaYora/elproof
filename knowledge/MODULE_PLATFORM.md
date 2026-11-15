@@ -77,7 +77,8 @@ the sibling definition).
   recorded — the first transaction row a tenant ever gets is whichever real subscription event
   happens first: the Owner's own `Pay`, or a superadmin's `ActivateSubscription`.
 - **Suspend/reactivate** (`POST /tenants/{id}/toggle-suspension`) is a single toggle, not two
-  separate actions.
+  separate actions. It changes only `is_suspended`; how metrics, filters and the export treat a frozen tenant
+  is in §10 (EP-09).
 - **Reset credential** (`POST /tenants/{id}/reset-credential`) resets the Owner's login via
   `identity.ResetPasswordByUsername` — looked up by username (the one value `tenants` and
   `credentials` share as plain, unenforced values, not a foreign key).
@@ -162,9 +163,22 @@ Files: `domain/console.go`, `domain/platform_metrics.go`, `application/console_s
   tenants' plan price / plan months, trial conversion = trials that ended in the last 30 days and became paid,
   churn = paid tenants that entered read-only in the window / paid tenants at its start. Free grants are
   excluded via `FreeGrantTenantIDs`. Revenue comes from `billing.PaidSince`.
+- **Frozen tenants (EP-09)**: a freeze (`is_suspended`, Super Admin's "Bekukan") is reversible, so it never
+  touches the subscription dates or `subscription_status`; instead every reader treats frozen as its own state.
+  `ComputePlatformMetrics` counts a frozen tenant only in `Frozen` and `TotalTenants` (not in any lifecycle count,
+  paying tenants, MRR/ARPA, churn, new paid, trials or the attention lists; ledger revenue it already paid stays);
+  the tenant list's lifecycle `?status=` filters add `is_suspended = FALSE` and `?status=frozen`
+  (`domain.FilterFrozen`) lists frozen tenants; the CSV writes "Dibekukan"; the console shows "Dibekukan" instead
+  of the status badge, with the kept subscription named ("Langganan tersimpan"). Unfreezing puts the tenant back
+  exactly where its dates say. Unit tests: `TestMetricsFrozenTenantIsNotActiveOrPaying`, `TestTenantWhereStatusAndFrozen`, `TestExportStatus`.
 - **Tenant 360°**: `GET /console/tenants/{id}/overview`, `notes`, `data-requests`, `support`; the member list
   comes from `staff.ListMembers`. Tenant list filters (`search`, `status`, `planId`, `source`) are applied in
   SQL by `tenantWhere`; `GET /tenants/export` reuses them.
+- **Seats (EP-12)**: one definition, owned by `staff` — `StaffMember.CountsTowardSeats()`: active and not the
+  Owner (whether the member has signed in does not matter). The trial cap (`maxStaff`, "Anggota tim selain
+  Owner"), the overview's `staff.used` (`staff.CountActiveStaff`, same rule in SQL) and the Pengguna tab's count
+  (`members[].countsTowardSeats`) all use it; the Pemakaian tab labels it "Anggota tim aktif selain Owner" and the
+  Pengguna tab shows both "N aktif, termasuk Owner" and the seat count. Paid plans have no seat limit today (K6).
 - **Support sessions**: see ADR-0030. `ConsoleService.StartSupportSession` checks the active grant,
   validates the reason, finds the Owner through `staff.FindOwner`, records the session, then asks
   `identity.IssueSupportToken` for the token; if that fails the session row is deleted again. The Owner
@@ -174,7 +188,11 @@ Files: `domain/console.go`, `domain/platform_metrics.go`, `application/console_s
   `SavePolicy` writes, applies it to `domain.SetSubscriptionPolicy` and re-runs the status sweep so the cached `subscription_status` filter agrees. Callers read it only through
   `domain.CurrentSubscriptionPolicy()`.
 - **Audit**: platform routes are wrapped in `AuditTrail`; exports write their own record through
-  `SetAuditRecorder`.
+  `SetAuditRecorder`. The Audit Log reads as sentences: `audit/domain.Describe(method, path)` (computed when
+  read, so old rows too; an exact table for the console's actions plus a resource-noun rule for WO routes) fills
+  `description`; an unknown route gives `""` and the console shows the raw `action`, which stays visible as the
+  secondary line either way (EP-16). A toggle route cannot tell the direction, so it reads "Menonaktifkan atau
+  mengaktifkan …"; names are not resolved (ids only).
 - **Login photos**: `PUT /console/login-slides/{index}` (Super Admin) replaces one of the three fixed slots;
   the image is decoded, flattened to JPEG and compressed.
 - **Trends and names (Fase 7)**: `GET /platform/trends` (`domain.ComputeTrends`, pure and tested, buckets in

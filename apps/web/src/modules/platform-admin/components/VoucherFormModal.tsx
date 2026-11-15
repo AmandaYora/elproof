@@ -13,6 +13,7 @@ import { appLabel, ELPROOF_APP_ID, type SubscriptionPlan } from "@/shared/data/s
 import { voucherSchema, type VoucherFormValues } from "@/modules/platform-admin/schemas/voucher.schema";
 import type { PaymentApp } from "@/modules/platform-admin/stores/useAppsStore";
 import type { Voucher, VoucherBody } from "@/modules/platform-admin/stores/useVoucherStore";
+import { bigOpenEndedDiscount } from "@/modules/platform-admin/lib/vouchers";
 
 const FIELD_LABELS: Record<string, string> = {
   code: "Kode",
@@ -134,6 +135,13 @@ export function VoucherFormModal({ open, onClose, onSubmit, initialVoucher, onSt
   const chosenPlan = plans.find((p) => p.id === values.planId);
   const isPercent = values.discountType === "percent";
 
+  // A big discount with no end date or no quota is saved only after an explicit yes (EP-17). Any change to what makes it
+  // risky asks again.
+  const bigDiscount = bigOpenEndedDiscount(values, chosenPlan?.price);
+  const [bigDiscountAck, setBigDiscountAck] = useState(false);
+  const bigAckRef = useRef<HTMLInputElement>(null);
+  useEffect(() => setBigDiscountAck(false), [bigDiscount, open]);
+
   function chooseApp(appId: string) {
     if (appId === values.appId) return;
     set("appId", appId);
@@ -142,6 +150,11 @@ export function VoucherFormModal({ open, onClose, onSubmit, initialVoucher, onSt
 
   const submit = form.handleSubmit(
     async (parsed) => {
+      if (bigDiscount && !bigDiscountAck) {
+        form.setFormError("Potongan besar ini tanpa batas. Periksa lagi, lalu centang konfirmasi di bawah sebelum menyimpan.");
+        bigAckRef.current?.focus();
+        return;
+      }
       try {
         await onSubmit(toVoucherBody(parsed));
       } catch (err) {
@@ -319,6 +332,22 @@ export function VoucherFormModal({ open, onClose, onSubmit, initialVoucher, onSt
             </span>
           </label>
         </div>
+        {bigDiscount && (
+          <div role="status" className="flex flex-col gap-2 rounded-md border border-warning/40 bg-warning-soft px-3.5 py-3 text-[13px] text-warning-text sm:col-span-2">
+            <p className="font-semibold">{bigDiscount}</p>
+            <p>Siapa pun yang tahu kodenya bisa terus memakainya. Isi tanggal akhir atau kuota total bila ini tidak disengaja.</p>
+            <label className="flex items-start gap-2.5 font-medium text-foreground">
+              <input
+                ref={bigAckRef}
+                type="checkbox"
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+                checked={bigDiscountAck}
+                onChange={(e) => setBigDiscountAck(e.target.checked)}
+              />
+              Saya sudah memeriksa dan memang ingin menyimpan potongan ini tanpa batas
+            </label>
+          </div>
+        )}
       </form>
     </Modal>
   );

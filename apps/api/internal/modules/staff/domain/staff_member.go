@@ -29,3 +29,13 @@ type StaffMember struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+// CountsTowardSeats is the one definition of a seat (EP-12): an active member
+// other than the Owner. The trial cap (maxStaff, "Anggota tim selain Owner"),
+// the usage the Platform Console and the onboarding checklist show, and the
+// member list's count all use it; MySQLStaffRepository.CountActiveNonOwner is
+// the same rule in SQL (`is_active = TRUE AND role <> 'Owner'`). Whether the
+// member has signed in yet does not matter.
+func (m StaffMember) CountsTowardSeats() bool {
+	return m.IsActive && m.Role != RoleOwner
+}

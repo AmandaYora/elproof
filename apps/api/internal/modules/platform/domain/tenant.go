@@ -74,12 +74,20 @@ func (d BusinessDetails) HasBank() bool {
 // TenantFilter narrows the Platform Console's tenant list.
 type TenantFilter struct {
 	Search string
-	// Status is the stored subscription status (refreshed hourly by the sweeper).
+	// Status is the stored subscription status (refreshed hourly by the sweeper),
+	// or FilterFrozen. A lifecycle status never matches a frozen tenant: frozen
+	// tenants are only listed under FilterFrozen (EP-09), the same way the
+	// Ringkasan counts them.
 	Status string
 	PlanID *int64
 	// Source is "self_service" or "platform" (how the workspace came to exist).
 	Source string
 }
+
+// FilterFrozen is the TenantFilter.Status value for tenants frozen by the
+// platform team (Tenant.IsSuspended). It is not a subscription status: the
+// subscription dates of a frozen tenant are kept so unfreezing restores it.
+const FilterFrozen = "frozen"
 
 type SignupSource string
 

@@ -58,7 +58,7 @@ export function TenantActivityTab({ tenantId }: { tenantId: string }) {
           {entries.map((e) => (
             <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-medium text-text-primary">{e.action}</span>
+                <span className="block text-[13.5px] font-medium text-text-primary" title={e.action}>{e.description || e.action}</span>
                 <span className="block text-[12.5px] text-text-secondary">
                   {ACTOR_LABEL[e.actorType] ?? e.actorType}
                   {e.actorRole ? `, ${e.actorRole}` : ""} · {formatDateTime(e.occurredAt)}
