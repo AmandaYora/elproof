@@ -1,6 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { API } from "@/shared/services/api-endpoints";
-import { useAuthStore } from "@/shared/stores/useAuthStore";
+import { useAuthStore, type AuthSession } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePermissionStore } from "@/shared/stores/usePermissionStore";
@@ -64,14 +64,42 @@ function handleAccessError(code: AccessErrorCode | undefined) {
   }
 }
 
-export const httpClient = axios.create({
+// The refresh token is an HttpOnly cookie scoped to /api/v1/auth (ADR-0042):
+// `withCredentials` lets the browser store and send it when the API is on
+// another origin (local development); X-Requested-With is the header the
+// API demands on the endpoints that read that cookie (CSRF).
+const clientDefaults = {
   baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 30000,
-  headers: { "Content-Type": "application/json" },
-});
+  withCredentials: true,
+  headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+};
 
-httpClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().session?.accessToken;
+export const httpClient = axios.create(clientDefaults);
+
+/** Endpoints that sign in or out: they never carry or wait for an access token. */
+function isAuthEndpoint(url: string | undefined): boolean {
+  return (
+    url === API.auth.login ||
+    url === API.auth.refresh ||
+    url === API.auth.logout ||
+    url === API.auth.mfaVerify ||
+    url === API.auth.google ||
+    url === API.auth.googleLink ||
+    url === API.public.signupWorkspace ||
+    Boolean(url?.startsWith("/api/v1/auth/links/"))
+  );
+}
+
+httpClient.interceptors.request.use(async (config) => {
+  const session = useAuthStore.getState().session;
+  let token = session?.accessToken;
+  // After a page load the access token is not known yet (it is never
+  // stored): get one from the refresh cookie before the first call that
+  // needs it (public endpoints, e.g. the homepage's price list, do not).
+  if (session && !token && !isAuthEndpoint(config.url) && !config.url?.startsWith("/api/v1/public/")) {
+    token = (await refreshAccessToken()) ?? undefined;
+  }
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
@@ -80,11 +108,7 @@ httpClient.interceptors.request.use((config) => {
 
 // A bare instance (no interceptors) used only for the refresh call itself, so
 // it never recurses into the 401 handler below.
-const refreshClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
-  timeout: 30000,
-  headers: { "Content-Type": "application/json" },
-});
+const refreshClient = axios.create(clientDefaults);
 
 let refreshInFlight: Promise<string | null> | null = null;
 
@@ -113,14 +137,21 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 
   if (!refreshInFlight) {
+    // No body: the refresh token travels only in the HttpOnly cookie. Two
+    // tabs refreshing at once is fine (the API accepts a token rotated a
+    // moment ago), so no cross-tab lock is needed.
     refreshInFlight = refreshClient
-      .post(API.auth.refresh, { refreshToken: session.refreshToken })
+      .post(API.auth.refresh)
       .then((res) => {
-        const data = res.data.data as Omit<typeof session, never>;
+        const data = res.data.data as AuthSession;
         useAuthStore.getState().login({ ...session, ...data });
-        return data.accessToken as string;
+        return data.accessToken;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        // No answer or a server fault: keep the session and let this call
+        // fail, the next one tries again. Only a refusal ends the session.
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+        if (status === undefined || status >= 500) return null;
         setLoginNotice("Sesi Anda sudah berakhir. Silakan masuk kembali.");
         useAuthStore.getState().logout();
         useTenantBrandingStore.getState().reset();
@@ -160,21 +191,12 @@ httpClient.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const originalRequest = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
-    const isAuthEndpoint =
-      originalRequest?.url === API.auth.login ||
-      originalRequest?.url === API.auth.refresh ||
-      originalRequest?.url === API.auth.logout ||
-      originalRequest?.url === API.auth.mfaVerify ||
-      originalRequest?.url === API.auth.google ||
-      originalRequest?.url === API.auth.googleLink ||
-      originalRequest?.url === API.public.signupWorkspace ||
-      Boolean(originalRequest?.url?.startsWith("/api/v1/auth/links/"));
 
     handleAccessError(accessErrorCode(error));
     // Saved over someone else's change: say so once, here, whichever form made the save (ADR-0036).
     if (isStaleConflict(error)) useConflictStore.getState().show();
 
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint(originalRequest.url)) {
       originalRequest._retried = true;
       const newToken = await refreshAccessToken();
       if (newToken) {

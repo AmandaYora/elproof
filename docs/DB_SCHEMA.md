@@ -32,7 +32,9 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
 | credential_id | BIGINT UNSIGNED `FK` → credentials.id | same-module FK, allowed |
+| family_id | BIGINT UNSIGNED NULL | id of the first token of the sign-in this one was rotated from; NULL = this token is the family root (migration `000075`, ADR-0042). Indexed; logout and reuse detection revoke `id = f OR family_id = f` |
 | token_hash | VARCHAR(255) | sha256 of the opaque refresh token |
+| mfa | BOOLEAN | the sign-in used a second factor (migration `000052`) |
 | expires_at | TIMESTAMP | |
 | revoked_at | TIMESTAMP NULL | |
 | created_at | TIMESTAMP | |

@@ -19,6 +19,12 @@ type Config struct {
 	JWTSecret     string
 	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
+	// RefreshReuseGrace is how long a just-rotated refresh token may still
+	// be redeemed (tabs refreshing at once, a lost response). Later reuse
+	// signs the whole sign-in out (ADR-0042). Production keeps the default;
+	// end-to-end tests raise it because many browser contexts start from
+	// one stored session.
+	RefreshReuseGrace time.Duration
 
 	// AppTokenTTL is how long an external payment App's access token (Fase
 	// 10, `POST /auth/app/token`) is valid — no refresh token exists for
@@ -92,7 +98,9 @@ func Load() Config {
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		JWTAccessTTL:  getDuration("JWT_ACCESS_TTL", 30*time.Minute),
 		JWTRefreshTTL: getDuration("JWT_REFRESH_TTL", 168*time.Hour),
-		AppTokenTTL:   getDuration("APP_TOKEN_TTL", time.Hour),
+		// 0 = the identity module's default (30s).
+		RefreshReuseGrace: getDuration("REFRESH_REUSE_GRACE", 0),
+		AppTokenTTL:       getDuration("APP_TOKEN_TTL", time.Hour),
 
 		S3Endpoint:  getEnv("S3_ENDPOINT", ""),
 		S3Bucket:    getEnv("S3_BUCKET", ""),

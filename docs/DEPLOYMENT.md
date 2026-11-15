@@ -59,6 +59,11 @@ npm run dev:web   # Vite dev server on :5173, proxies API calls to :8080
 
 Open `http://localhost:5173`.
 
+The browser talks to `VITE_API_BASE_URL` (`http://localhost:8080`) directly. Keep the same host name for page and API
+(`localhost` with `localhost`, or `127.0.0.1` with `127.0.0.1`): the refresh-token cookie is `SameSite=Strict`, and
+`localhost` → `127.0.0.1` counts as another site, so the cookie would not be sent and every reload would sign you out
+(ADR-0042). With `APP_ENV=development` the cookie is not `Secure`, HSTS is off, and any loopback origin may use it.
+
 ## 5. Docker (one app container; database stays on the host)
 
 The image is a multi-stage build: it compiles the frontend to static assets
@@ -163,6 +168,42 @@ WOs sign up, the OAuth consent screen must be switched from "Testing" to "In pro
 while testing, only accounts listed as test users can sign in. Never set `GOOGLE_JWKS_URL` on the
 server: it exists only so end-to-end tests can sign their own tokens; the API refuses to start
 if it is set to a non-loopback URL or with `APP_ENV=production`.
+
+**Session cookie and security headers (EP-07/EP-08, ADR-0042).** The app itself now sends the refresh token as an
+HttpOnly `__Secure-elproof_refresh` cookie and sets `Content-Security-Policy`, `Strict-Transport-Security`,
+`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy` on every response. What the
+server must look like for that to work — **operator steps on the VPS** (none of this is in the image):
+
+1. **`~/elproof/.env`:** `APP_ENV` must be anything but `development` (e.g. `production`). `development` turns the
+   cookie's `Secure` flag and HSTS off and accepts loopback origins. Leave `REFRESH_REUSE_GRACE` unset (default 30 s;
+   values above 2 min are capped outside development). `S3_ENDPOINT`/`S3_USE_SSL` must be the host browsers reach for
+   presigned file links: the CSP allows exactly that host (and its subdomains) for images, PDF frames and uploads.
+2. **Hide the nginx version** (QA saw `Server: nginx/1.24.0 (Ubuntu)`): in the `http { }` block of
+   `/etc/nginx/nginx.conf` uncomment or add `server_tokens off;`, then `sudo nginx -t && sudo systemctl reload nginx`.
+   This affects every site on the box (elkasir too) and only removes the version: the header becomes `Server: nginx`.
+   Removing the header entirely needs the `headers-more` module (`more_clear_headers Server;`), not installed today.
+3. **ElProof server block (443):** keep `proxy_set_header Host $host;` and add
+   `proxy_set_header X-Forwarded-Host $host;` and `proxy_set_header X-Forwarded-Proto $scheme;`. The sign-in endpoints
+   compare the browser's `Origin` with `Host`/`X-Forwarded-Host`; a proxy that sent `Host: 127.0.0.1:8082` without
+   `X-Forwarded-Host` would make every browser sign-in fail with 403 `csrf_refused`.
+4. **Do not `add_header` the same security headers in nginx** — the app already sends them; two CSP headers are both
+   enforced. Only if nginx's own error pages (502 while the container restarts) should carry HSTS too, add
+   `proxy_hide_header Strict-Transport-Security;` and
+   `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;` in that server block. Do not
+   submit the domain to the HSTS preload list (that would bind all of `elcodelabs.com`'s future subdomains).
+   The port-80 server block must keep redirecting to https (certbot's redirect).
+5. **After the deploy:** everyone signs in once more (sessions stored by the old web app had no cookie). Check:
+
+   ```bash
+   curl -sI https://elproof.elcodelabs.com/ | grep -iE '^(server|content-security-policy|strict-transport-security|x-frame-options|x-content-type-options|referrer-policy|permissions-policy):'
+   curl -sI https://elproof.elcodelabs.com/api/v1/health | grep -i content-security-policy   # default-src 'none'; frame-ancestors 'none'
+   ```
+
+   Then sign in once in a browser with DevTools open: no CSP violation in the console (Google button, logo, a proof
+   image or PDF), `Application → Cookies` shows `__Secure-elproof_refresh` (HttpOnly, Secure, Strict, path
+   `/api/v1/auth`), and `Local Storage` has `elproof.profile` without any token.
+
+The repo's `infra/nginx/nginx.conf` (local Docker only) already has `server_tokens off` and passes the headers through.
 
 **One-time links (Fase 3, ADR-0025):** invitation and password-reset tokens travel in URL paths
 (`/undangan/<token>`, `/api/v1/auth/links/<token>`), so nginx access logs contain them. They are

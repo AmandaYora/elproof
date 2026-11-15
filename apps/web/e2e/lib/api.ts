@@ -4,6 +4,8 @@ export interface Reply {
   status: number;
   text: string;
   json: any;
+  /** Set-Cookie lines (a sign-in sets the refresh-token cookie, ADR-0042). */
+  cookies: string[];
 }
 
 /** One API call. Every call "comes from" a different address so per-IP limiters do not turn seeding into a rate-limit test. */
@@ -21,7 +23,7 @@ export async function call(base: string, token: string | null, method: string, p
   } catch {
     /* not JSON */
   }
-  return { status: res.status, text, json };
+  return { status: res.status, text, json, cookies: res.headers.getSetCookie() };
 }
 
 export function must(what: string, r: Reply): Reply {

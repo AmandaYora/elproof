@@ -153,6 +153,9 @@ export async function startStack(): Promise<State> {
     DATABASE_URL: databaseURL(db),
     JWT_SECRET: "e2e-jwt-secret-not-for-anything-real-0123456789",
     JWT_ACCESS_TTL: "24h",
+    // Many browser contexts start from one stored session (one refresh cookie): accept a rotated refresh token for the
+    // whole run instead of treating the second context as a stolen-token replay (ADR-0042; production keeps 30s).
+    REFRESH_REUSE_GRACE: "12h",
     GOOGLE_JWKS_URL: `${googleURL}/jwks`,
     S3_ENDPOINT: storage ? storage.endpoint : "127.0.0.1:9",
     S3_BUCKET: "e2e",

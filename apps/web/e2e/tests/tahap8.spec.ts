@@ -2,11 +2,12 @@ import type { Page } from "@playwright/test";
 import { expect, prepareContext, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { AUTH, apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 const API = (path: string) => `${apiURL()}/api/v1${path}`;
 
 async function newProject(page: Page, name: string) {
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const made = await page.request.post(API("/projects"), {
     headers: auth,

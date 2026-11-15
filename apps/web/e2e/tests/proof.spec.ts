@@ -1,6 +1,7 @@
 import { expect, settle, state, test, visit } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 // PLAN Tahap 3: the Client Portal loads with few calls, shows proof where the WO has it, never shows a stamp without
 // proof, and no longer reads the tenant's vendor lists.
@@ -21,8 +22,11 @@ test.describe("portal Beranda", () => {
       expect(calls.some((c) => c.includes(old)), `unexpected call ${old}\n${calls.join("\n")}`).toBe(false);
     }
     expect(calls.includes("GET /api/v1/projects/me"), "the old project call is gone").toBe(false);
+    // A page load gets its access token once from the refresh cookie (ADR-0042): exactly one refresh, not one per call.
+    expect(calls.filter((c) => c === "POST /api/v1/auth/refresh"), calls.join("\n")).toHaveLength(1);
     // Budget: the landing data, plus the shell's permissions and branding. (PLAN target: <= 2 for the data itself.)
-    expect(calls.length, calls.join("\n")).toBeLessThanOrEqual(3);
+    const dataCalls = calls.filter((c) => c !== "POST /api/v1/auth/refresh");
+    expect(dataCalls.length, calls.join("\n")).toBeLessThanOrEqual(3);
     await close();
   });
 
@@ -69,7 +73,7 @@ test.describe("client boundary", () => {
   test("a client cannot read the tenant's vendor names or categories", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "client");
     await visit(page, "/portal/beranda");
-    const token = await page.evaluate(() => (JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken?: string }).accessToken ?? "");
+    const token = (await browserSession(page)).accessToken ?? "";
     expect(token).not.toBe("");
     for (const path of ["/vendors/summary", "/vendor-categories?all=true", "/vendors"]) {
       const res = await page.request.get(API(path), { headers: { Authorization: `Bearer ${token}` } });

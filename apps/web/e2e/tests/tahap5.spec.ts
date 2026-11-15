@@ -1,6 +1,7 @@
 import { expect, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 // PLAN Tahap 5: the header and side panel never go stale after a change, and a routine delete can be undone.
 // These tests WRITE data, so they run in the "mutating" project (after every screenshot project).
@@ -8,7 +9,7 @@ import { apiURL } from "../lib/config";
 const API = (path: string) => `${apiURL()}/api/v1${path}`;
 
 async function newProject(page: import("@playwright/test").Page, name: string) {
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string; principalId: string });
+  const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const made = await page.request.post(API("/projects"), {
     headers: auth,

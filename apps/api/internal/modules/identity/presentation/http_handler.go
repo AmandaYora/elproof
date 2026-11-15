@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elproof/internal/modules/identity/application"
+	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
@@ -21,6 +22,8 @@ type Handler struct {
 	// linkIP caps one-time link requests per IP separately, so opening an
 	// invitation page never uses up the visitor's login attempts.
 	linkIP *middleware.RateLimiter
+	// cookie carries the refresh token; it never appears in a JSON body.
+	cookie SessionCookie
 }
 
 const (
@@ -39,7 +42,19 @@ func NewHandler(auth *application.AuthService) *Handler {
 		auth:    auth,
 		loginIP: middleware.NewRateLimiter(loginMaxPerIP, loginWindow),
 		linkIP:  middleware.NewRateLimiter(linkMaxPerIP, loginWindow),
+		cookie:  SessionCookie{Secure: true, MaxAge: auth.RefreshTokenTTL()},
 	}
+}
+
+// SetCookieSecure turns the Secure attribute off for local development over
+// plain http (cmd/server); everywhere else the cookie is https-only.
+func (h *Handler) SetCookieSecure(secure bool) {
+	h.cookie.Secure = secure
+}
+
+// Cookie is the refresh-token cookie this handler writes and reads.
+func (h *Handler) Cookie() SessionCookie {
+	return h.cookie
 }
 
 func limitBody(w http.ResponseWriter, r *http.Request) {
@@ -58,13 +73,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-type refreshRequest struct {
-	RefreshToken string `json:"refreshToken"`
-}
-
+// sessionResponse is a session as the browser sees it. The refresh token is
+// not part of it: it travels only in the HttpOnly cookie (ADR-0042), so no
+// page script can read it.
 type sessionResponse struct {
 	AccessToken   string `json:"accessToken"`
-	RefreshToken  string `json:"refreshToken"`
 	PrincipalType string `json:"principalType"`
 	PrincipalID   string `json:"principalId"`
 	TenantID      *int64 `json:"tenantId"`
@@ -87,7 +100,6 @@ type mfaChallengeResponse struct {
 func toSessionResponse(s *application.Session) sessionResponse {
 	return sessionResponse{
 		AccessToken:      s.AccessToken,
-		RefreshToken:     s.RefreshToken,
 		PrincipalType:    s.PrincipalType,
 		PrincipalID:      s.PrincipalID,
 		TenantID:         s.TenantID,
@@ -131,33 +143,37 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		response.OK(w, "Masukkan kode verifikasi dari aplikasi authenticator", mfaChallengeResponse{MFARequired: true, MFAToken: result.MFAToken})
 		return
 	}
-	response.OK(w, "Login berhasil", toSessionResponse(result.Session))
+	h.writeSession(w, "Login berhasil", result.Session)
 }
 
-func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	limitBody(w, r)
-	var req refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
-		response.Error(w, http.StatusBadRequest, "Refresh token wajib diisi", nil)
-		return
-	}
+// writeSession answers a successful sign-in, refresh or two-factor step: the
+// refresh token goes into the cookie, everything else into the body.
+func (h *Handler) writeSession(w http.ResponseWriter, message string, s *application.Session) {
+	h.cookie.Set(w, s.RefreshToken)
+	response.OK(w, message, toSessionResponse(s))
+}
 
-	session, err := h.auth.Refresh(r.Context(), req.RefreshToken)
+// Refresh is POST /auth/refresh: the refresh token comes from the cookie
+// only (a body is ignored). The route demands X-Requested-With (CSRF).
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	session, err := h.auth.Refresh(r.Context(), h.cookie.Read(r))
 	if err != nil {
+		// A token that will never work again is removed, so the browser
+		// stops presenting it; a server fault keeps it for the next try.
+		if apperror.HTTPStatus(err) < http.StatusInternalServerError {
+			h.cookie.Clear(w)
+		}
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Sesi diperbarui", toSessionResponse(session))
+	h.writeSession(w, "Sesi diperbarui", session)
 }
 
+// Logout is POST /auth/logout: ends the sign-in of the cookie's refresh
+// token (its whole family) and removes the cookie. Always 200.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	limitBody(w, r)
-	var req refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
-		response.OK(w, "Berhasil keluar", nil)
-		return
-	}
-	_ = h.auth.Logout(r.Context(), req.RefreshToken)
+	_ = h.auth.Logout(r.Context(), h.cookie.Read(r))
+	h.cookie.Clear(w)
 	response.OK(w, "Berhasil keluar", nil)
 }
 
@@ -187,7 +203,7 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Login berhasil", toSessionResponse(session))
+	h.writeSession(w, "Login berhasil", session)
 }
 
 type mfaSetupResponse struct {
@@ -233,7 +249,7 @@ func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Verifikasi dua langkah aktif", toSessionResponse(session))
+	h.writeSession(w, "Verifikasi dua langkah aktif", session)
 }
 
 type googleLoginRequest struct {
@@ -284,7 +300,7 @@ func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	response.OK(w, "Login berhasil", toSessionResponse(result.Session))
+	h.writeSession(w, "Login berhasil", result.Session)
 }
 
 type googleLinkRequest struct {
@@ -315,7 +331,7 @@ func (h *Handler) LinkGoogle(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Akun Google terhubung", toSessionResponse(session))
+	h.writeSession(w, "Akun Google terhubung", session)
 }
 
 type linkInfoResponse struct {
@@ -374,7 +390,7 @@ func (h *Handler) Links(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
-		response.OK(w, "Undangan diterima", toSessionResponse(session))
+		h.writeSession(w, "Undangan diterima", session)
 	case action == "password" && r.Method == http.MethodPost:
 		limitBody(w, r)
 		var req linkPasswordRequest
@@ -387,7 +403,7 @@ func (h *Handler) Links(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
-		response.OK(w, "Kata sandi tersimpan", toSessionResponse(session))
+		h.writeSession(w, "Kata sandi tersimpan", session)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}

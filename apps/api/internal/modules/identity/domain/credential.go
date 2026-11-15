@@ -49,11 +49,23 @@ type Credential struct {
 type RefreshToken struct {
 	ID           int64
 	CredentialID int64
-	TokenHash    string
+	// FamilyID is the id of the first token of the sign-in this token
+	// descends from by rotation; 0 means the token is itself that root
+	// (ADR-0042). Use Family() to get the family's id either way.
+	FamilyID  int64
+	TokenHash string
 	// MFA: the session this token extends was established with a second
 	// factor; refreshed sessions inherit it.
 	MFA       bool
 	ExpiresAt time.Time
 	RevokedAt *time.Time
 	CreatedAt time.Time
+}
+
+// Family is the id shared by every token of one sign-in: the root's own id.
+func (t *RefreshToken) Family() int64 {
+	if t.FamilyID != 0 {
+		return t.FamilyID
+	}
+	return t.ID
 }

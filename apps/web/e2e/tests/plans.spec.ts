@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
+import { browserSession } from "../lib/session";
 
 // T-20261110-16 (ADR-0040): every plan belongs to exactly one App. The Paket page groups and filters by App, an App's
 // detail lists the plans it owns and adds one for itself, and the manual-activation picker offers ElProof's plans only.
@@ -10,7 +11,7 @@ import { apiURL } from "../lib/config";
 const API = (path: string) => `${apiURL()}/api/v1${path}`;
 
 async function auth(page: Page) {
-  const session = await page.evaluate(() => JSON.parse(localStorage.getItem("elproof.session") ?? "{}") as { accessToken: string });
+  const session = await browserSession(page);
   return { Authorization: `Bearer ${session.accessToken}` };
 }
 
