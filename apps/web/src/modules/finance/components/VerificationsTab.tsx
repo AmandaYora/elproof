@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { FileCheck2, FolderOpen } from "lucide-react";
+import { Badge } from "@/shared/components/ui/Badge";
 import { RowActions } from "@/shared/components/ui/RowActions";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { useListState } from "@/shared/data-table/useListState";
@@ -40,7 +41,15 @@ export function VerificationsTab() {
     { id: "paymentDate", header: "Tanggal bayar", sortKey: "paymentDate", card: true, className: "whitespace-nowrap", cell: (v) => formatDate(v.paymentDate) },
     { id: "amount", header: "Nominal", sortKey: "amount", align: "right", card: true, cell: (v) => <span className="font-semibold">{formatCurrency(v.amount)}</span> },
     { id: "reference", header: "Referensi", cell: (v) => (v.referenceNumber ? <span className="block max-w-36 truncate" title={v.referenceNumber}>{v.referenceNumber}</span> : <span className="text-muted-foreground">-</span>) },
-    { id: "recordedBy", header: "Dicatat oleh", cell: (v) => (v.recordedByName ? <span className="block max-w-36 truncate" title={v.recordedByName}>{v.recordedByName}</span> : <span className="text-muted-foreground">-</span>) },
+    {
+      id: "recordedBy",
+      header: "Dicatat oleh",
+      card: true,
+      cell: (v) =>
+        v.source === "client" ? (
+          <Badge tone="info">Dikirim pasangan</Badge>
+        ) : v.recordedByName ? <span className="block max-w-36 truncate" title={v.recordedByName}>{v.recordedByName}</span> : <span className="text-muted-foreground">-</span>,
+    },
   ];
 
   return (

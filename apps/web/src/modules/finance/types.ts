@@ -76,6 +76,8 @@ export interface PendingVerification {
   method: string;
   referenceNumber: string;
   recordedByName: string;
+  /** "client" when the couple sent the proof from the portal (ADR-0047). */
+  source: "client" | "staff";
 }
 
 /** The status tabs above the installment list; each is a `status` view of the API. */

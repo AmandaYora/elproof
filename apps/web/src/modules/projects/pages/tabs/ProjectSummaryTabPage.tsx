@@ -12,6 +12,7 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { ConditionBadge, MilestoneStatusBadge } from "@/modules/projects/components/StatusBadges";
 import { ActivityList } from "@/modules/projects/components/detail/ActivityList";
+import { ProjectCoverCard } from "@/modules/projects/components/detail/ProjectCoverCard";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
@@ -198,8 +199,9 @@ export default function ProjectSummaryTabPage() {
           <ProjectFacts />
         </div>
 
-        <aside aria-label="Klien dan riwayat" className="flex min-w-0 flex-col gap-5">
+        <aside aria-label="Klien, foto sampul, dan riwayat" className="flex min-w-0 flex-col gap-5">
           <ClientsPanel projectId={projectId} />
+          <ProjectCoverCard projectId={projectId} />
           <HistoryPanel projectId={projectId} />
         </aside>
       </div>

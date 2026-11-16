@@ -96,13 +96,21 @@ func TestSelectClientTasks(t *testing.T) {
 }
 
 func TestPortalWhatsApp(t *testing.T) {
-	if PortalWhatsApp("0812 1", "62811") != "0812 1" {
-		t.Error("the PIC's phone comes first")
+	cases := []struct{ pic, business, want string }{
+		{"0812-3456-7890", "6281199998888", "0812-3456-7890"}, // the PIC's phone comes first, as typed
+		{" +62 812 3456 7890 ", "", "+62 812 3456 7890"},
+		{"8123456789", "", "8123456789"},
+		{"", "6281199998888", "6281199998888"}, // then the business WhatsApp
+		{"-", "081199998888", "081199998888"},  // a placeholder does not hide it
+		{"0812", "081199998888", "081199998888"},
+		{"0212345678901234567", "081199998888", "081199998888"}, // too long
+		{"6201234567890", "081199998888", "081199998888"},       // 62 then 0
+		{"", " ", ""}, // neither: empty (the contact section is absent)
+		{"abc", "x", ""},
 	}
-	if PortalWhatsApp("  ", "62811") != "62811" {
-		t.Error("then the business WhatsApp")
-	}
-	if PortalWhatsApp("", " ") != "" {
-		t.Error("neither: empty (the contact section is absent)")
+	for _, c := range cases {
+		if got := PortalWhatsApp(c.pic, c.business); got != c.want {
+			t.Errorf("PortalWhatsApp(%q, %q) = %q, want %q", c.pic, c.business, got, c.want)
+		}
 	}
 }

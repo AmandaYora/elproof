@@ -111,7 +111,11 @@ func TestClientSubmissionRefusesWhatStaffWouldRefuse(t *testing.T) {
 			[]ProofItem{{UploadToken: f.token(t, 10, "m"), Type: domain.EvidenceTransferProof}}, "method"},
 		{"future date", func() ClientSubmissionInput { s := submission(1000); s.PaymentDate = payDay.AddDate(0, 0, 1); return s }(),
 			[]ProofItem{{UploadToken: f.token(t, 10, "d"), Type: domain.EvidenceTransferProof}}, "paymentDate"},
-		{"long reference", func() ClientSubmissionInput { s := submission(1000); s.ReferenceNumber = strings.Repeat("9", 101); return s }(),
+		{"long reference", func() ClientSubmissionInput {
+			s := submission(1000)
+			s.ReferenceNumber = strings.Repeat("9", 101)
+			return s
+		}(),
 			[]ProofItem{{UploadToken: f.token(t, 10, "r"), Type: domain.EvidenceTransferProof}}, "referenceNumber"},
 		{"invoice is not a transfer proof", submission(1000), []ProofItem{{UploadToken: f.token(t, 10, "i"), Type: domain.EvidenceInvoice}}, "evidence[0].type"},
 		{"tampered token", submission(1000), []ProofItem{{UploadToken: "nope", Type: domain.EvidenceTransferProof}}, "evidence[0].uploadToken"},

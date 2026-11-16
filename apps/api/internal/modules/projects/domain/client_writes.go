@@ -121,11 +121,39 @@ func completedOn(m ProjectMilestone) time.Time {
 }
 
 // PortalWhatsApp is the number the Client Portal's WhatsApp buttons open: the
-// project PIC's phone, falling back to the business WhatsApp of the workspace
-// profile. Empty when neither is filled in.
+// project PIC's phone when it is a usable WhatsApp number, otherwise the
+// business WhatsApp of the workspace profile when that one is (a staff phone
+// is free text: "-" or a half-typed number must not hide a good business
+// number). Empty when neither is usable. The number is returned as typed.
 func PortalWhatsApp(picPhone, businessWhatsApp string) string {
-	if p := strings.TrimSpace(picPhone); p != "" {
-		return p
+	if usableWhatsApp(picPhone) {
+		return strings.TrimSpace(picPhone)
 	}
-	return strings.TrimSpace(businessWhatsApp)
+	if usableWhatsApp(businessWhatsApp) {
+		return strings.TrimSpace(businessWhatsApp)
+	}
+	return ""
+}
+
+// usableWhatsApp mirrors the web's whatsappNumber (shared/lib/access-link.ts):
+// the digits, with 0… or 8… read as an Indonesian number, must be 62 followed
+// by a non-zero digit and 8 to 13 digits in all.
+func usableWhatsApp(phone string) bool {
+	var b strings.Builder
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	d := b.String()
+	switch {
+	case strings.HasPrefix(d, "0"):
+		d = "62" + d[1:]
+	case strings.HasPrefix(d, "8"):
+		d = "62" + d
+	}
+	if !strings.HasPrefix(d, "62") || len(d) < 2+8 || len(d) > 2+13 {
+		return false
+	}
+	return d[2] != '0'
 }
