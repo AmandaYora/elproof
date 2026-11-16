@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ProofStamp } from "@/shared/components/ui/ProofStamp";
-import { formatDate } from "@/shared/lib/formatters";
+import { daysBetween, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import type { ProjectMilestone } from "@/modules/projects/types";
 import type { ProofToOpen } from "@/modules/client-portal/components/useProofViewer";
 
@@ -9,16 +9,18 @@ import type { ProofToOpen } from "@/modules/client-portal/components/useProofVie
 export type RailStep = Pick<ProjectMilestone, "id" | "name" | "status" | "targetDate" | "completedDate" | "evidence">;
 
 /** What a step says about itself, in plain words that never blame anyone. */
-function stepNote(m: RailStep): string {
+function stepNote(m: RailStep, eventDate?: string): string {
+  // With the event date a step reads like a wedding checklist: "H-30 · 12 Des 2026".
+  const when = eventDate ? `${formatDayCountdown(daysBetween(m.targetDate, eventDate))} · ${formatDate(m.targetDate)}` : `Target ${formatDate(m.targetDate)}`;
   switch (m.status) {
     case "Completed":
       return `Selesai ${formatDate(m.completedDate)}`;
     case "Blocked":
       return "Sedang terhambat. Tim kami sedang menindaklanjuti.";
     case "In Progress":
-      return "Sedang dikerjakan oleh tim";
+      return eventDate ? `Sedang dikerjakan · ${when}` : "Sedang dikerjakan oleh tim";
     default:
-      return `Target ${formatDate(m.targetDate)}`;
+      return when;
   }
 }
 
@@ -27,7 +29,16 @@ function stepNote(m: RailStep): string {
  * (check, ring with dot, plain ring) and the note says it in words. A finished
  * step that has a shared file shows a stamp that opens it.
  */
-export function MilestoneRail({ steps, onOpenProof }: { steps: RailStep[]; onOpenProof: (proof: ProofToOpen, title: string) => void }) {
+export function MilestoneRail({
+  steps,
+  onOpenProof,
+  eventDate,
+}: {
+  steps: RailStep[];
+  onOpenProof: (proof: ProofToOpen, title: string) => void;
+  /** Shows each open step as "H-N · date" (days before the event). */
+  eventDate?: string;
+}) {
   return (
     <ol className="flex flex-col">
       {steps.map((m, i) => {
@@ -53,7 +64,7 @@ export function MilestoneRail({ steps, onOpenProof }: { steps: RailStep[]; onOpe
             </span>
             <div className="min-w-0 flex-1 pt-0.5">
               <p className={cn("text-[15px]", done || active ? "font-semibold text-foreground" : "font-medium text-muted-foreground")}>{m.name}</p>
-              <p className={cn("mt-0.5 text-[13px]", blocked ? "font-medium text-warning-text" : "text-muted-foreground")}>{stepNote(m)}</p>
+              <p className={cn("mt-0.5 text-[13px]", blocked ? "font-medium text-warning-text" : "text-muted-foreground")}>{stepNote(m, eventDate)}</p>
               {proof && (
                 <ProofStamp className="mt-2" proof={proof} label="Lihat bukti" onOpen={() => onOpenProof(proof, m.name)} />
               )}

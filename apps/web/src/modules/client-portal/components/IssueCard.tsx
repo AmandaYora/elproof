@@ -4,13 +4,26 @@ import { formatDate } from "@/shared/lib/formatters";
 import type { VendorIssue } from "@/modules/projects/types";
 import type { ProofToOpen } from "@/modules/client-portal/components/useProofViewer";
 import { evidenceTypeLabel } from "@/shared/lib/labels";
+import { WhatsAppButton } from "@/modules/client-portal/components/WhatsAppButton";
+import { askMessage, type PortalContact } from "@/modules/client-portal/lib/usePortalContact";
 
 /**
  * One kendala, always answering the same three questions (FLOW-IDEAL 3.2): what
  * happened, what we are doing, when to expect news. Calm colors, never red.
  * Names come with the issue (E6), so the card needs no vendor lists.
  */
-export function IssueCard({ issue, onOpenProof, showVendorName = true }: { issue: VendorIssue; onOpenProof: (proof: ProofToOpen, title: string) => void; showVendorName?: boolean }) {
+export function IssueCard({
+  issue,
+  onOpenProof,
+  showVendorName = true,
+  contact,
+}: {
+  issue: VendorIssue;
+  onOpenProof: (proof: ProofToOpen, title: string) => void;
+  showVendorName?: boolean;
+  /** Who to ask about an open kendala on WhatsApp; omitted = no button. */
+  contact?: PortalContact;
+}) {
   const resolved = issue.status === "Resolved" || issue.status === "Closed";
   const where = [showVendorName ? issue.vendorName : "", issue.vendorMilestoneName || "Kendala umum"].filter(Boolean).join(" · ");
 
@@ -18,7 +31,7 @@ export function IssueCard({ issue, onOpenProof, showVendorName = true }: { issue
     <article className="rounded-2xl border border-border bg-card p-5">
       <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-foreground">{issue.title}</h3>
+          <h3 className="text-base font-semibold text-foreground">{issue.title}</h3>
           <p className="mt-1 text-[13px] text-muted-foreground">
             {where} · Ditemukan {formatDate(issue.foundDate)}
           </p>
@@ -57,8 +70,11 @@ export function IssueCard({ issue, onOpenProof, showVendorName = true }: { issue
         </div>
       )}
 
-      {issue.evidence.length > 0 && (
+      {(issue.evidence.length > 0 || (contact && !resolved)) && (
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
+          {contact && !resolved && (
+            <WhatsAppButton contact={contact} size="sm" label="Tanyakan kendala ini" message={askMessage(contact, `kendala "${issue.title}"`)} />
+          )}
           {issue.evidence.map((e) => (
             <Button key={e.id} variant="outline" size="sm" onClick={() => onOpenProof(e, issue.title)}>
               Lihat {evidenceTypeLabel(e.type).toLowerCase()}

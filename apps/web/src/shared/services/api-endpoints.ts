@@ -186,6 +186,8 @@ export const API = {
     duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
     milestone: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}`,
+    /** A client marks one of their own tasks done (Portal, `portal.tasks.complete`). */
+    milestoneComplete: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}/complete`,
     vendors: (id: string) => `/api/v1/projects/${id}/vendors`,
     vendor: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}`,
     vendorCancel: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}/cancel`,
@@ -198,6 +200,8 @@ export const API = {
     clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
     clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
     clientPaymentRestore: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/restore`,
+    /** A client sends their own transfer proof (Portal, `portal.finance.submit`); the WO verifies it before it counts. */
+    clientPaymentSubmissions: (id: string) => `/api/v1/projects/${id}/client-payments/submissions`,
     uploads: (id: string) => `/api/v1/projects/${id}/uploads`,
     clientPaymentVerify: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/verify`,
     venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,

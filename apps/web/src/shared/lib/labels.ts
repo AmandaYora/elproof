@@ -74,7 +74,7 @@ export const TERM_STATUS_LABELS: Labels<PaymentTermStatus> = {
   staff: { paid: "Lunas", overdue: "Terlambat", partial: "Dibayar sebagian", due_soon: "Segera jatuh tempo", upcoming: "Belum jatuh tempo" },
   client: {
     paid: "Lunas",
-    overdue: "Lewat jatuh tempo — hubungi PIC",
+    overdue: "Lewat jatuh tempo",
     partial: "Dibayar sebagian",
     due_soon: "Jatuh tempo segera",
     upcoming: "Menunggu pembayaran",

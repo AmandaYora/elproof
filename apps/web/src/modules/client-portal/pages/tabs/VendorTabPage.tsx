@@ -13,6 +13,8 @@ import type { ProjectVendor, ProjectVenueSummary, VendorIssue, VendorMilestone }
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { ClientPortalContext } from "@/modules/client-portal/layouts/ClientPortalLayout";
+import { PageIntro } from "@/modules/client-portal/components/PageIntro";
+import { usePortalContact, type PortalContact } from "@/modules/client-portal/lib/usePortalContact";
 
 const isOpenIssue = (i: VendorIssue) => i.status !== "Resolved" && i.status !== "Closed";
 
@@ -30,6 +32,7 @@ export default function VendorTabPage() {
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const fetchProjectVenueSummary = useProjectStore((s) => s.fetchProjectVenueSummary);
   const viewer = useProofViewer(projectId);
+  const contact = usePortalContact();
   const [venue, setVenue] = useState<ProjectVenueSummary | null>(null);
   const [venuePhotoUrl, setVenuePhotoUrl] = useState<string | null>(null);
 
@@ -61,12 +64,7 @@ export default function VendorTabPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <header>
-        <h1 className="text-xl font-semibold text-foreground">Vendor dan venue</h1>
-        <p className="mt-1.5 max-w-prose text-[14px] leading-relaxed text-muted-foreground">
-          Venue dan vendor yang menyiapkan hari bahagia Anda, beserta tahapan kerja yang sudah selesai dan buktinya.
-        </p>
-      </header>
+      <PageIntro title="Vendor dan venue">Venue dan vendor yang menyiapkan hari bahagia Anda, beserta tahapan kerja yang sudah selesai dan buktinya.</PageIntro>
 
       {status === "loading" && <div className="rounded-2xl border border-border bg-card p-5"><SkeletonRows rows={4} label="Memuat vendor" /></div>}
       {status === "error" && <LoadError message="Vendor belum bisa dimuat. Periksa koneksi, lalu coba lagi." onRetry={retry} />}
@@ -88,6 +86,7 @@ export default function VendorTabPage() {
               steps={vendorMilestones.filter((m) => m.projectVendorId === pv.id && m.status !== "Cancelled")}
               issues={issues.filter((i) => i.projectVendorId === pv.id)}
               onOpenProof={viewer.open}
+              contact={contact}
             />
           ))}
         </div>
@@ -104,29 +103,29 @@ function VenueCard({ venue, photoUrl }: { venue: ProjectVenueSummary; photoUrl: 
       {photoUrl && <img src={photoUrl} alt={venue.name} className="max-h-56 w-full object-cover" />}
       <div className="flex flex-col gap-3 p-5">
         <div>
-          <p className="text-[12.5px] font-medium text-muted-foreground">Venue</p>
-          <h2 className="text-[17px] font-semibold text-foreground">{venue.name}</h2>
+          <p className="text-[13px] font-medium text-muted-foreground">Venue</p>
+          <h2 className="text-base font-semibold text-foreground">{venue.name}</h2>
         </div>
         {place && (
-          <p className="flex items-start gap-2 text-[13.5px] text-muted-foreground">
+          <p className="flex items-start gap-2 text-[14px] text-muted-foreground">
             <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden /> {place}
           </p>
         )}
         {venue.capacity !== null && (
-          <p className="flex items-center gap-2 text-[13.5px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-[14px] text-muted-foreground">
             <Users className="size-4 shrink-0" aria-hidden /> Kapasitas {venue.capacity} orang
           </p>
         )}
         {venue.facilities && (
           <div>
-            <p className="text-[12.5px] font-semibold text-foreground">Fasilitas</p>
-            <p className="mt-0.5 text-[13.5px] whitespace-pre-line text-muted-foreground">{venue.facilities}</p>
+            <p className="text-[13px] font-semibold text-foreground">Fasilitas</p>
+            <p className="mt-0.5 text-[14px] whitespace-pre-line text-muted-foreground">{venue.facilities}</p>
           </div>
         )}
         {venue.socialMedia && (
           <div>
-            <p className="text-[12.5px] font-semibold text-foreground">Sosial media</p>
-            <p className="mt-0.5 text-[13.5px] whitespace-pre-line text-muted-foreground">{venue.socialMedia}</p>
+            <p className="text-[13px] font-semibold text-foreground">Sosial media</p>
+            <p className="mt-0.5 text-[14px] whitespace-pre-line text-muted-foreground">{venue.socialMedia}</p>
           </div>
         )}
       </div>
@@ -138,7 +137,7 @@ function VenueCard({ venue, photoUrl }: { venue: ProjectVenueSummary; photoUrl: 
 // never mistaken for something forgotten.
 function VenuePlaceholder() {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border bg-card p-5 text-[13.5px] text-muted-foreground">
+    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border bg-card p-5 text-[14px] text-muted-foreground">
       <Building2 className="size-5 shrink-0" aria-hidden /> Venue untuk pernikahan Anda belum ditentukan.
     </div>
   );
@@ -149,11 +148,13 @@ function VendorCard({
   steps,
   issues,
   onOpenProof,
+  contact,
 }: {
   vendor: ProjectVendor;
   steps: VendorMilestone[];
   issues: VendorIssue[];
   onOpenProof: (proof: ProofToOpen, title: string) => void;
+  contact: PortalContact;
 }) {
   const doneCount = steps.filter((m) => m.status === "Completed").length;
   const openCount = issues.filter(isOpenIssue).length;
@@ -163,7 +164,7 @@ function VendorCard({
     <article className="overflow-hidden rounded-2xl border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b p-5">
         <div className="min-w-0">
-          <h2 className="text-[16px] font-semibold text-foreground">{vendor.vendorName || "Vendor"}</h2>
+          <h2 className="text-base font-semibold text-foreground">{vendor.vendorName || "Vendor"}</h2>
           <p className="mt-0.5 text-[13px] text-muted-foreground">{[vendor.categoryName, vendor.scope].filter(Boolean).join(" · ")}</p>
         </div>
         <EngagementStatusBadge status={vendor.engagementStatus} audience="client" />
@@ -177,7 +178,7 @@ function VendorCard({
         )}
 
         {ordered.length === 0 ? (
-          <p className="text-[13.5px] text-muted-foreground">Belum ada tahapan yang tercatat untuk vendor ini.</p>
+          <p className="text-[14px] text-muted-foreground">Belum ada tahapan yang tercatat untuk vendor ini.</p>
         ) : (
           <details className="group">
             <summary className="flex min-h-11 cursor-pointer items-center justify-between rounded-lg text-[14px] font-semibold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
@@ -196,7 +197,7 @@ function VendorCard({
         {issues.length > 0 && (
           <div className="flex flex-col gap-3">
             {[...issues].sort((a, b) => Number(isOpenIssue(b)) - Number(isOpenIssue(a)) || b.foundDate.localeCompare(a.foundDate)).map((i) => (
-              <IssueCard key={i.id} issue={i} showVendorName={false} onOpenProof={onOpenProof} />
+              <IssueCard key={i.id} issue={i} showVendorName={false} onOpenProof={onOpenProof} contact={contact} />
             ))}
           </div>
         )}
