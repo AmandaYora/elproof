@@ -225,6 +225,8 @@ export const API = {
   },
   dashboard: "/api/v1/dashboard",
   dashboardMine: "/api/v1/dashboard/mine",
+  // Kalender: wedding days, open steps and installments across projects (?from&to&picStaffId&kinds).
+  calendar: "/api/v1/calendar",
   clients: {
     base: "/api/v1/clients",
     byProject: (projectId: string) => `/api/v1/clients?projectId=${projectId}`,
