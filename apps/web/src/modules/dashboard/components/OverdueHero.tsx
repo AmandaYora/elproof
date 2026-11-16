@@ -24,7 +24,7 @@ export function OverdueHero({ total, terms }: { total: number; terms: DashboardT
       {overdue ? (
         <p className="mt-1 text-[13.5px] text-text-primary">
           {terms.length} termin di {projectCount} proyek melewati jatuh tempo.{" "}
-          <Link to={ROUTE_PATHS.projectDetail(terms[0].projectId, "pembayaran/client")} className="font-semibold text-danger-text underline underline-offset-2">
+          <Link to={ROUTE_PATHS.projectDetail(terms[0].projectId, "keuangan/klien")} className="font-semibold text-danger-text underline underline-offset-2">
             Lihat proyek yang terlambat
           </Link>
         </p>

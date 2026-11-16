@@ -5,9 +5,7 @@ import { TabNav } from "@/shared/components/ui/TabNav";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { SkeletonRows } from "@/shared/components/ui/Skeleton";
 import { registerRevalidator } from "@/shared/stores/useConflictStore";
-import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
 import { ProjectHeaderCard } from "@/modules/projects/components/detail/ProjectHeaderCard";
-import { ProjectSidePanel } from "@/modules/projects/components/detail/ProjectSidePanel";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
@@ -15,16 +13,14 @@ export interface ProjectDetailContext {
   projectId: string;
 }
 
+// Six tabs that fit one row (RISET WO Console §3 #4). The clients and the history are panels on Ringkasan.
 const TABS = [
   { to: "ringkasan", label: "Ringkasan" },
-  { to: "milestone", label: "Jadwal" },
-  { to: "vendor", label: "Vendor" },
-  { to: "venue", label: "Venue" },
-  { to: "pembayaran", label: "Keuangan" },
+  { to: "jadwal", label: "Jadwal" },
+  { to: "vendor", label: "Vendor & venue" },
+  { to: "keuangan", label: "Keuangan" },
   { to: "kendala", label: "Kendala" },
   { to: "dokumen", label: "Dokumen" },
-  { to: "client", label: "Klien" },
-  { to: "aktivitas", label: "Aktivitas" },
 ];
 
 export default function ProjectDetailLayout() {
@@ -72,16 +68,12 @@ export default function ProjectDetailLayout() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Breadcrumbs items={[{ label: "Proyek", to: ROUTE_PATHS.projects }, { label: currentProject.name }]} />
       <ProjectHeaderCard projectId={projectId} />
-      <TabNav items={TABS} />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
-        <div className="min-w-0">
-          <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>}>
-            <Outlet context={{ projectId } satisfies ProjectDetailContext} />
-          </Suspense>
-        </div>
-        <ProjectSidePanel projectId={projectId} />
+      <TabNav items={TABS} aria-label="Bagian proyek" />
+      <div className="min-w-0">
+        <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>}>
+          <Outlet context={{ projectId } satisfies ProjectDetailContext} />
+        </Suspense>
       </div>
     </div>
   );

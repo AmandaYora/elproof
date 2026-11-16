@@ -23,7 +23,7 @@ const ROUTES: Route[] = [
   { id: "wo-proyek", label: "Daftar Project", auth: "owner", route: "/proyek" },
   { id: "wo-proyek-ringkasan", label: "Detail Proyek (Ringkasan)", auth: "owner", route: "/proyek/1/ringkasan" },
   { id: "wo-proyek-vendor", label: "Detail Proyek, tab Vendor", auth: "owner", route: "/proyek/1/vendor" },
-  { id: "wo-proyek-keuangan", label: "Detail Proyek, tab Keuangan", auth: "owner", route: "/proyek/1/pembayaran/client" },
+  { id: "wo-proyek-keuangan", label: "Detail Proyek, tab Keuangan", auth: "owner", route: "/proyek/1/keuangan/klien" },
   { id: "wo-proyek-kendala", label: "Detail Proyek, tab Kendala", auth: "owner", route: "/proyek/1/kendala" },
   { id: "wo-klien", label: "Daftar Client", auth: "owner", route: "/klien" },
   { id: "wo-vendor", label: "Daftar Vendor", auth: "owner", route: "/vendor" },

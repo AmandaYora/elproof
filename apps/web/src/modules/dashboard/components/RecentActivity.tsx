@@ -23,7 +23,7 @@ export function RecentActivity({ activity }: { activity: ActivityLogEntry[] }) {
             return (
               <li key={entry.id}>
                 {entry.projectId ? (
-                  <Link to={ROUTE_PATHS.projectDetail(entry.projectId, "aktivitas")} className="block hover:bg-surface-muted">
+                  <Link to={ROUTE_PATHS.projectDetail(entry.projectId, "ringkasan")} className="block hover:bg-surface-muted">
                     {row}
                   </Link>
                 ) : (

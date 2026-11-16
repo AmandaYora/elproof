@@ -1,21 +1,38 @@
+/**
+ * The project page's six tabs (RISET WO Console §3 #4): Ringkasan · Jadwal · Vendor & venue · Keuangan · Kendala ·
+ * Dokumen. Keuangan has three ledgers; the clients and the history are panels on Ringkasan.
+ */
 export type ProjectDetailTab =
   | "ringkasan"
-  | "kendala"
+  | "jadwal"
   | "vendor"
-  | "milestone"
-  | "client"
-  | "pembayaran/client"
-  | "pembayaran/vendor"
-  | "pembayaran/venue"
-  | "dokumen"
-  | "aktivitas"
-  | "venue";
+  | "keuangan/klien"
+  | "keuangan/vendor"
+  | "keuangan/venue"
+  | "kendala"
+  | "dokumen";
+
+/** The tab paths before 16 Nov 2026, and where each now lives. The router redirects them too (old links keep working). */
+export const LEGACY_PROJECT_TABS = {
+  milestone: "jadwal",
+  venue: "vendor",
+  client: "ringkasan",
+  aktivitas: "ringkasan",
+  pembayaran: "keuangan/klien",
+  "pembayaran/client": "keuangan/klien",
+  "pembayaran/vendor": "keuangan/vendor",
+  "pembayaran/venue": "keuangan/venue",
+} as const satisfies Record<string, ProjectDetailTab>;
+
+/** @deprecated An old tab name; `projectDetail` maps it to its new tab. Use a `ProjectDetailTab`. */
+export type LegacyProjectDetailTab = keyof typeof LEGACY_PROJECT_TABS;
+
+function projectTabPath(tab: ProjectDetailTab | LegacyProjectDetailTab): ProjectDetailTab {
+  return (LEGACY_PROJECT_TABS as Record<string, ProjectDetailTab>)[tab] ?? (tab as ProjectDetailTab);
+}
 // The Client Portal's own tab set (ClientPortalTab below) has no "ringkasan":
-// that content is its persistent header. "timeline" added, completing
-// parity with WO Console's own tab set. "venue" removed separately (Vendor/
-// Venue merge, client-facing only) — Venue is now a pinned card inside the
-// "vendor" tab itself, not its own route; ProjectDetailTab above is WO
-// Console's own (unaffected) tab set and keeps its separate "venue" entry.
+// that content is its persistent header. Venue is a pinned card inside its
+// "vendor" tab, as it now is in the WO Console's "Vendor & venue" tab.
 export type ClientPortalTab = "beranda" | "lainnya" | "vendor" | "pembayaran" | "kendala" | "timeline" | "dokumen";
 
 export const ROUTE_PATHS = {
@@ -39,7 +56,7 @@ export const ROUTE_PATHS = {
   dashboard: "/beranda",
   projects: "/proyek",
   projectNew: "/proyek/baru",
-  projectDetail: (id: string, tab: ProjectDetailTab = "ringkasan") => `/proyek/${id}/${tab}`,
+  projectDetail: (id: string, tab: ProjectDetailTab | LegacyProjectDetailTab = "ringkasan") => `/proyek/${id}/${projectTabPath(tab)}`,
   clients: "/klien",
   calendar: "/kalender",
   finance: "/keuangan",

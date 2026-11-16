@@ -24,7 +24,7 @@ async function newProject(page: Page, name: string) {
 // These tests WRITE data, so they run in the "mutating" project.
 
 test.describe("reduced motion", () => {
-  for (const route of ["/beranda", "/proyek/1/milestone"]) {
+  for (const route of ["/beranda", "/proyek/1/jadwal"]) {
     test(`${route} has no running transition or animation longer than a frame`, async ({ browser }, info) => {
       const context = await browser.newContext({ ...info.project.use, storageState: AUTH.owner, reducedMotion: "reduce" });
       const page = await context.newPage();
@@ -82,7 +82,7 @@ test.describe("two sessions on one item", () => {
     const { page, close } = await open(browser, info, "paying");
     await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Konflik Tahapan");
-    await visit(page, `/proyek/${id}/milestone`);
+    await visit(page, `/proyek/${id}/jadwal`);
     const firstRow = page.getByRole("row").filter({ hasText: /^1\./ }).first();
     await expect(firstRow).toBeVisible();
 

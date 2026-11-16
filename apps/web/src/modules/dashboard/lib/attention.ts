@@ -27,7 +27,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       category: "Tagihan terlambat",
       title: `Termin ${t.label} terlambat ${Math.abs(daysUntil(t.dueDate))} hari`,
       description: `${t.projectName} · sisa ${formatCurrency(t.remaining)}, jatuh tempo ${formatDate(t.dueDate)}`,
-      to: ROUTE_PATHS.projectDetail(t.projectId, "pembayaran/client"),
+      to: ROUTE_PATHS.projectDetail(t.projectId, "keuangan/klien"),
     });
   }
 
@@ -60,7 +60,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       category: "Bukti pembayaran",
       title: `Pembayaran ${p.type} belum memiliki bukti lengkap`,
       description: `${p.projectName} — ${p.vendorName} · ${formatCurrency(p.amount)}`,
-      to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/vendor"),
+      to: ROUTE_PATHS.projectDetail(p.projectId, "keuangan/vendor"),
     });
   }
 
@@ -76,7 +76,7 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       category: "Bukti pembayaran",
       title: `Pembayaran ${p.type} (venue) belum memiliki bukti lengkap`,
       description: `${p.projectName} — Venue · ${formatCurrency(p.amount)}`,
-      to: ROUTE_PATHS.projectDetail(p.projectId, "pembayaran/venue"),
+      to: ROUTE_PATHS.projectDetail(p.projectId, "keuangan/venue"),
     });
   }
 

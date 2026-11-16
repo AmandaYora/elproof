@@ -195,7 +195,7 @@ export default function ClientListPage() {
       header: "Proyek",
       sortKey: "projectName",
       cell: (c) => (
-        <Link to={ROUTE_PATHS.projectDetail(c.projectId, "client")} className="font-medium underline-offset-2 hover:underline">
+        <Link to={ROUTE_PATHS.projectDetail(c.projectId, "ringkasan")} className="font-medium underline-offset-2 hover:underline">
           {c.projectName || `Proyek ${c.projectId}`}
         </Link>
       ),
@@ -283,7 +283,7 @@ export default function ClientListPage() {
         onResetFilters={list.reset}
         empty={{
           title: "Belum ada klien",
-          description: "Klien adalah pengantin dan perwakilan keluarga yang diundang ke portal sebuah proyek. Tambahkan dari tab Klien di dalam proyek.",
+          description: "Klien adalah pengantin dan perwakilan keluarga yang diundang ke portal sebuah proyek. Tambahkan dari panel Klien & akses portal di Ringkasan proyek.",
           action: (
             <Link to={ROUTE_PATHS.projects}>
               <Button variant="secondary">Buka daftar proyek</Button>

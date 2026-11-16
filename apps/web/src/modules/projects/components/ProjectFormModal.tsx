@@ -191,7 +191,7 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
           required
           name="venue"
           error={errors.venue}
-          hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Venue proyek ini." : undefined}
+          hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Vendor & venue proyek ini." : undefined}
         >
           <Input
             value={values.venue}

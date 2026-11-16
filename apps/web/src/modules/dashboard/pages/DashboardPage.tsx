@@ -68,7 +68,7 @@ function FullDashboard() {
     () =>
       (stats?.tasksDueThisWeek ?? []).slice(0, 6).map((t, i) => ({
         id: `${t.projectId}-${i}`,
-        to: ROUTE_PATHS.projectDetail(t.projectId, "milestone"),
+        to: ROUTE_PATHS.projectDetail(t.projectId, "jadwal"),
         title: t.name,
         subtitle: t.projectName,
         trailing: daysUntil(t.targetDate) === 0 ? "Hari ini" : formatDate(t.targetDate),
@@ -79,7 +79,7 @@ function FullDashboard() {
     () =>
       (stats?.dueSoonTerms ?? []).slice(0, 6).map((t, i) => ({
         id: `${t.projectId}-${i}`,
-        to: ROUTE_PATHS.projectDetail(t.projectId, "pembayaran/client"),
+        to: ROUTE_PATHS.projectDetail(t.projectId, "keuangan/klien"),
         title: `${t.projectName} · ${t.label}`,
         subtitle: `Jatuh tempo ${formatDate(t.dueDate)}`,
         trailing: formatCurrency(t.remaining),
@@ -91,7 +91,7 @@ function FullDashboard() {
     () =>
       (stats?.vendorPaymentsDue ?? []).slice(0, 6).map((v, i) => ({
         id: `${v.projectId}-${i}`,
-        to: ROUTE_PATHS.projectDetail(v.projectId, "pembayaran/vendor"),
+        to: ROUTE_PATHS.projectDetail(v.projectId, "keuangan/vendor"),
         title: `${v.projectName} · ${v.vendorName}`,
         subtitle: daysUntil(v.dueDate) < 0 ? `Terlambat ${Math.abs(daysUntil(v.dueDate))} hari` : `Jatuh tempo ${formatDate(v.dueDate)}`,
         trailing: formatCurrency(v.remaining),

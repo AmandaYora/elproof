@@ -1,22 +1,20 @@
 import { useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { Plus, Pencil, Trash2, Eye } from "lucide-react";
-import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
+import { Plus, Pencil, Trash2, Eye, BadgeCheck } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import type { Column } from "@/shared/data-table/DataTable";
+import { FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
 import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
 import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { ProofStamp } from "@/shared/components/ui/ProofStamp";
-import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
 import {
@@ -120,109 +118,68 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
     if (done) setDeletingPayment(null);
   }
 
+  const columns: Column<ClientPayment>[] = [
+    { id: "type", header: "Jenis", primary: true, className: "w-32", cell: (p) => <span className="font-medium whitespace-nowrap">{p.type}</span> },
+    { id: "date", header: "Tanggal", card: true, className: "w-32 whitespace-nowrap", cell: (p) => formatDate(p.paymentDate) },
+    { id: "amount", header: "Nominal", align: "right", card: true, cell: (p) => formatCurrency(p.amount) },
+    { id: "method", header: "Metode", className: "whitespace-nowrap", cell: (p) => p.method || "-" },
+    { id: "ref", header: "No. referensi", truncate: true, className: "w-40 tabular-nums", cell: (p) => <span title={p.referenceNumber || undefined}>{p.referenceNumber || "-"}</span> },
+    {
+      id: "proof",
+      header: "Bukti",
+      card: true,
+      className: "whitespace-nowrap",
+      cell: (p) => <PaymentProofCell payment={p} canVerify={canRecord} onOpen={() => setViewingEvidencePayment(p)} onVerify={() => setVerifying(p)} />,
+    },
+  ];
+
   return (
     <div id="pembayaran-client">
-      <Card>
-        <CardHeader
-          title="Uang masuk dari klien"
-          subtitle="Ringkasan nilai kontrak dan seluruh riwayat pembayaran dari klien untuk proyek ini."
-          action={
-            canRecord && (<Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+      <FinanceSection
+        title="Uang masuk dari klien"
+        action={
+          canRecord && (
+            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
               Tambah pembayaran
-            </Button>)
-          }
+            </Button>
+          )
+        }
+      >
+        <FinanceSummary
+          items={[
+            { label: "Nilai kontrak", value: formatCurrency(contractValue) },
+            { label: "Total diterima", value: formatCurrency(totalReceived) },
+            {
+              label: "Sisa tagihan",
+              value: formatCurrency(Math.max(totalRemaining, 0)),
+              note: totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : undefined,
+            },
+          ]}
         />
-        <CardContent className="flex flex-col gap-5">
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            <SummaryStat label="Nilai kontrak" value={formatCurrency(contractValue)} />
-            <SummaryStat label="Total diterima" value={formatCurrency(totalReceived)} />
-            <SummaryStat
-              label="Sisa tagihan"
-              value={formatCurrency(Math.max(totalRemaining, 0))}
-              badge={totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : undefined}
+        <LedgerTable
+          label="Pembayaran dari klien"
+          columns={columns}
+          rows={pageItems}
+          rowId={(p) => p.id}
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          empty={{ title: "Belum ada pembayaran klien", description: "Catat setiap uang yang masuk dari klien beserta bukti transfernya, lalu verifikasi agar klien melihat tandanya." }}
+          actions={(p) => (
+            <RowActions
+              rowLabel={`${p.type} ${formatCurrency(p.amount)}`}
+              primary={{ label: "Ubah pembayaran", icon: <Pencil />, onClick: () => setEditingPayment(p), hidden: !canRecord }}
+              items={[
+                { label: "Lihat bukti", icon: <Eye className="h-4 w-4" />, onSelect: () => setViewingEvidencePayment(p) },
+                { label: "Verifikasi pembayaran", icon: <BadgeCheck className="h-4 w-4" />, onSelect: () => setVerifying(p), hidden: !(canRecord && p.evidence.length > 0 && !p.verifiedAt) },
+                { label: "Hapus pembayaran", icon: <Trash2 className="h-4 w-4" />, tone: "danger", onSelect: () => requestDelete(p), hidden: !canDelete },
+              ]}
             />
-          </div>
-
-          {clientPayments.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-              Belum ada pembayaran klien tercatat untuk proyek ini.
-            </p>
-          ) : (
-            <>
-            <CardList
-              className="sm:hidden"
-              items={pageItems}
-              keyFor={(payment) => payment.id}
-              renderItem={(payment) => (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-medium text-text-primary">{payment.type}</span>
-                    <PaymentProofCell payment={payment} canVerify={canRecord} onOpen={() => setViewingEvidencePayment(payment)} onVerify={() => setVerifying(payment)} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
-                    <CardListField label="Tanggal" value={formatDate(payment.paymentDate)} />
-                    <CardListField label="Metode" value={payment.method} />
-                    <CardListField label="No. referensi" value={payment.referenceNumber} />
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                    {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
-                    {canDelete && (
-                      <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
-                    )}
-                  </div>
-                </>
-              )}
-            />
-            <div className="hidden sm:block">
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Jenis</TH>
-                  <TH className="text-right">Nominal</TH>
-                  <TH>Tanggal</TH>
-                  <TH>Metode</TH>
-                  <TH>No. Referensi</TH>
-                  <TH>Bukti</TH>
-                  <TH>Aksi</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {pageItems.map((payment) => (
-                  <TR key={payment.id}>
-                    <TD className="font-medium">{payment.type}</TD>
-                    <TD className="text-right tabular-nums">{formatCurrency(payment.amount)}</TD>
-                    <TD>{formatDate(payment.paymentDate)}</TD>
-                    <TD>{payment.method}</TD>
-                    <TD>{payment.referenceNumber}</TD>
-                    <TD><PaymentProofCell payment={payment} canVerify={canRecord} onOpen={() => setViewingEvidencePayment(payment)} onVerify={() => setVerifying(payment)} /></TD>
-                    <TD>
-                      <div className="flex items-center gap-2">
-                        <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                        {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
-                        {canDelete && (
-                          <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => requestDelete(payment)} />
-                        )}
-                      </div>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-            </div>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              totalItems={totalItems}
-              pageSize={pageSize}
-              onPageChange={setPage}
-              className="-mx-5 -mb-4 mt-1"
-            />
-            </>
           )}
-        </CardContent>
-      </Card>
+        />
+      </FinanceSection>
 
       <RecordPaymentDrawer
         open={modalOpen}
@@ -289,40 +246,26 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
 }
 
 /**
- * The proof state of one payment: a stamp when verified (opens the file), else
+ * The proof state of one payment, on one line: a stamp when verified (who and when on hover; opens the file), else
  * whether a file is attached and, for roles that may, the button to verify it.
  */
 function PaymentProofCell({ payment, canVerify, onOpen, onVerify }: { payment: ClientPayment; canVerify: boolean; onOpen: () => void; onVerify: () => void }) {
   const proof = payment.evidence[0];
   if (payment.verifiedAt && proof) {
-    return <ProofStamp proof={proof} label={verifiedLabel(payment.verifiedAt, payment.verifiedBy)} onOpen={onOpen} />;
+    return <ProofStamp proof={proof} label="Diverifikasi" detail={verifiedLabel(payment.verifiedAt, payment.verifiedBy)} onOpen={onOpen} className="min-h-7 py-0.5 whitespace-nowrap" />;
   }
   if (!proof) return <Badge tone="warning">Belum ada bukti</Badge>;
   return (
-    <span className="flex flex-wrap items-center gap-2">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <Badge tone="neutral">Bukti ada</Badge>
       {canVerify && (
-        <Button size="sm" variant="secondary" onClick={onVerify}>
+        <Button size="sm" variant="ghost" onClick={onVerify} aria-label={`Verifikasi ${payment.type} ${formatCurrency(payment.amount)}`}>
           Verifikasi
         </Button>
       )}
     </span>
   );
 }
-
-function SummaryStat({ label, value, badge }: { label: string; value: string; badge?: string }) {
-  return (
-    <div className="rounded-md border border-border bg-surface-muted/40 px-4 py-3">
-      <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-[15px] font-bold tabular-nums text-primary">
-        {value}
-        {badge && <Badge tone="warning">{badge}</Badge>}
-      </p>
-    </div>
-  );
-}
-
-
 
 // Edit scope is the ledger fields only -- no file input (already covered by
 // the existing generic evidence tab), see PLAN.md §2.5.

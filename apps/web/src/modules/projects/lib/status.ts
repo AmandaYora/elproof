@@ -59,8 +59,8 @@ export const CONDITION_TONE: Record<ProjectCondition, BadgeTone> = {
 };
 
 export const CONDITION_LABEL: Record<ProjectCondition, string> = {
-  "On Track": "Sesuai Rencana",
-  Attention: "Perlu Perhatian",
+  "On Track": "Sesuai rencana",
+  Attention: "Perlu perhatian",
   "At Risk": "Berisiko",
 };
 
