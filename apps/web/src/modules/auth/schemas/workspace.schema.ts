@@ -8,7 +8,7 @@ export const workspaceSchema = z.object({
     .max(100, "Nama WO maksimal 100 karakter"),
   acceptTerms: z
     .boolean()
-    .refine((v) => v, "Setujui Syarat & Ketentuan dan Perjanjian Pemrosesan Data untuk melanjutkan"),
+    .refine((v) => v, "Setujui syarat dan ketentuan serta perjanjian pemrosesan data untuk melanjutkan"),
   marketingOptIn: z.boolean(),
 });
 

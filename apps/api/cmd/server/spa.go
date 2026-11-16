@@ -21,6 +21,8 @@ type spaManifest struct {
 	Pages map[string]string `json:"pages"`
 	// Routes lists every path pattern of the React router ("/projects/:projectId/ringkasan", "/platform/tenant/:id/:tab?").
 	Routes []string `json:"routes"`
+	// NotFound is the app shell titled "Halaman tidak ditemukan" (dist/prerendered/404.html), relative to the web root.
+	NotFound string `json:"notFound"`
 }
 
 // spaHandler serves the built web app: prerendered public pages, static files, the app shell for the router's own paths,
@@ -33,12 +35,14 @@ type spaHandler struct {
 	// strict is set when routes.json was read: only then is a path outside the route list a 404. A build without it (the
 	// Vite dev build, an older image) keeps the old behaviour, the shell with 200 for every path.
 	strict bool
+	// notFound is the HTML answered with 404 (index.html when the build has no 404 shell).
+	notFound string
 }
 
 // spaFileServer serves the web build in root (see spaHandler). Registered on "/", it would otherwise also swallow any
 // unmatched /api/v1/... request into an HTML page, so those get the JSON 404 before anything else.
 func spaFileServer(root string) http.Handler {
-	h := &spaHandler{root: root, files: http.FileServer(http.Dir(root)), pages: map[string]string{}}
+	h := &spaHandler{root: root, files: http.FileServer(http.Dir(root)), pages: map[string]string{}, notFound: "index.html"}
 	m, err := loadSPAManifest(root)
 	switch {
 	case err == nil:
@@ -49,6 +53,11 @@ func spaFileServer(root string) http.Handler {
 			h.routes = append(h.routes, splitSPAPath(pattern))
 		}
 		h.strict = true
+		if m.NotFound != "" {
+			if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(m.NotFound))); err == nil && !info.IsDir() {
+				h.notFound = m.NotFound
+			}
+		}
 	case errors.Is(err, fs.ErrNotExist):
 		// No manifest: lenient mode.
 	default:
@@ -81,7 +90,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// The build's own bookkeeping is never a page: a prerendered file is reached by its public path only.
 	if clean == "/routes.json" || clean == "/prerendered" || strings.HasPrefix(clean, "/prerendered/") {
-		h.serveHTML(w, r, "index.html", http.StatusNotFound)
+		h.serveHTML(w, r, h.notFound, http.StatusNotFound)
 		return
 	}
 	if file, ok := h.pages[clean]; ok {
@@ -96,7 +105,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveHTML(w, r, "index.html", http.StatusOK)
 		return
 	}
-	h.serveHTML(w, r, "index.html", http.StatusNotFound)
+	h.serveHTML(w, r, h.notFound, http.StatusNotFound)
 }
 
 // serveHTML writes one HTML file of the build with status. A 200 goes through http.ServeContent (HEAD, If-Modified-Since);

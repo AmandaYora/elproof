@@ -69,7 +69,7 @@ const SECTIONS: LegalSection[] = [
     id: "cookie",
     title: "8. Penyimpanan sesi",
     body: [
-      `ElProof hanya menyimpan data sesi yang diperlukan agar Anda tetap masuk. Tombol "Masuk dengan Google" dimuat dari layanan Google dan tunduk pada kebijakan privasi Google. ElProof tidak memakai cookie iklan atau pelacak pemasaran.`,
+      `ElProof hanya menyimpan data sesi yang diperlukan agar Anda tetap masuk. Tombol Google di halaman Masuk dan Daftar (mis. "Lanjutkan dengan Google") dimuat dari layanan Google dan tunduk pada kebijakan privasi Google. ElProof tidak memakai cookie iklan atau pelacak pemasaran.`,
     ],
   },
   {

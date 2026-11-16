@@ -77,7 +77,7 @@ func validateVendorInput(in *VendorInput) error {
 	f.maxLen("address", in.Address, "Alamat", maxDirectoryAddressLen)
 	f.nonNegative("priceAkad", in.PriceAkad, "Harga Akad")
 	f.nonNegative("priceAkadResepsi", in.PriceAkadResepsi, "Harga Akad + Resepsi")
-	f.nonNegative("priceResepsi", in.PriceResepsi, "Harga Resepsi")
+	f.nonNegative("priceResepsi", in.PriceResepsi, "Harga Resepsi saja")
 	return f.err(vendorFieldOrder, "Data vendor belum lengkap atau tidak sesuai")
 }
 
