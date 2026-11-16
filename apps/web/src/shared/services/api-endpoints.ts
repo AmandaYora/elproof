@@ -225,6 +225,13 @@ export const API = {
   },
   dashboard: "/api/v1/dashboard",
   dashboardMine: "/api/v1/dashboard/mine",
+  // Keuangan: money across the caller's projects (read-only, finance.record).
+  finance: {
+    summary: "/api/v1/finance/summary",
+    receivables: "/api/v1/finance/receivables",
+    payables: "/api/v1/finance/payables",
+    verifications: "/api/v1/finance/verifications",
+  },
   clients: {
     base: "/api/v1/clients",
     byProject: (projectId: string) => `/api/v1/clients?projectId=${projectId}`,

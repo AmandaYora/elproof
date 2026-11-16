@@ -77,6 +77,11 @@
   --color-info-soft: #eff6ff;
   --color-neutral-soft: #eceff5;
 
+  /* Charts with two series (RISET WO Console §7.3, §7.6): one data colour and a grey comparator. Checked with the
+     dataviz validator on white: lightness band, CVD ΔE 18.5, normal vision ΔE 19.4, both ≥ 3:1. */
+  --chart-in: #33519c; /* money in */
+  --chart-out: #7d89ab; /* money out (the comparator) */
+
   /* WhatsApp: the one third-party colour, only on "Kirim via WhatsApp" (white text 5.32:1). */
   --whatsapp: #1f7a4d;
   --whatsapp-hover: #19663f;
@@ -169,6 +174,8 @@
   --color-danger-soft: var(--color-danger-soft);
   --color-info-soft: var(--color-info-soft);
   --color-neutral-soft: var(--color-neutral-soft);
+  --color-chart-in: var(--chart-in);
+  --color-chart-out: var(--chart-out);
   --color-whatsapp: var(--whatsapp);
   --color-whatsapp-hover: var(--whatsapp-hover);
   --color-whatsapp-foreground: var(--whatsapp-foreground);
