@@ -6,7 +6,7 @@ export function RevenueTrendChart({ points }: { points: RevenueTrendPoint[] }) {
   return (
     <TrendBarChart
       title="Omzet 12 bulan terakhir"
-      subtitle="Total nilai kontrak proyek berdasarkan bulan pelaksanaan acara."
+      subtitle="Nilai kontrak menurut bulan acara."
       points={points.map((p) => ({ key: p.key, label: p.label, value: p.total }))}
       formatTotal={formatCurrencyCompact}
       totalLabel="total omzet dalam 12 bulan terakhir"

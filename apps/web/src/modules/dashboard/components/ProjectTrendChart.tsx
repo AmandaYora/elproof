@@ -4,8 +4,8 @@ import type { ProjectTrendPoint } from "@/modules/dashboard/types";
 export function ProjectTrendChart({ points }: { points: ProjectTrendPoint[] }) {
   return (
     <TrendBarChart
-      title="Tren proyek baru"
-      subtitle="Jumlah proyek baru per bulan, berdasarkan tanggal proyek dibuat."
+      title="Proyek baru per bulan"
+      subtitle="Menurut tanggal proyek dibuat."
       points={points.map((p) => ({ key: p.key, label: p.label, value: p.count }))}
       formatTotal={(total) => String(total)}
       totalLabel="proyek baru dalam 12 bulan terakhir"
