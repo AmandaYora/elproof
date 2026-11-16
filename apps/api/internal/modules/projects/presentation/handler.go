@@ -116,7 +116,7 @@ func (h *Handler) Collection(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	segments := httpx.Segments(r.URL.Path, "/api/v1/projects/")
 	if len(segments) == 0 {
-		response.Error(w, http.StatusNotFound, "Project tidak ditemukan", nil)
+		response.Error(w, http.StatusNotFound, "Proyek tidak ditemukan", nil)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 
 	projectID, err := strconv.ParseInt(segments[0], 10, 64)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ID project tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "ID proyek tidak valid", nil)
 		return
 	}
 	rest := segments[1:]
@@ -296,7 +296,7 @@ func (c staffClaims) actorID() int64 {
 func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "staff" {
-		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat mengakses endpoint ini", nil)
+		response.Error(w, http.StatusForbidden, "Hanya anggota tim WO yang dapat mengakses endpoint ini", nil)
 		return staffClaims{}, false
 	}
 	tenantID, ok := claims.TenantIDInt()
@@ -306,7 +306,7 @@ func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
 	}
 	staffID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
 	if err != nil {
-		response.Error(w, http.StatusForbidden, "Identitas staff tidak valid", nil)
+		response.Error(w, http.StatusForbidden, "Identitas anggota tim tidak valid", nil)
 		return staffClaims{}, false
 	}
 	return staffClaims{tenantID: tenantID, staffID: staffID, grants: middleware.GrantsFrom(r.Context())}, true
@@ -439,7 +439,7 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			return staffClaims{}, false
 		}
 		if sc.assignedOnly() && p.PICStaffID != sc.staffID && p.PICSalesStaffID != sc.staffID {
-			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke proyek ini", nil)
 			return staffClaims{}, false
 		}
 		if perm, alt := staffWritePermission(r.Method, rest); perm != "" && !sc.can(perm) && (alt == "" || !sc.can(alt)) {
@@ -451,7 +451,7 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 		grants := middleware.GrantsFrom(r.Context())
 		if r.Method == http.MethodGet {
 			if !clientCanRead(rest) {
-				response.Error(w, http.StatusForbidden, "Data ini tidak tersedia untuk akun client", nil)
+				response.Error(w, http.StatusForbidden, "Data ini tidak tersedia untuk akun klien", nil)
 				return staffClaims{}, false
 			}
 			if perm := clientReadPermission(rest); perm != "" && !grants.Can(perm) {
@@ -462,7 +462,7 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			// The portal's only writes (ADR-0047): each has its own permission.
 			perm, ok := clientWritePermission(r.Method, rest)
 			if !ok {
-				response.Error(w, http.StatusForbidden, "Client hanya memiliki akses baca", nil)
+				response.Error(w, http.StatusForbidden, "Klien hanya memiliki akses baca", nil)
 				return staffClaims{}, false
 			}
 			if !grants.Can(perm) {
@@ -477,21 +477,21 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 		}
 		clientID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
 		if err != nil {
-			response.Error(w, http.StatusForbidden, "Identitas client tidak valid", nil)
+			response.Error(w, http.StatusForbidden, "Identitas klien tidak valid", nil)
 			return staffClaims{}, false
 		}
 		if h.clientAccess == nil {
-			response.Error(w, http.StatusForbidden, "Akses client belum dikonfigurasi", nil)
+			response.Error(w, http.StatusForbidden, "Akses klien belum dikonfigurasi", nil)
 			return staffClaims{}, false
 		}
 		allowedProjectID, err := h.clientAccess.ProjectIDForClient(r.Context(), tenantID, clientID)
 		if err != nil || allowedProjectID != projectID {
-			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke proyek ini", nil)
 			return staffClaims{}, false
 		}
 		return staffClaims{tenantID: tenantID, isClient: true, clientID: clientID, grants: grants}, true
 	default:
-		response.Error(w, http.StatusForbidden, "Prinsipal ini tidak dapat mengakses project", nil)
+		response.Error(w, http.StatusForbidden, "Akun ini tidak dapat mengakses proyek", nil)
 		return staffClaims{}, false
 	}
 }

@@ -6,10 +6,18 @@ import { Button } from "@/shared/components/ui/Button";
 import { cn } from "@/shared/lib/cn";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 
+/** One problem of one column of a refused import row (the column is the template header). */
+export interface BulkImportCellError {
+  column: string;
+  message: string;
+}
+
 export interface BulkImportResult {
   insertedCount: number;
   updatedCount: number;
-  errors: { row: number; message: string }[];
+  // `message` is every problem of the row in one sentence; `errors` the same per column (empty for a row the database
+  // refused as a whole, and for the batch line, row 0).
+  errors: { row: number; message: string; errors?: BulkImportCellError[] }[];
 }
 
 interface ImportBulkModalProps {
@@ -260,7 +268,15 @@ export function ImportBulkModal({
                   {result.errors.map((e, idx) => (
                     <li key={idx}>
                       {e.row > 0 ? `Baris ${e.row}: ` : ""}
-                      {e.message}
+                      {e.errors && e.errors.length > 0 ? (
+                        <ul className="ml-4 list-disc">
+                          {e.errors.map((c, i) => (
+                            <li key={i}>{c.message}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        e.message
+                      )}
                     </li>
                   ))}
                 </ul>

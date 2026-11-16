@@ -34,17 +34,18 @@ func NewService(repo Repository) *Service {
 // Record implements middleware.AuditRecorder.
 func (s *Service) Record(ctx context.Context, rec middleware.AuditRecord) error {
 	e := &domain.Entry{
-		OccurredAt: s.now(),
-		ActorType:  rec.ActorType,
-		ActorID:    rec.ActorID,
-		ActorRole:  rec.ActorRole,
-		TenantID:   tenantOf(rec),
-		Action:     ActionLabel(rec.Method, rec.Path),
-		Method:     rec.Method,
-		Path:       truncate(rec.Path, 255),
-		StatusCode: rec.StatusCode,
-		IP:         truncate(rec.IP, 64),
-		UserAgent:  truncate(rec.UserAgent, 255),
+		OccurredAt:  s.now(),
+		ActorType:   rec.ActorType,
+		ActorID:     rec.ActorID,
+		ActorRole:   rec.ActorRole,
+		TenantID:    tenantOf(rec),
+		Action:      ActionLabel(rec.Method, rec.Path),
+		Method:      rec.Method,
+		Path:        truncate(rec.Path, 255),
+		StatusCode:  rec.StatusCode,
+		IP:          truncate(rec.IP, 64),
+		UserAgent:   truncate(rec.UserAgent, 255),
+		Description: truncateRunes(rec.Description, 255),
 	}
 	return s.repo.Insert(ctx, e)
 }
@@ -108,6 +109,16 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// truncateRunes cuts s to at most n characters (VARCHAR counts characters), never
+// inside one.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 func parseTenant(v string) *int64 {

@@ -291,7 +291,7 @@ func (s *ManagementService) ResetSignIn(ctx context.Context, principalType domai
 		return err
 	}
 	if cred == nil {
-		return apperror.NotFound("Akun login tidak ditemukan")
+		return apperror.NotFound("Akun masuk tidak ditemukan")
 	}
 	if newUsername != "" && newUsername != cred.Username {
 		if err := s.credentials.UpdateUsername(ctx, cred.ID, newUsername); err != nil {

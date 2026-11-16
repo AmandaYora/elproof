@@ -75,7 +75,7 @@ func clientOverpaymentError(err error) error {
 // the usual endpoint. Every field problem is reported together.
 func (s *ClientPaymentService) SubmitByClient(ctx context.Context, tenantID, projectID, clientID int64, input ClientSubmissionInput, items []ProofItem, today time.Time) (*ClientPaymentCreated, error) {
 	if clientID <= 0 {
-		return nil, apperror.Forbidden("Hanya client yang dapat mengirim bukti pembayaran")
+		return nil, apperror.Forbidden("Hanya klien yang dapat mengirim bukti pembayaran")
 	}
 	proof := s.proof
 	if proof == nil {
@@ -122,7 +122,8 @@ func (s *ClientPaymentService) SubmitByClient(ctx context.Context, tenantID, pro
 		}
 		evidence, err := proof.attach(ctx, proofTarget{
 			ProjectID: projectID, Kind: domain.RelatedClientPayment, RelatedID: p.ID,
-			Date: input.PaymentDate, Reference: p.ReferenceNumber,
+			ActorClientID: clientID,
+			Date:          input.PaymentDate, Reference: p.ReferenceNumber,
 		}, resolved)
 		if err != nil {
 			return err

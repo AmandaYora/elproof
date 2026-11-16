@@ -32,7 +32,7 @@ func (s *AuthService) SetGoogleVerifier(v GoogleVerifier) {
 // platform module's workspace signup).
 func (s *AuthService) VerifyGoogle(ctx context.Context, idToken string) (*GoogleIdentity, error) {
 	if s.google == nil {
-		return nil, apperror.Internal("Login dengan Google belum dikonfigurasi")
+		return nil, apperror.Internal("Masuk dengan Google belum dikonfigurasi")
 	}
 	return s.google.Verify(ctx, idToken)
 }

@@ -350,6 +350,21 @@ func (h *VendorHandler) Item(w http.ResponseWriter, r *http.Request) {
 		if !requirePermission(w, r, "vendor.delete") {
 			return
 		}
+		if _, err := h.vendors.Get(r.Context(), tenantID, id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		refs, err := h.projects.ListAffectedProjectsForVendor(r.Context(), tenantID, id)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		if refused, err := refuseWhileInUse(r.Context(), w, h.projects, tenantID, refs, "Vendor", codeVendorInUse); err != nil {
+			writeAppError(w, err)
+			return
+		} else if refused {
+			return
+		}
 		if err := h.vendors.Delete(r.Context(), tenantID, id); err != nil {
 			writeAppError(w, err)
 			return
@@ -635,51 +650,26 @@ type vendorImportRequestBody struct {
 	Base64Data string `json:"base64Data"`
 }
 
-type vendorImportRowErrorBody struct {
-	Row     int    `json:"row"`
-	Message string `json:"message"`
-}
-
-type vendorImportResultBody struct {
-	InsertedCount int                        `json:"insertedCount"`
-	UpdatedCount  int                        `json:"updatedCount"`
-	Errors        []vendorImportRowErrorBody `json:"errors"`
-}
-
-func toVendorImportResultBody(result application.VendorImportResult) vendorImportResultBody {
-	errs := make([]vendorImportRowErrorBody, 0, len(result.Errors))
+func toVendorImportResultBody(result application.VendorImportResult) importResultBody {
+	errs := make([]importRowErrorBody, 0, len(result.Errors))
 	for _, e := range result.Errors {
-		errs = append(errs, vendorImportRowErrorBody{Row: e.Row, Message: e.Message})
+		errs = append(errs, toImportRowErrorBody(e.Row, e.Message, e.Errors))
 	}
-	return vendorImportResultBody{InsertedCount: result.InsertedCount, UpdatedCount: result.UpdatedCount, Errors: errs}
+	return importResultBody{InsertedCount: result.InsertedCount, UpdatedCount: result.UpdatedCount, Errors: errs}
 }
 
 // parseVendorImportRow reads one spreadsheet row's cells in
-// vendorTemplateHeaders' exact column order. Optional numeric cells that
-// don't parse as an integer are treated as blank rather than a hard row
-// failure — the service layer's own required-field check is the real gate.
+// vendorTemplateHeaders' exact column order. A numeric cell that is not a
+// whole number is noted (NotNumber) so the row check names it.
 func parseVendorImportRow(cells []string) application.VendorImportRow {
-	get := func(i int) string {
-		if i < len(cells) {
-			return strings.TrimSpace(cells[i])
-		}
-		return ""
+	c := &importCells{cells: cells, headers: vendorTemplateHeaders}
+	row := application.VendorImportRow{
+		Name: c.text(0), CategoryName: c.text(1), PICName: c.text(2), Phone: c.text(3), Email: c.text(4),
+		SocialMedia: c.text(5), City: c.text(6), Address: c.text(7), PriceAkad: c.number(8),
+		PriceAkadResepsi: c.number(9), Notes: c.text(10),
 	}
-	parseIntPtr := func(s string) *int64 {
-		if s == "" {
-			return nil
-		}
-		n, err := strconv.ParseInt(stripThousandsSeparators(s), 10, 64)
-		if err != nil {
-			return nil
-		}
-		return &n
-	}
-	return application.VendorImportRow{
-		Name: get(0), CategoryName: get(1), PICName: get(2), Phone: get(3), Email: get(4),
-		SocialMedia: get(5), City: get(6), Address: get(7), PriceAkad: parseIntPtr(get(8)),
-		PriceAkadResepsi: parseIntPtr(get(9)), Notes: get(10),
-	}
+	row.NotNumber = c.notNumber
+	return row
 }
 
 func (h *VendorHandler) Import(w http.ResponseWriter, r *http.Request) {

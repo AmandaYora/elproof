@@ -44,7 +44,7 @@ func (s *ProjectService) checkActiveProjectQuota(ctx context.Context, tenantID i
 	}
 	if n >= limit {
 		return apperror.Forbidden(fmt.Sprintf(
-			"Masa coba dibatasi %d project aktif. Selesaikan atau arsipkan project lain, atau pilih paket langganan untuk project tanpa batas.", limit,
+			"Masa coba dibatasi %d proyek aktif. Selesaikan atau arsipkan proyek lain, atau pilih paket langganan untuk proyek tanpa batas.", limit,
 		)).WithCode("trial_limit_reached")
 	}
 	return nil

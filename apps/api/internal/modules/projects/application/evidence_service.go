@@ -143,7 +143,7 @@ func (s *EvidenceService) Delete(ctx context.Context, projectID, id, actorStaffI
 		return err
 	}
 	if e == nil {
-		return apperror.NotFound("Evidence tidak ditemukan")
+		return apperror.NotFound("Dokumen tidak ditemukan")
 	}
 	if err := s.repo.DeleteByID(ctx, projectID, id); err != nil {
 		return err
@@ -180,10 +180,10 @@ func (s *EvidenceService) SetClientVisible(ctx context.Context, projectID, id in
 		return nil, err
 	}
 	if e == nil {
-		return nil, apperror.NotFound("Evidence tidak ditemukan")
+		return nil, apperror.NotFound("Dokumen tidak ditemukan")
 	}
 	if !e.RelatedKind.SupportsClientVisibility() {
-		return nil, apperror.Validation("Visibilitas hanya berlaku untuk dokumen umum dan lampiran timeline", map[string][]string{
+		return nil, apperror.Validation("Visibilitas hanya berlaku untuk dokumen umum dan lampiran tahapan", map[string][]string{
 			"relatedKind": {"Visibilitas lampiran ini mengikuti data yang dilampirinya dan tidak dapat diubah"},
 		})
 	}
@@ -197,7 +197,7 @@ func (s *EvidenceService) SetClientVisible(ctx context.Context, projectID, id in
 	}
 	return finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.Evidence, error) {
 		return s.repo.FindByID(ctx, projectID, id)
-	}, func(e *domain.Evidence) time.Time { return e.UpdatedAt }, apperror.NotFound("Evidence tidak ditemukan"))
+	}, func(e *domain.Evidence) time.Time { return e.UpdatedAt }, apperror.NotFound("Dokumen tidak ditemukan"))
 }
 
 // ListByProjects backs ComputeProgressBatch — see EvidenceRepository.
@@ -269,7 +269,7 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 		return nil, err
 	}
 	if !ok {
-		return nil, apperror.Validation("Data terkait tidak ditemukan", map[string][]string{"relatedId": {"Data terkait tidak ditemukan di project ini"}})
+		return nil, apperror.Validation("Data terkait tidak ditemukan", map[string][]string{"relatedId": {"Data terkait tidak ditemukan di proyek ini"}})
 	}
 	decoded, err := base64.StdEncoding.DecodeString(input.Base64Data)
 	if err != nil {
@@ -332,7 +332,7 @@ func (s *EvidenceService) Find(ctx context.Context, projectID, id int64) (*domai
 		return nil, err
 	}
 	if e == nil {
-		return nil, apperror.NotFound("Evidence tidak ditemukan")
+		return nil, apperror.NotFound("Dokumen tidak ditemukan")
 	}
 	return e, nil
 }
@@ -360,7 +360,7 @@ func (s *EvidenceService) Link(ctx context.Context, projectID, id int64, attachm
 		return nil, "", time.Time{}, err
 	}
 	if e == nil {
-		return nil, "", time.Time{}, apperror.NotFound("Evidence tidak ditemukan")
+		return nil, "", time.Time{}, apperror.NotFound("Dokumen tidak ditemukan")
 	}
 	p, ok := s.storage.(Presigner)
 	if !ok || !p.CanPresign() {

@@ -102,6 +102,11 @@ constraint — resolved via that module's contract, never joined), `FK` same-mod
 and re-inserts the full feature list per save, matching `PlanFormModal`'s "whole list replace"
 submit semantics.
 
+**Migration `000083` (EP-14, data only):** a `label` still equal to the English text typed on production
+(`Full Features`/`Full Feature` → `Semua fitur`, `Full Seat(s)` → `Anggota tim tanpa batas`, `Unlimited Project(s)`
+→ `Proyek tanpa batas`; exact, case-sensitive match after trimming spaces) is rewritten; any other label is left
+alone. Down puts the English text back only where the row still holds exactly what up wrote.
+
 ### `subscription_transactions`
 | Column | Type | Notes |
 |---|---|---|
@@ -232,7 +237,7 @@ its role slot on the project, since the role lookup doesn't filter on `is_active
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
 | tenant_id | BIGINT UNSIGNED NOT NULL | |
-| name | VARCHAR(100) | |
+| name | VARCHAR(100) | unique per tenant **in the service** (FQ-03): a create or rename onto another category's name (case-insensitive, trimmed) is a 422. No unique index: production already holds duplicates, which stay as they are |
 | description | VARCHAR(255) | |
 | is_active | BOOLEAN DEFAULT TRUE | |
 | created_at, updated_at | TIMESTAMP | |
@@ -546,7 +551,8 @@ A kendala of a soft-deleted engagement is hidden with it (`project_vendor_id` po
 | document_date | DATE NULL | |
 | uploaded_at | TIMESTAMP | |
 | description | VARCHAR(255) NULL | |
-| uploaded_by_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
+| uploaded_by_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id`; `0` for a file a client sent from the Client Portal |
+| uploaded_by_client_id | BIGINT UNSIGNED NULL | migration `000080` (RT-07) — the client who sent the file from the Client Portal (a proof of a client payment they submitted); primitive id into `clients`, **no FK**; `NULL` for a staff upload. Backfilled for existing portal proofs from `client_payments.submitted_by_client_id`. Drives `uploadedBySource: "client"` and the client's name as `uploadedByName` |
 | related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment','venuePayment','general') | `'general'` (migration `000035`, ADR-0020) is a project-level document with no specific vendor/payment/vendor-engagement/issue to attach to (rundown, buku acara, teks juru bicara, banquet order, rekap dekor, etc.) — powers Client Portal's own "Dokumen" tab |
 | related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind`. For `related_kind = 'general'`, this is always the sentinel `0` (`AUTO_INCREMENT` never starts at 0), mirroring `projects.venue_id`'s own "0 = none" convention — there's nothing to point at |
 | is_client_visible | BOOLEAN NOT NULL DEFAULT FALSE | migration `000035`, ADR-0020. Only ever meaningful for `related_kind = 'general'` — every other kind stays unconditionally visible to a `client` principal the moment it's attached to something inside their own project (unchanged); toggled via `POST .../evidence/{id}/toggle-client-visible` (rejected 422 for any other `related_kind`). Defaults `FALSE` (safe-by-default): a staff member must explicitly opt a general document in before `GET /projects/{id}/documents` (Client Portal's "Dokumen" tab) will ever return it |
@@ -737,7 +743,15 @@ time, never double-applied.
 * `vendor_issues.project_vendor_id` is NULLable and `vendor_issues.is_client_visible BOOLEAN NOT NULL DEFAULT TRUE` was added (migration `000069`).
 * Down migrations delete what the old shape cannot hold (soft-deleted rows with their evidence, kendala without a vendor); stored objects stay in the bucket.
 
-## Module `audit` — migrations `000049`, `000059`, `000070` (ADR-0035 for the last)
+### `tenant_roles` built-in descriptions — migration `000082` (FQ-08, data only)
+
+The `access` module's `tenant_roles` (migration `000058`, ADR-0026) hold each workspace's copy of the built-in role
+descriptions. Those of Admin, Wedding Planner, Sales and Keuangan used English words ("project", "client"); 000082
+rewrites a row only when its `description` still equals the seeded text exactly (BINARY, matched with its
+`template_key`), keeping `updated_at`. A description a WO edited is left alone. New workspaces get the Indonesian text from
+`access/domain/catalog.go` Templates. Down restores the English text only where up's text is still there.
+
+## Module `audit` — migrations `000049`, `000059`, `000070` (ADR-0035 for the last), `000081`
 
 ### `audit_log`
 | Column | Type | Notes |
@@ -747,6 +761,7 @@ time, never double-applied.
 | actor_type, actor_id, actor_role | VARCHAR(30), VARCHAR(64), VARCHAR(50) | `KEY idx_audit_log_actor (actor_type, actor_id, occurred_at)` |
 | tenant_id | BIGINT UNSIGNED NULL | migration `000059`; `KEY idx_audit_log_tenant (tenant_id, occurred_at)` |
 | action | VARCHAR(120) | readable label, e.g. `POST /tenants/{id}/toggle-suspension`. **Migration `000070`:** `KEY idx_audit_log_action (action, id)` — serves the exact `?action=` filter of `GET /audit-log` and `ORDER BY action, id` (Tahap 6 sorting) without sorting the whole append-only table; down drops it |
+| description | VARCHAR(255) NOT NULL DEFAULT '' | migration `000081` (RT-08) — the sentence the handler stated when the request ran (`middleware.SetAuditDescription`): a toggle's resulting state and object name ("Menonaktifkan paket Pro", "Membekukan tenant WO Contoh"). `''` for every other route and every older row; the read side then builds the sentence from method + path |
 | method, path, status_code, ip, user_agent | VARCHAR(10), VARCHAR(255), SMALLINT UNSIGNED, VARCHAR(64), VARCHAR(255) | |
 
 Append-only from the application. No other index was added for Tahap 6: the other sortable columns of the paginated lists (`projects`, `clients`, `vendors`, `venues`,
@@ -772,6 +787,7 @@ project_vendors.pic_staff_id   --*--> staff_members.id      (staff)
 vendor_milestones.pic_staff_id --*--> staff_members.id      (staff)
 vendor_issues.pic_staff_id     --*--> staff_members.id      (staff)
 evidence.uploaded_by_staff_id  --*--> staff_members.id      (staff)
+evidence.uploaded_by_client_id --*--> clients.id            (clients)
 activity_log.actor_staff_id    --*--> staff_members.id      (staff)
 idempotency_keys.tenant_id     --*--> tenants.id            (platform)
 idempotency_keys.staff_id      --*--> staff_members.id      (staff)

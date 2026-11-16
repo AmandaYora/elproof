@@ -143,7 +143,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		response.OK(w, "Masukkan kode verifikasi dari aplikasi authenticator", mfaChallengeResponse{MFARequired: true, MFAToken: result.MFAToken})
 		return
 	}
-	h.writeSession(w, "Login berhasil", result.Session)
+	h.writeSession(w, "Berhasil masuk", result.Session)
 }
 
 // writeSession answers a successful sign-in, refresh or two-factor step: the
@@ -203,7 +203,7 @@ func (h *Handler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	h.writeSession(w, "Login berhasil", session)
+	h.writeSession(w, "Berhasil masuk", session)
 }
 
 type mfaSetupResponse struct {
@@ -276,7 +276,7 @@ func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
 	limitBody(w, r)
 	var req googleLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Credential == "" || len(req.Credential) > maxGoogleCredentialLen {
-		response.Error(w, http.StatusBadRequest, "Data login Google tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "Data masuk Google tidak valid", nil)
 		return
 	}
 	if !h.loginIP.Allow(middleware.ClientIP(r)) {
@@ -300,7 +300,7 @@ func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	h.writeSession(w, "Login berhasil", result.Session)
+	h.writeSession(w, "Berhasil masuk", result.Session)
 }
 
 type googleLinkRequest struct {
@@ -315,7 +315,7 @@ func (h *Handler) LinkGoogle(w http.ResponseWriter, r *http.Request) {
 	limitBody(w, r)
 	var req googleLinkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Credential == "" || len(req.Credential) > maxGoogleCredentialLen {
-		response.Error(w, http.StatusBadRequest, "Data login Google tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "Data masuk Google tidak valid", nil)
 		return
 	}
 	if req.Password == "" || len(req.Password) > maxPasswordLen {
@@ -382,7 +382,7 @@ func (h *Handler) Links(w http.ResponseWriter, r *http.Request) {
 		limitBody(w, r)
 		var req googleLoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Credential == "" || len(req.Credential) > maxGoogleCredentialLen {
-			response.Error(w, http.StatusBadRequest, "Data login Google tidak valid", nil)
+			response.Error(w, http.StatusBadRequest, "Data masuk Google tidak valid", nil)
 			return
 		}
 		session, err := h.auth.AcceptStaffInvite(r.Context(), token, req.Credential)
