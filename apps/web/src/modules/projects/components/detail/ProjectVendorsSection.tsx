@@ -522,7 +522,7 @@ function VendorAccordionRow({
           </div>
 
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Tahapan vendor</p>
+            <p className="text-[13px] font-semibold text-text-primary">Tahapan vendor</p>
             {canEdit && (
               <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={onAddMilestone}>
                 Tambah tahapan
@@ -627,7 +627,7 @@ function VendorAccordionRow({
 
           <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-md border border-border bg-card p-3">
-              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Pembayaran</p>
+              <p className="mb-2 text-[13px] font-semibold text-text-primary">Pembayaran</p>
               {payments.length === 0 ? (
                 <p className="text-[13px] text-text-secondary">Belum ada pembayaran tercatat.</p>
               ) : (
@@ -646,7 +646,7 @@ function VendorAccordionRow({
             </div>
             <div className="rounded-md border border-border bg-card p-3">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Kendala</p>
+                <p className="text-[13px] font-semibold text-text-primary">Kendala</p>
                 {canEdit && (
                   <button
                     type="button"

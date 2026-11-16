@@ -111,10 +111,7 @@ func (s *OverviewService) Get(ctx context.Context, tenantID, projectID int64, no
 	}
 	staff := s.projects.StaffNames(ctx, tenantID, []int64{p.PICStaffID, p.PICSalesStaffID})
 
-	lines := make([]domain.PaymentLine, 0, len(payments))
-	for _, pay := range payments {
-		lines = append(lines, lineOf(pay.Type, pay.Amount))
-	}
+	lines := domain.ContractLines(payments)
 	out := &ProjectOverview{
 		Project:  *p,
 		Progress: data.progressFor(projectID, now, false),

@@ -35,6 +35,15 @@ const DISPLAY_ATTRS = new Set(["aria-label", "title", "placeholder", "alt", "lab
 const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail"]);
 const SKIP_FILES = [/shared\/lib\/labels\.ts$/, /\.d\.ts$/, /\.test\.tsx?$/, /constants\/cities/];
 
+// No capitals-only labels (RISET WO Console §7.3, DESIGN.md): a label is 12–13 px, sentence case, muted. A class string with
+// `uppercase` is flagged unless it also sets `font-mono` (a code people type in capitals, e.g. a voucher code) or its line
+// carries `// ui-terms-ok`.
+const UPPERCASE_CLASS = /(^|\s)([\w-]+:)*uppercase(?=\s|$)/;
+// Screens being reworked on other branches of the WO Console revamp (2026-11-16): they still carry uppercase labels and are
+// checked once those branches are merged. Remove an entry when its module is clean.
+// Every console module follows the no-uppercase rule since the WO Console revamp merged (16 Nov 2026).
+const UPPERCASE_PENDING = [];
+
 function* walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -80,7 +89,17 @@ for (const file of walk(ROOT)) {
       found.push({ file: rel, line: line + 1, term: m[0], use, text: text.trim().slice(0, 90) });
     }
   };
+  const checkCase = file.endsWith(".tsx") && !UPPERCASE_PENDING.some((re) => re.test(rel));
   const visit = (node) => {
+    if (checkCase && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))) {
+      const t = node.text;
+      if (UPPERCASE_CLASS.test(t) && !/(^|\s)font-mono(\s|$)/.test(t)) {
+        const line = sf.getLineAndCharacterOfPosition(node.getStart()).line;
+        if (!/ui-terms-ok/.test(lines[line])) {
+          found.push({ file: rel, line: line + 1, term: "uppercase", use: "12–13 px sentence-case label, text-muted-foreground", text: t.trim().slice(0, 90) });
+        }
+      }
+    }
     if (ts.isJsxText(node)) {
       const t = node.getText();
       if (t.trim()) report(node, t);

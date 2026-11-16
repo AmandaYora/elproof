@@ -7,13 +7,13 @@ import { open } from "../lib/suite";
 test.describe("modal", () => {
   test("focus goes to the first field, Escape closes, focus returns to the opener", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
-    const opener = page.getByRole("button", { name: "Tambah Vendor" });
+    await visit(page, "/vendor");
+    const opener = page.getByRole("button", { name: "Tambah vendor" });
     await opener.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel(/Nama Vendor/)).toBeFocused();
+    await expect(dialog.getByLabel(/Nama vendor/i)).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();
@@ -22,8 +22,8 @@ test.describe("modal", () => {
 
   test("Tab stays inside the dialog", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
-    await page.getByRole("button", { name: "Tambah Vendor" }).click();
+    await visit(page, "/vendor");
+    await page.getByRole("button", { name: "Tambah vendor" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     for (let i = 0; i < 25; i++) {
@@ -40,7 +40,7 @@ test.describe("modal", () => {
 test.describe("action menu", () => {
   test("keyboard: Enter opens, Escape closes only the menu; choosing an item opens a dialog that keeps focus", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/projects/1/ringkasan");
+    await visit(page, "/proyek/1/ringkasan");
     const trigger = page.getByRole("button", { name: "Aksi lainnya" });
     await trigger.focus();
     await page.keyboard.press("Enter");

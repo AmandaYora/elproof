@@ -86,6 +86,8 @@ export function useListState<F extends Record<string, string>>({ filters: defaul
     // Typing replaces the history entry instead of adding one per keystroke.
     setQ: (value: string) => update({ q: value }, { resetPage: true, replace: true }),
     setFilter: (key: keyof F & string, value: string) => update({ [key]: value }),
+    /** Every filter back to its default in one step; the search and the sort stay. */
+    clearFilters: () => update(Object.fromEntries(Object.keys(defaults).map((key) => [key, null]))),
     /** Back to the plain list: no search, no filters, default sort. */
     reset: () => setSearch(new URLSearchParams(), { replace: false }),
     /** The current query as a string, for saved views. */

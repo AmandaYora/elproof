@@ -19,16 +19,19 @@ func NewMySQLProjectRepository(db *sql.DB) *MySQLProjectRepository {
 }
 
 const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, venue_rental_price, venue_charge,
-	prep_start_date, package_name, contract_value, status, pic_staff_id, pic_sales_staff_id, description, is_archived, created_at, updated_at`
+	prep_start_date, package_name, contract_value, status, pic_staff_id, pic_sales_staff_id, description, is_archived,
+	cover_photo_path, cover_updated_at, created_at, updated_at`
 
 func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) {
 	var p domain.Project
 	var status string
-	var description sql.NullString
+	var description, coverPath sql.NullString
+	var coverAt sql.NullTime
 	var venueID sql.NullInt64
 	var venueRentalPrice, venueCharge sql.NullInt64
 	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &venueID, &venueRentalPrice, &venueCharge,
-		&p.PrepStartDate, &p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &p.PICSalesStaffID, &description, &p.IsArchived, &p.CreatedAt, &p.UpdatedAt)
+		&p.PrepStartDate, &p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &p.PICSalesStaffID, &description, &p.IsArchived,
+		&coverPath, &coverAt, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -37,6 +40,14 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	}
 	p.Status = domain.ProjectStatus(status)
 	p.Description = description.String
+	if coverPath.Valid && coverPath.String != "" {
+		path := coverPath.String
+		p.CoverPhotoPath = &path
+		if coverAt.Valid {
+			at := coverAt.Time
+			p.CoverUpdatedAt = &at
+		}
+	}
 	if venueID.Valid {
 		p.VenueID = &venueID.Int64
 	}
@@ -208,9 +219,11 @@ func (r *MySQLProjectRepository) ListSortSpec() (map[string]pagination.SortColum
 	return projectSortColumns, pagination.By("eventDate", true)
 }
 
+// projectAppliedSQL counts the payments domain.CountsTowardContract counts (a
+// couple's unverified Client Portal submission does not, ADR-0047).
 const projectAppliedSQL = `GREATEST(COALESCE((SELECT SUM(CASE WHEN cp.type IN ('DP','Termin','Pelunasan') THEN CAST(cp.amount AS SIGNED)
 		WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END)
-	FROM client_payments cp WHERE cp.project_id = projects.id AND cp.deleted_at IS NULL), 0), 0)`
+	FROM client_payments cp WHERE cp.project_id = projects.id AND cp.deleted_at IS NULL AND ` + domain.ContractCountsSQL + `), 0), 0)`
 
 const projectRemainingSQL = `GREATEST(CAST(projects.contract_value AS SIGNED) - ` + projectAppliedSQL + `, 0)`
 
@@ -349,6 +362,41 @@ func (r *MySQLProjectRepository) Patch(ctx context.Context, p *domain.Project, c
 	return patchRow(ctx, conn(ctx, r.db), "projects", projectPatchColumns, p, changed, "tenant_id = ? AND id = ?", []any{p.TenantID, p.ID}, expected)
 }
 
+// LockCover reads the project's current cover key under a row lock (inside the
+// caller's transaction), so two replacements of one cover are serialised and
+// each knows exactly which object it replaced. found is false when there is no
+// such project in the tenant.
+func (r *MySQLProjectRepository) LockCover(ctx context.Context, tenantID, id int64) (path *string, found bool, err error) {
+	var old sql.NullString
+	err = conn(ctx, r.db).QueryRowContext(ctx, `SELECT cover_photo_path FROM projects WHERE tenant_id = ? AND id = ? FOR UPDATE`, tenantID, id).Scan(&old)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if old.Valid && old.String != "" {
+		s := old.String
+		return &s, true, nil
+	}
+	return nil, true, nil
+}
+
+// SetCover stores (or, with a nil path, clears) the project's cover photo key
+// and when it changed. It deliberately keeps updated_at as it is: the cover is
+// not part of the project's PATCH surface, so replacing it must not make an
+// open project form stale (ADR-0036 versions what PATCH edits).
+func (r *MySQLProjectRepository) SetCover(ctx context.Context, tenantID, id int64, path *string, at time.Time) error {
+	var stamp interface{}
+	if path != nil {
+		stamp = at
+	}
+	_, err := conn(ctx, r.db).ExecContext(ctx,
+		`UPDATE projects SET cover_photo_path = ?, cover_updated_at = ?, updated_at = updated_at WHERE tenant_id = ? AND id = ?`,
+		path, stamp, tenantID, id)
+	return err
+}
+
 // ChangeStatus moves a project from one status to another only if it is still
 // in `from`, and says whether it did. Two people acting on a stale page can
 // therefore not skip or undo each other's step: the loser gets false.
@@ -428,14 +476,16 @@ func NewMySQLMilestoneRepository(db *sql.DB) *MySQLMilestoneRepository {
 	return &MySQLMilestoneRepository{db: db}
 }
 
-const milestoneColumns = `id, project_id, sort_order, name, status, target_date, completed_date, days_before_event, updated_at`
+const milestoneColumns = `id, project_id, sort_order, name, status, target_date, completed_date, days_before_event,
+	for_client, IFNULL(completed_by_client_id, 0), updated_at`
 
 func scanMilestone(scan func(dest ...interface{}) error) (*domain.ProjectMilestone, error) {
 	var m domain.ProjectMilestone
 	var status string
 	var completedDate sql.NullTime
 	var daysBeforeEvent sql.NullInt64
-	err := scan(&m.ID, &m.ProjectID, &m.SortOrder, &m.Name, &status, &m.TargetDate, &completedDate, &daysBeforeEvent, &m.UpdatedAt)
+	err := scan(&m.ID, &m.ProjectID, &m.SortOrder, &m.Name, &status, &m.TargetDate, &completedDate, &daysBeforeEvent,
+		&m.ForClient, &m.CompletedByClientID, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -503,8 +553,8 @@ func (r *MySQLMilestoneRepository) FindByID(ctx context.Context, projectID, id i
 
 func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.ProjectMilestone) error {
 	result, err := conn(ctx, r.db).ExecContext(ctx,
-		`INSERT INTO project_milestones (project_id, sort_order, name, status, target_date, days_before_event) VALUES (?, ?, ?, ?, ?, ?)`,
-		m.ProjectID, m.SortOrder, m.Name, string(m.Status), m.TargetDate, m.DaysBeforeEvent,
+		`INSERT INTO project_milestones (project_id, sort_order, name, status, target_date, days_before_event, for_client) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		m.ProjectID, m.SortOrder, m.Name, string(m.Status), m.TargetDate, m.DaysBeforeEvent, m.ForClient,
 	)
 	if err != nil {
 		return err
@@ -518,10 +568,12 @@ func (r *MySQLMilestoneRepository) Create(ctx context.Context, m *domain.Project
 }
 
 var milestonePatchColumns = map[string]column[domain.ProjectMilestone]{
-	"status":          col("status", func(m *domain.ProjectMilestone) any { return string(m.Status) }),
-	"targetDate":      col("target_date", func(m *domain.ProjectMilestone) any { return m.TargetDate }),
-	"completedDate":   col("completed_date", func(m *domain.ProjectMilestone) any { return m.CompletedDate }),
-	"daysBeforeEvent": col("days_before_event", func(m *domain.ProjectMilestone) any { return m.DaysBeforeEvent }),
+	"status":              col("status", func(m *domain.ProjectMilestone) any { return string(m.Status) }),
+	"targetDate":          col("target_date", func(m *domain.ProjectMilestone) any { return m.TargetDate }),
+	"completedDate":       col("completed_date", func(m *domain.ProjectMilestone) any { return m.CompletedDate }),
+	"daysBeforeEvent":     col("days_before_event", func(m *domain.ProjectMilestone) any { return m.DaysBeforeEvent }),
+	"forClient":           col("for_client", func(m *domain.ProjectMilestone) any { return m.ForClient }),
+	"completedByClientId": col("completed_by_client_id", func(m *domain.ProjectMilestone) any { return nullableID(m.CompletedByClientID) }),
 }
 
 // Patch writes the changed fields of a project milestone (see patchRow).

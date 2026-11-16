@@ -12,7 +12,7 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
 
 test("project creation is one all-or-nothing call; a bad row creates nothing", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const body = {
@@ -47,7 +47,7 @@ test("project creation is one all-or-nothing call; a bad row creates nothing", a
 test("a payment and its proof are one call: a failure keeps the drawer open with nothing saved, the retry saves once", async ({ browser }, info) => {
   test.skip(!state().storage, "needs object storage (MinIO)");
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const made = await page.request.post(API("/projects"), {
@@ -65,7 +65,7 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
     if (r.method() === "POST" || r.method() === "PUT") posts.push({ url: r.url(), method: r.method(), key: r.headers()["idempotency-key"], body: r.postData() });
   });
 
-  await visit(page, `/projects/${projectId}/pembayaran/client`);
+  await visit(page, `/proyek/${projectId}/keuangan/klien`);
   await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
   const drawer = page.getByRole("dialog");
   await expect(drawer).toBeVisible();
@@ -108,7 +108,7 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
 test("a JPG transfer proof is saved, and a file only named .jpg is refused under its own field (EP-01, EP-02)", async ({ browser }, info) => {
   test.skip(!state().storage, "needs object storage (MinIO)");
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const session = await browserSession(page);
   const made = await page.request.post(API("/projects"), {
     headers: { Authorization: `Bearer ${session.accessToken}` },
@@ -120,7 +120,7 @@ test("a JPG transfer proof is saved, and a file only named .jpg is refused under
   expect(made.status()).toBe(201);
   const projectId = ((await made.json()).data as { id: number }).id;
 
-  await visit(page, `/projects/${projectId}/pembayaran/client`);
+  await visit(page, `/proyek/${projectId}/keuangan/klien`);
   await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
   const drawer = page.getByRole("dialog");
   await drawer.getByLabel(/Nominal/).fill("1000000");
@@ -144,7 +144,7 @@ test("a JPG transfer proof is saved, and a file only named .jpg is refused under
 
 test("a project can be created with the keyboard alone, from the first field to the last button", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/projects/baru");
+  await visit(page, "/proyek/baru");
   const bride = page.getByLabel(/Nama mempelai wanita/);
   await expect(bride).toBeFocused();
   await page.keyboard.type("Rani Wulandari");
@@ -161,14 +161,14 @@ test("a project can be created with the keyboard alone, from the first field to 
   const create = page.getByRole("button", { name: "Buat proyek" });
   await create.focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/proyek\/\d+/, { timeout: 20_000 });
   await close();
 });
 
 test("new project: a minus sign is refused, a past event date is confirmed, the schedule follows the contract value", async ({ browser }, info) => {
   // EP-10 and EP-05 (QA report). Nothing is created: the test stops on step 2.
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/projects/baru");
+  await visit(page, "/proyek/baru");
   await page.getByLabel(/Nama mempelai wanita/).fill("Tari Anggraini");
   await page.getByLabel(/Nama mempelai pria/).fill("Galih Pratama");
   await page.getByLabel(/Tanggal acara/).fill("2026-01-10");

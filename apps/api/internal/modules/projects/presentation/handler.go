@@ -45,6 +45,9 @@ type Handler struct {
 	overview       *application.OverviewService
 	uploads        *application.UploadService
 	idem           *application.IdempotencyService
+	calendar       *application.CalendarService
+	finance        FinanceReader
+	covers         *application.CoverService
 }
 
 func NewHandler(
@@ -247,6 +250,18 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listActivity(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "venue" && r.Method == http.MethodGet:
 		h.getProjectVenue(w, r, claims.tenantID, projectID)
+	// Client Portal additions (ADR-0047): the cover photo, the couple's proof
+	// submission and their tasks.
+	case len(rest) == 1 && rest[0] == "cover" && r.Method == http.MethodGet:
+		h.getCover(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "cover" && r.Method == http.MethodPut:
+		h.putCover(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "cover" && r.Method == http.MethodDelete:
+		h.deleteCover(w, r, claims, projectID)
+	case len(rest) == 2 && rest[0] == "client-payments" && rest[1] == "submissions" && r.Method == http.MethodPost:
+		h.submitClientPayment(w, r, claims, projectID)
+	case len(rest) == 3 && rest[0] == "milestones" && rest[2] == "complete" && r.Method == http.MethodPost:
+		h.completeMilestoneByClient(w, r, claims, projectID, rest[1])
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)
 	}
@@ -264,6 +279,18 @@ type staffClaims struct {
 	// isClient is true for a `client` principal (Client Portal). Read
 	// handlers use it to redact internal fields — see client_view.go.
 	isClient bool
+	// clientID is the client principal's id (0 for staff): the actor of the
+	// portal's few writes (ADR-0047).
+	clientID int64
+}
+
+// actorID is who a stored idempotency key belongs to: the staff member, or the
+// client on the portal's own routes (which staff can never reach).
+func (c staffClaims) actorID() int64 {
+	if c.isClient {
+		return c.clientID
+	}
+	return c.staffID
 }
 
 func requireStaff(w http.ResponseWriter, r *http.Request) (staffClaims, bool) {
@@ -387,10 +414,12 @@ func clientReadPermission(rest []string) string {
 // venue) already funnels through this same function, so none of these
 // roles can reach another tenant's — or another project's — data by
 // guessing its numeric ID. A client principal only ever gets a synthetic
-// staffClaims with staffID/role left zero-valued and isClient set — safe
-// because this function rejects every non-GET request and every path not in
-// clientCanRead's allowlist (client_view.go) for clients before the big
-// switch is ever reached, so those zero values are never read by a write.
+// staffClaims with staffID/role left zero-valued and isClient/clientID set —
+// safe because this function rejects, for clients, every GET path not in
+// clientCanRead's allowlist and every non-GET request except the four portal
+// writes of clientWritePermission (client_view.go, ADR-0047), each behind its
+// own portal permission, before the big switch is ever reached. Those four
+// handlers check isClient themselves; no staff write ever sees a client claim.
 func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, projectID int64, rest []string) (staffClaims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {
@@ -419,18 +448,27 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 		}
 		return sc, true
 	case "client":
-		if r.Method != http.MethodGet {
-			response.Error(w, http.StatusForbidden, "Client hanya memiliki akses baca", nil)
-			return staffClaims{}, false
-		}
-		if !clientCanRead(rest) {
-			response.Error(w, http.StatusForbidden, "Data ini tidak tersedia untuk akun client", nil)
-			return staffClaims{}, false
-		}
 		grants := middleware.GrantsFrom(r.Context())
-		if perm := clientReadPermission(rest); perm != "" && !grants.Can(perm) {
-			forbiddenPermission(w, "Data ini tidak dibagikan untuk akun Anda")
-			return staffClaims{}, false
+		if r.Method == http.MethodGet {
+			if !clientCanRead(rest) {
+				response.Error(w, http.StatusForbidden, "Data ini tidak tersedia untuk akun client", nil)
+				return staffClaims{}, false
+			}
+			if perm := clientReadPermission(rest); perm != "" && !grants.Can(perm) {
+				forbiddenPermission(w, "Data ini tidak dibagikan untuk akun Anda")
+				return staffClaims{}, false
+			}
+		} else {
+			// The portal's only writes (ADR-0047): each has its own permission.
+			perm, ok := clientWritePermission(r.Method, rest)
+			if !ok {
+				response.Error(w, http.StatusForbidden, "Client hanya memiliki akses baca", nil)
+				return staffClaims{}, false
+			}
+			if !grants.Can(perm) {
+				forbiddenPermission(w, "Akun Anda tidak dapat melakukan aksi ini")
+				return staffClaims{}, false
+			}
 		}
 		tenantID, ok := claims.TenantIDInt()
 		if !ok {
@@ -451,7 +489,7 @@ func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, p
 			response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
 			return staffClaims{}, false
 		}
-		return staffClaims{tenantID: tenantID, isClient: true, grants: grants}, true
+		return staffClaims{tenantID: tenantID, isClient: true, clientID: clientID, grants: grants}, true
 	default:
 		response.Error(w, http.StatusForbidden, "Prinsipal ini tidak dapat mengakses project", nil)
 		return staffClaims{}, false

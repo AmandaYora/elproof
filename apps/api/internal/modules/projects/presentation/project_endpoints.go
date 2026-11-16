@@ -606,7 +606,7 @@ func (h *Handler) milestoneItem(ctx context.Context, claims staffClaims, project
 }
 
 // updateMilestone is PATCH /projects/{id}/milestones/{mid}: a partial update
-// (status, targetDate, completedDate; completedDate may be null). See updateProject
+// (status, targetDate, completedDate, forClient; completedDate may be null). See updateProject
 // for the body, If-Match (428 without) and 409 rules.
 func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
 	milestoneID, err := parseInt64(milestoneIDRaw)
@@ -627,6 +627,7 @@ func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims
 	status := pr.text("status", false)
 	patch := application.MilestonePatch{
 		TargetDate: pr.date("targetDate", false), CompletedDate: pr.date("completedDate", true),
+		ForClient: pr.boolean("forClient"),
 	}
 	if status.Present() {
 		patch.Status = application.Some(domain.MilestoneStatus(status.Value()))

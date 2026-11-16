@@ -19,14 +19,14 @@ interface Route {
 }
 
 const ROUTES: Route[] = [
-  { id: "wo-beranda", label: "Beranda WO", auth: "owner", route: "/dashboard", interact: { role: "button", name: "Buka menu" } },
-  { id: "wo-proyek", label: "Daftar Project", auth: "owner", route: "/projects" },
-  { id: "wo-proyek-ringkasan", label: "Detail Proyek (Ringkasan)", auth: "owner", route: "/projects/1/ringkasan" },
-  { id: "wo-proyek-vendor", label: "Detail Proyek, tab Vendor", auth: "owner", route: "/projects/1/vendor" },
-  { id: "wo-proyek-keuangan", label: "Detail Proyek, tab Keuangan", auth: "owner", route: "/projects/1/pembayaran/client" },
-  { id: "wo-proyek-kendala", label: "Detail Proyek, tab Kendala", auth: "owner", route: "/projects/1/kendala" },
-  { id: "wo-klien", label: "Daftar Client", auth: "owner", route: "/clients" },
-  { id: "wo-vendor", label: "Daftar Vendor", auth: "owner", route: "/vendors" },
+  { id: "wo-beranda", label: "Beranda WO", auth: "owner", route: "/beranda", interact: { role: "button", name: "Buka menu" } },
+  { id: "wo-proyek", label: "Daftar Project", auth: "owner", route: "/proyek" },
+  { id: "wo-proyek-ringkasan", label: "Detail Proyek (Ringkasan)", auth: "owner", route: "/proyek/1/ringkasan" },
+  { id: "wo-proyek-vendor", label: "Detail Proyek, tab Vendor", auth: "owner", route: "/proyek/1/vendor" },
+  { id: "wo-proyek-keuangan", label: "Detail Proyek, tab Keuangan", auth: "owner", route: "/proyek/1/keuangan/klien" },
+  { id: "wo-proyek-kendala", label: "Detail Proyek, tab Kendala", auth: "owner", route: "/proyek/1/kendala" },
+  { id: "wo-klien", label: "Daftar Client", auth: "owner", route: "/klien" },
+  { id: "wo-vendor", label: "Daftar Vendor", auth: "owner", route: "/vendor" },
   { id: "portal-beranda", label: "Beranda Portal", auth: "client", route: "/portal/beranda", interact: { role: "link", name: /Jadwal/ } },
   { id: "portal-jadwal", label: "Portal, Jadwal", auth: "client", route: "/portal/timeline" },
   { id: "portal-pembayaran", label: "Portal, Pembayaran", auth: "client", route: "/portal/pembayaran" },

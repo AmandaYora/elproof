@@ -15,13 +15,15 @@ interface Props {
   sections: NavSection[];
   /** Bottom of the menu: who is signed in and the sign-out button. */
   footer: (collapsed: boolean) => ReactNode;
+  /** A quiet note just above the footer (the WO Console's trial chip). */
+  aboveFooter?: (collapsed: boolean) => ReactNode;
 }
 
 /**
  * The console menu (PLAN.md Tahap 7): neutral surface with the brand only as an accent, a narrow icon rail on a
  * computer, a sheet on a phone, Cmd/Ctrl+B for both. One component for the WO Console and the Platform Console.
  */
-export function AppSidebar({ brand, sections, footer }: Props) {
+export function AppSidebar({ brand, sections, footer, aboveFooter }: Props) {
   const { mobileOpen, setMobileOpen, collapsed, toggle } = useSidebar();
   const { pathname } = useLocation();
   const [sheetWanted, setSheetWanted] = useState(false);
@@ -42,6 +44,7 @@ export function AppSidebar({ brand, sections, footer }: Props) {
       >
         <div className={cn("flex min-h-16 items-center", collapsed ? "justify-center px-2" : "px-5")}>{brand(collapsed)}</div>
         <Menu sections={sections} rail={collapsed} />
+        {aboveFooter?.(collapsed)}
         <div className="border-t px-2.5 py-2">
           <button
             type="button"
@@ -54,12 +57,19 @@ export function AppSidebar({ brand, sections, footer }: Props) {
             {!collapsed && <span>Ciutkan menu</span>}
           </button>
         </div>
-        <div className={cn("border-t py-3", collapsed ? "px-2" : "px-5")}>{footer(collapsed)}</div>
+        <div className={cn("border-t py-2", collapsed ? "px-2" : "px-2.5")}>{footer(collapsed)}</div>
       </aside>
 
       {(sheetWanted || mobileOpen) && (
         <Suspense fallback={null}>
-          <MobileSheet open={mobileOpen} onOpenChange={setMobileOpen} brand={brand(false)} sections={sections} footer={footer(false)} />
+          <MobileSheet
+            open={mobileOpen}
+            onOpenChange={setMobileOpen}
+            brand={brand(false)}
+            sections={sections}
+            footer={footer(false)}
+            aboveFooter={aboveFooter?.(false)}
+          />
         </Suspense>
       )}
     </>

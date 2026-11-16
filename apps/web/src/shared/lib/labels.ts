@@ -74,11 +74,24 @@ export const TERM_STATUS_LABELS: Labels<PaymentTermStatus> = {
   staff: { paid: "Lunas", overdue: "Terlambat", partial: "Dibayar sebagian", due_soon: "Segera jatuh tempo", upcoming: "Belum jatuh tempo" },
   client: {
     paid: "Lunas",
-    overdue: "Lewat jatuh tempo — hubungi PIC",
+    overdue: "Lewat jatuh tempo",
     partial: "Dibayar sebagian",
     due_soon: "Jatuh tempo segera",
     upcoming: "Menunggu pembayaran",
   },
+};
+
+/** Where an amount the WO owes a vendor or venue stands (GET /finance/payables). */
+export const PAYABLE_STATUS_LABELS: Record<"paid" | "unpaid" | "overdue", string> = {
+  paid: "Lunas",
+  unpaid: "Belum lunas",
+  overdue: "Terlambat",
+};
+
+/** Who an amount the WO owes goes to. */
+export const PAYABLE_KIND_LABELS: Record<"vendor" | "venue", string> = {
+  vendor: "Vendor",
+  venue: "Venue",
 };
 
 // Activity entries are written by the server as text. Older ones used English words ("Project baru dibuat",

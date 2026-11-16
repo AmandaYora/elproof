@@ -49,7 +49,7 @@ export function VendorCategoryFormModal({ open, onClose, onSubmit, initialCatego
     <Modal
       open={open}
       onClose={onClose}
-      title={initialCategory ? "Ubah Kategori Vendor" : "Tambah Kategori Vendor"}
+      title={initialCategory ? "Ubah kategori vendor" : "Tambah kategori vendor"}
       description="Kategori digunakan untuk mengelompokkan vendor berdasarkan jenis layanan."
       busy={form.submitting}
       footer={
@@ -65,7 +65,7 @@ export function VendorCategoryFormModal({ open, onClose, onSubmit, initialCatego
     >
       <form id="vendor-category-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
-        <Field label="Nama Kategori" required name="name" error={errors.name}>
+        <Field label="Nama kategori" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Dekorasi" />
         </Field>
         <Field label="Deskripsi" required name="description" error={errors.description}>

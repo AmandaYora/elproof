@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/application"
+	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
@@ -25,6 +26,8 @@ type homeProjectResponse struct {
 	Status      string `json:"status"`
 	PICName     string `json:"picName"`
 	PICPhone    string `json:"picPhone"`
+	// CoverURL: the hero photo (/api/v1/projects/{id}/cover?v=...), null without one.
+	CoverURL *string `json:"coverUrl"`
 }
 
 type homeCountdownResponse struct {
@@ -86,22 +89,33 @@ type homeUpdateResponse struct {
 	VerifiedBy string             `json:"verifiedBy,omitempty"`
 }
 
+// homeClientTaskResponse is one task for the couple (a Timeline step staff flagged
+// forClient, ADR-0047).
+type homeClientTaskResponse struct {
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	TargetDate    string  `json:"targetDate"`
+	Status        string  `json:"status"`
+	CompletedDate *string `json:"completedDate"`
+}
+
 type homePICResponse struct {
 	Name  string `json:"name"`
 	Phone string `json:"phone"`
 }
 
 type clientHomeResponse struct {
-	Project        homeProjectResponse   `json:"project"`
-	Countdown      homeCountdownResponse `json:"countdown"`
-	Progress       *homeProgressResponse `json:"progress,omitempty"`
-	Finance        *homeFinanceResponse  `json:"finance,omitempty"`
-	PayTo          *homePayToResponse    `json:"payTo,omitempty"`
-	Contact        *homeContactResponse  `json:"contact,omitempty"`
-	Actions        []homeActionResponse  `json:"actions"`
-	OpenIssueCount *int                  `json:"openIssueCount,omitempty"`
-	RecentUpdates  []homeUpdateResponse  `json:"recentUpdates"`
-	PIC            homePICResponse       `json:"pic"`
+	Project        homeProjectResponse      `json:"project"`
+	Countdown      homeCountdownResponse    `json:"countdown"`
+	Progress       *homeProgressResponse    `json:"progress,omitempty"`
+	Finance        *homeFinanceResponse     `json:"finance,omitempty"`
+	PayTo          *homePayToResponse       `json:"payTo,omitempty"`
+	Contact        *homeContactResponse     `json:"contact,omitempty"`
+	Actions        []homeActionResponse     `json:"actions"`
+	OpenIssueCount *int                     `json:"openIssueCount,omitempty"`
+	RecentUpdates  []homeUpdateResponse     `json:"recentUpdates"`
+	ClientTasks    []homeClientTaskResponse `json:"clientTasks"`
+	PIC            homePICResponse          `json:"pic"`
 }
 
 func toClientHomeResponse(h *application.ClientHome) clientHomeResponse {
@@ -110,11 +124,13 @@ func toClientHomeResponse(h *application.ClientHome) clientHomeResponse {
 			ID: h.Project.ID, Name: h.Project.Name, BrideName: h.Project.BrideName, GroomName: h.Project.GroomName,
 			EventDate: h.Project.EventDate.Format(dateLayout), Venue: h.Project.Venue, PackageName: h.Project.PackageName,
 			Status: h.Project.Status, PICName: h.Project.PICName, PICPhone: h.Project.PICPhone,
+			CoverURL: coverURL(domain.Project{ID: h.Project.ID, CoverPhotoPath: h.Project.CoverPhotoPath, CoverUpdatedAt: h.Project.CoverUpdatedAt}),
 		},
 		Countdown:      homeCountdownResponse{DaysToEvent: h.DaysToEvent},
 		OpenIssueCount: h.OpenIssueCount,
 		Actions:        make([]homeActionResponse, 0, len(h.Actions)),
 		RecentUpdates:  make([]homeUpdateResponse, 0, len(h.RecentUpdates)),
+		ClientTasks:    make([]homeClientTaskResponse, 0, len(h.ClientTasks)),
 		PIC:            homePICResponse{Name: h.PICName, Phone: h.PICPhone},
 	}
 	if h.Progress != nil {
@@ -144,6 +160,11 @@ func toClientHomeResponse(h *application.ClientHome) clientHomeResponse {
 			ar.DueDate = &d
 		}
 		out.Actions = append(out.Actions, ar)
+	}
+	for _, m := range h.ClientTasks {
+		out.ClientTasks = append(out.ClientTasks, homeClientTaskResponse{
+			ID: m.ID, Name: m.Name, TargetDate: m.TargetDate.Format(dateLayout), Status: string(m.Status), CompletedDate: formatDatePtr(m.CompletedDate),
+		})
 	}
 	for _, u := range h.RecentUpdates {
 		ur := homeUpdateResponse{Kind: string(u.Kind), Title: u.Title, At: u.At.Format(time.RFC3339), VerifiedBy: u.VerifiedBy}

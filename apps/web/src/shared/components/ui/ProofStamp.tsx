@@ -19,6 +19,8 @@ interface ProofStampProps {
    * first time it is seen, and never again. Omit to never animate.
    */
   seenKey?: string;
+  /** Who verified and when, when the label is kept short (a table cell): shown on hover and read by screen readers. */
+  detail?: string;
   className?: string;
 }
 
@@ -48,7 +50,7 @@ function markSeen(key: string) {
  * Shown only over something that really has a proof file (DESIGN.md §3); the
  * press animation plays once, never with reduced motion.
  */
-export function ProofStamp({ proof, label, onOpen, seenKey, className }: ProofStampProps) {
+export function ProofStamp({ proof, label, onOpen, seenKey, detail, className }: ProofStampProps) {
   // Decided once on first render: re-reading storage after markSeen would cancel the animation midway.
   const [animate] = useState(() => (seenKey ? !readSeen().includes(seenKey) : false));
   useEffect(() => {
@@ -60,6 +62,7 @@ export function ProofStamp({ proof, label, onOpen, seenKey, className }: ProofSt
     <button
       type="button"
       onClick={onOpen}
+      title={detail}
       className={cn(
         "inline-flex min-h-8 items-center gap-1.5 rounded-2xl border border-seal/60 bg-seal-soft py-1 pr-3 pl-2 text-left text-[12.5px] leading-tight font-semibold text-seal-text pointer-coarse:min-h-11",
         "hover:border-seal focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring",
@@ -72,7 +75,7 @@ export function ProofStamp({ proof, label, onOpen, seenKey, className }: ProofSt
       />
       <span>
         {label}
-        <span className="sr-only">. Buka bukti.</span>
+        <span className="sr-only">{detail ? ` (${detail})` : ""}. Buka bukti.</span>
       </span>
     </button>
   );

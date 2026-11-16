@@ -40,14 +40,14 @@ export default defineConfig({
     {
       // Behavior (overlays, proof stamps, call budgets): functional, no screenshots.
       name: "behavior",
-      testMatch: /(overlays|proof|forms|overview|lists|nav|terms|structure|keyboard)\.spec\.ts$/,
+      testMatch: /(overlays|proof|forms|overview|lists|nav|terms|structure|keyboard|calendar|finance)\.spec\.ts$/,
       use: { viewport: { width: 1280, height: 800 } },
     },
     {
       // Tests that WRITE data (new project, new payment). They run after every screenshot project has finished, so the
       // data they add can never leak into a golden screenshot taken at the same time.
       name: "mutating",
-      testMatch: /(payment-flow|tahap5|tahap6|tahap8|branding|access|plans|vouchers)\.spec\.ts$/,
+      testMatch: /(payment-flow|tahap5|tahap6|tahap8|branding|access|plans|vouchers|portal-writes)\.spec\.ts$/,
       dependencies: ["desktop", "mobile"],
       use: { viewport: { width: 1280, height: 800 } },
     },

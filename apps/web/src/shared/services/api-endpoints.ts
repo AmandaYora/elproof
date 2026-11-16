@@ -186,6 +186,10 @@ export const API = {
     duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
     milestone: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}`,
+    // Client Portal: the couple marks a task (a step flagged forClient) done (ADR-0047).
+    milestoneComplete: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}/complete`,
+    // The Client Portal hero photo: PUT/DELETE by staff (project.edit), GET streams it (ADR-0047).
+    cover: (id: string) => `/api/v1/projects/${id}/cover`,
     vendors: (id: string) => `/api/v1/projects/${id}/vendors`,
     vendor: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}`,
     vendorCancel: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}/cancel`,
@@ -199,6 +203,8 @@ export const API = {
     clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
     clientPaymentRestore: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/restore`,
     uploads: (id: string) => `/api/v1/projects/${id}/uploads`,
+    // Client Portal: the couple sends a transfer proof (portal.finance.submit, ADR-0047).
+    clientPaymentSubmissions: (id: string) => `/api/v1/projects/${id}/client-payments/submissions`,
     clientPaymentVerify: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/verify`,
     venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,
     venuePayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}`,
@@ -225,6 +231,15 @@ export const API = {
   },
   dashboard: "/api/v1/dashboard",
   dashboardMine: "/api/v1/dashboard/mine",
+  // Kalender: wedding days, open steps and installments across projects (?from&to&picStaffId&kinds).
+  calendar: "/api/v1/calendar",
+  // Keuangan: money across the caller's projects (read-only, finance.record).
+  finance: {
+    summary: "/api/v1/finance/summary",
+    receivables: "/api/v1/finance/receivables",
+    payables: "/api/v1/finance/payables",
+    verifications: "/api/v1/finance/verifications",
+  },
   clients: {
     base: "/api/v1/clients",
     byProject: (projectId: string) => `/api/v1/clients?projectId=${projectId}`,

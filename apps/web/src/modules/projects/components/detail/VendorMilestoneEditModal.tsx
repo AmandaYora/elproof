@@ -138,7 +138,7 @@ export function VendorMilestoneEditModal({
         <form id="vendor-milestone-edit-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-6">
         <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
         <section>
-          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Status dan jadwal</p>
+          <p className="mb-3 text-[13px] font-semibold text-text-primary">Status dan jadwal</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Status" name="status" error={errors.status}>
               <Select value={fields.status} onChange={(e) => setStatus(e.target.value as MilestoneStatus)}>
@@ -164,7 +164,7 @@ export function VendorMilestoneEditModal({
         </section>
 
         <section>
-          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Deskripsi dan catatan</p>
+          <p className="mb-3 text-[13px] font-semibold text-text-primary">Deskripsi dan catatan</p>
           <div className="flex flex-col gap-4">
             <Field label="Deskripsi" name="description" error={errors.description}>
               <Textarea rows={2} value={fields.description} onChange={(e) => set("description", e.target.value)} onBlur={() => blur("description")} />
@@ -178,7 +178,7 @@ export function VendorMilestoneEditModal({
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Bukti</p>
+            <p className="text-[13px] font-semibold text-text-primary">Bukti</p>
             <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setShowEvidenceForm((v) => !v)}>
               Tambah bukti
             </Button>
@@ -241,7 +241,7 @@ export function VendorMilestoneEditModal({
         </section>
 
         <section>
-          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary">Riwayat perubahan</p>
+          <p className="mb-3 text-[13px] font-semibold text-text-primary">Riwayat perubahan</p>
           {historyEntries.length === 0 ? (
             <EmptyState title="Belum ada riwayat" description="Perubahan pada tahapan ini akan tercatat di sini." />
           ) : (

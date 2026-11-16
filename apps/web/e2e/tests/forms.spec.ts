@@ -7,25 +7,25 @@ import { open } from "../lib/suite";
 test.describe("Tambah vendor", () => {
   test("Enter on an empty form shows every problem at once and focuses the summary", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
-    await page.getByRole("button", { name: "Tambah Vendor" }).click();
+    await visit(page, "/vendor");
+    await page.getByRole("button", { name: "Tambah vendor" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     const save = dialog.getByRole("button", { name: "Simpan vendor" });
     await expect(save).toBeEnabled(); // never disabled because the form is empty
-    await dialog.getByLabel(/Nama Vendor/).press("Enter");
+    await dialog.getByLabel(/Nama vendor/i).press("Enter");
     const summary = dialog.locator("#form-error-summary");
     await expect(summary).toBeVisible();
     await expect(summary).toBeFocused();
     await expect(summary).toContainText(/Ada \d+ isian yang perlu diperbaiki/);
-    await expect(dialog.getByLabel(/Nama Vendor/)).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByLabel(/Nama vendor/i)).toHaveAttribute("aria-invalid", "true");
     // Jumping from the summary lands on the field.
     await summary.getByRole("button").first().click();
-    await expect(dialog.getByLabel(/Nama Vendor/)).toBeFocused();
+    await expect(dialog.getByLabel(/Nama vendor/i)).toBeFocused();
     // Typed input is never cleared, and the message disappears as the field is fixed.
-    await dialog.getByLabel(/Nama Vendor/).fill("Katering Baru");
-    await expect(dialog.getByLabel(/Nama Vendor/)).not.toHaveAttribute("aria-invalid", "true");
-    await expect(dialog.getByLabel(/Nama Vendor/)).toHaveValue("Katering Baru");
+    await dialog.getByLabel(/Nama vendor/i).fill("Katering Baru");
+    await expect(dialog.getByLabel(/Nama vendor/i)).not.toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByLabel(/Nama vendor/i)).toHaveValue("Katering Baru");
     await close();
   });
 
@@ -39,12 +39,12 @@ test.describe("Tambah vendor", () => {
         body: JSON.stringify({ success: false, message: "Data vendor belum lengkap", errors: { name: ["Nama vendor sudah dipakai. Gunakan nama lain."] } }),
       });
     });
-    await visit(page, "/vendors");
-    await page.getByRole("button", { name: "Tambah Vendor" }).click();
+    await visit(page, "/vendor");
+    await page.getByRole("button", { name: "Tambah vendor" }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel(/Nama Vendor/).fill("Katering Rasa Nusantara");
+    await dialog.getByLabel(/Nama vendor/i).fill("Katering Rasa Nusantara");
     await dialog.getByLabel(/Nama PIC/).fill("Bu Wati");
-    await dialog.getByLabel(/No Tlp Vendor/).fill("081211110000");
+    await dialog.getByLabel(/telepon vendor/i).fill("081211110000");
     await dialog.getByLabel(/Kota/).click();
     await page.getByRole("option", { name: "Kota Bandung" }).first().click();
     const money = dialog.getByLabel(/Harga Akad \(Rp\)/);
@@ -89,7 +89,7 @@ test.describe("Peran dan akses", () => {
 test.describe("Tab order", () => {
   test("Tab never traps the keyboard on the new-project form", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/projects/baru");
+    await visit(page, "/proyek/baru");
     await expect(page.getByLabel(/Nama mempelai wanita/)).toBeFocused(); // starts on the first field
     const seen = new Set<string>();
     for (let i = 0; i < 40; i++) {

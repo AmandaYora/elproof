@@ -11,12 +11,13 @@ import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import { formatDayCountdown } from "@/shared/lib/formatters";
 
 const STATUS_OPTIONS: MilestoneStatus[] = [...MILESTONE_STATUS_OPTIONS];
-const FIELD_LABELS: Record<string, string> = { status: "Status", targetDate: "Target tanggal", completedDate: "Tanggal selesai" };
+const FIELD_LABELS: Record<string, string> = { status: "Status", targetDate: "Target tanggal", completedDate: "Tanggal selesai", forClient: "Tugas untuk pasangan" };
 
 export interface ProjectMilestoneEditFields {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string;
+  forClient: boolean;
 }
 
 interface ProjectMilestoneEditModalProps {
@@ -37,7 +38,7 @@ function followHint(daysBeforeEvent: number | null | undefined): string | undefi
 export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: ProjectMilestoneEditModalProps) {
   const form = useZodForm({
     schema: projectMilestoneEditSchema,
-    initial: { status: milestone.status, targetDate: milestone.targetDate, completedDate: milestone.completedDate ?? "" },
+    initial: { status: milestone.status, targetDate: milestone.targetDate, completedDate: milestone.completedDate ?? "", forClient: milestone.forClient },
   });
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
@@ -88,6 +89,24 @@ export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: 
         <Field label="Tanggal Selesai" name="completedDate" error={errors.completedDate}>
           <Input type="date" value={values.completedDate} onChange={(e) => set("completedDate", e.target.value)} onBlur={() => blur("completedDate")} />
         </Field>
+        <label className="flex items-start gap-2.5 rounded-md border border-border-light bg-surface-muted/40 px-3 py-2.5 text-[13px] text-text-primary">
+          <input
+            type="checkbox"
+            name="forClient"
+            checked={values.forClient}
+            onChange={(e) => set("forClient", e.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-primary"
+          />
+          <span>
+            <span className="font-medium">Tugas untuk pasangan</span>
+            <span className="block text-[12.5px] text-text-secondary">
+              Tampil di Portal Klien sebagai hal yang perlu mereka lakukan, dan pasangan bisa menandainya selesai sendiri.
+            </span>
+          </span>
+        </label>
+        {milestone.completedByClient && milestone.status === "Completed" && (
+          <p className="text-[12.5px] text-text-secondary">Ditandai selesai oleh pasangan dari Portal Klien.</p>
+        )}
       </form>
     </Modal>
   );

@@ -20,15 +20,15 @@ func NewMySQLListMoneyRepository(db *sql.DB) *MySQLListMoneyRepository {
 }
 
 // PaymentLinesByProjects returns the live (not deleted) client payments of the
-// projects as the lines the ledger rules read. The caller passes ids of its own
-// tenant's projects (a page it has just listed).
+// projects that domain.CountsTowardContract, as the lines the ledger rules read.
+// The caller passes ids of its own tenant's projects (a page it has just listed).
 func (r *MySQLListMoneyRepository) PaymentLinesByProjects(ctx context.Context, projectIDs []int64) (map[int64][]domain.PaymentLine, error) {
 	out := make(map[int64][]domain.PaymentLine, len(projectIDs))
 	if len(projectIDs) == 0 {
 		return out, nil
 	}
 	rows, err := conn(ctx, r.db).QueryContext(ctx,
-		`SELECT project_id, type, amount FROM client_payments WHERE project_id IN (`+utils.Placeholders(len(projectIDs))+`) AND deleted_at IS NULL`,
+		`SELECT cp.project_id, cp.type, cp.amount FROM client_payments cp WHERE cp.project_id IN (`+utils.Placeholders(len(projectIDs))+`) AND cp.deleted_at IS NULL AND `+domain.ContractCountsSQL,
 		utils.Int64Args(projectIDs)...)
 	if err != nil {
 		return nil, err

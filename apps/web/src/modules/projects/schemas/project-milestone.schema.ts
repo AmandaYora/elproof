@@ -13,6 +13,7 @@ export const projectMilestoneEditSchema = z.object({
   status: z.enum(MILESTONE_STATUS_OPTIONS),
   targetDate: z.string().min(1, "Pilih target tanggal"),
   completedDate: z.string().default(""),
+  forClient: z.boolean().default(false),
 });
 
 export type ProjectMilestoneEditValues = z.infer<typeof projectMilestoneEditSchema>;

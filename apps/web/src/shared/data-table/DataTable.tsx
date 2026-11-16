@@ -24,6 +24,13 @@ export interface Column<T> {
   primary?: boolean;
   /** Left out of the phone card. */
   hideOnCard?: boolean;
+  /**
+   * Shown on the phone card. When any column sets it, the card shows only those columns (plus the primary one):
+   * a phone card carries 3–4 key facts, not every column (RISET WO Console §3 #8).
+   */
+  card?: boolean;
+  /** Long text is cut with an ellipsis on one line instead of wrapping (give the column a width in className). */
+  truncate?: boolean;
 }
 
 export interface Selection {
@@ -146,7 +153,9 @@ export function DataTable<T>({
     );
   }
 
-  const rowClass = density === "padat" ? "h-8 text-[13px]" : "h-10";
+  // 44 px rows, 36 px when compact (DESIGN.md §4.5); text never makes a row taller than that unless a column asks to wrap.
+  const rowClass = density === "padat" ? "h-9 text-[13px]" : "h-11";
+  const cardColumns = columns.some((c) => c.card) ? columns.filter((c) => c.card && c !== primary) : columns.filter((c) => c !== primary && !c.hideOnCard);
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy={status === "loading" || undefined}>
@@ -197,7 +206,11 @@ export function DataTable<T>({
                   </th>
                 );
               })}
-              {actions && <th scope="col" className="h-10 px-4 text-[12.5px] font-semibold text-muted-foreground">Aksi</th>}
+              {actions && (
+                <th scope="col" className="h-10 w-px px-3">
+                  <span className="sr-only">Aksi</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -218,17 +231,34 @@ export function DataTable<T>({
                     </td>
                   )}
                   {columns.map((col, i) => (
-                    <td key={col.id} className={cn("px-4 align-middle text-foreground", col.align === "right" && "text-right tabular-nums", col.className)}>
+                    <td
+                      key={col.id}
+                      className={cn(
+                        "px-4 align-middle text-foreground",
+                        // Numbers, money and dates never wrap (EUI/Primer table guidelines).
+                        col.align === "right" && "text-right whitespace-nowrap tabular-nums",
+                        col.truncate && "max-w-0",
+                        col.className,
+                      )}
+                    >
                       {href && i === 0 ? (
-                        <Link to={href} className="font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
+                        <Link
+                          to={href}
+                          className={cn(
+                            "font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
+                            col.truncate && "block truncate",
+                          )}
+                        >
                           {col.cell(row)}
                         </Link>
+                      ) : col.truncate ? (
+                        <div className="truncate">{col.cell(row)}</div>
                       ) : (
                         col.cell(row)
                       )}
                     </td>
                   ))}
-                  {actions && <td className="px-4 align-middle">{actions(row)}</td>}
+                  {actions && <td className="w-px px-3 align-middle whitespace-nowrap">{actions(row)}</td>}
                 </tr>
               );
             })}
@@ -256,15 +286,13 @@ export function DataTable<T>({
                   {rowHref?.(row) ? <Link to={rowHref(row)!}>{primary.cell(row)}</Link> : primary.cell(row)}
                 </div>
               </div>
-              {columns
-                .filter((c) => c !== primary && !c.hideOnCard)
-                .map((c) => (
+              {cardColumns.map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-3 text-[12.5px]">
                     <span className="shrink-0 text-muted-foreground">{c.header}</span>
                     <span className={cn("min-w-0 truncate text-right font-medium text-foreground", c.align === "right" && "tabular-nums")}>{c.cell(row)}</span>
                   </div>
                 ))}
-              {actions && <div className="flex items-center gap-2 pt-1">{actions(row)}</div>}
+              {actions && <div className="flex items-center justify-end gap-2">{actions(row)}</div>}
             </li>
           );
         })}

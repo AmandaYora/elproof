@@ -39,7 +39,7 @@ for (const [group, pages] of groups) {
 
 test("the menu and breadcrumbs are named landmarks on a project page", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "owner");
-  await visit(page, "/projects/1/ringkasan");
+  await visit(page, "/proyek/1/ringkasan");
   await expect(page.getByRole("navigation", { name: "Menu utama" })).toHaveCount(1);
   await expect(page.getByRole("navigation", { name: "Jejak halaman" })).toHaveCount(1);
   await expect(page.getByRole("complementary", { name: "Menu" })).toHaveCount(1);

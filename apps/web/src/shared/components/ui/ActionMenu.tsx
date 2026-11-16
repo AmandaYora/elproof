@@ -18,6 +18,8 @@ interface ActionMenuProps {
   /** Accessible name of the "⋯" button. */
   label?: string;
   disabled?: boolean;
+  /** "ghost": the quiet row-action look inside tables and cards; "outline" (default): next to other buttons. */
+  variant?: "outline" | "ghost";
 }
 
 /**
@@ -26,7 +28,7 @@ interface ActionMenuProps {
  * list (and only the list: a dialog the menu sits in stays open), and focus
  * returns to the button.
  */
-export function ActionMenu({ items, label = "Aksi lainnya", disabled }: ActionMenuProps) {
+export function ActionMenu({ items, label = "Aksi lainnya", disabled, variant = "outline" }: ActionMenuProps) {
   const visible = items.filter((i) => !i.hidden);
   if (visible.length === 0) return null;
 
@@ -35,7 +37,13 @@ export function ActionMenu({ items, label = "Aksi lainnya", disabled }: ActionMe
       <DropdownMenuTrigger
         disabled={disabled}
         aria-label={label}
-        render={<Button variant="outline" size="icon" className="bg-card text-muted-foreground" />}
+        render={
+          variant === "ghost" ? (
+            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" />
+          ) : (
+            <Button variant="outline" size="icon" className="bg-card text-muted-foreground" />
+          )
+        }
       >
         <MoreHorizontal />
       </DropdownMenuTrigger>

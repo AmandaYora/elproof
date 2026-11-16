@@ -3,7 +3,9 @@ import { Navigate, type RouteObject } from "react-router-dom";
 import { AppLayout } from "@/shared/layouts/AppLayout";
 import { RequireAuth } from "@/shared/components/RequireAuth";
 import { RequirePermission } from "@/shared/components/RequirePermission";
-import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { LEGACY_PROJECT_TABS, ROUTE_PATHS } from "@/app/routes/route-paths";
+import { LegacyPathRedirect } from "@/shared/components/LegacyPathRedirect";
+import { ProjectTabRedirect } from "@/app/routes/ProjectTabRedirect";
 
 const DashboardPage = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
 const ProjectListPage = lazy(() => import("@/modules/projects/pages/ProjectListPage"));
@@ -13,14 +15,11 @@ const ProjectSummaryTabPage = lazy(() => import("@/modules/projects/pages/tabs/P
 const ProjectIssuesTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectIssuesTabPage"));
 const ProjectVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectVendorTabPage"));
 const ProjectMilestoneTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectMilestoneTabPage"));
-const ProjectClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectClientTabPage"));
-const ProjectPaymentsTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectPaymentsTabPage"));
-const PembayaranClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranClientTabPage"));
-const PembayaranVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVendorTabPage"));
-const PembayaranVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVenueTabPage"));
+const ProjectFinanceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectFinanceTabPage"));
+const FinanceClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceClientTabPage"));
+const FinanceVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceVendorTabPage"));
+const FinanceVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceVenueTabPage"));
 const ProjectEvidenceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectEvidenceTabPage"));
-const ProjectActivityTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectActivityTabPage"));
-const ProjectVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectVenueTabPage"));
 const ClientListPage = lazy(() => import("@/modules/clients/pages/ClientListPage"));
 const VendorCategoryListPage = lazy(() => import("@/modules/vendor-categories/pages/VendorCategoryListPage"));
 const MilestoneTemplateListPage = lazy(() => import("@/modules/milestone-templates/pages/MilestoneTemplateListPage"));
@@ -31,10 +30,28 @@ const SubscriptionPage = lazy(() => import("@/modules/subscription/pages/Subscri
 const SubscriptionReceiptPage = lazy(() => import("@/modules/subscription/pages/SubscriptionReceiptPage"));
 const BusinessProfilePage = lazy(() => import("@/modules/business-profile/pages/BusinessProfilePage"));
 const RolesPage = lazy(() => import("@/modules/access/pages/RolesPage"));
+const CalendarPage = lazy(() => import("@/modules/calendar/pages/CalendarPage"));
+const FinancePage = lazy(() => import("@/modules/finance/pages/FinancePage"));
+
+// The console's addresses before they moved to Indonesian (16 Nov 2026): kept as redirects so old links still work.
+const LEGACY_PREFIXES: Array<[string, string]> = [
+  ["/dashboard", ROUTE_PATHS.dashboard],
+  ["/projects", ROUTE_PATHS.projects],
+  ["/clients", ROUTE_PATHS.clients],
+  ["/vendors", ROUTE_PATHS.vendors],
+  ["/venues", ROUTE_PATHS.venues],
+  ["/vendor-categories", ROUTE_PATHS.vendorCategories],
+  ["/pengguna", ROUTE_PATHS.users],
+  ["/timeline-default", ROUTE_PATHS.milestoneTemplates],
+];
 
 export const protectedRoutes: RouteObject = {
   element: <RequireAuth allow={["staff"]} />,
   children: [
+    ...LEGACY_PREFIXES.flatMap(([from, to]) => [
+      { path: from, element: <LegacyPathRedirect from={from} to={to} /> },
+      { path: `${from}/*`, element: <LegacyPathRedirect from={from} to={to} /> },
+    ]),
     {
       element: <AppLayout />,
       children: [
@@ -42,40 +59,45 @@ export const protectedRoutes: RouteObject = {
         // (scoped server-side to their own PIC'd projects — see PLAN.md's
         // RBAC section) — no RequireRole wrapper needed here.
         { path: ROUTE_PATHS.projects, element: <ProjectListPage />, handle: { title: "Proyek" } },
-        // A static path wins over "/projects/:projectId" below.
+        // A static path wins over "/proyek/:projectId" below.
         {
           element: <RequirePermission all={["project.create"]} />,
           children: [{ path: ROUTE_PATHS.projectNew, element: <ProjectCreatePage />, handle: { title: "Proyek baru" } }],
         },
         {
-          path: "/projects/:projectId",
+          path: "/proyek/:projectId",
           element: <ProjectDetailLayout />,
           children: [
             { index: true, element: <Navigate to="ringkasan" replace /> },
             { path: "ringkasan", element: <ProjectSummaryTabPage />, handle: { title: "Ringkasan proyek" } },
-            { path: "kendala", element: <ProjectIssuesTabPage />, handle: { title: "Kendala proyek" } },
-            { path: "vendor", element: <ProjectVendorTabPage />, handle: { title: "Vendor proyek" } },
-            { path: "milestone", element: <ProjectMilestoneTabPage />, handle: { title: "Jadwal proyek" } },
-            { path: "client", element: <ProjectClientTabPage />, handle: { title: "Klien proyek" } },
+            { path: "jadwal", element: <ProjectMilestoneTabPage />, handle: { title: "Jadwal proyek" } },
+            { path: "vendor", element: <ProjectVendorTabPage />, handle: { title: "Vendor dan venue proyek" } },
             {
-              path: "pembayaran",
-              element: <ProjectPaymentsTabPage />,
+              path: "keuangan",
+              element: <ProjectFinanceTabPage />,
               children: [
-                { index: true, element: <Navigate to="client" replace /> },
-                { path: "client", element: <PembayaranClientTabPage />, handle: { title: "Pembayaran klien" } },
-                { path: "vendor", element: <PembayaranVendorTabPage />, handle: { title: "Pembayaran vendor" } },
-                { path: "venue", element: <PembayaranVenueTabPage />, handle: { title: "Pembayaran venue" } },
+                { index: true, element: <Navigate to="klien" replace /> },
+                { path: "klien", element: <FinanceClientTabPage />, handle: { title: "Keuangan proyek: klien" } },
+                { path: "vendor", element: <FinanceVendorTabPage />, handle: { title: "Keuangan proyek: vendor" } },
+                { path: "venue", element: <FinanceVenueTabPage />, handle: { title: "Keuangan proyek: venue" } },
               ],
             },
+            { path: "kendala", element: <ProjectIssuesTabPage />, handle: { title: "Kendala proyek" } },
             { path: "dokumen", element: <ProjectEvidenceTabPage />, handle: { title: "Dokumen proyek" } },
-            { path: "aktivitas", element: <ProjectActivityTabPage />, handle: { title: "Aktivitas proyek" } },
-            { path: "venue", element: <ProjectVenueTabPage />, handle: { title: "Venue proyek" } },
+            // The tab paths before the page had six tabs (16 Nov 2026): old links land on the tab that holds it now.
+            ...Object.entries(LEGACY_PROJECT_TABS).map(([from, to]) => ({ path: from, element: <ProjectTabRedirect to={to} /> })),
           ],
         },
         // Each page follows the workspace role's permissions (ADR-0026).
         // Open to every staff role: the page itself shows the tenant-wide
         // dashboard to roles that reach every project, "Proyek saya" to the rest.
         { path: ROUTE_PATHS.dashboard, element: <DashboardPage />, handle: { title: "Beranda" } },
+        // Every staff role: the API scopes the calendar to the projects the role reaches.
+        { path: ROUTE_PATHS.calendar, element: <CalendarPage />, handle: { title: "Kalender" } },
+        {
+          element: <RequirePermission all={["finance.record"]} />,
+          children: [{ path: ROUTE_PATHS.finance, element: <FinancePage />, handle: { title: "Keuangan" } }],
+        },
         {
           element: <RequirePermission all={["client.manage"]} allProjects />,
           children: [{ path: ROUTE_PATHS.clients, element: <ClientListPage />, handle: { title: "Klien" } }],

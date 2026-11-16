@@ -5,6 +5,7 @@
 > `docs/plan/revamp-ui-shadcn/PLAN.md`. Alur dan susunan menu per peran mengikuti
 > `docs/plan/registrasi-wo-self-service/FLOW-IDEAL.md`; dokumen ini mengatur **rupa, komponen, bahasa, dan perilaku UI**.
 >
+> **Revisi 5 (16 Nov 2026, ADR-0046):** aturan visual WO Console, susunan menu baru, URL berbahasa Indonesia. Berubah: §4.5 (baru).
 > **Revisi 4 (16 Nov 2026, ADR-0045):** palet diganti navy + emas segel dari logo baru, untuk semua permukaan. Berubah: §4.1, §4.3.
 > **Revisi 3 (10 Nov 2026, T-20261110-11, ADR-0039):** satu palet plum + emas segel dan satu huruf (Plus Jakarta Sans)
 > untuk semua permukaan; fitur pilih warna per WO dihapus (logo WO tetap); cincin fokus kit diperbaiki. Berubah: §1, §4.1
@@ -195,6 +196,26 @@ berarti bukti (`ProofStamp`, garis segel di hero Portal), tidak pernah status, l
 - **Elevasi:** permukaan datar = garis `--border`, tanpa bayangan. Bayangan hanya untuk popover/menu (kecil) dan
   dialog/drawer (sedang).
 
+### 4.5 Aturan visual WO Console (revisi 5, 16 Nov 2026, `docs/plan/revamp-wo-console/RISET.md` §7, ADR-0046)
+
+Memperketat §4.4 setelah riset UI visual (pembanding: shadcn/ui dashboard-01 & tasks, Linear, Twenty, HoneyBook, Vercel).
+
+- **Skala console:** 12 (meta) · 13 (label, sel tabel padat) · 14 (isi) · 16 (judul seksi/kartu, 600) · 20 (judul modal) ·
+  24 (judul halaman, 600, `PageHeader`) · 28–32 (angka KPI, 700, tabular). Jarak antar-level minimal satu langkah skala.
+- **Teks sekunder seperlunya:** kalimat penjelas di bawah judul kartu hanya bila menambah informasi; tidak di setiap kartu.
+- **Kotak seperlunya:** kartu untuk satu kesatuan yang bisa ditindak (KPI, satu daftar); seksi lain dipisah judul + ruang.
+- **Ruang:** isi halaman 24 px (≥ 1280 px: 32 px), antarseksi 24 px, dalam kartu 16–20 px.
+- **Tabel (`DataTable`):** baris 44 px (padat 36 px); angka, uang, tanggal, dan ID rata kanan/tabular dan **tidak pernah
+  dibungkus**; teks panjang `truncate` satu baris; status = ikon + teks; aksi baris = `RowActions` (satu ikon tersering + ⋯);
+  kolom pertama = tautan ke record; kartu HP = 3–4 kolom `card`. Tab status di atas tabel bila status adalah saringan utama.
+- **KPI (`StatCard`):** label 13, angka 28, satu baris konteks; nada status hanya bila memang bermasalah (mis. terlambat > 0).
+- **Grafik:** satu warna data (navy) + pembanding abu; status hanya untuk ambang; data belum cukup → keadaan kosong dengan
+  penjelasan dan langkah berikutnya, bukan barisan batang nol.
+- **Kerangka:** sidebar (logo/inisial WO + nama, grup Direktori/Templat/Pengaturan, chip masa coba, menu pengguna); topbar
+  (cari ⌘K, "+ Proyek baru"); **satu slot banner** (masalah langganan lebih dulu, lalu pengumuman; masa coba yang tenang =
+  chip, bukan banner).
+- **Tanpa huruf kapital** pada label (dijaga `check-ui-terms`).
+
 ## 5. Rupa (look & feel)
 
 Arah: **tenang, padat, dan bisa dipercaya**; satu-satunya hal yang mencolok adalah bukti (§3). Prinsip:
@@ -237,25 +258,31 @@ urutan di URL; pilih baris → bilah aksi massal menggantikan toolbar; paginasi 
 
 ### 5.2 Portal Klien, HP (375 px)
 
+Sejak revisi Portal Klien 16 Nov 2026 (`docs/plan/revamp-client-portal/RISET.md`, ADR-0047):
+
 ```
 ┌──────────────────────────┐
-│ Nama WO                   │
-│ Citra & Bima        (tebal)│
-│ H-266 menuju hari bahagia │
+│ [logo ElProof] Nama WO [WA]│  ← logo ElProof, tombol WhatsApp PIC selalu terjangkau
 │ ┌──────────────────────┐ │
-│ │ Tagihan berikutnya   │ │  ← kartu terbesar, satu-satunya yang menonjol
-│ │ Rp5.000.000          │ │
-│ │ jatuh tempo 20 Nov   │ │
-│ │ Transfer ke BCA …    │ │
-│ │ [Konfirmasi via WA]  │ │
+│ │ (foto sampul / navy) │ │  ← satu hero; lapisan navy hanya di bawah teks
+│ │ 14 Mar 2027 · Venue  │ │
+│ │ Citra & Bima  H-118  │ │
 │ └──────────────────────┘ │
-│ Yang perlu Anda lakukan   │
-│ Kabar terbaru (terbaru di atas)
-│  ✓ DP lunas · Terverifikasi 7 Nov oleh Rina  ← ProofStamp, ketuk = foto bukti
+│ Yang perlu Anda lakukan   │  ← tagihan, tugas pasangan, kendala; tiap item punya tombol
+│ ⚠ Termin 2 terlambat [WA] │
+│ Progres · Kabar terbaru   │  ← ProofStamp, ketuk = foto bukti
 ├──────────────────────────┤
-│ Beranda Jadwal Bayar Vendor Lainnya │  ← tab bawah ≥ 44 px
+│ Beranda Jadwal Bayar Vendor Lainnya(1) │  ← tab bawah ≥ 44 px, lencana kendala
 └──────────────────────────┘
 ```
+
+- **Pembayaran:** satu kartu ringkasan ("Sudah dibayar X dari Y", bilah tersegmen per termin, termin berikutnya, rekening
+  atau "Minta nomor rekening lewat WhatsApp", "Kirim bukti transfer"). Warna status hanya untuk yang terlambat.
+- **Kiriman pasangan** menunggu verifikasi WO dan **belum dihitung** sebagai sudah dibayar; jumlahnya tampil sebagai
+  catatan "menunggu verifikasi" di bawah ringkasan dan lencana di riwayat.
+- **Jadwal** dikelompokkan per fase waktu ("Bulan ini", "1–3 bulan lagi", "Menjelang hari H"); yang selesai diringkas.
+- **Desktop ≥ 1024 px:** dua kolom (kiri tindakan + tagihan, kanan progres + kabar + kontak).
+- Judul halaman 20/600 tanpa ikon (`PageIntro`), judul kartu 16/600, aksi selalu tombol.
 
 Tabel di HP menjadi daftar kartu dengan kolom pertama terkunci. Platform Console memakai tata letak console dengan
 sidebar bergrup (Pelanggan, Produk, Sistem; sudah ada).

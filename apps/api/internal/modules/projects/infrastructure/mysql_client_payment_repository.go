@@ -17,7 +17,7 @@ func NewMySQLClientPaymentRepository(db *sql.DB) *MySQLClientPaymentRepository {
 }
 
 const clientPaymentColumns = `id, project_id, type, amount, payment_date, method, reference_number, notes,
-	IFNULL(recorded_by_staff_id, 0), verified_at, IFNULL(verified_by_staff_id, 0), deleted_at, updated_at`
+	IFNULL(recorded_by_staff_id, 0), IFNULL(submitted_by_client_id, 0), verified_at, IFNULL(verified_by_staff_id, 0), deleted_at, updated_at`
 
 func scanClientPayment(scan func(dest ...interface{}) error) (*domain.ClientPayment, error) {
 	var p domain.ClientPayment
@@ -25,7 +25,7 @@ func scanClientPayment(scan func(dest ...interface{}) error) (*domain.ClientPaym
 	var notes sql.NullString
 	var verifiedAt, deletedAt sql.NullTime
 	err := scan(&p.ID, &p.ProjectID, &paymentType, &p.Amount, &p.PaymentDate, &p.Method, &p.ReferenceNumber, &notes,
-		&p.RecordedByStaffID, &verifiedAt, &p.VerifiedByStaffID, &deletedAt, &p.UpdatedAt)
+		&p.RecordedByStaffID, &p.SubmittedByClientID, &verifiedAt, &p.VerifiedByStaffID, &deletedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -84,9 +84,9 @@ func (r *MySQLClientPaymentRepository) Restore(ctx context.Context, projectID, i
 
 func (r *MySQLClientPaymentRepository) Create(ctx context.Context, p *domain.ClientPayment) error {
 	result, err := conn(ctx, r.db).ExecContext(ctx,
-		`INSERT INTO client_payments (project_id, type, amount, payment_date, method, reference_number, notes, recorded_by_staff_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ProjectID, string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, nullableID(p.RecordedByStaffID),
+		`INSERT INTO client_payments (project_id, type, amount, payment_date, method, reference_number, notes, recorded_by_staff_id, submitted_by_client_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ProjectID, string(p.Type), p.Amount, p.PaymentDate, p.Method, p.ReferenceNumber, p.Notes, nullableID(p.RecordedByStaffID), nullableID(p.SubmittedByClientID),
 	)
 	if err != nil {
 		return err

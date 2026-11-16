@@ -326,6 +326,8 @@ cross-module reference to these rows was already a primitive, un-enforced ID.
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` — reassignable only by Owner/Admin, never by the "Staff" (Wedding Planner) role itself, see ADR-0017 |
 | description | TEXT NULL | |
 | is_archived | BOOLEAN NOT NULL DEFAULT FALSE | orthogonal to `status` — see ADR-0013 |
+| cover_photo_path | VARCHAR(500) NULL | migration `000077` (ADR-0047) — object-storage key of the Client Portal hero photo (`…/{tenant}/{project}/cover/<unix>-<uuid>.jpg|png`, always re-encoded by the server). `NULL` = no cover. Written only by `PUT/DELETE /projects/{id}/cover`, which keep `updated_at` as it is; the old object is deleted after a replace, and on project delete |
+| cover_updated_at | TIMESTAMP NULL | migration `000077` — when the cover last changed: the `?v=` of `coverUrl`. `NULL` with the cover |
 | created_at, updated_at | TIMESTAMP | |
 
 ### `project_milestones`
@@ -339,6 +341,8 @@ cross-module reference to these rows was already a primitive, un-enforced ID.
 | target_date | DATE | |
 | completed_date | DATE NULL | |
 | days_before_event | INT NULL (signed) | migration `000075` (ADR-0042, EP-06): the Jadwal bawaan offset the step's `target_date` follows (`event_date` minus this many days; pulled to `prep_start_date` only when earlier than it and the booking is on or before the event). `NULL` = fixed date (added by hand, or target set by hand). Re-dated in the same transaction when the project's `event_date`/`prep_start_date` changes, unless the step is Completed/Cancelled. `completed_date` is stamped/cleared by the server when only the status changes |
+| for_client | BOOLEAN NOT NULL DEFAULT FALSE | migration `000079` (ADR-0047) — a task for the couple: listed in the portal home `clientTasks` and completable by a client with `portal.tasks.complete`. Copied by project duplicate |
+| completed_by_client_id | BIGINT UNSIGNED NULL | migration `000079` — the client who marked it done from the portal; primitive id into `clients`, **no FK**. Cleared when staff change the step's status |
 
 Displayed in the UI as "Timeline" (Project Timeline), not "Milestone" — a display-text-only rename;
 this table, its Go domain type (`ProjectMilestone`), and every internal identifier keep the
@@ -479,6 +483,7 @@ transaction (`PUT`), and deleted with the project.
 | notes | TEXT NULL | |
 | created_at | TIMESTAMP | |
 | recorded_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who entered the payment; primitive id, **no FK** (cross-module); `NULL` on older rows, never sent to a client |
+| submitted_by_client_id | BIGINT UNSIGNED NULL | migration `000078` (ADR-0047) — the client who sent this payment's transfer proof from the portal (then `recorded_by_staff_id` is `NULL`); primitive id into `clients`, **no FK**. Drives `source: "client"` in every payload |
 | verified_at | DATETIME NULL | migration 65 — set by `POST .../verify` (whole seconds); cleared when the payment's amount/type/date/method/reference change or its last evidence file is removed (ADR-0032) |
 | verified_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who verified; primitive id, no FK |
 | deleted_at | DATETIME NULL, `KEY idx_client_payments_deleted` | migration `000068`, ADR-0034 — soft delete: a stamped row is invisible to every read (list, ledger, schedule allocation, portal home, dashboard) and so are its proof files; verification stays on the row and returns on restore. Hard-deleted by the purge after 24 h |

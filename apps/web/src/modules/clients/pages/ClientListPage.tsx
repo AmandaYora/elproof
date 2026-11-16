@@ -6,7 +6,10 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
 import { Button } from "@/shared/components/ui/Button";
 import { Modal } from "@/shared/components/ui/Modal";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { ListFilters, activeFilterCount } from "@/shared/data-table/ListFilters";
+import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
@@ -63,6 +66,8 @@ interface ModalTarget {
 }
 
 export default function ClientListPage() {
+  // Read-only workspace (subscription): every action that changes a client disappears.
+  const writeLocked = useWriteLocked();
   const clients = useClientStore((s) => s.clientPage);
   const meta = useClientStore((s) => s.clientPageMeta);
   const fetchClientPage = useClientStore((s) => s.fetchClientPage);
@@ -177,11 +182,13 @@ export default function ClientListPage() {
       header: "Klien",
       sortKey: "name",
       primary: true,
+      truncate: true,
+      className: "w-[34%] min-w-64",
       cell: (c) => (
         <span className="flex items-center gap-3">
           <Avatar name={c.name} />
           <span className="min-w-0">
-            <span className="block font-semibold">{c.name}</span>
+            <span className="block truncate font-semibold">{c.name}</span>
             <span className="block truncate text-[12.5px] font-normal text-muted-foreground">
               {[c.username, c.phone, c.email, c.accessRoleName && `Portal: ${c.accessRoleName}`].filter(Boolean).join(" · ")}
             </span>
@@ -189,43 +196,46 @@ export default function ClientListPage() {
         </span>
       ),
     },
-    { id: "role", header: "Peran", sortKey: "role", cell: (c) => <ClientRoleBadge role={c.role} /> },
+    { id: "role", header: "Peran", sortKey: "role", card: true, className: "whitespace-nowrap", cell: (c) => <ClientRoleBadge role={c.role} /> },
     {
       id: "project",
       header: "Proyek",
       sortKey: "projectName",
+      card: true,
+      truncate: true,
+      className: "w-[22%]",
       cell: (c) => (
-        <Link to={ROUTE_PATHS.projectDetail(c.projectId, "client")} className="font-medium underline-offset-2 hover:underline">
+        <Link to={ROUTE_PATHS.projectDetail(c.projectId)} className="font-medium underline-offset-2 hover:underline">
           {c.projectName || `Proyek ${c.projectId}`}
         </Link>
       ),
     },
-    { id: "eventDate", header: "Tanggal acara", sortKey: "projectEventDate", cell: (c) => formatDate(c.projectEventDate ?? null) },
+    { id: "eventDate", header: "Tanggal acara", sortKey: "projectEventDate", card: true, className: "whitespace-nowrap", cell: (c) => formatDate(c.projectEventDate ?? null) },
     {
       id: "loginStatus",
       header: "Status masuk",
       sortKey: "loginStatus",
+      card: true,
+      className: "whitespace-nowrap",
       cell: (c) => (
-        <>
+        <span
+          className="inline-flex"
+          title={c.lastCredentialResetAt ? `Link atur ulang dibuat ${formatDate(c.lastCredentialResetAt)}` : undefined}
+        >
           {c.loginStatus === "none" ? <Badge tone="neutral">Tanpa akses masuk</Badge> : <ClientLoginStatusBadge client={c} />}
-          {c.lastCredentialResetAt && (
-            <span className="mt-1 block text-[11.5px] font-normal text-muted-foreground">Link atur ulang: {formatDate(c.lastCredentialResetAt)}</span>
-          )}
-        </>
+          {c.lastCredentialResetAt && <span className="sr-only">, link atur ulang dibuat {formatDate(c.lastCredentialResetAt)}</span>}
+        </span>
       ),
     },
   ];
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Klien</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">
-            Kelola seluruh akun klien di semua proyek — kontak, status akun, dan perwakilan keluarga.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-1"
+        title="Klien"
+        description="Pengantin dan perwakilan keluarga dari semua proyek: kontak, akses portal, dan status masuknya."
+      />
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
@@ -242,30 +252,32 @@ export default function ClientListPage() {
           onRemove: savedViews.remove,
         }}
       >
-        <Select className="w-56" aria-label="Peran" value={list.filters.role || "Semua"} onChange={(e) => list.setFilter("role", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua peran</option>
-          {ROLE_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {ROLE_FILTER_LABEL[r]}
-            </option>
-          ))}
-        </Select>
-        <Select className="w-52" aria-label="Status masuk" value={list.filters.loginStatus || "Semua"} onChange={(e) => list.setFilter("loginStatus", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua status masuk</option>
-          {LOGIN_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-        <Select className="w-56" aria-label="Proyek" placeholder="Cari proyek..." value={pickedProject || "Semua"} onChange={(e) => list.setFilter("projectId", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua proyek</option>
-          {projectChoices.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
+        <ListFilters count={activeFilterCount(list.filters)} onClear={list.clearFilters}>
+          <Select className="w-44" aria-label="Peran" value={list.filters.role || "Semua"} onChange={(e) => list.setFilter("role", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua peran</option>
+            {ROLE_OPTIONS.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_FILTER_LABEL[r]}
+              </option>
+            ))}
+          </Select>
+          <Select className="w-48" aria-label="Status masuk" value={list.filters.loginStatus || "Semua"} onChange={(e) => list.setFilter("loginStatus", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua status masuk</option>
+            {LOGIN_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <Select className="w-48" aria-label="Proyek" placeholder="Cari proyek..." value={pickedProject || "Semua"} onChange={(e) => list.setFilter("projectId", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua proyek</option>
+            {projectChoices.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </ListFilters>
       </ListToolbar>
 
       <DataTable
@@ -273,6 +285,9 @@ export default function ClientListPage() {
         columns={columns}
         rows={clients}
         rowId={(c) => c.id}
+        rowLabel={(c) => c.name}
+        // A client's record lives in its project's Klien tab (portal access, family members).
+        rowHref={(c) => ROUTE_PATHS.projectDetail(c.projectId, "ringkasan")}
         status={status}
         onRetry={() => setAttempt((n) => n + 1)}
         meta={meta}
@@ -283,7 +298,7 @@ export default function ClientListPage() {
         onResetFilters={list.reset}
         empty={{
           title: "Belum ada klien",
-          description: "Klien adalah pengantin dan perwakilan keluarga yang diundang ke portal sebuah proyek. Tambahkan dari tab Klien di dalam proyek.",
+          description: "Klien adalah pengantin dan perwakilan keluarga yang diundang ke portal sebuah proyek. Tambahkan dari panel Klien & akses portal di Ringkasan proyek.",
           action: (
             <Link to={ROUTE_PATHS.projects}>
               <Button variant="secondary">Buka daftar proyek</Button>
@@ -292,19 +307,23 @@ export default function ClientListPage() {
         }}
         density={density}
         actions={(c) => (
-          <div className="flex items-center gap-1.5">
-            <IconActionButton icon={Pencil} label="Ubah kontak" tone="neutral" onClick={() => setModalTarget({ client: c, mode: "edit" })} />
-            {c.isActive && <IconActionButton icon={Send} label={clientLinkActionLabel(c)} tone="info" onClick={() => void handleSendLink(c)} />}
-            {c.isActive ? (
-              <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(c)} />
-            ) : (
-              <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(c)} />
-            )}
-            {c.role === "Family Representative" && (
-              <IconActionButton icon={Repeat} label="Ganti perwakilan" tone="brand" onClick={() => setModalTarget({ client: c, mode: "replace" })} />
-            )}
-            <IconActionButton icon={Trash2} label="Hapus klien" tone="danger" onClick={() => setDeleteTarget(c)} />
-          </div>
+          <RowActions
+            rowLabel={c.name}
+            primary={{ label: "Ubah kontak", icon: <Pencil />, onClick: () => setModalTarget({ client: c, mode: "edit" }), hidden: writeLocked }}
+            items={[
+              { label: clientLinkActionLabel(c), icon: <Send />, onSelect: () => void handleSendLink(c), hidden: writeLocked || !c.isActive },
+              c.isActive
+                ? { label: "Nonaktifkan", icon: <UserX />, onSelect: () => void handleToggleActive(c), hidden: writeLocked }
+                : { label: "Aktifkan", icon: <UserCheck />, onSelect: () => void handleToggleActive(c), hidden: writeLocked },
+              {
+                label: "Ganti perwakilan",
+                icon: <Repeat />,
+                onSelect: () => setModalTarget({ client: c, mode: "replace" }),
+                hidden: writeLocked || c.role !== "Family Representative",
+              },
+              { label: "Hapus klien", icon: <Trash2 />, tone: "danger", onSelect: () => setDeleteTarget(c), hidden: writeLocked },
+            ]}
+          />
         )}
       />
 

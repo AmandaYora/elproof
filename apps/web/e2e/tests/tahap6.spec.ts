@@ -9,7 +9,7 @@ const API = (path: string) => `${apiURL()}/api/v1${path}`;
 
 test("selecting vendors and pressing Nonaktifkan changes them all in one call", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const session = await browserSession(page);
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const cats = (await (await page.request.get(API("/vendor-categories?all=true"), { headers: auth })).json()).data as Array<{ id: number }>;
@@ -24,7 +24,7 @@ test("selecting vendors and pressing Nonaktifkan changes them all in one call", 
     expect(made.status()).toBe(201);
   }
 
-  await visit(page, "/vendors?q=Uji%20Massal");
+  await visit(page, "/vendor?q=Uji%20Massal");
   await expect(page.getByRole("row").filter({ hasText: "Uji Massal" })).toHaveCount(2);
   await page.getByRole("checkbox", { name: "Pilih semua di halaman ini" }).check();
   await expect(page.getByText("2 dipilih")).toBeVisible();

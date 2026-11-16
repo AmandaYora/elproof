@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { Pencil, Send, UserCog, Plus, Trash2 } from "lucide-react";
+import { Pencil, Send, UserCog, Plus, Trash2, Power, PowerOff } from "lucide-react";
+import { ActionMenu } from "@/shared/components/ui/ActionMenu";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
@@ -62,7 +63,8 @@ interface ModalTarget {
 // infinite render loop (React error #185).
 const EMPTY_CLIENTS: Client[] = [];
 
-export function ProjectClientsSection({ projectId }: { projectId: string }) {
+/** `embedded`: drawn inside a drawer that already has the title, so without its own card. */
+export function ProjectClientsSection({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
   // Wedding Planner reads client data for their own project fine (backend
   // already scopes it), but every write action here is Owner/Admin only
   // (see PLAN.md's RBAC section) — hide the buttons for that role instead of
@@ -148,12 +150,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
 
   return (
     <div id="client">
-      <Card>
-        <CardHeader
-          title="Klien proyek"
-          subtitle="Kontak pengantin dan perwakilan keluarga yang terdaftar untuk proyek ini."
-        />
-        <CardContent className="flex flex-col gap-3">
+      <Frame embedded={embedded}>
           {actionError && (
             <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
           )}
@@ -165,7 +162,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                   key={role}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-border px-4 py-3 text-[13px] text-text-secondary"
                 >
-                  <span>Belum ada data {ROLE_LABEL[role]}.</span>
+                  <span>Belum ada data {ROLE_LABEL[role].toLowerCase()}.</span>
                   {canManage && (
                     <Button
                       size="sm"
@@ -176,7 +173,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                         setCreateRole(role);
                       }}
                     >
-                      Tambah {ROLE_LABEL[role]}
+                      Tambah {ROLE_LABEL[role].toLowerCase()}
                     </Button>
                   )}
                 </div>
@@ -186,7 +183,7 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
               <div key={client.id} className="rounded-md border border-border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11.5px] font-semibold uppercase tracking-wide text-text-secondary">
+                    <p className="text-[13px] font-medium text-text-secondary">
                       {ROLE_LABEL[role]}
                     </p>
                     {client.relationNote && <p className="mt-1 text-[13px] text-text-secondary">{client.relationNote}</p>}
@@ -224,39 +221,33 @@ export function ProjectClientsSection({ projectId }: { projectId: string }) {
                         {clientLinkActionLabel(client)}
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant={client.isActive ? "danger" : "secondary"}
-                      onClick={() => void handleToggleActive(client.id)}
-                    >
-                      {client.isActive ? "Nonaktifkan" : "Aktifkan"}
-                    </Button>
-                    {role === "Family Representative" && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon={<UserCog className="h-3.5 w-3.5" />}
-                        onClick={() => setModalTarget({ clientId: client.id, mode: "replace" })}
-                      >
-                        Ganti perwakilan keluarga
+                    {!client.isActive && (
+                      <Button size="sm" variant="secondary" icon={<Power className="h-3.5 w-3.5" />} onClick={() => void handleToggleActive(client.id)}>
+                        Aktifkan
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      icon={<Trash2 className="h-3.5 w-3.5" />}
-                      onClick={() => setDeletingClientId(client.id)}
-                    >
-                      Hapus klien
-                    </Button>
+                    {/* The rarer and harmful actions sit behind "⋯", so two red buttons do not shout on every client. */}
+                    <ActionMenu
+                      label={`Aksi lain untuk ${client.name}`}
+                      items={[
+                        {
+                          label: "Ganti perwakilan keluarga",
+                          icon: <UserCog className="h-4 w-4" />,
+                          onSelect: () => setModalTarget({ clientId: client.id, mode: "replace" }),
+                          hidden: role !== "Family Representative",
+                        },
+                        { label: "Nonaktifkan akses portal", icon: <PowerOff className="h-4 w-4" />, onSelect: () => void handleToggleActive(client.id), hidden: !client.isActive },
+                        { label: "Hapus klien", icon: <Trash2 className="h-4 w-4" />, tone: "danger", onSelect: () => setDeletingClientId(client.id) },
+                      ]}
+                    />
                   </div>
                 )}
+
 
               </div>
             );
           })}
-        </CardContent>
-      </Card>
+      </Frame>
 
       <ConfirmDialog
         open={deletingClientId !== null}
@@ -484,5 +475,16 @@ function CreateClientModal({
         </Field>
       </form>
     </Modal>
+  );
+}
+
+/** The card around the client list, or nothing when the list sits inside a drawer. */
+function Frame({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+  if (embedded) return <div className="flex flex-col gap-3">{children}</div>;
+  return (
+    <Card>
+      <CardHeader title="Klien proyek" subtitle="Kontak pengantin dan perwakilan keluarga yang terdaftar untuk proyek ini." />
+      <CardContent className="flex flex-col gap-3">{children}</CardContent>
+    </Card>
   );
 }

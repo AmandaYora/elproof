@@ -11,7 +11,7 @@ test("a WO's logo shows in its console, and the per-WO colour is gone from the A
   test.skip(!state().storage, "needs object storage (MinIO) for the logo");
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/profil-usaha");
-  await expect(page.getByRole("heading", { name: "Profil Usaha" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Profil usaha" })).toBeVisible();
   await expect(page.getByText("Warna merek")).toHaveCount(0);
   await expect(page.getByRole("radiogroup")).toHaveCount(0);
 
@@ -42,9 +42,12 @@ test("a WO's logo shows in its console, and the per-WO colour is gone from the A
   const put = await page.request.put(API("/tenants/me/logo"), { headers: auth, data: { fileName: "logo.png", mimeType: "image/png", base64Data } });
   expect(put.status()).toBe(200);
 
-  await visit(page, "/dashboard");
-  const logo = page.getByRole("img", { name: branding.data.businessName, exact: true }).first();
+  await visit(page, "/beranda");
+  // The sidebar shows the logo beside the WO's name, so the image itself is decorative (alt=""): find it inside the menu.
+  const sidebar = page.getByRole("complementary", { name: "Menu" });
+  const logo = sidebar.locator("img").first();
   await expect(logo).toBeVisible();
+  await expect(sidebar.getByText(branding.data.businessName, { exact: true })).toBeVisible();
   expect(await logo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
   await page.screenshot({ path: info.outputPath("wo-logo-desktop.png") });
   await info.attach("wo-logo-desktop", { path: info.outputPath("wo-logo-desktop.png"), contentType: "image/png" });

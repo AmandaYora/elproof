@@ -10,7 +10,7 @@ const compare = (x: string, y: string) => x.localeCompare(y, "id", { sensitivity
 test.describe("Vendor list", () => {
   test("sorting is a header button, shows in aria-sort and the URL, and survives a reload", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     const header = page.getByRole("columnheader", { name: /Nama vendor/ });
     await expect(header).toHaveAttribute("aria-sort", "none");
 
@@ -43,7 +43,7 @@ test.describe("Vendor list", () => {
 
   test("the sort button works from the keyboard", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     const button = page.getByRole("columnheader", { name: /Kota/ }).getByRole("button");
     await button.focus();
     await page.keyboard.press("Enter");
@@ -55,7 +55,7 @@ test.describe("Vendor list", () => {
 
   test("a search with no match says so and Reset filter brings the list back", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     await page.getByRole("searchbox").or(page.getByPlaceholder(/Cari nama vendor/)).first().fill("zzzz-tidak-ada");
     await expect(page.getByText("Tidak ada hasil")).toBeVisible();
     await expect(page).toHaveURL(/q=zzzz/);
@@ -68,7 +68,7 @@ test.describe("Vendor list", () => {
 
   test("the export carries the filters the list is showing", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors?isActive=false&q=Uji");
+    await visit(page, "/vendor?isActive=false&q=Uji");
     const exported = page.waitForRequest((r) => r.url().includes("/vendors/export"));
     await page.getByRole("button", { name: "Ekspor ke Excel" }).first().click();
     const url = new URL((await exported).url());
@@ -79,7 +79,7 @@ test.describe("Vendor list", () => {
 
   test("money is right aligned in tabular figures", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     const cell = page.getByRole("row").nth(1).getByRole("cell").filter({ hasText: /^Rp/ }).first();
     await expect(cell).toBeVisible();
     const style = await cell.evaluate((el) => ({ align: getComputedStyle(el).textAlign, nums: getComputedStyle(el).fontVariantNumeric }));
@@ -91,11 +91,11 @@ test.describe("Vendor list", () => {
 
 test.describe("no list loads every row to filter in the browser", () => {
   for (const [name, route, endpoint] of [
-    ["Proyek", "/projects", /\/api\/v1\/projects(\?|$)/],
-    ["Klien", "/clients", /\/api\/v1\/clients(\?|$)/],
-    ["Vendor", "/vendors", /\/api\/v1\/vendors(\?|$)/],
-    ["Venue", "/venues", /\/api\/v1\/venues(\?|$)/],
-    ["Tim", "/pengguna", /\/api\/v1\/staff(\?|$)/],
+    ["Proyek", "/proyek", /\/api\/v1\/projects(\?|$)/],
+    ["Klien", "/klien", /\/api\/v1\/clients(\?|$)/],
+    ["Vendor", "/vendor", /\/api\/v1\/vendors(\?|$)/],
+    ["Venue", "/venue", /\/api\/v1\/venues(\?|$)/],
+    ["Tim", "/tim", /\/api\/v1\/staff(\?|$)/],
   ] as const) {
     test(name, async ({ browser }, info) => {
       const { page, close } = await open(browser, info, "owner");

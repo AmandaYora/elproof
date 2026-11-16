@@ -92,6 +92,7 @@ func TestTenantIsolation(t *testing.T) {
 	t.Run("mixed ids", func(t *testing.T) { w.mixedIDs(t, s) })
 	t.Run("foreign references", func(t *testing.T) { w.foreignReferences(t, s) })
 	t.Run("signed uploads, atomic payments and projects (E3/E7)", func(t *testing.T) { w.tahap4Scenarios(t, s) })
+	t.Run("client portal writes and cover (ADR-0047)", func(t *testing.T) { w.portalWriteScenarios(t, s) })
 	t.Run("workspace B is intact", func(t *testing.T) { w.intact(t, s) })
 	t.Logf("routes and requests covered: %d", routesCovered)
 }

@@ -24,7 +24,7 @@ async function newProject(page: Page, name: string) {
 // These tests WRITE data, so they run in the "mutating" project.
 
 test.describe("reduced motion", () => {
-  for (const route of ["/dashboard", "/projects/1/milestone"]) {
+  for (const route of ["/beranda", "/proyek/1/jadwal"]) {
     test(`${route} has no running transition or animation longer than a frame`, async ({ browser }, info) => {
       const context = await browser.newContext({ ...info.project.use, storageState: AUTH.owner, reducedMotion: "reduce" });
       const page = await context.newPage();
@@ -48,9 +48,9 @@ test.describe("reduced motion", () => {
 test.describe("two sessions on one item", () => {
   test("a project edit made over someone else's change is refused, nothing is overwritten, and Muat ulang shows theirs", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Konflik");
-    await visit(page, `/projects/${id}/ringkasan`);
+    await visit(page, `/proyek/${id}/ringkasan`);
 
     // Session A opens the form...
     await page.getByRole("button", { name: "Ubah proyek" }).click();
@@ -80,9 +80,9 @@ test.describe("two sessions on one item", () => {
 
   test("changing a step's status from the list over someone else's edit of that step is refused", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Konflik Tahapan");
-    await visit(page, `/projects/${id}/milestone`);
+    await visit(page, `/proyek/${id}/jadwal`);
     const firstRow = page.getByRole("row").filter({ hasText: /^1\./ }).first();
     await expect(firstRow).toBeVisible();
 
@@ -105,7 +105,7 @@ test.describe("two sessions on one item", () => {
 
   test("the API gives every edited item a version, refuses an old one (409) and a missing one (428)", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Versi");
     const read = async () => (await (await page.request.get(API(`/projects/${id}`), { headers: auth })).json()).data as { updatedAt: string };
     const v1 = (await read()).updatedAt;
@@ -128,7 +128,7 @@ test.describe("two sessions on one item", () => {
 
   test("archiving and activating are explicit: saying it twice leaves it as said", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Arsip");
     for (let i = 0; i < 2; i++) {
       const res = await page.request.patch(API(`/projects/${id}`), { headers: auth, data: { isArchived: true } });
@@ -142,9 +142,9 @@ test.describe("two sessions on one item", () => {
 
   test("one person's own sequence of edits never collides with itself", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Urutan");
-    await visit(page, `/projects/${id}/ringkasan`);
+    await visit(page, `/proyek/${id}/ringkasan`);
     const refused = page.getByRole("alertdialog", { name: "Data diubah orang lain" });
 
     // Edit, then edit again without reloading: the second save carries the version the first one returned.
@@ -173,7 +173,7 @@ test.describe("two sessions on one item", () => {
 
   test("the answer to a status change carries the version that is current, so the next edit can use it", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const { id, auth } = await newProject(page, "Uji Versi Status");
     const current = async () => ((await (await page.request.get(API(`/projects/${id}`), { headers: auth })).json()).data as { updatedAt: string }).updatedAt;
     const moved = await page.request.post(API(`/projects/${id}/transition`), { headers: auth, data: { action: "start_preparation" } });

@@ -10,7 +10,7 @@ import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { useSubscriptionStatusStore } from "@/shared/stores/useSubscriptionStatusStore";
 import { usePermissionStore, hasPermission } from "@/shared/stores/usePermissionStore";
-import { SubscriptionBanner, SubscriptionLockedScreen } from "@/shared/layouts/SubscriptionBanner";
+import { SubscriptionBanner, SubscriptionLockedScreen, bannerCopy } from "@/shared/layouts/SubscriptionBanner";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Toaster } from "@/shared/components/ui/Toaster";
 import { SupportSessionBanner } from "@/shared/layouts/SupportSessionBanner";
@@ -56,6 +56,8 @@ export function AppLayout() {
   }, [fetchLifecycle]);
 
   const locked = lifecycle?.access === "billing_only" && pathname !== ROUTE_PATHS.subscription;
+  const subscriptionCopy = lifecycle ? bannerCopy(lifecycle) : null;
+  const showSubscriptionBanner = !!lifecycle && !locked && !!subscriptionCopy && subscriptionCopy.tone !== "info";
 
   if (!brandingHydrated || !grantsLoaded) {
     // The sidebar shows the WO's logo and name from hydrate(); painting it
@@ -79,8 +81,9 @@ export function AppLayout() {
       <div className="transition-[padding] duration-200 lg:pl-(--sidebar-w) print:pl-0">
         <Topbar />
         <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6">
-          <AnnouncementBanner />
-          {lifecycle && !locked && <SubscriptionBanner lifecycle={lifecycle} canManage={canManageSubscription} />}
+          {/* One banner slot (RISET WO Console §3 #5): a subscription problem first, then platform announcements. A calm
+              trial is not a banner at all: it is the chip in the sidebar. */}
+          {showSubscriptionBanner ? <SubscriptionBanner lifecycle={lifecycle!} canManage={canManageSubscription} /> : <AnnouncementBanner />}
           {locked ? (
             <SubscriptionLockedScreen canManage={canManageSubscription} />
           ) : (

@@ -14,7 +14,7 @@ interface ActiveAnnouncement {
 const STYLE = {
   info: { icon: Info, box: "border-info/30 bg-info-soft text-info-text" },
   warning: { icon: TriangleAlert, box: "border-warning/30 bg-warning-soft text-warning-text" },
-  maintenance: { icon: Wrench, box: "border-primary/20 bg-primary/10 text-primary" },
+  maintenance: { icon: Wrench, box: "border-border bg-card text-foreground" },
 } as const;
 
 const DISMISSED_KEY = "elproof.dismissedAnnouncements";
@@ -64,7 +64,7 @@ export function AnnouncementBanner() {
       {visible.map((a) => {
         const { icon: Icon, box } = STYLE[a.kind] ?? STYLE.info;
         return (
-          <div key={a.id} role="status" className={cn("flex items-start gap-3 rounded-lg border px-4 py-3", box)}>
+          <div key={a.id} role="status" className={cn("flex items-start gap-3 rounded-lg border px-4 py-2.5", box)}>
             <Icon className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="min-w-0 flex-1 text-[13px]">
               <p className="font-semibold">{a.title}</p>

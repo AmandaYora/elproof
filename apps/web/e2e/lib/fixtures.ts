@@ -102,6 +102,7 @@ export async function visit(page: Page, route: string) {
 export function volatile(page: Page): Locator[] {
   return [
     page.getByText(/Masa coba .*tersisa/),
+    page.getByText(/Masa coba: \d+ hari lagi/),
     page.getByText(/tersisa \d+ hari/),
     page.getByText(/Terlambat \d+ hari|terlambat \d+ hari/),
   ];

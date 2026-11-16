@@ -14,17 +14,24 @@ import (
 // a staff-only endpoint just because that module forgot to check the
 // principal type. Add a route here only when the portal really calls it.
 //
-// The client portal is read-only, so only GET is ever allowed.
+// The client portal is read-only except for exactly four writes on the
+// client's own project (ADR-0047), each behind its own portal permission in
+// the projects module: the two halves of a signed upload (POST
+// /projects/{id}/uploads, PUT /projects/{id}/uploads/{token}), sending a
+// transfer proof (POST /projects/{id}/client-payments/submissions) and marking
+// a task done (POST /projects/{id}/milestones/{mid}/complete). Every other
+// method is refused here.
 func clientPortalAllowed(method, path string) bool {
-	if method != http.MethodGet {
-		return false
-	}
 	s := strings.Split(strings.Trim(path, "/"), "/")
 	// Every route below lives under /api/v1/.
 	if len(s) < 3 || s[0] != "api" || s[1] != "v1" {
 		return false
 	}
 	s = s[2:]
+
+	if method != http.MethodGet {
+		return clientPortalWriteAllowed(method, s)
+	}
 
 	switch {
 	case match(s, "auth", "me"), match(s, "access", "me"):
@@ -49,13 +56,34 @@ func clientPortalAllowed(method, path string) bool {
 	}
 }
 
+// clientPortalWriteAllowed is the four non-GET routes of the portal (segments
+// after /api/v1/). Anything else — another method, another path, a malformed
+// id — is refused.
+func clientPortalWriteAllowed(method string, s []string) bool {
+	if len(s) < 3 || s[0] != "projects" || !isID(s[1]) {
+		return false
+	}
+	rest := s[2:]
+	switch {
+	case method == http.MethodPost && match(rest, "uploads"):
+		return true
+	case method == http.MethodPut && len(rest) == 2 && rest[0] == "uploads" && rest[1] != "":
+		return true
+	case method == http.MethodPost && match(rest, "client-payments", "submissions"):
+		return true
+	case method == http.MethodPost && len(rest) == 3 && rest[0] == "milestones" && isID(rest[1]) && rest[2] == "complete":
+		return true
+	}
+	return false
+}
+
 func clientProjectSubpathAllowed(rest []string) bool {
 	switch len(rest) {
 	case 0:
 		return true
 	case 1:
 		switch rest[0] {
-		case "milestones", "vendors", "client-payments", "payment-terms", "issues", "evidence", "documents", "venue":
+		case "milestones", "vendors", "client-payments", "payment-terms", "issues", "evidence", "documents", "venue", "cover":
 			return true
 		}
 		return false

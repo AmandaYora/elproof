@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -1037,6 +1038,11 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 	// row, never a dangling reference back to a project that no longer
 	// exists (the opposite ordering would risk exactly that).
 	s.evidence.DeleteStorageObjects(ctx, evidences)
+	if p.CoverPhotoPath != nil && s.evidence != nil && s.evidence.storage != nil {
+		if err := s.evidence.storage.Delete(ctx, *p.CoverPhotoPath); err != nil {
+			logger.Error("failed to delete cover object %q of deleted project %d: %v", *p.CoverPhotoPath, id, err)
+		}
+	}
 
 	if s.clients != nil {
 		if err := s.clients.DeleteAllForProject(ctx, tenantID, id); err != nil {
@@ -1106,6 +1112,7 @@ func (s *ProjectService) cloneMilestonesFrom(ctx context.Context, sourceProjectI
 		clone := &domain.ProjectMilestone{
 			ProjectID: target.ID, SortOrder: m.SortOrder, Name: m.Name,
 			Status: domain.MilestoneNotStarted, TargetDate: m.TargetDate,
+			ForClient: m.ForClient,
 		}
 		if m.DaysBeforeEvent != nil {
 			offset := *m.DaysBeforeEvent
@@ -1218,6 +1225,8 @@ type MilestonePatch struct {
 	// TargetDate is required (cannot be null); CompletedDate may be null (clear it).
 	TargetDate    Opt[time.Time]
 	CompletedDate Opt[time.Time]
+	// ForClient marks the step as a task for the couple (ADR-0047).
+	ForClient Opt[bool]
 }
 
 // PatchMilestone lets the WO managing this project correct one step of its own
@@ -1251,8 +1260,14 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 	setVal(&ch, "status", "status", &m.Status, patch.Status)
 	setDate(&ch, "targetDate", "tanggal target", &m.TargetDate, patch.TargetDate)
 	setNullableDate(&ch, "completedDate", "tanggal selesai", &m.CompletedDate, patch.CompletedDate)
+	setVal(&ch, "forClient", "tugas untuk pasangan", &m.ForClient, patch.ForClient)
 	if !patch.CompletedDate.Present() && domain.StampCompletion(loaded.Status, m.Status, &m.CompletedDate, today) {
 		ch.note("completedDate", "tanggal selesai")
+	}
+	// A status set by staff is staff's: "done by the couple" no longer describes it.
+	if ch.has("status") && m.CompletedByClientID != 0 {
+		m.CompletedByClientID = 0
+		ch.note("completedByClientId", "")
 	}
 	if ch.has("targetDate") && m.DaysBeforeEvent != nil {
 		m.DaysBeforeEvent = nil
@@ -1276,6 +1291,61 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", formatID(fresh.ID), fresh.Name,
 		"Tahapan proyek diperbarui: "+fresh.Name+" ("+ch.summary()+")")
+	return fresh, nil
+}
+
+// CompleteMilestoneByClient is the couple marking one of their tasks done from
+// the Client Portal (ADR-0047): only a step staff flagged ForClient, never a
+// cancelled one. It stamps Completed, today's Jakarta date and the client.
+// Idempotent: a step already Completed (by anyone) is returned unchanged. Two
+// clients completing at once: the second sees the first one's write and gets
+// it back unchanged.
+func (s *ProjectService) CompleteMilestoneByClient(ctx context.Context, tenantID, projectID, milestoneID, clientID int64, today time.Time) (*domain.ProjectMilestone, error) {
+	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
+		return nil, err
+	}
+	missing := apperror.NotFound("Tugas tidak ditemukan")
+	m, err := s.milestones.FindByID(ctx, projectID, milestoneID)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, missing
+	}
+	loaded := m.UpdatedAt
+	changed, err := m.CompleteByClient(clientID, today)
+	switch {
+	case errors.Is(err, domain.ErrNotClientTask):
+		return nil, apperror.Forbidden("Tahapan ini dikerjakan oleh WO, bukan tugas untuk Anda.").WithCode("not_client_task")
+	case errors.Is(err, domain.ErrClientTaskCancelled):
+		msg := "Tugas ini sudah dibatalkan oleh WO."
+		return nil, apperror.Validation(msg, map[string][]string{"status": {msg}}).WithCode("task_cancelled")
+	case err != nil:
+		return nil, err
+	}
+	if !changed {
+		return m, nil
+	}
+	wrote, err := s.milestones.Patch(ctx, m, []string{"status", "completedDate", "completedByClientId"}, &loaded)
+	if err != nil {
+		return nil, err
+	}
+	fresh, err := s.milestones.FindByID(ctx, projectID, milestoneID)
+	if err != nil {
+		return nil, err
+	}
+	if fresh == nil {
+		return nil, missing
+	}
+	if !wrote {
+		// Someone changed the step between our read and our write.
+		if fresh.Status == domain.MilestoneCompleted {
+			return fresh, nil
+		}
+		return nil, apperror.Stale(fresh)
+	}
+	s.activity.Record(ctx, &projectID, domain.ActivityMilestoneUpdated, 0, "project_milestone", formatID(fresh.ID), fresh.Name,
+		"Diselesaikan oleh pasangan: "+fresh.Name)
 	return fresh, nil
 }
 

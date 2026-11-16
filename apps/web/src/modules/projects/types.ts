@@ -146,6 +146,8 @@ export interface Project {
   description: string;
   isArchived: boolean;
   progress?: ProjectProgress;
+  /** Where the Client Portal hero photo streams from (`/api/v1/projects/{id}/cover?v=...`, needs the session); null = none (ADR-0047). */
+  coverUrl: string | null;
 }
 
 /** A row of the project list: the project plus two columns the server derives from its payment schedule. */
@@ -178,6 +180,10 @@ export interface ProjectMilestone {
    * the date is fixed (added or dated by hand).
    */
   daysBeforeEvent?: number | null;
+  /** A task for the couple: shown on the Client Portal, which may mark it done (ADR-0047). */
+  forClient: boolean;
+  /** The couple marked it done from the portal. */
+  completedByClient: boolean;
   /** Files attached to this step (the Portal gets only those the WO shared). */
   evidence: EvidenceRef[];
 }
@@ -266,7 +272,11 @@ export interface ClientPayment {
   verifiedAt: string | null;
   verifiedBy: string | null;
   evidence: EvidenceRef[];
+  /** "client" when the couple sent it from the portal (unverified until the WO checks it), "staff" otherwise (ADR-0047). */
+  source: PaymentSource;
 }
+
+export type PaymentSource = "client" | "staff";
 
 // Money going OUT to the project's venue -- same accounting direction and
 // same two-slot evidence rule (Invoice + Transfer Proof) as VendorPayment,
@@ -413,5 +423,5 @@ export interface OverviewAction {
   tone: "danger" | "warning";
   title: string;
   detail: string;
-  tab: "pembayaran/client" | "kendala" | "vendor" | "milestone";
+  tab: "keuangan/klien" | "kendala" | "vendor" | "jadwal";
 }
