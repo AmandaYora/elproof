@@ -1,6 +1,8 @@
 # DESIGN-PUBLIC.md — Situs publik ElProof (12 halaman sebelum masuk)
 
-> Status: dipakai sejak 10 Nov 2026 (ADR-0038). Ringkasan dari brief desain bersumber tugas redesain halaman publik (riset
+> Status: arah "Bukti yang Terlihat" sejak 16 Nov 2026 (ADR-0045; riset dan brief: `docs/plan/redesign-situs-publik/BRIEF.md`).
+> Bagian di bawah yang masih menyebut plum/blush adalah arah lama "Janji Terbukti" (ADR-0038); nilai warna yang berlaku ada di §3.
+> Dipakai sejak 10 Nov 2026 (ADR-0038). Ringkasan dari brief desain bersumber tugas redesain halaman publik (riset
 > 10 Nov 2026; sumber di §8). Aplikasi setelah login mengikuti `DESIGN.md`; dokumen ini hanya untuk Beranda, Tentang Kami,
 > FAQ, Kontak, Syarat & Ketentuan, Kebijakan Privasi, Pemrosesan Data, Kebijakan Refund, Masuk, Daftar, Siapkan workspace,
 > dan Undangan.
@@ -15,7 +17,10 @@
   datang dari warna, ruang kosong, segel, dan komposisi, bukan dari huruf serif.
 - **Elemen khas:** segel bukti (`ProofSeal`) yang dicapkan satu kali pada pembayaran yang sudah diverifikasi di pratinjau
   Portal Klien. Segel hanya muncul pada hal yang benar-benar terverifikasi.
-- **Logo:** tanda bulat "EP" + nama ElProof (`BrandMark`), sama di header, footer, dan layar masuk.
+- **Logo:** logo navy-emas (`AppLogoMark`) + nama ElProof (`BrandMark`), sama di header, footer, dan layar masuk.
+- **Arah sekarang (16 Nov 2026, ADR-0045):** navy + emas segel dari logo; hero = judul lebar + `HeroScreens` (WO Console + Portal Klien,
+  segel yang sama pada "Termin 2" di kedua layar); pita bukti berisi fakta yang bisa dicek; bento `Journey` "Dari H-180 sampai hari H";
+  kartu harga; WhatsApp di header, di samping setiap "Coba gratis", dan bilah aksi HP yang muncul setelah hero lewat.
 
 ## 2. Temuan → keputusan (ringkas)
 
@@ -29,23 +34,22 @@
 
 ## 3. Token (`src/theme/theme.css` + permukaan di `marketing.css`)
 
-Sejak ADR-0039 (10 Nov 2026) palet ini dipakai juga oleh semua konsol dan nilainya tinggal di `theme.css`; `marketing.css` hanya
-mengganti permukaan publik (halaman putih, pita blush, garis blush). Tabel kontras konsol: `DESIGN.md` §4.1.
+Sejak ADR-0045 (16 Nov 2026) palet navy + emas dipakai semua permukaan; `marketing.css` hanya mengganti permukaan publik (halaman
+putih, pita kabut, garis). Tabel kontras lengkap: `DESIGN.md` §4.1.
 
 | Peran | Nilai | Kontras (dihitung) |
 |---|---|---|
 | `--background` / `--card` | #FFFFFF | — |
-| `--foreground` | #2A1A27 | 16,9:1 di putih |
-| `--muted` (pita blush) | #F7EEEC | — |
-| `--muted-foreground` | #6B5566 | 6,74:1 di putih · 5,90:1 di blush |
-| `--subtle-foreground` (placeholder) | #7E6A7A | 4,96:1 di putih saja |
-| `--input` (batas kontrol) | #8E7A8B | 3,96:1 di putih · 3,47:1 di blush |
-| `--primary` plum (tombol, pita gelap, fokus) | #3E1F3B | 14,34:1 dengan teks putih |
-| `--accent` | #EFE3EC | plum di atasnya ≥ 11:1 |
-| `--seal` emas (segel, garis; non-teks) | #B88A3E | 3,11:1 di putih |
+| `--foreground` | #0B1B43 | 16,77:1 di putih · 14,82:1 di kabut |
+| `--muted` (pita kabut) | #EEF1F7 | — |
+| `--muted-foreground` | #4F5A78 | 6,85:1 di putih · 6,05:1 di kabut |
+| `--input` (batas kontrol) | #7A84A0 | 3,73:1 di putih · 3,29:1 di kabut |
+| `--primary` navy (tombol, pita gelap, fokus) | #0B1B43 | 16,77:1 dengan teks putih |
+| `--seal` emas (segel, garis, ikon di latar terang; non-teks) | #B4853D | 3,30:1 di putih |
+| `--seal-on-primary` emas logo (di pita navy, boleh teks) | #E0B074 | 8,49:1 di navy |
 | `--seal-text` / `--seal-soft` | #7A5A1E / #F8F0E1 | 5,60:1 |
-| `--highlight-text` (mis. "H-180") | #9B3D4A | 6,65:1 di putih |
-| `--on-primary-muted` (teks redup di plum) | #E9D9C4 | 10,37:1 |
+| `--highlight-text` (mis. "H-180") | #8A5A12 | 5,91:1 di putih |
+| `--on-primary-muted` (teks redup di navy) | #C3CBE0 | 10,33:1 |
 
 Status (Lunas, Belum dibayar) tetap memakai token status konsol + ikon + teks. Huruf: Plus Jakarta Sans; hero
 `font-extrabold`, tracking −0,035em, line-height 1,04; h2 extrabold −0,03em; badan 16–18 px, baris ≤ 70 karakter; uang

@@ -1,13 +1,13 @@
 import { Suspense, useEffect, useId, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, MessageCircle, X } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { APP_NAME } from "@/shared/constants/brand";
 import { useDocumentSurface } from "@/shared/hooks/useDocumentSurface";
 import { BrandMark } from "@/modules/homepage/components/BrandMark";
 import { Container } from "@/modules/homepage/components/Container";
 import { ctaClass } from "@/modules/homepage/components/cta";
-import { CONTACT } from "@/modules/homepage/data/contact";
+import { CONTACT, whatsappUrl } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
 
 // Sections of the Beranda the header can jump to (ids set by HomePage).
@@ -122,6 +122,16 @@ export default function MarketingLayout() {
   const location = useLocation();
   const menuId = useId();
 
+  // The phone action bar appears once the page's own buttons have scrolled away (never in the first render, so the
+  // prerendered HTML and the first client render agree).
+  const [actionBar, setActionBar] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setActionBar(window.scrollY > 560);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   // Any navigation closes the phone menu, also a tap on the page that is already open (same path, new key).
   useEffect(() => {
     setMenuOpen(false);
@@ -146,6 +156,14 @@ export default function MarketingLayout() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <a
+              href={whatsappUrl()}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(navLinkClass({ isActive: false }), "hidden items-center gap-1.5 xl:inline-flex")}
+            >
+              <MessageCircle aria-hidden className="size-4" /> WhatsApp
+            </a>
             <Link to={ROUTE_PATHS.login} className={cn(navLinkClass({ isActive: false }), "hidden sm:inline-flex")}>
               Masuk
             </Link>
@@ -188,12 +206,28 @@ export default function MarketingLayout() {
         </Suspense>
       </main>
 
-      <footer className="border-t border-border bg-background pt-14 pb-8 text-[14.5px] text-muted-foreground md:pt-16">
+      {/* Phones: the two next steps always within the thumb's reach (WhatsApp first: how most visitors ask). */}
+      <div
+        hidden={!actionBar}
+        className="fixed inset-x-0 bottom-0 z-(--z-sticky) border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:hidden"
+      >
+        <div className="grid grid-cols-2 gap-2.5">
+          <a href={whatsappUrl()} target="_blank" rel="noreferrer" className={ctaClass("outline", "md", "px-3")}>
+            <MessageCircle aria-hidden className="size-[18px]" /> Tanya dulu
+          </a>
+          <Link to={ROUTE_PATHS.signup} className={ctaClass("primary", "md", "px-3")}>
+            Coba gratis
+          </Link>
+        </div>
+      </div>
+
+      <footer className="border-t border-border bg-background pt-14 pb-28 sm:pb-8 text-[14.5px] text-muted-foreground md:pt-16">
         <Container>
           <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.6fr_1fr_1fr_1.2fr_1.4fr]">
             <div className="col-span-2 md:col-span-1">
               <BrandMark />
               <p className="mt-4 max-w-[30ch]">Aplikasi kerja untuk wedding organizer Indonesia.</p>
+              <p className="mt-3 max-w-[30ch] text-[13.5px]">Dibuat oleh Elcodelabs, PT Prayora Karya Pratama.</p>
             </div>
             {FOOTER_GROUPS.map((group) => (
               <div key={group.title}>

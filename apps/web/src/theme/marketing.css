@@ -1,19 +1,19 @@
 /*
- * Public site surface ("Janji Terbukti", ADR-0038, knowledge/DESIGN-PUBLIC.md).
+ * Public site surface ("Bukti yang Terlihat", ADR-0045, knowledge/DESIGN-PUBLIC.md).
  *
- * The palette itself (plum, seal gold, text greys, one typeface) lives in
- * theme.css and is shared with the consoles (ADR-0039). The marketing pages
- * and the sign-in/sign-up screens set <html data-surface="marketing">
+ * The palette itself (navy, seal gold, text greys, one typeface) lives in
+ * theme.css and is shared with the consoles. The marketing pages and the
+ * sign-in/sign-up screens set <html data-surface="marketing">
  * (shared/hooks/useDocumentSurface.ts); only the surface tokens that differ
- * there are redefined here: a white page with blush bands instead of the
- * consoles' plum-tinted near-white. Contrast ratios: DESIGN-PUBLIC.md §3.
+ * there are redefined here: a white page with cool mist bands instead of the
+ * consoles' navy-tinted near-white. Contrast ratios: DESIGN-PUBLIC.md §3.
  */
 :root[data-surface="marketing"] {
   --background: #ffffff;
-  --muted: #f7eeec; /* blush: section bands, quiet surfaces; --muted-foreground on it 5.90:1 */
-  --secondary: #f7eeec;
-  --border: #e8dcda;
-  --border-light: #f2e9e7;
+  --muted: #eef1f7; /* mist: section bands, quiet surfaces; --muted-foreground on it 6.0:1 */
+  --secondary: #eef1f7;
+  --border: #e1e5ef;
+  --border-light: #eef1f7;
 
   color-scheme: light;
 }

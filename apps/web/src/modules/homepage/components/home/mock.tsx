@@ -8,7 +8,7 @@ import { cn } from "@/shared/lib/cn";
  * the public theme tokens; nothing here is a real screen of the app.
  */
 
-/** A plum phone with a white screen. Width and screen height come from the caller. */
+/** A navy phone with a white screen. Width and screen height come from the caller. */
 export function PhoneFrame({ children, className, screenClassName }: { children: ReactNode; className?: string; screenClassName?: string }) {
   return (
     <div className={cn("rounded-[2.5rem] bg-primary p-3 shadow-2xl shadow-primary/30", className)}>

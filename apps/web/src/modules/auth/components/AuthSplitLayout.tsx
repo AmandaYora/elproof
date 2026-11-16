@@ -7,10 +7,10 @@ import { useDocumentSurface } from "@/shared/hooks/useDocumentSurface";
 /**
  * Two-panel frame for every screen before sign-in (Masuk, Daftar, Siapkan
  * workspace, Undangan), on the public site's surface (ADR-0038): white page,
- * same plum and seal gold as every console (ADR-0039).
+ * same navy and seal gold as every console (ADR-0045).
  *
- * Left (large screens): the photos chosen in Platform Console, under a plum
- * scrim so the words stay readable; without photos the plum panel carries the
+ * Left (large screens): the photos chosen in Platform Console, under a navy
+ * scrim so the words stay readable; without photos the navy panel carries the
  * seal instead of an empty gradient. Right: the form, which comes first on a
  * phone so the keyboard never covers it. `aside` is decorative text (not a
  * heading); each page puts its own h1 in the form column.
@@ -21,7 +21,7 @@ export function AuthSplitLayout({ aside, children }: { aside: ReactNode; childre
     <div className="flex min-h-screen bg-background text-foreground">
       <div className="relative hidden overflow-hidden bg-primary lg:flex lg:w-[46%] lg:flex-col lg:justify-between lg:p-14">
         <div className="pointer-events-none absolute -top-20 -right-20 opacity-30" aria-hidden>
-          <ProofSeal size={360} className="text-seal" />
+          <ProofSeal size={360} className="text-seal-on-primary" />
         </div>
         <LoginPhotoSlider />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-primary via-primary/55 to-primary/25" aria-hidden />
@@ -41,7 +41,7 @@ export function AuthAside({ title, body }: { title: string; body: string }) {
   return (
     <>
       <p className="text-[36px] leading-[1.08] font-extrabold tracking-[-0.03em]">{title}</p>
-      <div className="mt-5 h-px w-12 bg-seal" aria-hidden />
+      <div className="mt-5 h-px w-12 bg-seal-on-primary" aria-hidden />
       <p className="mt-5 text-[16px] leading-relaxed text-on-primary-muted">{body}</p>
     </>
   );
