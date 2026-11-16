@@ -24,7 +24,7 @@ export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>)
 export function TH({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={cn("px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-text-secondary", className)}
+      className={cn("px-4 py-3 text-[12.5px] font-semibold text-muted-foreground", className)}
       {...props}
     />
   );
