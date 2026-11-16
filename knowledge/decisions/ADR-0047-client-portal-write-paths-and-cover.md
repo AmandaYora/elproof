@@ -27,8 +27,12 @@ tasks of their own ("kirim daftar tamu", #11). Each needs data the WO owns, so t
   transaction: project lock, overpayment rule, payment + evidence rows + activity). The row carries `submitted_by_client_id`
   (`recorded_by_staff_id` stays NULL) and every payload says `source: "client" | "staff"`. The couple does not pick a payment type: the
   server chooses DP / Pelunasan / Termin from the ledger, and staff may change it before verifying. Staff verify and delete with the
-  existing endpoints and permissions. Like a staff-recorded unverified payment, it counts on the ledger at once (the ledger has never
-  depended on verification); the "Verifikasi bukti" queue and the "Dikirim pasangan" badge are where the WO checks it.
+  existing endpoints and permissions. **It counts as paid only once staff verify it** (`ClientPayment.CountsTowardContract`, the SQL twin
+  `domain.ContractCountsSQL`): until then it is not in "sudah dibayar", "sisa tagihan", the installment schedule, overdue lists, received
+  cash or the closing checklist, so a fake or mistaken proof never lowers what the couple owes. A staff-recorded payment still counts at once,
+  verified or not (unchanged). The overpayment rule and the server's choice of type do see a pending submission (money that may still arrive),
+  so the couple cannot send more than the contract. The "Verifikasi bukti" queue and the "Dikirim pasangan" badge are where the WO checks it;
+  the portal shows the pending amount as "menunggu verifikasi" next to its payment summary.
 * **Tasks are flagged Timeline steps.** `project_milestones.for_client` (staff PATCH `forClient`) + `completed_by_client_id`. The couple
   may only complete a flagged, non-cancelled step; completing is idempotent; a staff status change clears the client mark. The portal
   home lists them as `clientTasks`.

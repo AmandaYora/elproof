@@ -64,13 +64,10 @@ func (s *PaymentTermService) progressWith(ctx context.Context, projectID int64, 
 	return domain.AllocateTerms(terms, appliedFromPayments(payments), today), nil
 }
 
-// appliedFromPayments is how much of the contract the payments cover.
+// appliedFromPayments is how much of the contract the payments cover (only the
+// ones that count: a couple's unverified submission does not, ADR-0047).
 func appliedFromPayments(payments []domain.ClientPayment) int64 {
-	lines := make([]domain.PaymentLine, 0, len(payments))
-	for _, p := range payments {
-		lines = append(lines, domain.PaymentLine{Type: p.Type, Amount: p.Amount})
-	}
-	return domain.AppliedToContract(lines)
+	return domain.AppliedToContract(domain.ContractLines(payments))
 }
 
 // Replace saves the whole schedule. The installments together may not exceed

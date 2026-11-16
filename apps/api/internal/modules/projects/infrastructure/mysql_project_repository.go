@@ -219,9 +219,11 @@ func (r *MySQLProjectRepository) ListSortSpec() (map[string]pagination.SortColum
 	return projectSortColumns, pagination.By("eventDate", true)
 }
 
+// projectAppliedSQL counts the payments domain.CountsTowardContract counts (a
+// couple's unverified Client Portal submission does not, ADR-0047).
 const projectAppliedSQL = `GREATEST(COALESCE((SELECT SUM(CASE WHEN cp.type IN ('DP','Termin','Pelunasan') THEN CAST(cp.amount AS SIGNED)
 		WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END)
-	FROM client_payments cp WHERE cp.project_id = projects.id AND cp.deleted_at IS NULL), 0), 0)`
+	FROM client_payments cp WHERE cp.project_id = projects.id AND cp.deleted_at IS NULL AND ` + domain.ContractCountsSQL + `), 0), 0)`
 
 const projectRemainingSQL = `GREATEST(CAST(projects.contract_value AS SIGNED) - ` + projectAppliedSQL + `, 0)`
 

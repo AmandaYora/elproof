@@ -167,6 +167,32 @@ var ErrVerifyNeedsEvidence = errors.New("a client payment needs at least one evi
 // IsVerified reports whether the payment currently carries a verification.
 func (p ClientPayment) IsVerified() bool { return p.VerifiedAt != nil }
 
+// CountsTowardContract reports whether the payment counts as paid on the
+// contract. A payment staff recorded always does; one the couple sent from the
+// Client Portal counts only once staff verified it (ADR-0047), so a fake or
+// mistaken proof never lowers what is left to pay. The overpayment guard and the
+// installment type still see every live payment (a pending submission is money
+// that may still arrive), only "paid", "remaining" and the schedule wait for it.
+func (p ClientPayment) CountsTowardContract() bool {
+	return p.SubmittedByClientID == 0 || p.IsVerified()
+}
+
+// ContractLines is the ledger view of the payments that count toward the
+// contract (CountsTowardContract).
+func ContractLines(payments []ClientPayment) []PaymentLine {
+	lines := make([]PaymentLine, 0, len(payments))
+	for _, p := range payments {
+		if p.CountsTowardContract() {
+			lines = append(lines, PaymentLine{Type: p.Type, Amount: p.Amount})
+		}
+	}
+	return lines
+}
+
+// ContractCountsSQL is the same rule as CountsTowardContract for a query over
+// client_payments aliased as cp.
+const ContractCountsSQL = "(cp.submitted_by_client_id IS NULL OR cp.verified_at IS NOT NULL)"
+
 // ClearVerification removes the verification. It reports whether there was one.
 func (p *ClientPayment) ClearVerification() bool {
 	was := p.IsVerified()

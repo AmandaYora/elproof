@@ -437,10 +437,7 @@ func (s *ClientPaymentService) ledgerAndTerms(ctx context.Context, tenantID, pro
 	if err != nil {
 		return domain.Ledger{}, nil, err
 	}
-	lines := make([]domain.PaymentLine, 0, len(all))
-	for _, p := range all {
-		lines = append(lines, lineOf(p.Type, p.Amount))
-	}
+	lines := domain.ContractLines(all)
 	ledger := domain.ComputeLedger(lines, contract)
 	terms := []domain.TermProgress{}
 	if s.terms != nil {

@@ -136,7 +136,6 @@ export function PaymentSummaryCard({ finance, terms, payTo, contact, onSubmitPro
           <WhatsAppButton
             contact={contact}
             label="Tanyakan lewat WhatsApp"
-            quietWhenMissing={false}
             message={askMessage(contact, next ? `pembayaran ${next.label} ${formatCurrency(next.remaining)}` : "pembayaran kami")}
           />
         )}

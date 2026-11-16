@@ -1,6 +1,10 @@
 # Riset Portal Klien — apakah sudah profesional dan modern?
 
-Tech Lead · 2026-11-16 · Mengikuti skill `rudis-riset-desain` (langkah 1–3). Belum ada kode yang diubah. Bahan: potret e2e
+Tech Lead · 2026-11-16 · Mengikuti skill `rudis-riset-desain` (langkah 1–3).
+
+**Status (16 Nov 2026): dibangun** di branch `feat/revamp-wo-console` — #1–#8, #10, #11 (API: ADR-0047); #9 sesuai rekomendasi
+(tanpa chat, tombol WhatsApp kontekstual). Header portal memakai logo ElProof. Kiriman bukti dari pasangan baru dihitung
+sebagai sudah dibayar setelah WO memverifikasinya. Bahan: potret e2e
 Portal Klien terbaru (HP 375 px dan desktop 1280 px, data contoh, palet navy) di `riset/portal-sekarang-*.webp`, kode
 `apps/web/src/modules/client-portal`, dan riset luar (sumber di akhir; lembar kontak pembanding di `riset/ref-portal.webp`).
 

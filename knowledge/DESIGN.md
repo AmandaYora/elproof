@@ -258,25 +258,31 @@ urutan di URL; pilih baris → bilah aksi massal menggantikan toolbar; paginasi 
 
 ### 5.2 Portal Klien, HP (375 px)
 
+Sejak revisi Portal Klien 16 Nov 2026 (`docs/plan/revamp-client-portal/RISET.md`, ADR-0047):
+
 ```
 ┌──────────────────────────┐
-│ Nama WO                   │
-│ Citra & Bima        (tebal)│
-│ H-266 menuju hari bahagia │
+│ [logo ElProof] Nama WO [WA]│  ← logo ElProof, tombol WhatsApp PIC selalu terjangkau
 │ ┌──────────────────────┐ │
-│ │ Tagihan berikutnya   │ │  ← kartu terbesar, satu-satunya yang menonjol
-│ │ Rp5.000.000          │ │
-│ │ jatuh tempo 20 Nov   │ │
-│ │ Transfer ke BCA …    │ │
-│ │ [Konfirmasi via WA]  │ │
+│ │ (foto sampul / navy) │ │  ← satu hero; lapisan navy hanya di bawah teks
+│ │ 14 Mar 2027 · Venue  │ │
+│ │ Citra & Bima  H-118  │ │
 │ └──────────────────────┘ │
-│ Yang perlu Anda lakukan   │
-│ Kabar terbaru (terbaru di atas)
-│  ✓ DP lunas · Terverifikasi 7 Nov oleh Rina  ← ProofStamp, ketuk = foto bukti
+│ Yang perlu Anda lakukan   │  ← tagihan, tugas pasangan, kendala; tiap item punya tombol
+│ ⚠ Termin 2 terlambat [WA] │
+│ Progres · Kabar terbaru   │  ← ProofStamp, ketuk = foto bukti
 ├──────────────────────────┤
-│ Beranda Jadwal Bayar Vendor Lainnya │  ← tab bawah ≥ 44 px
+│ Beranda Jadwal Bayar Vendor Lainnya(1) │  ← tab bawah ≥ 44 px, lencana kendala
 └──────────────────────────┘
 ```
+
+- **Pembayaran:** satu kartu ringkasan ("Sudah dibayar X dari Y", bilah tersegmen per termin, termin berikutnya, rekening
+  atau "Minta nomor rekening lewat WhatsApp", "Kirim bukti transfer"). Warna status hanya untuk yang terlambat.
+- **Kiriman pasangan** menunggu verifikasi WO dan **belum dihitung** sebagai sudah dibayar; jumlahnya tampil sebagai
+  catatan "menunggu verifikasi" di bawah ringkasan dan lencana di riwayat.
+- **Jadwal** dikelompokkan per fase waktu ("Bulan ini", "1–3 bulan lagi", "Menjelang hari H"); yang selesai diringkas.
+- **Desktop ≥ 1024 px:** dua kolom (kiri tindakan + tagihan, kanan progres + kabar + kontak).
+- Judul halaman 20/600 tanpa ikon (`PageIntro`), judul kartu 16/600, aksi selalu tombol.
 
 Tabel di HP menjadi daftar kartu dengan kolom pertama terkunci. Platform Console memakai tata letak console dengan
 sidebar bergrup (Pelanggan, Produk, Sistem; sudah ada).

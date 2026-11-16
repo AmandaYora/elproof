@@ -47,10 +47,13 @@ export default function PembayaranTabPage() {
 
   const sorted = [...payments].sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1));
   const ordered = [...terms].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  // What the couple sent that the WO has not verified yet: shown, but not counted as paid (ADR-0047).
+  const pending = payments.filter((p) => p.source === "client" && !p.verifiedAt);
+  const pendingTotal = pending.reduce((sum, p) => sum + p.amount, 0);
 
   function sent() {
     setDrawer("closed");
-    toast.success("Bukti transfer terkirim. Wedding organizer Anda akan memverifikasinya.");
+    toast.success("Bukti transfer terkirim. Jumlahnya dihitung sebagai sudah dibayar setelah wedding organizer Anda memverifikasinya.");
     void fetchClientPayments(projectId).catch(() => undefined);
   }
 
@@ -66,6 +69,13 @@ export default function PembayaranTabPage() {
           contact={contact}
           onSubmitProof={canSubmit ? () => setDrawer("open") : undefined}
         />
+      )}
+
+      {status === "ready" && pending.length > 0 && (
+        <p role="status" className="-mt-3 rounded-xl border border-border bg-accent px-4 py-3 text-[13.5px] text-foreground sm:-mt-5">
+          {formatCurrency(pendingTotal)} yang Anda kirim sedang menunggu verifikasi wedding organizer. Jumlah ini belum dihitung
+          sebagai sudah dibayar.
+        </p>
       )}
 
       {status === "loading" && <div className="rounded-2xl border border-border bg-card p-5"><SkeletonRows rows={3} label="Memuat pembayaran" /></div>}

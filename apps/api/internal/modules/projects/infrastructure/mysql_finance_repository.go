@@ -47,10 +47,11 @@ func financeProjectWhere(scope domain.FinanceScope) (string, []interface{}) {
 
 // clientAppliedSQL: what the client has paid towards the contract of project
 // t.project_id (DP + Termin + Pelunasan - Refund over live payments, never
-// negative), as domain.AppliedToContract.
+// negative, only payments that domain.CountsTowardContract), as
+// domain.AppliedToContract.
 const clientAppliedSQL = `GREATEST(COALESCE((SELECT SUM(CASE WHEN cp.type IN ('DP','Termin','Pelunasan') THEN CAST(cp.amount AS SIGNED)
 		WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END)
-	FROM client_payments cp WHERE cp.project_id = t.project_id AND cp.deleted_at IS NULL), 0), 0)`
+	FROM client_payments cp WHERE cp.project_id = t.project_id AND cp.deleted_at IS NULL AND ` + domain.ContractCountsSQL + `), 0), 0)`
 
 // termsBeforeSQL: the installments of the same schedule that come before t.
 const termsBeforeSQL = `COALESCE((SELECT SUM(t2.amount) FROM client_payment_terms t2 WHERE t2.project_id = t.project_id
@@ -292,7 +293,7 @@ func (r *MySQLFinanceRepository) ReceivedPayments(ctx context.Context, scope dom
 	where, args := financeProjectWhere(scope)
 	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT cp.type, cp.amount FROM client_payments cp JOIN projects p ON p.id = cp.project_id
-		 WHERE `+where+` AND cp.deleted_at IS NULL AND cp.payment_date BETWEEN ? AND ?`,
+		 WHERE `+where+` AND cp.deleted_at IS NULL AND `+domain.ContractCountsSQL+` AND cp.payment_date BETWEEN ? AND ?`,
 		append(args, from.Format(dateFmt), to.Format(dateFmt))...)
 	if err != nil {
 		return nil, err

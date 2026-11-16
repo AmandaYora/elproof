@@ -13,20 +13,15 @@ interface Props {
   tone?: "solid" | "outline";
   size?: "sm" | "default" | "lg";
   className?: string;
-  /** Without a number: show "Kontak WO belum tersedia" (default) or nothing. */
-  quietWhenMissing?: boolean;
-  /** Spacing for that quiet line (className styles the button only). */
-  quietClassName?: string;
 }
 
 /**
  * A WhatsApp button with the message already typed for the moment it sits in (a term, a kendala, a missing bank
- * account). Without a usable number it never shows a dead button: a quiet line instead, or nothing.
+ * account). Without a usable number it renders nothing (never a dead button); the "Hubungi kami" card and the
+ * bank-account note say once that no contact is available.
  */
-export function WhatsAppButton({ contact, message, label, tone = "outline", size = "default", className, quietWhenMissing = true, quietClassName }: Props) {
-  if (!contact.phone) {
-    return quietWhenMissing ? <p className={cn("text-[13px] text-muted-foreground", quietClassName)}>Kontak WO belum tersedia</p> : null;
-  }
+export function WhatsAppButton({ contact, message, label, tone = "outline", size = "default", className }: Props) {
+  if (!contact.phone) return null;
   return (
     <Button
       size={size}

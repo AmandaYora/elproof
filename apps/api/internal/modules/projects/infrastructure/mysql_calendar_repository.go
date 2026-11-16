@@ -121,14 +121,15 @@ func (r *MySQLCalendarRepository) ListTermsTouching(ctx context.Context, q appli
 	}
 
 	// What each of those projects' clients has paid against the contract (same
-	// rule as domain.AppliedToContract: DP + Termin + Pelunasan - Refund, live rows).
+	// rule as domain.AppliedToContract: DP + Termin + Pelunasan - Refund, live rows that
+	// domain.CountsTowardContract).
 	paid, err := r.db.QueryContext(ctx, `
 		SELECT cp.project_id,
 		       COALESCE(SUM(CASE WHEN cp.type IN ('DP','Termin','Pelunasan') THEN cp.amount
 		                         WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END), 0)
 		FROM client_payments cp
 		JOIN projects p ON p.id = cp.project_id
-		WHERE p.tenant_id = ? AND cp.deleted_at IS NULL AND cp.project_id IN (`+touching+`)
+		WHERE p.tenant_id = ? AND cp.deleted_at IS NULL AND `+domain.ContractCountsSQL+` AND cp.project_id IN (`+touching+`)
 		GROUP BY cp.project_id`, append([]any{q.TenantID}, touchArgs...)...)
 	if err != nil {
 		return nil, nil, err

@@ -59,9 +59,7 @@ func (s *ClosingChecklistService) Get(ctx context.Context, tenantID, projectID i
 	}
 
 	in := domain.ClosingInput{ContractValue: p.ContractValue}
-	for _, r := range clientRows {
-		in.ClientPayments = append(in.ClientPayments, domain.PaymentLine{Type: r.Type, Amount: r.Amount})
-	}
+	in.ClientPayments = domain.ContractLines(clientRows)
 	byEngagement := make(map[int64][]domain.PaymentLine)
 	for _, r := range vendorRows {
 		byEngagement[r.ProjectVendorID] = append(byEngagement[r.ProjectVendorID], domain.PaymentLine{Type: r.Type, Amount: r.Amount})

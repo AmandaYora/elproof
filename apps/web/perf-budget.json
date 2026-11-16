@@ -2,7 +2,8 @@
   "_comment": "Performance budget (PLAN Tahap 9). Bundle sizes are gzip KB (1024) of the production build; routes are what `npm run e2e:perf` measures on the mobile profile. API call counts are deterministic, so each route's ceiling is what it costs today: raise one only with the reason in the same change. LCP is NOT gated here (a lab number that moves with the machine); it stays in e2e/reports/BASELINE.md.",
   "bundle": {
     "entryGzipKB": 165,
-    "totalGzipKB": 700,
+    "totalGzipKB": 720,
+    "_reason_totalGzipKB": "16 Nov 2026 (ADR-0046, ADR-0047): the new Keuangan and Kalender pages and the Client Portal write paths (kirim bukti transfer, tugas pasangan, foto sampul) add lazily loaded chunks only; the entry stays ~149 KB. Total was 698 KB of 700, so the ceiling moves to 720 to leave room for one more screen",
     "largestChunkGzipKB": 100
   },
   "routeJsGzipKB": 300,

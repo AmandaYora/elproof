@@ -61,8 +61,8 @@ func TestClientSubmissionIsOneUnverifiedClientPayment(t *testing.T) {
 	if len(f.tx.locked) != 1 || f.tx.locked[0] != 10 || f.tx.began != 1 {
 		t.Errorf("one transaction holding the project lock (ADR-0033): %+v", f.tx)
 	}
-	if res.Ledger.Paid != 4_000_000 {
-		t.Errorf("an unverified payment counts on the ledger like a staff one: %+v", res.Ledger)
+	if res.Ledger.Paid != 0 || res.Ledger.Remaining != 10_000_000 {
+		t.Errorf("an unverified client submission does not count as paid until staff verify it: %+v", res.Ledger)
 	}
 }
 

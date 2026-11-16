@@ -301,7 +301,7 @@ func TestTahap5(t *testing.T) {
 					t.Errorf("vendor action: %v", a)
 				}
 			case "term_overdue":
-				if a["tone"] != "danger" || a["tab"] != "pembayaran/client" {
+				if a["tone"] != "danger" || a["tab"] != "keuangan/klien" {
 					t.Errorf("term action: %v", a)
 				}
 			case "issue_open":
@@ -309,7 +309,7 @@ func TestTahap5(t *testing.T) {
 					t.Errorf("a High kendala is danger: %v", a)
 				}
 			case "milestone_late":
-				if a["id"] == fmt.Sprintf("ms-%d", late) && a["tab"] != "milestone" {
+				if a["id"] == fmt.Sprintf("ms-%d", late) && a["tab"] != "jadwal" {
 					t.Errorf("milestone action: %v", a)
 				}
 			}

@@ -97,8 +97,7 @@ export function ActionCard({ actions, tasks, contact }: { actions: PortalAction[
           );
         })}
       </ul>
-      {/* Said once for the whole list rather than under every item. */}
-      {!contact.phone && <p className="mt-3 text-[13px] text-muted-foreground">Kontak WO belum tersedia</p>}
+      {/* Without a WhatsApp number the "Hubungi kami" card on the same page says so once; no line here. */}
     </section>
   );
 }

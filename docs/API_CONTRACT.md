@@ -733,12 +733,15 @@ A replacement changes `v`, so a cached old photo is never shown. Deleting a proj
    Body `{amount, paymentDate (YYYY-MM-DD), method, referenceNumber?, notes?, evidence: [{uploadToken, type: "Transfer Proof", name?}]}` (unknown keys, e.g. `type`,
    are ignored). Validation, all reported together as one 422: `amount` (> 0, the staff rule), `method` (required, ≤ 100), `referenceNumber` ≤ 100,
    `notes` ≤ 1000, `paymentDate` not after today (Asia/Jakarta), **at least one** proof (`evidence`), each item as for staff (`evidence[i]`,
-   `evidence[i].uploadToken`, `evidence[i].type` — only `Transfer Proof`). The **payment type is chosen by the server**: `DP` while nothing counts toward the
+   `evidence[i].uploadToken`, `evidence[i].type` — only `Transfer Proof`). The **payment type is chosen by the server** from every live payment of the project, pending submissions included: `DP` while none applies to the
    contract yet, `Pelunasan` when the amount settles exactly what is left, `Termin` otherwise (staff may change it before verifying). The overpayment rule is the
    staff one (422 `amount`, `code: payment_exceeds_contract`, with a message for the couple). One transaction on the ADR-0033 path (project locked, payment +
    proof rows + activity, rolled back together). Creates an **unverified** client payment with `submitted_by_client_id` set and `recordedBy` `null`; activity
    "Pasangan mengirim bukti pembayaran Rp…". **201** with the payment as the portal lists it (redacted for the client: `notes` `""`, `recordedBy` `null`,
-   `source: "client"`, `verifiedAt: null`, `evidence` = the proof files). Unlike staff `POST /client-payments` there is **no** `ledgerSummary` or `projectProgress`
+   `source: "client"`, `verifiedAt: null`, `evidence` = the proof files). **Such a payment counts as paid only after staff verify it:** until then it is left out
+   of every `paid` / `remaining` / applied figure (ledger summaries, `finance` on `/projects/me/home` and the overview, the project list's money columns and
+   next due date, installment progress and overdue lists, Keuangan receivables and received cash, Kalender, the closing checklist). It still counts for the
+   overpayment rule and the type choice. Staff-recorded payments count at once, verified or not. Unlike staff `POST /client-payments` there is **no** `ledgerSummary` or `projectProgress`
    in the answer (the staff progress counts hidden kendala).
 3. Every client-payment payload (`GET/POST/PATCH …/client-payments`, verify, restore, the portal's list) carries **`source: "client" | "staff"`**, and
    `GET /finance/verifications` rows carry `source`. A client sees its own submissions, verified or not, in `GET /projects/{id}/client-payments`.

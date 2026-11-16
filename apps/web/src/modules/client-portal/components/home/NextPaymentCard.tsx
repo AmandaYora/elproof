@@ -38,11 +38,14 @@ export function BankAccount({ payTo, contact, forWhat }: { payTo: PortalHome["pa
   }
   return (
     <div className="rounded-xl bg-muted p-4">
-      <p className="text-[13px] text-muted-foreground">Nomor rekening untuk pembayaran belum dibagikan.</p>
+      <p className="text-[13px] text-muted-foreground">
+        Nomor rekening untuk pembayaran belum dibagikan.
+        {/* Without a WhatsApp number there is no button to offer: one sentence, not a second "no contact" line. */}
+        {!contact.phone && " Tanyakan langsung ke wedding organizer Anda."}
+      </p>
       <WhatsAppButton
         contact={contact}
         className="mt-3 h-auto min-h-11 w-full bg-card py-2 whitespace-normal sm:w-auto"
-        quietClassName="mt-2"
         label="Minta nomor rekening lewat WhatsApp"
         message={askMessage(contact, `nomor rekening untuk pembayaran ${forWhat}`)}
       />
@@ -99,7 +102,6 @@ export function NextPaymentCard({ finance, payTo, contact }: { finance: NonNulla
           size="lg"
           className="mt-4 w-full"
           label="Konfirmasi lewat WhatsApp"
-          quietWhenMissing={false}
           message={paymentConfirmationMessage({
             businessName: contact.businessName || contact.name,
             clientName: contact.clientName,

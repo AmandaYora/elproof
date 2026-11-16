@@ -33,7 +33,8 @@ func (r *MySQLDashboardRepository) ListOpenProjectTerms(ctx context.Context, ten
 
 // ListAppliedToContract returns, per open project, what the client has paid
 // against the contract (DP + Termin + Pelunasan - Refund; Tambahan excluded,
-// same rule as domain.AppliedToContract).
+// same rule as domain.AppliedToContract, only payments that
+// domain.CountsTowardContract).
 func (r *MySQLDashboardRepository) ListAppliedToContract(ctx context.Context, tenantID int64) (map[int64]int64, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT cp.project_id,
@@ -41,7 +42,7 @@ func (r *MySQLDashboardRepository) ListAppliedToContract(ctx context.Context, te
 		                         WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END), 0)
 		FROM client_payments cp
 		JOIN projects p ON p.id = cp.project_id
-		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled') AND cp.deleted_at IS NULL
+		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled') AND cp.deleted_at IS NULL AND `+domain.ContractCountsSQL+`
 		GROUP BY cp.project_id`, tenantID)
 	if err != nil {
 		return nil, err
