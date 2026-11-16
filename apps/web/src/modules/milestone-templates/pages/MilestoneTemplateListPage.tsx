@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
-import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { MilestoneTemplateFormModal } from "@/modules/milestone-templates/components/MilestoneTemplateFormModal";
 import type { MilestoneTemplateSubmitValues } from "@/modules/milestone-templates/schemas/milestone-template.schema";
 import { useMilestoneTemplateStore } from "@/modules/milestone-templates/stores/useMilestoneTemplateStore";
@@ -32,10 +30,19 @@ export default function MilestoneTemplateListPage() {
   const [editingTemplate, setEditingTemplate] = useState<MilestoneTemplate | undefined>(undefined);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    void fetchTemplates();
-  }, [fetchTemplates]);
+    let cancelled = false;
+    setStatus("loading");
+    fetchTemplates()
+      .then(() => !cancelled && setStatus("ready"))
+      .catch(() => !cancelled && setStatus("error"));
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchTemplates, attempt]);
 
   function openCreateModal() {
     setEditingTemplate(undefined);
@@ -89,129 +96,95 @@ export default function MilestoneTemplateListPage() {
 
   const confirmingTemplate = templates.find((t) => t.id === confirmingDeleteId);
 
+  const columns: Column<MilestoneTemplate>[] = [
+    { id: "order", header: "Urutan", align: "right", className: "w-20", hideOnCard: true, cell: (t) => t.sortOrder },
+    {
+      id: "name",
+      header: "Nama tahapan",
+      primary: true,
+      truncate: true,
+      cell: (t) =>
+        writeLocked ? (
+          <span className="font-medium"><span className="md:hidden">{t.sortOrder}. </span>{t.name}</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => openEditModal(t)}
+            className="max-w-full truncate text-left font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+          >
+            <span className="md:hidden">{t.sortOrder}. </span>{t.name}
+          </button>
+        ),
+    },
+    { id: "days", header: "Waktu terhadap hari H", card: true, className: "w-56 whitespace-nowrap", cell: (t) => formatDaysLabel(t.daysBeforeEvent) },
+  ];
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Jadwal bawaan</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">
-            Tahapan di sini otomatis ditambahkan ke tab Jadwal setiap kali proyek baru dibuat.
-          </p>
+      <PageHeader
+        className="mb-1"
+        title="Jadwal bawaan"
+        description="Tahapan ini otomatis masuk ke tab Jadwal setiap proyek baru, dalam urutan di bawah. Proyek yang sudah ada tidak berubah."
+        actions={
+          !writeLocked && (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+              Tambah tahapan
+            </Button>
+          )
+        }
+      />
+
+      {actionError && (
+        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
+      )}
+
+      {confirmingTemplate && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Yakin ingin menghapus "{confirmingTemplate.name}"? Proyek yang sudah dibuat tidak akan terpengaruh.
+          </span>
+          <span className="flex shrink-0 gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setConfirmingDeleteId(null)}>Batal</Button>
+            <Button variant="danger" size="sm" onClick={() => void handleDelete(confirmingTemplate.id)}>Hapus tahapan</Button>
+          </span>
         </div>
-        {!writeLocked && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Tambah tahapan
-          </Button>
-        )}
-      </div>
+      )}
 
-      <Card>
-        <CardHeader
-          title="Daftar tahapan"
-          subtitle="Urutan di sini menentukan urutan tampil di tab Jadwal proyek baru. Perubahan tidak memengaruhi proyek yang sudah ada."
-        />
-        <CardContent>
-          {actionError && (
-            <p className="mb-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
-          )}
-
-          {confirmingTemplate && (
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-              <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                Yakin ingin menghapus "{confirmingTemplate.name}"? Proyek yang sudah dibuat tidak akan terpengaruh.
-              </span>
-              <span className="flex shrink-0 gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setConfirmingDeleteId(null)}>Batal</Button>
-                <Button variant="danger" size="sm" onClick={() => void handleDelete(confirmingTemplate.id)}>Hapus tahapan</Button>
-              </span>
-            </div>
-          )}
-
-          {templates.length === 0 ? (
-            <EmptyState
-              title="Belum ada tahapan di jadwal bawaan"
-              description="Tambahkan item pertama supaya proyek baru tidak dimulai dengan tab Jadwal kosong."
+      <DataTable
+        label="Daftar tahapan jadwal bawaan"
+        columns={columns}
+        rows={templates}
+        rowId={(t) => t.id}
+        rowLabel={(t) => t.name}
+        status={status}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={{ page: 1, limit: templates.length, total: templates.length, totalPages: 1 }}
+        onPageChange={() => undefined}
+        sort={null}
+        onSortChange={() => undefined}
+        filtered={false}
+        onResetFilters={() => undefined}
+        empty={{
+          title: "Belum ada tahapan di jadwal bawaan",
+          description: "Tambahkan tahapan pertama supaya proyek baru tidak dimulai dengan tab Jadwal kosong.",
+          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah tahapan</Button> : undefined,
+        }}
+        actions={(t) => {
+          const idx = templates.findIndex((x) => x.id === t.id);
+          return (
+            <RowActions
+              rowLabel={t.name}
+              primary={{ label: "Ubah", icon: <Pencil />, onClick: () => openEditModal(t), hidden: writeLocked }}
+              items={[
+                { label: "Naikkan urutan", icon: <ArrowUp />, onSelect: () => void handleMove(t.id, "up"), hidden: writeLocked || idx <= 0 },
+                { label: "Turunkan urutan", icon: <ArrowDown />, onSelect: () => void handleMove(t.id, "down"), hidden: writeLocked || idx >= templates.length - 1 },
+                { label: "Hapus tahapan", icon: <Trash2 />, tone: "danger", onSelect: () => setConfirmingDeleteId(t.id), hidden: writeLocked },
+              ]}
             />
-          ) : (
-            <>
-              <CardList
-                className="sm:hidden"
-                items={templates}
-                keyFor={(t) => t.id}
-                renderItem={(t) => {
-                  const idx = templates.findIndex((x) => x.id === t.id);
-                  return (
-                    <>
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="font-medium text-text-primary">{t.sortOrder}. {t.name}</span>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <IconActionButton
-                            icon={ArrowUp}
-                            label="Naikkan urutan"
-                            tone="neutral"
-                            disabled={idx <= 0}
-                            onClick={() => void handleMove(t.id, "up")}
-                          />
-                          <IconActionButton
-                            icon={ArrowDown}
-                            label="Turunkan urutan"
-                            tone="neutral"
-                            disabled={idx === -1 || idx >= templates.length - 1}
-                            onClick={() => void handleMove(t.id, "down")}
-                          />
-                          <IconActionButton icon={Pencil} label="Ubah tahapan" tone="neutral" onClick={() => openEditModal(t)} />
-                          <IconActionButton icon={Trash2} label="Hapus tahapan" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
-                        </div>
-                      </div>
-                      <CardListField label="Hari sebelum/setelah acara" value={formatDaysLabel(t.daysBeforeEvent)} />
-                    </>
-                  );
-                }}
-              />
-              <div className="hidden sm:block">
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>Nama tahapan</TH>
-                      <TH>Hari sebelum/setelah acara</TH>
-                      <TH>Aksi</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {templates.map((t, idx) => (
-                      <TR key={t.id}>
-                        <TD className="font-medium text-text-primary">{t.sortOrder}. {t.name}</TD>
-                        <TD className="text-text-secondary">{formatDaysLabel(t.daysBeforeEvent)}</TD>
-                        <TD>
-                          <div className="flex items-center gap-1.5">
-                            <IconActionButton
-                              icon={ArrowUp}
-                              label="Naikkan urutan"
-                              tone="neutral"
-                              disabled={idx <= 0}
-                              onClick={() => void handleMove(t.id, "up")}
-                            />
-                            <IconActionButton
-                              icon={ArrowDown}
-                              label="Turunkan urutan"
-                              tone="neutral"
-                              disabled={idx >= templates.length - 1}
-                              onClick={() => void handleMove(t.id, "down")}
-                            />
-                            <IconActionButton icon={Pencil} label="Ubah tahapan" tone="neutral" onClick={() => openEditModal(t)} />
-                            <IconActionButton icon={Trash2} label="Hapus tahapan" tone="danger" onClick={() => setConfirmingDeleteId(t.id)} />
-                          </div>
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+          );
+        }}
+      />
 
       <MilestoneTemplateFormModal
         key={editingTemplate?.id ?? "new"}

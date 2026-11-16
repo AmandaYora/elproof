@@ -13,7 +13,10 @@ import { useListState } from "@/shared/data-table/useListState";
 import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { toast } from "@/shared/stores/useToastStore";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { ActionMenu } from "@/shared/components/ui/ActionMenu";
+import { ListFilters, activeFilterCount } from "@/shared/data-table/ListFilters";
 import { VenueFormModal } from "@/modules/venues/components/VenueFormModal";
 import { VenueStatusBadge } from "@/modules/venues/components/VenueStatusBadge";
 import type { VenueFormValues, VenueCreateFormValues } from "@/modules/venues/schemas/venue.schema";
@@ -169,27 +172,42 @@ export default function VenueListPage() {
   }
 
   const columns: Column<Venue>[] = [
-    { id: "name", header: "Venue", sortKey: "name", primary: true, cell: (v) => <span className="font-semibold">{v.name}</span> },
     {
-      id: "pic",
-      header: "PIC",
+      id: "name",
+      header: "Venue",
+      sortKey: "name",
+      primary: true,
+      truncate: true,
+      className: "w-[34%] min-w-60",
+      // There is no venue page of its own: for someone who may change it, the name opens its details (the form).
       cell: (v) => (
         <>
-          <span className="block">{v.picName}</span>
-          <span className="block text-[12.5px] text-muted-foreground">{v.phonePic}</span>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => openEditModal(v)}
+              className="block max-w-full truncate text-left font-semibold underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+            >
+              {v.name}
+            </button>
+          ) : (
+            <span className="block truncate font-semibold">{v.name}</span>
+          )}
+          <span className="block truncate text-[12.5px] font-normal text-muted-foreground">{[v.picName, v.phonePic].filter(Boolean).join(" · ")}</span>
         </>
       ),
     },
-    { id: "city", header: "Kota", sortKey: "city", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
-    { id: "capacity", header: "Kapasitas", sortKey: "capacity", align: "right", cell: (v) => (v.capacity ? `${v.capacity} orang` : "-") },
+    { id: "city", header: "Kota", sortKey: "city", card: true, truncate: true, className: "w-[18%]", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
+    { id: "capacity", header: "Kapasitas", sortKey: "capacity", align: "right", card: true, cell: (v) => (v.capacity ? `${v.capacity} orang` : "-") },
     {
       id: "rentalPrice",
       header: "Harga sewa",
       sortKey: "rentalPrice",
       align: "right",
+      card: true,
       cell: (v) => (v.rentalPrice ? formatCurrency(v.rentalPrice) : <span className="text-muted-foreground">Belum diisi</span>),
     },
-    { id: "status", header: "Status", sortKey: "isActive", cell: (v) => <VenueStatusBadge isActive={v.isActive} /> },
+    { id: "status", header: "Status", sortKey: "isActive", card: true, className: "whitespace-nowrap", cell: (v) => <VenueStatusBadge isActive={v.isActive} /> },
   ];
 
   async function handleExportVenues() {
@@ -212,27 +230,39 @@ export default function VenueListPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Venue</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola direktori gedung/lokasi acara yang bekerja sama dengan WO.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canManage && (
-            <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
-              Impor bulk
+      <PageHeader
+        className="mb-1"
+        title="Venue"
+        description="Gedung dan lokasi acara yang sering Anda pakai, siap dipilih saat membuat proyek."
+        actions={
+          <>
+            {canManage && (
+              <Button variant="secondary" className="max-sm:hidden" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
+                Impor bulk
+              </Button>
+            )}
+            <Button variant="secondary" className="max-sm:hidden" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVenues()} disabled={isExporting}>
+              {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
             </Button>
-          )}
-          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVenues()} disabled={isExporting}>
-            {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
-          </Button>
-          {canManage && (
-            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-              Tambah Venue
-            </Button>
-          )}
-        </div>
-      </div>
+            {canManage && (
+              <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+                Tambah venue
+              </Button>
+            )}
+            {/* On a phone, Impor and Ekspor sit behind "⋯" so the header stays one row. */}
+            <div className="sm:hidden">
+              <ActionMenu
+                label="Impor dan ekspor venue"
+                disabled={isExporting}
+                items={[
+                  { label: "Impor bulk", icon: <Upload />, onSelect: () => setImportModalOpen(true), hidden: !canManage },
+                  { label: "Ekspor ke Excel", icon: <Download />, onSelect: () => void handleExportVenues() },
+                ]}
+              />
+            </div>
+          </>
+        }
+      />
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
@@ -249,19 +279,21 @@ export default function VenueListPage() {
           onRemove: savedViews.remove,
         }}
       >
-        <Combobox className="w-52" value={list.filters.city || "Semua"} onChange={(e) => list.setFilter("city", e.target.value === "Semua" ? "" : e.target.value)} placeholder="Cari kota...">
-          <option value="Semua">Semua kota</option>
-          {CITIES.map((city) => (
-            <option key={city} value={city}>
-              {city}
-            </option>
-          ))}
-        </Combobox>
-        <Select className="w-40" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua status</option>
-          <option value="true">Aktif</option>
-          <option value="false">Nonaktif</option>
-        </Select>
+        <ListFilters count={activeFilterCount(list.filters)} onClear={list.clearFilters}>
+          <Combobox className="w-44" value={list.filters.city || "Semua"} onChange={(e) => list.setFilter("city", e.target.value === "Semua" ? "" : e.target.value)} placeholder="Cari kota...">
+            <option value="Semua">Semua kota</option>
+            {CITIES.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+          </Combobox>
+          <Select className="w-36" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua status</option>
+            <option value="true">Aktif</option>
+            <option value="false">Nonaktif</option>
+          </Select>
+        </ListFilters>
       </ListToolbar>
 
       <DataTable
@@ -292,15 +324,16 @@ export default function VenueListPage() {
           </>
         )}
         actions={(venue) => (
-          <div className="flex items-center gap-1.5">
-            {canManage && <IconActionButton icon={Pencil} label="Ubah Venue" tone="neutral" onClick={() => openEditModal(venue)} />}
-            {canManage && (venue.isActive ? (
-              <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(venue)} />
-            ) : (
-              <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(venue)} />
-            ))}
-            {isOwner && <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => void openDeleteConfirm(venue)} />}
-          </div>
+          <RowActions
+            rowLabel={venue.name}
+            primary={{ label: "Ubah", icon: <Pencil />, onClick: () => openEditModal(venue), hidden: !canManage }}
+            items={[
+              venue.isActive
+                ? { label: "Nonaktifkan", icon: <Ban />, onSelect: () => void handleToggleActive(venue), hidden: !canManage }
+                : { label: "Aktifkan", icon: <CheckCircle2 />, onSelect: () => void handleToggleActive(venue), hidden: !canManage },
+              { label: "Hapus permanen", icon: <Trash2 />, tone: "danger", onSelect: () => void openDeleteConfirm(venue), hidden: !isOwner },
+            ]}
+          />
         )}
       />
 
@@ -316,7 +349,7 @@ export default function VenueListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={closeDeleteConfirm}
-        title={deleteTarget ? `Hapus Venue — ${deleteTarget.name}` : "Hapus Venue"}
+        title={deleteTarget ? `Hapus venue — ${deleteTarget.name}` : "Hapus venue"}
         size="sm"
       >
         {impactLoading ? (
@@ -341,7 +374,7 @@ export default function VenueListPage() {
                 Batal
               </Button>
               <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
-                {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                {isDeleting ? "Menghapus..." : "Hapus venue permanen"}
               </Button>
             </div>
           </div>

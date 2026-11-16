@@ -10,7 +10,9 @@ import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
 import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { ListFilters, activeFilterCount } from "@/shared/data-table/ListFilters";
 import { UserRoleBadge } from "@/modules/users/components/UserRoleBadge";
 import { UserFormModal } from "@/modules/users/components/UserFormModal";
 import type { UserFormValues } from "@/modules/users/schemas/user.schema";
@@ -77,6 +79,12 @@ export default function UserListPage() {
     const role = staffRoles.find((r) => r.id === user.roleId);
     // Roles not loaded yet: keep the actions, the API still decides.
     return role === undefined || coversRole(myGrants, role);
+  };
+  // The Owner's row is the Owner's own; anyone else's needs a role that covers theirs. Nothing changes while read-only.
+  const canEdit = (user: StaffMember) => {
+    if (writeLocked) return false;
+    if (user.role === "Owner") return user.id === currentStaffId;
+    return manageable(user);
   };
   const fetchRoles = useRolesStore((s) => s.fetchRoles);
   useEffect(() => {
@@ -209,36 +217,53 @@ export default function UserListPage() {
       header: "Nama",
       sortKey: "name",
       primary: true,
-      cell: (u) => (
-        <div className="flex items-center gap-2.5">
-          <Avatar name={u.name} />
-          <div className="min-w-0">
-            <span className="block truncate font-semibold">{u.name}</span>
-            <span className="block truncate text-[12.5px] text-muted-foreground">{u.email}</span>
+      truncate: true,
+      className: "w-[28%] min-w-56",
+      cell: (u) => {
+        const canOpen = canEdit(u);
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={u.name} />
+            <div className="min-w-0">
+              {canOpen ? (
+                // No page of its own: the name opens the person's details (the form) for whoever may change them.
+                <button
+                  type="button"
+                  onClick={() => openEditModal(u)}
+                  className="block max-w-full truncate text-left font-semibold underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+                >
+                  {u.name}
+                </button>
+              ) : (
+                <span className="block truncate font-semibold">{u.name}</span>
+              )}
+              <span className="block truncate text-[12.5px] font-normal text-muted-foreground">{u.email}</span>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
-    { id: "title", header: "Jabatan", sortKey: "title", cell: (u) => u.title },
-    { id: "role", header: "Peran", sortKey: "roleName", cell: (u) => <UserRoleBadge role={u.roleName ?? u.role} /> },
-    { id: "phone", header: "Telepon", cell: (u) => u.phone },
-    { id: "login", header: "Status masuk", cell: (u) => <StaffLoginStatus user={u} /> },
-    { id: "status", header: "Status", sortKey: "isActive", cell: (u) => <StaffActiveBadge isActive={u.isActive} /> },
+    { id: "title", header: "Jabatan", sortKey: "title", card: true, truncate: true, className: "w-[20%]", cell: (u) => u.title },
+    { id: "role", header: "Peran", sortKey: "roleName", card: true, className: "whitespace-nowrap", cell: (u) => <UserRoleBadge role={u.roleName ?? u.role} /> },
+    { id: "phone", header: "Telepon", className: "w-36 whitespace-nowrap", cell: (u) => u.phone },
+    { id: "login", header: "Status masuk", card: true, className: "whitespace-nowrap", cell: (u) => <StaffLoginStatus user={u} /> },
+    { id: "status", header: "Status", sortKey: "isActive", card: true, className: "whitespace-nowrap", cell: (u) => <StaffActiveBadge isActive={u.isActive} /> },
   ];
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Tim</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola anggota tim yang dapat mengakses {businessName}.</p>
-        </div>
-        {!writeLocked && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Undang anggota tim
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        className="mb-1"
+        title="Tim"
+        description={`Orang yang bisa masuk ke ${businessName}. Peran menentukan apa yang boleh mereka lakukan.`}
+        actions={
+          !writeLocked && (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+              Undang anggota tim
+            </Button>
+          )
+        }
+      />
 
       {actionError && !modalOpen && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
@@ -255,19 +280,21 @@ export default function UserListPage() {
           onRemove: savedViews.remove,
         }}
       >
-        <Select className="w-48" aria-label="Peran" value={list.filters.roleId || "Semua"} onChange={(e) => list.setFilter("roleId", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua peran</option>
-          {staffRoles.map((r) => (
-            <option key={r.id} value={String(r.id)}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
-        <Select className="w-40" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua status</option>
-          <option value="true">Aktif</option>
-          <option value="false">Nonaktif</option>
-        </Select>
+        <ListFilters count={activeFilterCount(list.filters)} onClear={list.clearFilters}>
+          <Select className="w-48" aria-label="Peran" value={list.filters.roleId || "Semua"} onChange={(e) => list.setFilter("roleId", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua peran</option>
+            {staffRoles.map((r) => (
+              <option key={r.id} value={String(r.id)}>
+                {r.name}
+              </option>
+            ))}
+          </Select>
+          <Select className="w-40" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua status</option>
+            <option value="true">Aktif</option>
+            <option value="false">Nonaktif</option>
+          </Select>
+        </ListFilters>
       </ListToolbar>
 
       <DataTable
@@ -296,20 +323,17 @@ export default function UserListPage() {
           if (isOwner && !isSelf) return <span className="text-[12px] text-muted-foreground">Hanya dapat diubah oleh Owner sendiri</span>;
           if (!isOwner && !manageable(user)) return <span className="text-[12px] text-muted-foreground">Hanya dapat diubah oleh Owner</span>;
           return (
-            <div className="flex items-center gap-1.5">
-              <IconActionButton icon={Pencil} label="Ubah anggota tim" tone="neutral" onClick={() => openEditModal(user)} />
-              {!isOwner && user.isActive && (
-                <IconActionButton icon={Send} label={reinviteLabel(user)} tone="neutral" onClick={() => void handleReinvite(user)} />
-              )}
-              {!isOwner && (user.isActive ? (
-                <IconActionButton icon={UserX} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(user)} />
-              ) : (
-                <IconActionButton icon={UserCheck} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(user)} />
-              ))}
-              {!isOwner && (
-                <IconActionButton icon={Trash2} label="Hapus permanen" tone="danger" onClick={() => void openDeleteConfirm(user)} />
-              )}
-            </div>
+            <RowActions
+              rowLabel={user.name}
+              primary={{ label: "Ubah", icon: <Pencil />, onClick: () => openEditModal(user), hidden: writeLocked }}
+              items={[
+                { label: reinviteLabel(user), icon: <Send />, onSelect: () => void handleReinvite(user), hidden: writeLocked || isOwner || !user.isActive },
+                user.isActive
+                  ? { label: "Nonaktifkan", icon: <UserX />, onSelect: () => void handleToggleActive(user), hidden: writeLocked || isOwner }
+                  : { label: "Aktifkan", icon: <UserCheck />, onSelect: () => void handleToggleActive(user), hidden: writeLocked || isOwner },
+                { label: "Hapus permanen", icon: <Trash2 />, tone: "danger", onSelect: () => void openDeleteConfirm(user), hidden: writeLocked || isOwner },
+              ]}
+            />
           );
         }}
       />

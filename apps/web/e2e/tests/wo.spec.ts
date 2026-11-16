@@ -10,7 +10,7 @@ test.describe("wo: focus", () => {
   test("tombol", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
     await visit(page, "/vendor");
-    await tabTo(page, page.getByRole("button", { name: "Tambah Vendor" }).first());
+    await tabTo(page, page.getByRole("button", { name: "Tambah vendor" }).first());
     await shot(page, info, "wo", "fokus-tombol", { fullPage: false });
     await close();
   });
@@ -18,7 +18,7 @@ test.describe("wo: focus", () => {
   test("isian", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");
     await visit(page, "/vendor");
-    await tabTo(page, page.getByRole("button", { name: "Tambah Vendor" }).first());
+    await tabTo(page, page.getByRole("button", { name: "Tambah vendor" }).first());
     await page.keyboard.press("Space"); // Space acts on keyup: no Enter keydown can reach the dialog's first field and submit it
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();

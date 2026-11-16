@@ -19,7 +19,7 @@ import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nama vendor", categoryId: "Kategori", picName: "Nama PIC", phone: "No. telepon", email: "Email", city: "Kota",
-  priceAkad: "Harga Akad", priceAkadResepsi: "Harga Akad + Resepsi", priceResepsi: "Harga Resepsi saja", address: "Alamat", socialMedia: "Sosial media",
+  priceAkad: "Harga Akad", priceAkadResepsi: "Harga Akad + Resepsi", priceResepsi: "Harga Resepsi saja", address: "Alamat", socialMedia: "Media sosial",
 };
 
 function toFormValues(vendor?: Vendor, defaultCategoryId = ""): VendorFormValues {
@@ -117,7 +117,7 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
     <Modal
       open={open}
       onClose={onClose}
-      title={isEditing ? "Ubah Vendor" : "Tambah Vendor Baru"}
+      title={isEditing ? "Ubah vendor" : "Tambah vendor"}
       description="Informasi vendor yang bekerja sama dengan WO."
       size="lg"
       busy={form.submitting}
@@ -135,8 +135,8 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
       <form id="vendor-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
       <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Vendor" required name="name" error={errors.name}>
-          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Grand Ballroom Kemang" />
+        <Field label="Nama vendor" required name="name" error={errors.name}>
+          <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Katering Rasa Nusantara" />
         </Field>
         <Field label="Kategori" required name="categoryId" error={errors.categoryId}>
           <Select value={values.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
@@ -150,7 +150,7 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
         <Field label="Nama PIC" required name="picName" error={errors.picName}>
           <Input value={values.picName} onChange={(e) => set("picName", e.target.value)} onBlur={() => blur("picName")} />
         </Field>
-        <Field label="No Tlp Vendor" required name="phone" error={errors.phone}>
+        <Field label="No. telepon vendor" required name="phone" error={errors.phone}>
           <Input value={values.phone} onChange={(e) => set("phone", e.target.value)} onBlur={() => blur("phone")} placeholder="0812-xxxx-xxxx" />
         </Field>
         <Field label="Email" name="email" error={errors.email}>
@@ -181,7 +181,7 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
         </div>
 
         <div className="sm:col-span-2">
-          <Field label="Sosial Media" name="socialMedia" error={errors.socialMedia}>
+          <Field label="Media sosial" name="socialMedia" error={errors.socialMedia}>
             <Textarea
               rows={2}
               value={values.socialMedia}

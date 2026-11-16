@@ -3,6 +3,8 @@ import { useCan } from "@/shared/stores/usePermissionStore";
 import { CheckCircle2, ShieldCheck, Clock, Lock, QrCode, ExternalLink, AlertTriangle, XCircle, Receipt, CircleAlert, TicketPercent } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { cn } from "@/shared/lib/cn";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
@@ -109,7 +111,7 @@ export default function SubscriptionPage() {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Voucher in the "Bayar Sekarang" dialog. Only a code the server accepted (quote) is sent with the payment; editing the
+  // Voucher in the "Bayar sekarang" dialog. Only a code the server accepted (quote) is sent with the payment; editing the
   // text drops it, so a code is always checked again before it counts.
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherQuote, setVoucherQuote] = useState<VoucherQuote | null>(null);
@@ -306,16 +308,13 @@ export default function SubscriptionPage() {
   if (!isOwner) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Langganan</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola langganan aplikasi {APP_NAME} untuk tim {businessName}.</p>
-        </div>
+        <PageHeader className="mb-1" title="Langganan" description={`Paket ${APP_NAME} untuk tim ${businessName}, pembayaran, dan kuitansinya.`} />
         <Card className="max-w-md">
           <CardContent className="py-5">
             <EmptyState
-              icon={<Lock className="h-8 w-8 text-text-secondary" />}
-              title="Akses Dibatasi"
-              description="Hanya akun Owner yang dapat mengakses dan mengelola langganan ElProof. Hubungi owner WO Anda untuk informasi lebih lanjut."
+              icon={<Lock className="h-8 w-8 text-muted-foreground" />}
+              title="Hanya untuk Owner"
+              description={`Langganan ${APP_NAME} hanya bisa dilihat dan diatur oleh Owner. Hubungi Owner WO Anda bila perlu.`}
             />
           </CardContent>
         </Card>
@@ -351,7 +350,7 @@ export default function SubscriptionPage() {
                 Batal
               </Button>
               <Button size="sm" variant="danger" onClick={() => void handleCancelPendingCharge()} disabled={isCancelling}>
-                {isCancelling ? "Memproses..." : "Ya, Batalkan"}
+                {isCancelling ? "Memproses..." : "Batalkan tagihan"}
               </Button>
             </div>
           </div>
@@ -370,94 +369,116 @@ export default function SubscriptionPage() {
     );
   }
 
+  const currentPlan = plans.find((p) => p.id === tenant?.planId);
+  const showDaysLeft =
+    (isExpiringSoon || lifecycle?.status === "trialing") && daysLeft !== null && daysLeft >= 0 && daysLeft <= RENEWAL_WARNING_DAYS;
+
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-text-primary">Langganan</h1>
-        <p className="mt-1 text-[13px] text-text-secondary">Kelola langganan aplikasi {APP_NAME} untuk tim {businessName}.</p>
-      </div>
+      <PageHeader className="mb-1" title="Langganan" description={`Paket ${APP_NAME} untuk tim ${businessName}, pembayaran, dan kuitansinya.`} />
 
       {actionError && (
-        <p className="max-w-md rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
           {actionError}
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[15px] font-bold text-text-primary">Pilih Paket Langganan</h2>
-          {tenant && <TenantStatusBadge status={tenant.subscriptionStatus} />}
-        </div>
-
-        {periodEnd && (
-          <p className="flex items-center gap-1.5 text-[12.5px] text-text-secondary">
-            <Clock className="h-3.5 w-3.5 shrink-0" />
-            {periodLabel} {formatDate(periodEnd)}
-            {(isExpiringSoon || lifecycle?.status === "trialing") && daysLeft !== null && daysLeft >= 0 && daysLeft <= RENEWAL_WARNING_DAYS && (
-              <span className="font-semibold text-warning-text">, tersisa {daysLeft} hari</span>
+      {/* ≥ 1024 px: where the subscription stands on the left, the plans to choose from on the right. */}
+      <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start lg:gap-8">
+        <Card className="lg:sticky lg:top-20">
+          <CardHeader title="Langganan Anda" />
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[12.5px] text-muted-foreground">Status</span>
+              <div>{tenant ? <TenantStatusBadge status={tenant.subscriptionStatus} /> : <span className="text-[13px] text-muted-foreground">Memuat...</span>}</div>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[12.5px] text-muted-foreground">Paket</span>
+              <span className="text-[14px] font-medium text-foreground">
+                {currentPlan?.name ?? (lifecycle?.status === "trialing" ? "Masa coba" : "Belum ada paket")}
+              </span>
+            </div>
+            {periodEnd && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12.5px] text-muted-foreground">{periodLabel}</span>
+                <span className="flex items-center gap-1.5 text-[14px] font-medium text-foreground">
+                  <Clock aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  {formatDate(periodEnd)}
+                </span>
+                {showDaysLeft && <span className="text-[13px] font-semibold text-warning-text">Tersisa {daysLeft} hari</span>}
+              </div>
             )}
-          </p>
-        )}
+            {pendingCharge && (
+              <p className="rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] text-muted-foreground">
+                Ada pembayaran yang belum selesai. Selesaikan atau batalkan di riwayat transaksi sebelum memilih paket lagi.
+              </p>
+            )}
+            <p className="flex items-start gap-1.5 border-t border-border-light pt-4 text-[12.5px] text-muted-foreground">
+              <ShieldCheck aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Pembayaran lewat QRIS diproses otomatis. Langganan aktif segera setelah pembayaran diterima.
+            </p>
+          </CardContent>
+        </Card>
 
-        {activePlans.length === 0 ? (
-          <Card className="max-w-md">
-            <CardContent className="py-5">
-              <EmptyState title="Belum ada paket tersedia" description="Hubungi ElProof untuk informasi paket langganan." />
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {activePlans.map((p) => {
-              const isCurrentPlan = p.id === tenant?.planId;
-              return (
-                <Card key={p.id} className={isCurrentPlan ? "border-primary ring-1 ring-ring" : ""}>
-                  <CardContent className="flex flex-col gap-4 py-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <AppLogoMark className="size-11" />
-                        <p className="text-[15px] font-bold text-text-primary">{p.name}</p>
+        <section aria-labelledby="pilih-paket" className="flex min-w-0 flex-col gap-3">
+          <h2 id="pilih-paket" className="text-[16px] font-semibold text-foreground">
+            Pilih paket
+          </h2>
+          {activePlans.length === 0 ? (
+            <Card>
+              <CardContent className="py-5">
+                <EmptyState title="Belum ada paket tersedia" description={`Hubungi ${APP_NAME} untuk informasi paket langganan.`} />
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {activePlans.map((p) => {
+                const isCurrentPlan = p.id === tenant?.planId;
+                // One plan: a wide card, price and button on the left and what it includes on the right.
+                const wide = activePlans.length === 1;
+                return (
+                  <Card key={p.id} className={cn("flex flex-col", wide && "sm:col-span-2", isCurrentPlan && "border-primary ring-1 ring-ring")}>
+                    <CardContent className={cn("flex flex-1 flex-col gap-4 py-5", wide && "md:grid md:grid-cols-2 md:grid-rows-[auto_auto_1fr] md:gap-x-10")}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <AppLogoMark className="size-10 shrink-0" />
+                          <p className="text-[16px] font-semibold break-words text-foreground">{p.name}</p>
+                        </div>
+                        {isCurrentPlan && <Badge tone="success">Paket Anda</Badge>}
                       </div>
-                      {isCurrentPlan && <Badge tone="success">Paket Aktif Anda</Badge>}
-                    </div>
 
-                    <div className="flex items-end gap-1.5 border-t border-border-light pt-4">
-                      <span className="text-[24px] font-bold leading-none tabular-nums text-primary">{formatCurrency(p.price)}</span>
-                      <span className="pb-0.5 text-[12.5px] text-text-secondary">/ {p.durationMonths} bulan</span>
-                    </div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-[28px] leading-none font-bold tabular-nums text-foreground">{formatCurrency(p.price)}</span>
+                        <span className="text-[13px] text-muted-foreground">/ {p.durationMonths} bulan</span>
+                      </div>
 
-                    <ul className="flex flex-col gap-2 border-t border-border-light pt-4">
-                      {p.features.map((feature) => (
-                        <li key={feature} className="flex items-start gap-2 text-[13px] text-text-primary">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-text" />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
+                      <ul className={cn("flex flex-1 flex-col gap-2 border-t border-border-light pt-4", wide && "md:col-start-2 md:row-span-3 md:row-start-1 md:border-t-0 md:border-l md:pt-0 md:pl-10")}>
+                        {p.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-2 text-[13.5px] text-foreground">
+                            <CheckCircle2 aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-success-text" />
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
 
-                    {pendingCharge ? (
-                      <p className="rounded-md bg-surface-muted px-3.5 py-2.5 text-[12px] text-text-secondary">
-                        Selesaikan atau batalkan pembayaran tertunda di Riwayat Transaksi di bawah sebelum membuat tagihan baru.
-                      </p>
-                    ) : (
-                      <Button className="w-full" onClick={() => handleSelectPlan(p.id)}>
-                        {isCurrentPlan ? "Perpanjang Paket Ini" : "Pilih Paket Ini"}
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        <p className="flex items-center gap-1.5 text-[11.5px] text-text-secondary">
-          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-          Pembayaran diproses otomatis oleh sistem pembayaran — langganan aktif segera setelah pembayaran diterima.
-        </p>
+                      {pendingCharge ? (
+                        <p className="rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] text-muted-foreground">Selesaikan pembayaran yang tertunda dulu.</p>
+                      ) : (
+                        <Button className={cn("w-full", wide && "md:self-end")} variant={isCurrentPlan ? "primary" : "secondary"} onClick={() => handleSelectPlan(p.id)}>
+                          {isCurrentPlan ? "Perpanjang paket ini" : "Pilih paket ini"}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
 
       <Card>
-        <CardHeader title="Riwayat Transaksi" subtitle="Riwayat pembayaran langganan aplikasi ElProof, diproses otomatis oleh sistem pembayaran." />
+        <CardHeader title="Riwayat transaksi" subtitle={`Pembayaran langganan ${APP_NAME}. Pembayaran yang lunas punya kuitansi.`} />
         <CardContent className="p-0">
           {transactions.length === 0 ? (
             <EmptyState title="Belum ada riwayat" description="Riwayat transaksi akan muncul di sini setelah langganan pertama dibayar." />
@@ -470,21 +491,16 @@ export default function SubscriptionPage() {
                 renderItem={(tx) => (
                   <>
                     <div className="flex items-start justify-between gap-3">
-                      <span className="font-semibold text-text-primary">{TRANSACTION_TYPE_LABEL[tx.type]}</span>
+                      <span className="font-semibold text-foreground">{TRANSACTION_TYPE_LABEL[tx.type]}</span>
                       <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <CardListField label="Metode" value={tx.paymentMethod} />
-                      <CardListField label="No. Referensi" value={<span className="font-mono">{tx.paymentReference}</span>} />
-                      {tx.discountAmount > 0 && (
-                        <>
-                          <CardListField label="Harga awal" value={formatCurrency(tx.originalAmount)} />
-                          <CardListField label={`Potongan voucher${tx.voucherCode ? ` ${tx.voucherCode}` : ""}`} value={`−${formatCurrency(tx.discountAmount)}`} />
-                        </>
-                      )}
                       <CardListField label={tx.discountAmount > 0 ? "Nominal dibayar" : "Nominal"} value={formatCurrency(tx.amount)} />
+                      {tx.discountAmount > 0 && (
+                        <CardListField label={`Potongan voucher${tx.voucherCode ? ` ${tx.voucherCode}` : ""}`} value={`−${formatCurrency(tx.discountAmount)}`} />
+                      )}
                       <CardListField label="Dibuat" value={formatDate(tx.createdAt)} />
-                      <CardListField label="Dibayar" value={tx.paidAt ? formatDate(tx.paidAt) : "-"} />
+                      <CardListField label="No. referensi" value={<span className="font-mono">{tx.paymentReference}</span>} />
                     </div>
                     {pendingRowActions(tx)}
                     {receiptLink(tx)}
@@ -492,43 +508,47 @@ export default function SubscriptionPage() {
                 )}
               />
               <div className="hidden sm:block">
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Tipe</TH>
-                    <TH>Metode</TH>
-                    <TH>No. Referensi</TH>
-                    <TH>Nominal</TH>
-                    <TH>Dibuat</TH>
-                    <TH>Status</TH>
-                    <TH>Dibayar</TH>
-                    <TH>Aksi</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {transactions.map((tx) => (
-                    <TR key={tx.id}>
-                      <TD className="font-semibold text-text-primary">{TRANSACTION_TYPE_LABEL[tx.type]}</TD>
-                      <TD>{tx.paymentMethod}</TD>
-                      <TD className="font-mono text-[12.5px]">{tx.paymentReference}</TD>
-                      <TD className="tabular-nums">
-                        {formatCurrency(tx.amount)}
-                        {tx.discountAmount > 0 && (
-                          <span className="mt-0.5 block text-[11.5px] text-text-secondary">
-                            Harga awal {formatCurrency(tx.originalAmount)}, potongan voucher{tx.voucherCode ? ` ${tx.voucherCode}` : ""} −{formatCurrency(tx.discountAmount)}
-                          </span>
-                        )}
-                      </TD>
-                      <TD>{formatDate(tx.createdAt)}</TD>
-                      <TD>
-                        <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
-                      </TD>
-                      <TD>{tx.paidAt ? formatDate(tx.paidAt) : "-"}</TD>
-                      <TD>{pendingRowActions(tx) ?? receiptLink(tx) ?? "-"}</TD>
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Jenis</TH>
+                      <TH>Metode</TH>
+                      <TH>No. referensi</TH>
+                      <TH className="text-right">Nominal</TH>
+                      <TH>Dibuat</TH>
+                      <TH>Status</TH>
+                      <TH>Dibayar</TH>
+                      <TH>
+                        <span className="sr-only">Aksi</span>
+                      </TH>
                     </TR>
-                  ))}
-                </TBody>
-              </Table>
+                  </THead>
+                  <TBody>
+                    {transactions.map((tx) => (
+                      <TR key={tx.id}>
+                        <TD className="font-semibold text-foreground">{TRANSACTION_TYPE_LABEL[tx.type]}</TD>
+                        <TD>{tx.paymentMethod}</TD>
+                        <TD className="font-mono text-[12.5px] whitespace-nowrap">{tx.paymentReference}</TD>
+                        <TD className="text-right whitespace-nowrap tabular-nums">
+                          {formatCurrency(tx.amount)}
+                          {tx.discountAmount > 0 && (
+                            <span className="mt-0.5 block text-[12px] text-muted-foreground">
+                              Harga awal {formatCurrency(tx.originalAmount)}
+                              <br />
+                              Voucher{tx.voucherCode ? ` ${tx.voucherCode}` : ""} −{formatCurrency(tx.discountAmount)}
+                            </span>
+                          )}
+                        </TD>
+                        <TD className="whitespace-nowrap">{formatDate(tx.createdAt)}</TD>
+                        <TD className="whitespace-nowrap">
+                          <Badge tone={TRANSACTION_STATUS_TONE[tx.status]}>{TRANSACTION_STATUS_LABEL[tx.status]}</Badge>
+                        </TD>
+                        <TD className="whitespace-nowrap">{tx.paidAt ? formatDate(tx.paidAt) : "-"}</TD>
+                        <TD>{pendingRowActions(tx) ?? receiptLink(tx) ?? "-"}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
               </div>
               <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
             </>
@@ -539,7 +559,7 @@ export default function SubscriptionPage() {
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        title={selectedPlan && selectedPlan.id === tenant?.planId ? "Perpanjang Langganan" : "Berlangganan ElProof"}
+        title={selectedPlan && selectedPlan.id === tenant?.planId ? "Perpanjang langganan" : `Berlangganan ${APP_NAME}`}
         description="Setelah ini kode QRIS muncul untuk dibayar lewat aplikasi bank atau e-wallet. Masa aktif baru dimulai setelah masa berjalan Anda selesai."
         size="sm"
         footer={
@@ -548,7 +568,7 @@ export default function SubscriptionPage() {
               Batal
             </Button>
             <Button onClick={() => void handleConfirmSubscribe()} disabled={isSubmitting}>
-              {isSubmitting ? "Memproses..." : "Bayar Sekarang"}
+              {isSubmitting ? "Memproses..." : "Bayar sekarang"}
             </Button>
           </>
         }
@@ -561,7 +581,7 @@ export default function SubscriptionPage() {
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Masa Aktif</span>
+            <span className="text-text-secondary">Masa aktif</span>
             <span className="font-semibold text-text-primary">{selectedPlan?.durationMonths ?? 0} bulan</span>
           </div>
           {selectedPlan && (
@@ -648,12 +668,12 @@ export default function SubscriptionPage() {
         onClose={closeChargeModal}
         title={
           chargeOutcome === "paid"
-            ? "Pembayaran Berhasil"
+            ? "Pembayaran berhasil"
             : chargeOutcome === "expired"
-              ? "Kode QRIS Kedaluwarsa"
+              ? "Kode QRIS kedaluwarsa"
               : chargeOutcome === "cancelled"
-                ? "Tagihan Dibatalkan"
-                : "Selesaikan Pembayaran"
+                ? "Tagihan dibatalkan"
+                : "Selesaikan pembayaran"
         }
         description={
           chargeOutcome === "paid"
@@ -661,7 +681,7 @@ export default function SubscriptionPage() {
               ? `Langganan Anda aktif sampai ${formatDate(chargePeriod.end)}.`
               : "Langganan Anda sudah aktif."
             : chargeOutcome === "expired"
-              ? "Kode ini sudah melewati batas waktunya. Tutup jendela ini; jika tagihan masih tertunda di Riwayat Transaksi, batalkan lalu buat tagihan baru untuk mendapatkan kode QRIS baru."
+              ? "Kode ini sudah melewati batas waktunya. Tutup jendela ini; jika tagihan masih tertunda di riwayat transaksi, batalkan lalu buat tagihan baru untuk mendapatkan kode QRIS baru."
               : chargeOutcome === "cancelled"
                 ? "Tagihan ini dibatalkan dan tidak bisa dibayar lagi. Anda bisa memilih paket dan membuat tagihan baru kapan saja."
                 : "Pindai kode QRIS di bawah dengan aplikasi e-wallet atau m-banking Anda."
@@ -686,7 +706,7 @@ export default function SubscriptionPage() {
                 )}
                 {activeCharge.payCode && (
                   <p className="text-[13px]">
-                    Kode Bayar: <span className="font-mono font-semibold text-text-primary">{activeCharge.payCode}</span>
+                    Kode bayar: <span className="font-mono font-semibold text-text-primary">{activeCharge.payCode}</span>
                   </p>
                 )}
                 {activeCharge.checkoutUrl && (
@@ -696,7 +716,7 @@ export default function SubscriptionPage() {
                     rel="noreferrer"
                     className="flex items-center gap-1.5 text-[13px] font-semibold text-primary hover:underline"
                   >
-                    Buka Halaman Pembayaran <ExternalLink className="h-3.5 w-3.5" />
+                    Buka halaman pembayaran <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 )}
                 <ChargeCountdown expiresAt={activeCharge.expiresAt} onElapsed={() => setChargeOutcome((o) => o ?? "expired")} />
@@ -712,7 +732,7 @@ export default function SubscriptionPage() {
             )}
             <div className="w-full border-t border-border-light pt-3 text-[12.5px] text-text-secondary">
               <div className="flex items-center justify-between">
-                <span>No. Referensi</span>
+                <span>No. referensi</span>
                 <span className="font-mono">{activeCharge.orderRef}</span>
               </div>
               <div className="flex items-center justify-between">

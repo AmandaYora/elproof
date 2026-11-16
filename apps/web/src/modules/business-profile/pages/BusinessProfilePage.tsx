@@ -2,6 +2,7 @@ import { SupportAccessCard } from "@/modules/business-profile/components/Support
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
 import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { useTenantBrandingStore } from "@/shared/stores/useTenantBrandingStore";
 import { toast } from "@/shared/stores/useToastStore";
@@ -22,12 +23,18 @@ interface Tenant {
   hasLogo: boolean;
 }
 
+const SECTIONS = [
+  { id: "data-usaha", label: "Data usaha" },
+  { id: "alamat-rekening", label: "Alamat dan rekening" },
+  { id: "akses-dukungan", label: "Akses dukungan" },
+];
+
 /** 62812… shown the way people write it: 0812… */
 function displayPhone(stored: string) {
   return stored.startsWith("62") ? "0" + stored.slice(2) : stored;
 }
 
-/** Pengaturan → Profil Usaha: the Owner's own business details and logo. */
+/** Pengaturan → Profil usaha: the Owner's own business details and logo. */
 export default function BusinessProfilePage() {
   const writeLocked = useWriteLocked();
   const hydrateBranding = useTenantBrandingStore((s) => s.hydrate);
@@ -67,66 +74,99 @@ export default function BusinessProfilePage() {
   if (loadError) {
     return <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{loadError}</p>;
   }
-  if (!tenant) return <div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>;
+  if (!tenant) {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader className="mb-1" title="Profil usaha" />
+        <div role="status" className="py-16 text-center text-sm text-muted-foreground">Memuat...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold text-text-primary">Profil Usaha</h1>
-        <p className="mt-1 text-[13px] text-text-secondary">Nama, kontak, dan logo WO Anda. Klien melihat ini di portal mereka.</p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader className="mb-1" title="Profil usaha" description="Nama, kontak, logo, dan rekening WO Anda. Klien melihatnya di portal mereka." />
 
-      <Card>
-        <CardHeader
-          title="Data usaha"
-          action={!writeLocked && <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Ubah profil</Button>}
-        />
-        <CardContent>
-          <div className="flex flex-wrap items-start gap-5">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-muted">
-              {logoUrl ? (
-                <img src={logoUrl} alt={`Logo ${tenant.businessName}`} className="h-full w-full object-contain" />
-              ) : (
-                <span className="px-2 text-center text-[11.5px] text-text-secondary">Belum ada logo</span>
+      {/* ≥ 1024 px: who you are on the left (what clients see first), the details to keep up to date on the right. */}
+      <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start lg:gap-8">
+        <aside className="flex flex-col gap-5 lg:sticky lg:top-20">
+          <Card>
+            <CardContent className="flex items-center gap-4 py-5 lg:flex-col lg:items-start">
+              <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={`Logo ${tenant.businessName}`} className="h-full w-full object-contain" />
+                ) : (
+                  <span className="px-2 text-center text-[12px] text-muted-foreground">Belum ada logo</span>
+                )}
+              </div>
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-[16px] leading-snug font-semibold break-words text-foreground">{tenant.businessName}</p>
+                <p className="text-[13px] text-muted-foreground">{tenant.city || "Kota belum diisi"}</p>
+                {!writeLocked && (
+                  <Button size="sm" variant="secondary" className="mt-2 self-start" onClick={() => setEditing(true)}>
+                    Ubah profil
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <nav aria-label="Bagian halaman ini" className="hidden flex-col gap-0.5 lg:flex">
+            {SECTIONS.map((s) => (
+              <a
+                key={s.id}
+                href={`#${s.id}`}
+                className="rounded-md px-3 py-2 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+              >
+                {s.label}
+              </a>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="flex min-w-0 flex-col gap-5">
+          <Card id="data-usaha" className="scroll-mt-24">
+            <CardHeader title="Data usaha" />
+            <CardContent>
+              <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                <Item label="Nama usaha" value={tenant.businessName} />
+                <Item label="Kota" value={tenant.city} />
+                <Item label="WhatsApp" value={displayPhone(tenant.phone)} />
+                <Item label="Email pemilik" value={tenant.email} />
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card id="alamat-rekening" className="scroll-mt-24">
+            <CardHeader
+              title="Alamat dan rekening pembayaran"
+              subtitle="Rekening ini tampil di portal klien yang punya tagihan."
+              action={!writeLocked && details && <Button size="sm" variant="secondary" onClick={() => setEditingDetails(true)}>Ubah</Button>}
+            />
+            <CardContent>
+              {detailsFailed && !details && (
+                <LoadError message="Alamat dan rekening belum bisa dimuat. Periksa koneksi, lalu coba lagi." onRetry={loadDetails} />
               )}
-            </div>
-            <dl className="grid min-w-0 flex-1 grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-              <Item label="Nama usaha" value={tenant.businessName} />
-              <Item label="Kota" value={tenant.city} />
-              <Item label="WhatsApp" value={displayPhone(tenant.phone)} />
-              <Item label="Email pemilik" value={tenant.email} />
-            </dl>
-          </div>
-        </CardContent>
-      </Card>
+              {details && (
+                <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-3">
+                  <Item label="Alamat usaha" value={details.address} className="sm:col-span-3" />
+                  <Item label="Bank" value={details.bankName} />
+                  <Item label="Nomor rekening" value={details.bankAccountNumber} />
+                  <Item label="Atas nama" value={details.bankAccountHolder} />
+                </dl>
+              )}
+              {details && !details.bankAccountNumber && (
+                <p className="mt-3 text-[13px] text-muted-foreground">
+                  Belum ada rekening. Tanpa rekening, klien melihat tagihannya tetapi tidak tahu ke mana harus membayar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader
-          title="Alamat dan rekening pembayaran"
-          subtitle="Rekening ini tampil di portal klien yang punya tagihan."
-          action={!writeLocked && details && <Button size="sm" variant="secondary" onClick={() => setEditingDetails(true)}>Ubah</Button>}
-        />
-        <CardContent>
-          {detailsFailed && !details && (
-            <LoadError message="Alamat dan rekening belum bisa dimuat. Periksa koneksi, lalu coba lagi." onRetry={loadDetails} />
-          )}
-          {details && (
-            <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-              <Item label="Alamat usaha" value={details.address} className="sm:col-span-2" />
-              <Item label="Bank" value={details.bankName} />
-              <Item label="Nomor rekening" value={details.bankAccountNumber} />
-              <Item label="Atas nama" value={details.bankAccountHolder} />
-            </dl>
-          )}
-          {details && !details.bankAccountNumber && (
-            <p className="mt-3 text-[13px] text-text-secondary">
-              Belum ada rekening. Tanpa rekening, klien melihat tagihannya tetapi tidak tahu ke mana harus membayar.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <SupportAccessCard />
+          <section id="akses-dukungan" aria-label="Akses dukungan ElProof" className="scroll-mt-24">
+            <SupportAccessCard />
+          </section>
+        </div>
+      </div>
 
       {editingDetails && details && (
         <BusinessDetailsDrawer
@@ -157,8 +197,8 @@ export default function BusinessProfilePage() {
 function Item({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <dt className="text-[12px] font-medium text-text-secondary">{label}</dt>
-      <dd className="mt-0.5 break-words text-[13.5px] font-medium text-text-primary">{value || "—"}</dd>
+      <dt className="text-[12.5px] text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words text-[14px] font-medium text-foreground">{value || "—"}</dd>
     </div>
   );
 }

@@ -18,7 +18,7 @@ import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nama venue", picName: "Nama PIC", phonePic: "No. telepon PIC", phoneVenue: "No. telepon venue", email: "Email", city: "Kota",
-  capacity: "Kapasitas", rentalPrice: "Harga sewa", charge: "Charge", address: "Alamat", facilities: "Fasilitas", socialMedia: "Sosial media",
+  capacity: "Kapasitas", rentalPrice: "Harga sewa", charge: "Charge", address: "Alamat", facilities: "Fasilitas", socialMedia: "Media sosial",
 };
 
 function toFormValues(venue?: Venue): VenueFormValues {
@@ -103,7 +103,7 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
     <Modal
       open={open}
       onClose={onClose}
-      title={isEditing ? "Ubah Venue" : "Tambah Venue Baru"}
+      title={isEditing ? "Ubah venue" : "Tambah venue"}
       description="Informasi gedung/lokasi acara yang bekerja sama dengan WO."
       size="lg"
       busy={form.submitting}
@@ -121,16 +121,16 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
       <form id="venue-form" ref={formRef} noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
       <FormErrorSummary errors={form.errorList} formError={form.formError} labels={FIELD_LABELS} root={() => formRef.current} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nama Venue" required name="name" error={errors.name}>
+        <Field label="Nama venue" required name="name" error={errors.name}>
           <Input value={values.name} onChange={(e) => set("name", e.target.value)} onBlur={() => blur("name")} placeholder="cth. Grand Ballroom Kemang" />
         </Field>
         <Field label="Nama PIC" required name="picName" error={errors.picName}>
           <Input value={values.picName} onChange={(e) => set("picName", e.target.value)} onBlur={() => blur("picName")} />
         </Field>
-        <Field label="No Tlp PIC" required name="phonePic" error={errors.phonePic}>
+        <Field label="No. telepon PIC" required name="phonePic" error={errors.phonePic}>
           <Input value={values.phonePic} onChange={(e) => set("phonePic", e.target.value)} onBlur={() => blur("phonePic")} placeholder="0812-xxxx-xxxx (kontak personal)" />
         </Field>
-        <Field label="No Tlp Venue" name="phoneVenue" error={errors.phoneVenue}>
+        <Field label="No. telepon venue" name="phoneVenue" error={errors.phoneVenue}>
           <Input value={values.phoneVenue} onChange={(e) => set("phoneVenue", e.target.value)} onBlur={() => blur("phoneVenue")} placeholder="Nomor resmi venue (opsional)" />
         </Field>
         <Field label="Email" name="email" error={errors.email}>
@@ -148,7 +148,7 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
         <Field label="Kapasitas (orang)" name="capacity" error={errors.capacity}>
           <Input type="number" min={0} value={values.capacity} onChange={(e) => set("capacity", Number(e.target.value))} onBlur={() => blur("capacity")} />
         </Field>
-        <Field label="Harga Sewa (Rp)" required={!isEditing} name="rentalPrice" error={errors.rentalPrice}>
+        <Field label="Harga sewa (Rp)" required={!isEditing} name="rentalPrice" error={errors.rentalPrice}>
           <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} />
         </Field>
         <Field label="Charge (Rp)" name="charge" error={errors.charge}>
@@ -172,7 +172,7 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
         </div>
 
         <div className="sm:col-span-2">
-          <Field label="Sosial Media" name="socialMedia" error={errors.socialMedia}>
+          <Field label="Media sosial" name="socialMedia" error={errors.socialMedia}>
             <Textarea
               rows={2}
               value={values.socialMedia}

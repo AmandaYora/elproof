@@ -11,7 +11,7 @@ test("a WO's logo shows in its console, and the per-WO colour is gone from the A
   test.skip(!state().storage, "needs object storage (MinIO) for the logo");
   const { page, close } = await open(browser, info, "paying");
   await visit(page, "/profil-usaha");
-  await expect(page.getByRole("heading", { name: "Profil Usaha" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Profil usaha" })).toBeVisible();
   await expect(page.getByText("Warna merek")).toHaveCount(0);
   await expect(page.getByRole("radiogroup")).toHaveCount(0);
 

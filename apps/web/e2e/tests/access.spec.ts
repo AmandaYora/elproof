@@ -180,7 +180,7 @@ test.describe("role screens follow the API", () => {
   });
 });
 
-/** The editable roles on Peran & Akses are listed in the API's order, the Owner's first (shown as "Lihat"). */
+/** The editable roles on Peran dan akses are listed in the API's order, the Owner's first (shown as "Lihat"). */
 function roleIndex(ws: Workspace, name: string) {
   return ws.roles.filter((r) => r.name !== "Owner").findIndex((r) => r.name === name);
 }

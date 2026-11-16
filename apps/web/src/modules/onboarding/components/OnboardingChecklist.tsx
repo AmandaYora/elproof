@@ -102,7 +102,7 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
         <>
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-light px-5 py-4 sm:px-6">
             <div>
-              <h2 id="onboarding-title" className="text-[15px] font-semibold text-text-primary">
+              <h2 id="onboarding-title" className="text-[16px] font-semibold text-foreground">
                 {welcome ? "Workspace Anda siap. Mulai dari sini." : "Mulai di sini"}
               </h2>
               <p className="mt-0.5 text-[13px] text-text-secondary">

@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
 import { useCan, useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, CheckCircle2, Ban, Trash2, AlertTriangle } from "lucide-react";
-import { Card } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
-import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Modal } from "@/shared/components/ui/Modal";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { Pagination } from "@/shared/components/ui/Pagination";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { VendorCategoryFormModal } from "@/modules/vendor-categories/components/VendorCategoryFormModal";
 import type { VendorCategoryFormValues } from "@/modules/vendor-categories/schemas/vendor-category.schema";
 import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
@@ -42,6 +39,8 @@ export default function VendorCategoryListPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VendorCategory | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     void fetchVendors();
@@ -52,8 +51,15 @@ export default function VendorCategoryListPage() {
   }, [debouncedQuery]);
 
   useEffect(() => {
-    void fetchCategoryPage(page, debouncedQuery);
-  }, [fetchCategoryPage, page, debouncedQuery]);
+    let cancelled = false;
+    setStatus("loading");
+    fetchCategoryPage(page, debouncedQuery)
+      .then(() => !cancelled && setStatus("ready"))
+      .catch(() => !cancelled && setStatus("error"));
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchCategoryPage, page, debouncedQuery, attempt]);
 
   function openCreateModal() {
     setEditingCategory(undefined);
@@ -111,121 +117,102 @@ export default function VendorCategoryListPage() {
     }
   }
 
+  const vendorCount = (category: VendorCategory) => {
+    const inCategory = vendors.filter((v) => v.categoryId === category.id);
+    return `${inCategory.length} vendor (${inCategory.filter((v) => v.isActive).length} aktif)`;
+  };
+
+  const columns: Column<VendorCategory>[] = [
+    {
+      id: "name",
+      header: "Nama kategori",
+      primary: true,
+      truncate: true,
+      className: "w-[26%] min-w-48",
+      cell: (c) =>
+        writeLocked ? (
+          <span className="font-semibold">{c.name}</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => openEditModal(c)}
+            className="max-w-full truncate text-left font-semibold underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+          >
+            {c.name}
+          </button>
+        ),
+    },
+    {
+      id: "description",
+      header: "Deskripsi",
+      truncate: true,
+      card: true,
+      className: "w-[40%] text-muted-foreground",
+      cell: (c) => c.description || "-",
+    },
+    { id: "vendors", header: "Jumlah vendor", card: true, className: "whitespace-nowrap", cell: vendorCount },
+    {
+      id: "status",
+      header: "Status",
+      card: true,
+      className: "whitespace-nowrap",
+      cell: (c) => (c.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Kategori Vendor</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">
-            Kelola kategori untuk mengelompokkan vendor berdasarkan jenis layanan.
-          </p>
-        </div>
-        {!writeLocked && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-            Tambah Kategori
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        className="mb-1"
+        title="Kategori vendor"
+        description="Jenis layanan untuk mengelompokkan vendor, misalnya katering, dekorasi, atau foto."
+        actions={
+          !writeLocked && (
+            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+              Tambah kategori
+            </Button>
+          )
+        }
+      />
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <SearchInput
-          className="max-w-xs"
-          placeholder="Cari nama kategori..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
+      <ListToolbar search={{ value: query, onChange: setQuery, placeholder: "Cari nama kategori..." }} />
 
-      <Card>
-        {categories.length === 0 ? (
-          <EmptyState
-            title="Tidak ada kategori ditemukan"
-            description="Ubah kata kunci pencarian atau tambahkan kategori baru."
+      <DataTable
+        label="Daftar kategori vendor"
+        columns={columns}
+        rows={categories}
+        rowId={(c) => c.id}
+        rowLabel={(c) => c.name}
+        status={status}
+        onRetry={() => setAttempt((n) => n + 1)}
+        meta={meta}
+        onPageChange={setPage}
+        sort={null}
+        onSortChange={() => undefined}
+        filtered={query !== ""}
+        onResetFilters={() => setQuery("")}
+        empty={{
+          title: "Belum ada kategori vendor",
+          description: "Buat kategori seperti Katering atau Dekorasi agar vendor mudah dikelompokkan dan dicari.",
+          action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah kategori</Button> : undefined,
+        }}
+        actions={(category) => (
+          <RowActions
+            rowLabel={category.name}
+            primary={{ label: "Ubah", icon: <Pencil />, onClick: () => openEditModal(category), hidden: writeLocked }}
+            items={[
+              category.isActive
+                ? { label: "Nonaktifkan", icon: <Ban />, onSelect: () => void handleToggleActive(category), hidden: writeLocked }
+                : { label: "Aktifkan", icon: <CheckCircle2 />, onSelect: () => void handleToggleActive(category), hidden: writeLocked },
+              { label: "Hapus permanen", icon: <Trash2 />, tone: "danger", onSelect: () => setDeleteTarget(category), hidden: !isOwner },
+            ]}
           />
-        ) : (
-          <>
-          <CardList
-            className="sm:hidden"
-            items={categories}
-            keyFor={(category) => category.id}
-            renderItem={(category) => {
-              const categoryVendors = vendors.filter((v) => v.categoryId === category.id);
-              const activeCount = categoryVendors.filter((v) => v.isActive).length;
-              return (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-semibold text-text-primary">{category.name}</span>
-                    {category.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
-                  </div>
-                  {category.description && <p className="text-[12.5px] text-text-secondary">{category.description}</p>}
-                  <CardListField label="Jumlah Vendor" value={`${categoryVendors.length} vendor (${activeCount} aktif)`} />
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <IconActionButton icon={Pencil} label="Ubah Kategori" tone="neutral" onClick={() => openEditModal(category)} />
-                    {category.isActive ? (
-                      <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(category)} />
-                    ) : (
-                      <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(category)} />
-                    )}
-                    {isOwner && (
-                      <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => setDeleteTarget(category)} />
-                    )}
-                  </div>
-                </>
-              );
-            }}
-          />
-          <div className="hidden sm:block">
-          <Table>
-            <THead>
-              <TR>
-                <TH>Nama Kategori</TH>
-                <TH>Deskripsi</TH>
-                <TH>Jumlah Vendor</TH>
-                <TH>Status</TH>
-                <TH>Aksi</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {categories.map((category) => {
-                const categoryVendors = vendors.filter((v) => v.categoryId === category.id);
-                const activeCount = categoryVendors.filter((v) => v.isActive).length;
-                return (
-                <TR key={category.id}>
-                  <TD className="font-semibold text-text-primary">{category.name}</TD>
-                  <TD className="max-w-sm text-text-secondary">{category.description}</TD>
-                  <TD>
-                    {categoryVendors.length} vendor ({activeCount} aktif)
-                  </TD>
-                  <TD>
-                    {category.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>}
-                  </TD>
-                  <TD>
-                    <div className="flex items-center gap-1.5">
-                      <IconActionButton icon={Pencil} label="Ubah Kategori" tone="neutral" onClick={() => openEditModal(category)} />
-                      {category.isActive ? (
-                        <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(category)} />
-                      ) : (
-                        <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(category)} />
-                      )}
-                      {isOwner && (
-                        <IconActionButton icon={Trash2} label="Hapus Permanen" tone="danger" onClick={() => setDeleteTarget(category)} />
-                      )}
-                    </div>
-                  </TD>
-                </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-          </div>
-          <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={setPage} />
-          </>
         )}
-      </Card>
+      />
 
       <VendorCategoryFormModal
         key={editingCategory?.id ?? "new"}
@@ -238,7 +225,7 @@ export default function VendorCategoryListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title={deleteTarget ? `Hapus Kategori — ${deleteTarget.name}` : "Hapus Kategori"}
+        title={deleteTarget ? `Hapus kategori — ${deleteTarget.name}` : "Hapus kategori"}
         size="sm"
       >
         {deleteTarget &&
@@ -273,7 +260,7 @@ export default function VendorCategoryListPage() {
                     Batal
                   </Button>
                   <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>
-                    {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
+                    {isDeleting ? "Menghapus..." : "Hapus kategori permanen"}
                   </Button>
                 </div>
               </div>
