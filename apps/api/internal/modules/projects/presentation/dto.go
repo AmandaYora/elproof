@@ -443,11 +443,16 @@ type evidenceResponse struct {
 	UploadedAt   string  `json:"uploadedAt"`
 	Description  string  `json:"description"`
 	UploadedBy   int64   `json:"uploadedByStaffId"`
-	// UploadedByName is the uploader's name ("" when unresolved; always "" for a client).
-	UploadedByName  string `json:"uploadedByName"`
-	RelatedKind     string `json:"relatedKind"`
-	RelatedID       int64  `json:"relatedId"`
-	IsClientVisible bool   `json:"isClientVisible"`
+	// UploadedByName is the uploader's name: the staff member, or for a file the
+	// couple sent from the Client Portal the client (RT-07). "" when unresolved,
+	// and always "" when a client reads the list.
+	UploadedByName string `json:"uploadedByName"`
+	// UploadedBySource is who uploaded the file: "staff" or "client" (sent from
+	// the Client Portal; uploadedByStaffId is then 0).
+	UploadedBySource string `json:"uploadedBySource"`
+	RelatedKind      string `json:"relatedKind"`
+	RelatedID        int64  `json:"relatedId"`
+	IsClientVisible  bool   `json:"isClientVisible"`
 	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
 	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
 	UpdatedAt string `json:"updatedAt"`
@@ -459,7 +464,16 @@ func toEvidenceResponse(e domain.Evidence) evidenceResponse {
 		DocumentDate: formatDatePtr(e.DocumentDate), UploadedAt: e.UploadedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Description: e.Description, UploadedBy: e.UploadedByStaffID, RelatedKind: string(e.RelatedKind), RelatedID: e.RelatedID,
 		IsClientVisible: e.IsClientVisible, UpdatedAt: etag.Format(e.UpdatedAt),
+		UploadedBySource: uploaderSource(e),
 	}
+}
+
+// uploaderSource is evidenceResponse.UploadedBySource.
+func uploaderSource(e domain.Evidence) string {
+	if e.UploadedByClientID != 0 {
+		return "client"
+	}
+	return "staff"
 }
 
 // evidenceRefResponse is the short form of a proof file embedded in another

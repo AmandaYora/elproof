@@ -3,7 +3,11 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/pagination"
@@ -410,60 +414,69 @@ func (r *MySQLProjectRepository) ChangeStatus(ctx context.Context, tenantID, id 
 	return n > 0, err
 }
 
-// DeleteCascade permanently removes a project and every row across this
-// module's 8 sub-entity tables that references it, in one transaction —
-// see ADR-0013. Deletion order matters: vendor_payments references evidence
-// (invoice_evidence_id/proof_evidence_id), so it must go first; everything
-// that references project_vendors must go before project_vendors itself;
-// everything goes before the projects row. client_payments has its own
-// direct FK straight to projects (no project_vendor_id, unlike
-// vendor_payments) so it has no ordering dependency on anything else here —
-// it just needs to go before the final projects delete. Evidence's
-// object-storage files are NOT touched here — the caller
-// (ProjectService.Delete) deletes those only after this transaction
-// commits, so a storage failure never leaves a dangling DB reference (see
-// its own doc comment).
-func (r *MySQLProjectRepository) DeleteCascade(ctx context.Context, tenantID, id int64) error {
+// projectOwnedTables is every table of this module that hangs off one project,
+// in the order DeleteCascade empties them: a row goes before anything its
+// foreign keys point at (vendor_issues → vendor_milestones → project_vendors →
+// projects; the payment tables, the schedule, the files and the Timeline each
+// point straight at projects). Soft-deleted rows are deleted too: nothing of a
+// permanently deleted project waits for the purge. A table added to this module
+// with a project_id must be added here (FQ-01: venue_payments was missing, so a
+// project that ever had a venue payment could not be deleted).
+var projectOwnedTables = []struct{ table, where string }{
+	{"activity_log", "project_id = ?"},
+	{"vendor_issues", "project_id = ?"},
+	{"vendor_payments", "project_id = ?"},
+	{"venue_payments", "project_id = ?"},
+	{"client_payments", "project_id = ?"},
+	{"client_payment_terms", "project_id = ?"},
+	{"vendor_milestones", "project_vendor_id IN (SELECT id FROM project_vendors WHERE project_id = ?)"},
+	{"evidence", "project_id = ?"},
+	{"project_vendors", "project_id = ?"},
+	{"project_milestones", "project_id = ?"},
+}
+
+// DeleteCascade permanently removes a project and every row of this module that
+// references it, in one transaction — see ADR-0013. found is false when the
+// project is not in the tenant (nothing is deleted). Evidence's object-storage
+// files are NOT touched here — the caller (ProjectService.Delete) deletes those
+// only after this transaction commits, so a storage failure never leaves a
+// dangling DB reference (see its own doc comment). A foreign key that still
+// refuses the delete (a table this list does not know yet) is reported as
+// domain.ErrProjectDeleteBlocked, never as a bare driver error.
+func (r *MySQLProjectRepository) DeleteCascade(ctx context.Context, tenantID, id int64) (found bool, err error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM activity_log WHERE project_id = ?`, id); err != nil {
-		return err
+	var locked int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE tenant_id = ? AND id = ? FOR UPDATE`, tenantID, id).Scan(&locked)
+	if err == sql.ErrNoRows {
+		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_payments WHERE project_id = ?`, id); err != nil {
-		return err
+	if err != nil {
+		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM client_payments WHERE project_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM client_payment_terms WHERE project_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM vendor_issues WHERE project_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE vm FROM vendor_milestones vm INNER JOIN project_vendors pv ON vm.project_vendor_id = pv.id WHERE pv.project_id = ?`,
-		id,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM evidence WHERE project_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM project_vendors WHERE project_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM project_milestones WHERE project_id = ?`, id); err != nil {
-		return err
+	for _, t := range projectOwnedTables {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t.table+` WHERE `+t.where, id); err != nil {
+			return true, foreignKeyBlock(err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE tenant_id = ? AND id = ?`, tenantID, id); err != nil {
-		return err
+		return true, foreignKeyBlock(err)
 	}
-	return tx.Commit()
+	return true, tx.Commit()
+}
+
+// foreignKeyBlock turns MySQL's "a foreign key constraint fails" (1451) into
+// domain.ErrProjectDeleteBlocked and passes every other error through.
+func foreignKeyBlock(err error) error {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) && me.Number == 1451 {
+		return fmt.Errorf("%w: %v", domain.ErrProjectDeleteBlocked, err)
+	}
+	return err
 }
 
 // --- Project milestones ---

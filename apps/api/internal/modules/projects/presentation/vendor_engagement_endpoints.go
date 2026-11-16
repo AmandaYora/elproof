@@ -192,7 +192,7 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 	} else if d, err := parseDate(body.EventDate); err != nil {
 		add("eventDate", "Gunakan format YYYY-MM-DD")
 	} else if d.Format(dateLayout) != project.EventDate.Format(dateLayout) {
-		add("eventDate", "Tanggal vendor mengikuti tanggal acara project ("+project.EventDate.Format(dateLayout)+"). Kosongkan atau samakan.")
+		add("eventDate", "Tanggal vendor mengikuti tanggal acara proyek ("+project.EventDate.Format(dateLayout)+"). Kosongkan atau samakan.")
 	}
 	// The category: the vendor's own.
 	if body.VendorID == 0 {
@@ -247,7 +247,7 @@ func (h *Handler) createVendorEngagement(w http.ResponseWriter, r *http.Request,
 	}
 	// A freshly created engagement has no vendor_payments rows yet — 0 paid,
 	// no ledger lookup needed.
-	response.Created(w, "Vendor berhasil ditambahkan ke project", h.mutated(ctx, claims.tenantID, projectID, toProjectVendorResponse(*pv, 0)))
+	response.Created(w, "Vendor berhasil ditambahkan ke proyek", h.mutated(ctx, claims.tenantID, projectID, toProjectVendorResponse(*pv, 0)))
 }
 
 // collectValidation folds a validation error's fields into fields and reports
@@ -458,7 +458,7 @@ func (h *Handler) createVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Timeline vendor berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
+	response.Created(w, "Tahapan vendor berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
 }
 
 // updateVendorMilestone is PATCH /projects/{id}/vendors/{pvid}/milestones/{mid}: a
@@ -472,7 +472,7 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 	}
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "ID tahapan tidak valid", nil)
 		return
 	}
 	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
@@ -510,5 +510,5 @@ func (h *Handler) updateVendorMilestone(w http.ResponseWriter, r *http.Request, 
 		})
 		return
 	}
-	response.OK(w, "Timeline vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
+	response.OK(w, "Tahapan vendor berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, toVendorMilestoneResponse(*m)))
 }

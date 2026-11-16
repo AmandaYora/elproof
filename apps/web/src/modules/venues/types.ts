@@ -29,6 +29,8 @@ export interface Venue {
 export interface VenueImportRowError {
   row: number;
   message: string;
+  /** The same problems per column (template header); empty for a row the database refused as a whole. */
+  errors?: { column: string; message: string }[];
 }
 
 export interface VenueImportResult {

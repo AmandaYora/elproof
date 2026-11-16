@@ -65,7 +65,7 @@ func writeAppError(w http.ResponseWriter, err error) {
 func staffTenant(w http.ResponseWriter, r *http.Request) (int64, *middleware.Grants, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "staff" {
-		response.Error(w, http.StatusForbidden, "Hanya staf WO yang dapat mengakses data ini", nil)
+		response.Error(w, http.StatusForbidden, "Hanya anggota tim WO yang dapat mengakses data ini", nil)
 		return 0, nil, false
 	}
 	tenantID, ok := claims.TenantIDInt()

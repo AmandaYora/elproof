@@ -17,7 +17,7 @@ func TestDescribe(t *testing.T) {
 		{"GET", "/api/v1/tenants/export", "Mengunduh daftar tenant (CSV)"},
 		{"POST", "/api/v1/payment/apps/app_02ef90c52704/reset-secret", "Mereset secret aplikasi app_02ef90c52704"},
 		{"DELETE", "/api/v1/console/announcements/5", "Menghapus pengumuman #5"},
-		{"PUT", "/api/v1/console/login-slides/2", "Mengganti foto halaman login nomor 2"},
+		{"PUT", "/api/v1/console/login-slides/2", "Mengganti foto halaman masuk nomor 2"},
 		{"post", "/api/v1/vouchers/", "Membuat voucher baru"}, // method case and a trailing slash do not matter
 		// WO workspace routes, by shape.
 		{"POST", "/api/v1/projects/12/payments", "Menambah pembayaran di proyek #12"},

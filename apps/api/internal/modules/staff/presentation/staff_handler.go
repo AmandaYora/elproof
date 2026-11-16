@@ -94,7 +94,7 @@ func requireTeamManager(w http.ResponseWriter, r *http.Request) (int64, bool) {
 func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "staff" {
-		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat mengakses endpoint ini", nil)
+		response.Error(w, http.StatusForbidden, "Hanya anggota tim WO yang dapat mengakses endpoint ini", nil)
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()

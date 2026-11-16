@@ -11,6 +11,10 @@ import (
 // (migration 66) refuses it and the repository reports it with this error.
 var ErrStoragePathTaken = errors.New("an evidence row already points at this stored object")
 
+// ErrProjectDeleteBlocked: the database still refuses to delete a project (a
+// foreign key from a table the hard delete does not empty yet).
+var ErrProjectDeleteBlocked = errors.New("a foreign key still references the project")
+
 type EvidenceType string
 
 const (
@@ -81,8 +85,11 @@ type Evidence struct {
 	UploadedAt        time.Time
 	Description       string
 	UploadedByStaffID int64
-	RelatedKind       EvidenceRelatedKind
-	RelatedID         int64
+	// UploadedByClientID is the client who sent the file from the Client Portal
+	// (a primitive id into `clients`, no foreign key); 0 when staff uploaded it.
+	UploadedByClientID int64
+	RelatedKind        EvidenceRelatedKind
+	RelatedID          int64
 	// IsClientVisible controls whether a `general`-kind document appears in
 	// Client Portal's own "Dokumen" tab (GET /projects/{id}/documents).
 	// Meaningless for every other RelatedKind -- their evidence stays

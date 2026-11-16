@@ -36,7 +36,7 @@ func (s *StaffService) checkStaffQuota(ctx context.Context, tenantID int64) erro
 	}
 	if n >= limit {
 		return apperror.Forbidden(fmt.Sprintf(
-			"Masa coba dibatasi %d staf selain Owner. Pilih paket langganan untuk menambah staf tanpa batas.", limit,
+			"Masa coba dibatasi %d anggota tim selain Owner. Pilih paket langganan untuk menambah anggota tim tanpa batas.", limit,
 		)).WithCode("trial_limit_reached")
 	}
 	return nil

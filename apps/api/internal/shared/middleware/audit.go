@@ -20,6 +20,25 @@ type AuditRecord struct {
 	StatusCode int
 	IP         string
 	UserAgent  string
+	// Description is the handler's own sentence for what the request did
+	// (SetAuditDescription), "" when it set none.
+	Description string
+}
+
+// auditNoteKey carries the per-request holder SetAuditDescription writes to.
+type auditNoteKey struct{}
+
+type auditNote struct{ description string }
+
+// SetAuditDescription lets a handler state, in a sentence a person reads, what
+// an audited request actually did, when the route alone cannot say it — a
+// toggle's resulting state and the name of the thing toggled ("Menonaktifkan
+// paket Pro", RT-08). Outside an audited request it does nothing. Never pass
+// secrets: the sentence is stored and shown in the Audit Log.
+func SetAuditDescription(ctx context.Context, sentence string) {
+	if n, ok := ctx.Value(auditNoteKey{}).(*auditNote); ok {
+		n.description = sentence
+	}
 }
 
 // AuditRecorder persists audit records (implemented by the audit module).
@@ -45,11 +64,12 @@ func AuditTrail(recorder AuditRecorder, principalTypes ...string) func(http.Hand
 				return
 			}
 			sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-			next.ServeHTTP(sw, r)
+			note := &auditNote{}
+			next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), auditNoteKey{}, note)))
 			rec := AuditRecord{
 				ActorType: claims.PrincipalType, ActorID: claims.PrincipalID, ActorRole: claims.Role, TenantID: claims.TenantID,
 				Method: r.Method, Path: r.URL.Path, StatusCode: sw.status,
-				IP: ClientIP(r), UserAgent: r.UserAgent(),
+				IP: ClientIP(r), UserAgent: r.UserAgent(), Description: note.description,
 			}
 			// A fresh context: the request's may already be cancelled once
 			// the response is written, and the record must still land.

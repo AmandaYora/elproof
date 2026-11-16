@@ -336,11 +336,16 @@ type VenueImportRow struct {
 	Facilities  string
 	SocialMedia string
 	Notes       string
+	// NotNumber names the numeric columns (template headers) whose cell held
+	// text that is not a whole number; their value above is then nil.
+	NotNumber []string
 }
 
+// VenueImportRowError: see VendorImportRowError.
 type VenueImportRowError struct {
 	Row     int
 	Message string
+	Errors  []ImportCellError
 }
 
 type VenueImportResult struct {
@@ -400,16 +405,8 @@ func (s *VenueService) ImportVenues(ctx context.Context, tenantID int64, rows []
 
 	for i, row := range rows {
 		rowNum := i + 2 // header occupies row 1
-		if row.Name == "" || row.PICName == "" || row.PhonePIC == "" || row.City == "" {
-			result.Errors = append(result.Errors, VenueImportRowError{Row: rowNum, Message: "Nama Venue, Nama PIC, No Tlp PIC, dan Kota wajib diisi"})
-			continue
-		}
-		if msg := importRowProblem(row.Name, labeledNumber{label: "Harga sewa", value: row.RentalPrice}, labeledNumber{label: "Charge", value: row.Charge}, capacityNumber(row.Capacity)); msg != "" {
-			result.Errors = append(result.Errors, VenueImportRowError{Row: rowNum, Message: msg})
-			continue
-		}
-		if !domain.IsValidCity(row.City) {
-			result.Errors = append(result.Errors, VenueImportRowError{Row: rowNum, Message: "Kota tidak valid: " + row.City})
+		if check := checkVenueImportRow(row); check.failed() {
+			result.Errors = append(result.Errors, VenueImportRowError{Row: rowNum, Message: check.summary(), Errors: check.errs})
 			continue
 		}
 
@@ -453,9 +450,10 @@ func (s *VenueService) ImportVenues(ctx context.Context, tenantID int64, rows []
 		}
 		chunk := toInsert[start:end]
 		if err := s.repo.CreateBatch(ctx, chunk); err != nil {
+			logger.Error("import: batch insert failed: %v", err)
 			result.Errors = append(result.Errors, VenueImportRowError{
 				Row:     0,
-				Message: "Gagal menyimpan sekumpulan baris baru (baris data ke-" + strconv.Itoa(start+1) + " s.d. " + strconv.Itoa(end) + "): " + err.Error(),
+				Message: "Gagal menyimpan sekumpulan baris baru (baris data ke-" + strconv.Itoa(start+1) + " s.d. " + strconv.Itoa(end) + "). Coba impor ulang; bila tetap gagal, hubungi dukungan ElProof.",
 			})
 			continue
 		}
@@ -465,11 +463,54 @@ func (s *VenueService) ImportVenues(ctx context.Context, tenantID int64, rows []
 	for _, item := range toUpdate {
 		venue := item.venue
 		if err := s.repo.Update(ctx, &venue); err != nil {
-			result.Errors = append(result.Errors, VenueImportRowError{Row: item.rowNum, Message: "Gagal memperbarui venue: " + err.Error()})
+			logger.Error("import: update of row %d failed: %v", item.rowNum, err)
+			result.Errors = append(result.Errors, VenueImportRowError{Row: item.rowNum, Message: "Gagal memperbarui venue. Coba impor ulang baris ini."})
 			continue
 		}
 		result.UpdatedCount++
 	}
 
 	return result, nil
+}
+
+// Columns of the venue import template the row check names (template headers).
+const (
+	colVenueName     = "Nama Venue"
+	colVenuePIC      = "Nama PIC"
+	colVenuePhonePIC = "No Tlp PIC"
+	colVenuePhone    = "No Tlp Venue"
+	colVenueEmail    = "Email"
+	colVenueAddress  = "Alamat"
+	colVenueCity     = "Kota"
+	colVenueRental   = "Harga Sewa"
+	colVenueCharge   = "Charge"
+	colVenueCapacity = "Kapasitas"
+)
+
+// checkVenueImportRow judges every cell of one venue row, all problems at once
+// in column order. No Tlp PIC follows the form's rule (required, at least
+// minVenuePhonePICLen characters).
+func checkVenueImportRow(row VenueImportRow) *rowCheck {
+	c := &rowCheck{}
+	c.required(colVenueName, row.Name, maxDirectoryNameLen)
+	c.required(colVenuePIC, row.PICName, maxDirectoryPICNameLen)
+	c.required(colVenuePhonePIC, row.PhonePIC, maxDirectoryPhoneLen)
+	c.minLen(colVenuePhonePIC, row.PhonePIC, minVenuePhonePICLen, "karakter")
+	c.maxLen(colVenuePhone, row.PhoneVenue, maxDirectoryPhoneLen)
+	c.maxLen(colVenueEmail, row.Email, maxDirectoryEmailLen)
+	c.maxLen(colVenueAddress, row.Address, maxDirectoryAddressLen)
+	if row.City == "" {
+		c.add(colVenueCity, colVenueCity+" wajib diisi")
+	} else if !domain.IsValidCity(row.City) {
+		c.add(colVenueCity, colVenueCity+" \""+row.City+"\" tidak ada di daftar kota. Pilih dari daftar di template.")
+	}
+	c.number(colVenueRental, row.RentalPrice, hasColumn(row.NotNumber, colVenueRental), numberRule{})
+	c.number(colVenueCharge, row.Charge, hasColumn(row.NotNumber, colVenueCharge), numberRule{})
+	var capacity *int64
+	if row.Capacity != nil {
+		v := int64(*row.Capacity)
+		capacity = &v
+	}
+	c.number(colVenueCapacity, capacity, hasColumn(row.NotNumber, colVenueCapacity), numberRule{max: maxVenueCapacity})
+	return c
 }

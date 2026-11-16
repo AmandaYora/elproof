@@ -335,6 +335,10 @@ export interface Evidence {
   uploadedAt: string;
   description: string;
   uploadedByStaffId: string;
+  /** The uploader's name from the API: a staff member, or the client who sent the file from the Client Portal. */
+  uploadedByName: string;
+  /** "client" when the couple sent the file from the Client Portal (uploadedByStaffId is then "0"). */
+  uploadedBySource: "staff" | "client";
   relatedKind: EvidenceRelatedKind;
   relatedId: string;
   isClientVisible: boolean;

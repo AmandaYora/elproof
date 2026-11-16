@@ -185,7 +185,7 @@ func (h *Handler) meHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.clientHome == nil {
-		response.Error(w, http.StatusForbidden, "Akses client belum dikonfigurasi", nil)
+		response.Error(w, http.StatusForbidden, "Akses klien belum dikonfigurasi", nil)
 		return
 	}
 	home, err := h.clientHome.Get(r.Context(), tenantID, projectID, middleware.GrantsFrom(r.Context()).Can, nowWIB())

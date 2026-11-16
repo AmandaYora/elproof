@@ -40,7 +40,7 @@ func (h *Handler) SetCovers(s *application.CoverService) { h.covers = s }
 // and replaces any previous cover. 200 {coverUrl}.
 func (h *Handler) putCover(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
 	if claims.isClient {
-		forbiddenPermission(w, "Hanya staff WO yang dapat mengubah foto sampul")
+		forbiddenPermission(w, "Hanya anggota tim WO yang dapat mengubah foto sampul")
 		return
 	}
 	var body coverBody
@@ -68,7 +68,7 @@ func (h *Handler) putCover(w http.ResponseWriter, r *http.Request, claims staffC
 // 200 {coverUrl: null}, also when there was no cover.
 func (h *Handler) deleteCover(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
 	if claims.isClient {
-		forbiddenPermission(w, "Hanya staff WO yang dapat mengubah foto sampul")
+		forbiddenPermission(w, "Hanya anggota tim WO yang dapat mengubah foto sampul")
 		return
 	}
 	if err := h.covers.Remove(r.Context(), claims.tenantID, projectID, claims.staffID); err != nil {
