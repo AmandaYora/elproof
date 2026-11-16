@@ -34,14 +34,22 @@ func TestTemplatesUseCatalogKeysOfTheirKind(t *testing.T) {
 	}
 }
 
-// The migration that seeded existing workspaces must match the templates new
-// workspaces get, or old and new tenants would behave differently.
+// The migration that seeded existing workspaces (plus the later ones that added
+// a permission to a built-in role) must match the templates new workspaces get,
+// or old and new tenants would behave differently.
 func TestMigrationMatchesTemplates(t *testing.T) {
-	raw, err := os.ReadFile("../../../../migrations/000058_create_tenant_roles.up.sql")
-	if err != nil {
-		t.Fatal(err)
+	var sql string
+	for _, name := range []string{
+		"000058_create_tenant_roles.up.sql",
+		"000078_client_payment_submissions.up.sql",
+		"000079_milestone_for_client.up.sql",
+	} {
+		raw, err := os.ReadFile("../../../../migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sql += string(raw) + "\n"
 	}
-	sql := string(raw)
 	re := regexp.MustCompile(`(?s)JOIN \((.*?)\) p WHERE r\.template_key = '(\w+)'`)
 	found := map[string][]string{}
 	for _, m := range re.FindAllStringSubmatch(sql, -1) {

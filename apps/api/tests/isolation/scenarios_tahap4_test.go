@@ -506,11 +506,11 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 	})
 
 	t.Run("(f) a client principal is refused on every new endpoint", func(t *testing.T) {
+		// The signed upload itself is open to a client with portal.finance.submit
+		// since ADR-0047 (see scenarios_portal_writes_test.go); recording a payment is not.
 		c, P := w.clientToken, w.Project
 		tok := "abc.def"
 		for _, d := range []attack{
-			{name: "upload create", method: "POST", path: s.projectsPath(P, "/uploads"), body: map[string]any{"fileName": "a.pdf", "mimeType": "application/pdf", "size": 10}},
-			{name: "upload put", method: "PUT", path: s.projectsPath(P, "/uploads/"+tok)},
 			{name: "client payment with proof", method: "POST", path: s.projectsPath(P, "/client-payments"), body: clientPayBody(1, "x", proofOf(tok, "Transfer Proof"))},
 			{name: "vendor payment with proof", method: "POST", path: s.projectsPath(P, "/payments"), body: map[string]any{"projectVendorId": w.Engagement, "type": "DP", "amount": 1, "evidence": []map[string]any{proofOf(tok, "Invoice")}}},
 			{name: "venue payment with proof", method: "POST", path: s.projectsPath(P, "/venue-payments"), body: clientPayBody(1, "x", proofOf(tok, "Invoice"))},

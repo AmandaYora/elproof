@@ -64,6 +64,8 @@ var Catalog = []Permission{
 	{"portal.timeline.view", KindClient, "Portal client", "Lihat timeline", "Melihat tahapan persiapan pernikahan."},
 	{"portal.documents.view", KindClient, "Portal client", "Lihat dokumen", "Melihat dokumen yang dibagikan WO ke client."},
 	{"portal.issues.view", KindClient, "Portal client", "Lihat kendala", "Melihat kendala dan penanganannya."},
+	{"portal.finance.submit", KindClient, "Portal client", "Kirim bukti pembayaran", "Mengirim bukti transfer dari portal. Pembayaran tercatat setelah WO memverifikasinya."},
+	{"portal.tasks.complete", KindClient, "Portal client", "Menandai tugas selesai", "Menandai selesai tahapan yang WO tandai sebagai tugas untuk pasangan."},
 }
 
 var catalogByKey = func() map[string]Permission {
@@ -113,7 +115,9 @@ const (
 	TemplateFamily         = "family"
 )
 
-// Templates mirror migration 000058 (which seeded existing workspaces).
+// Templates mirror migration 000058 (which seeded existing workspaces) plus
+// the permissions later migrations added to the built-in roles (000078
+// portal.finance.submit, 000079 portal.tasks.complete — Pengantin only).
 var Templates = []Template{
 	{TemplateOwner, KindStaff, "Owner", "Pemilik workspace. Semua akses; tidak bisa diubah atau dihapus.", true, ScopeAll, AllKeys(KindStaff)},
 	{TemplateAdmin, KindStaff, "Admin", "Mengelola semua project, client, vendor, dan keuangan. Tanpa pengaturan workspace.", false, ScopeAll,
@@ -126,7 +130,8 @@ var Templates = []Template{
 	{TemplateFinance, KindStaff, "Keuangan", "Mencatat dan memantau pembayaran di semua project.", false, ScopeAll,
 		[]string{"dashboard.view", "dashboard.revenue.view", "finance.record", "finance.margin.view", "finance.payment.delete", "vendor.view"}},
 	{TemplateBride, KindClient, "Pengantin", "Melihat seluruh portal, termasuk tagihan dan riwayat pembayaran.", false, ScopeAll,
-		[]string{"portal.finance.view", "portal.vendor.view", "portal.timeline.view", "portal.documents.view", "portal.issues.view"}},
+		[]string{"portal.finance.view", "portal.vendor.view", "portal.timeline.view", "portal.documents.view", "portal.issues.view",
+			"portal.finance.submit", "portal.tasks.complete"}},
 	{TemplateFamily, KindClient, "Keluarga", "Melihat portal tanpa informasi keuangan.", false, ScopeAll,
 		[]string{"portal.vendor.view", "portal.timeline.view", "portal.documents.view", "portal.issues.view"}},
 }

@@ -20,6 +20,7 @@ const (
 	permPortalFinance  = "portal.finance.view"
 	permPortalTimeline = "portal.timeline.view"
 	permPortalIssues   = "portal.issues.view"
+	permPortalTasks    = "portal.tasks.complete"
 )
 
 // ClientHomeService assembles GET /projects/me/home: everything the Client
@@ -52,6 +53,9 @@ type HomeProject struct {
 	Status      string
 	PICName     string
 	PICPhone    string
+	// CoverPhotoPath/CoverUpdatedAt: the hero photo (ADR-0047); nil without one.
+	CoverPhotoPath *string
+	CoverUpdatedAt *time.Time
 }
 
 type HomeProgress struct {
@@ -105,6 +109,9 @@ type ClientHome struct {
 	RecentUpdates  []HomeUpdate
 	PICName        string
 	PICPhone       string
+	// ClientTasks: the steps flagged for the couple (domain.SelectClientTasks);
+	// empty when the role sees neither the timeline nor may complete tasks.
+	ClientTasks []domain.ProjectMilestone
 }
 
 // calendarDay is the instant a stored date (no time of day) counts as for
@@ -130,9 +137,11 @@ func (s *ClientHomeService) Get(ctx context.Context, tenantID, projectID int64, 
 		Project: HomeProject{
 			ID: p.ID, Name: p.Name, BrideName: p.BrideName, GroomName: p.GroomName, EventDate: p.EventDate, Venue: p.Venue,
 			PackageName: p.PackageName, Status: string(p.Status), PICName: picName, PICPhone: picPhone,
+			CoverPhotoPath: p.CoverPhotoPath, CoverUpdatedAt: p.CoverUpdatedAt,
 		},
 		DaysToEvent: domain.DaysUntil(now, p.EventDate),
 		Actions:     []domain.HomeAction{},
+		ClientTasks: []domain.ProjectMilestone{},
 		PICName:     picName,
 		PICPhone:    picPhone,
 	}
@@ -183,6 +192,14 @@ func (s *ClientHomeService) Get(ctx context.Context, tenantID, projectID int64, 
 		}
 	}
 
+	var milestones []domain.ProjectMilestone
+	if canTimeline || can(permPortalTasks) {
+		if milestones, err = s.projects.ListMilestones(ctx, tenantID, projectID); err != nil {
+			return nil, err
+		}
+		home.ClientTasks = domain.SelectClientTasks(milestones)
+	}
+
 	if canTimeline {
 		progress, err := s.projects.ComputeClientProgressBatch(ctx, tenantID, []int64{projectID}, now)
 		if err != nil {
@@ -190,10 +207,6 @@ func (s *ClientHomeService) Get(ctx context.Context, tenantID, projectID int64, 
 		}
 		pr := progress[projectID]
 		home.Progress = &HomeProgress{OverallPercent: pr.OverallPercent, Condition: string(pr.Condition)}
-		milestones, err := s.projects.ListMilestones(ctx, tenantID, projectID)
-		if err != nil {
-			return nil, err
-		}
 		for _, m := range milestones {
 			if m.Status != domain.MilestoneCompleted || m.CompletedDate == nil {
 				continue
@@ -254,13 +267,17 @@ func (s *ClientHomeService) Get(ctx context.Context, tenantID, projectID int64, 
 		home.RecentUpdates = append(home.RecentUpdates, hu)
 	}
 
+	// contact.whatsapp: the PIC's phone first, then the business WhatsApp of the
+	// workspace profile (ADR-0047); the section is absent when both are empty.
+	businessWhatsApp := ""
 	if s.contact != nil {
 		if whatsapp, bank, number, holder, err := s.contact.PortalContact(ctx, tenantID); err == nil {
-			home.WhatsApp = whatsapp
+			businessWhatsApp = whatsapp
 			if canFinance && bank != "" && number != "" {
 				home.PayTo = &HomePayTo{BankName: bank, AccountNumber: number, AccountHolder: holder}
 			}
 		}
 	}
+	home.WhatsApp = domain.PortalWhatsApp(picPhone, businessWhatsApp)
 	return home, nil
 }

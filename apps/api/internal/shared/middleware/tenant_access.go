@@ -33,9 +33,10 @@ type TenantAccessResolver interface {
 //   - read_only: staff may read (GET/HEAD) but not write, except the routes
 //     restrictedAllow permits (paying the subscription).
 //   - billing_only: staff may only use routes restrictedAllow permits.
-//   - client principals are never restricted by billing state: the portal
-//     is read-only already and the couple must not lose access because the
-//     WO is late paying (product decision K4).
+//   - client principals are never restricted by billing state: the couple
+//     must not lose access because the WO is late paying (product decision
+//     K4). Their two write paths (a transfer proof, a finished task; ADR-0047)
+//     stay open too: what they send simply waits for the WO.
 //
 // The resolver is bound late (SetResolver) because the platform module that
 // implements it is built after the authed middleware chain is assembled.
