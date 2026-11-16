@@ -24,7 +24,10 @@ export function AuthSplitLayout({ aside, children }: { aside: ReactNode; childre
           <ProofSeal size={360} className="text-seal-on-primary" />
         </div>
         <LoginPhotoSlider />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-primary via-primary/55 to-primary/25" aria-hidden />
+        {/* Navy only where the words sit (bottom); the top keeps the photo's own colours — a navy wash over the whole
+            photo turned pink flowers purple. A light dark shade at the top keeps the logo readable. */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-primary from-15% via-primary/70 via-40% to-transparent to-70%" aria-hidden />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/45 to-transparent" aria-hidden />
         <BrandMark inverted className="relative z-10 self-start" />
         <div className="relative z-10 max-w-md text-primary-foreground">{aside}</div>
       </div>

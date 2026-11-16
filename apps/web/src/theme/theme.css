@@ -4,7 +4,7 @@
  * One palette for every surface, taken from the logo: navy + seal gold, one
  * typeface (ADR-0045, which replaced the plum of ADR-0039). The WO Console, Client Portal and Platform Console read these
  * values; the public site (marketing.css) only swaps the few surface tokens
- * that differ there (white page, blush bands). There is no per-tenant colour:
+ * that differ there (white page, mist bands). There is no per-tenant colour:
  * a tenant keeps its logo and name, never its own palette (ADR-0039).
  *
  * The shadcn/ui semantic names (--background, --primary, --ring, ...) are the
