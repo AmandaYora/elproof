@@ -253,4 +253,6 @@ type VerificationRow struct {
 	Method          string
 	ReferenceNumber string
 	RecordedByID    int64
+	// SubmittedByClientID: the couple sent it from the portal (0 = staff recorded it).
+	SubmittedByClientID int64
 }

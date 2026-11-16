@@ -100,6 +100,8 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	handler.SetIdempotency(application.NewIdempotencyService(idempotencyRepo))
 	handler.SetCalendar(application.NewCalendarService(infrastructure.NewMySQLCalendarRepository(db)))
 	handler.SetFinance(application.NewFinanceService(infrastructure.NewMySQLFinanceRepository(db)))
+	// The Client Portal hero photo (ADR-0047).
+	handler.SetCovers(application.NewCoverService(projectService, projectRepo, txManager, storageClient, storage.BuildKey, activityService))
 
 	return &Module{
 		references:               references,

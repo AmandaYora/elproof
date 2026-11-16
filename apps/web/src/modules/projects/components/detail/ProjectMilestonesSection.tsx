@@ -3,6 +3,7 @@ import { MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
 import { Plus, Ban, CheckCircle2, Pencil, ArrowUp, ArrowDown, Paperclip, List as ListIcon, GanttChartSquare } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
+import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
 import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
 import { CardList, CardListField } from "@/shared/components/ui/CardList";
@@ -198,7 +199,10 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
               return (
                 <>
                   <div className="flex items-start justify-between gap-3">
-                    <span className={cn("font-medium text-text-primary", cancelled && "line-through")}>{m.order}. {m.name}</span>
+                    <span className="flex min-w-0 flex-col items-start gap-1">
+                      <span className={cn("font-medium text-text-primary", cancelled && "line-through")}>{m.order}. {m.name}</span>
+                      <ClientTaskBadge milestone={m} />
+                    </span>
                     <div className="flex shrink-0 items-center gap-1">
                       {canEdit && !cancelled && (
                         <>
@@ -281,7 +285,12 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
                 const activeIdx = activeOrder.findIndex((a) => a.id === m.id);
                 return (
                   <TR key={m.id} className={cancelled ? "opacity-50" : undefined}>
-                    <TD className={cn("font-medium", cancelled && "line-through")}>{m.order}. {m.name}</TD>
+                    <TD>
+                      <span className="flex flex-col items-start gap-1">
+                        <span className={cn("font-medium", cancelled && "line-through")}>{m.order}. {m.name}</span>
+                        <ClientTaskBadge milestone={m} />
+                      </span>
+                    </TD>
                     <TD>
                       <Select
                         value={m.status}
@@ -383,4 +392,11 @@ export function ProjectMilestonesSection({ projectId }: { projectId: string }) {
       )}
     </div>
   );
+}
+
+/** A step the couple sees as theirs on the Client Portal (ADR-0047), and whether they marked it done themselves. */
+function ClientTaskBadge({ milestone }: { milestone: ProjectMilestone }) {
+  if (milestone.completedByClient && milestone.status === "Completed") return <Badge tone="success">Diselesaikan pasangan</Badge>;
+  if (!milestone.forClient) return null;
+  return <Badge tone="brand">Tugas pasangan</Badge>;
 }

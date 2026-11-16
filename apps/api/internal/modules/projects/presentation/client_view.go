@@ -1,6 +1,11 @@
 package presentation
 
-import "elproof/internal/modules/projects/domain"
+import (
+	"net/http"
+	"strconv"
+
+	"elproof/internal/modules/projects/domain"
+)
 
 // Client Portal data boundary (docs/plan/registrasi-wo-self-service/PLAN.md
 // Fase 1, gap G1). A `client` principal used to be limited only by HTTP
@@ -23,6 +28,8 @@ var clientReadableSubresources = map[string]bool{
 	"evidence":        true,
 	"documents":       true,
 	"venue":           true,
+	// The hero photo of the portal (ADR-0047).
+	"cover": true,
 }
 
 // clientCanRead reports whether a client principal may GET
@@ -41,6 +48,36 @@ func clientCanRead(rest []string) bool {
 	default:
 		return false
 	}
+}
+
+// Portal permissions of the client portal's writes (ADR-0047).
+const (
+	permPortalFinanceSubmit = "portal.finance.submit"
+	permPortalTasksComplete = "portal.tasks.complete"
+)
+
+// clientWritePermission is the complete list of non-GET requests a client
+// principal may make under /projects/{id}/ and the portal permission each
+// needs (ADR-0047): the signed upload of a transfer proof (both halves), the
+// proof submission itself, and marking a task done. ok is false for anything
+// else. Keep in step with cmd/server/client_scope.go.
+func clientWritePermission(method string, rest []string) (perm string, ok bool) {
+	switch {
+	case method == http.MethodPost && len(rest) == 1 && rest[0] == "uploads":
+		return permPortalFinanceSubmit, true
+	case method == http.MethodPut && len(rest) == 2 && rest[0] == "uploads" && rest[1] != "":
+		return permPortalFinanceSubmit, true
+	case method == http.MethodPost && len(rest) == 2 && rest[0] == "client-payments" && rest[1] == "submissions":
+		return permPortalFinanceSubmit, true
+	case method == http.MethodPost && len(rest) == 3 && rest[0] == "milestones" && isPositiveID(rest[1]) && rest[2] == "complete":
+		return permPortalTasksComplete, true
+	}
+	return "", false
+}
+
+func isPositiveID(s string) bool {
+	n, err := strconv.ParseInt(s, 10, 64)
+	return err == nil && n > 0
 }
 
 // clientCanSeeEvidence is the per-document visibility rule for a client

@@ -315,6 +315,8 @@ type verificationResponse struct {
 	Method          string `json:"method"`
 	ReferenceNumber string `json:"referenceNumber"`
 	RecordedByName  string `json:"recordedByName"`
+	// Source is "client" when the couple sent the proof from the portal (ADR-0047).
+	Source string `json:"source"`
 }
 
 // FinanceVerifications is GET /finance/verifications: client payments with
@@ -347,6 +349,7 @@ func (h *Handler) FinanceVerifications(w http.ResponseWriter, r *http.Request) {
 			ID: row.PaymentID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, BrideName: row.BrideName, GroomName: row.GroomName,
 			Type: string(row.Type), Amount: row.Amount, PaymentDate: row.PaymentDate.Format(dateLayout), Method: row.Method,
 			ReferenceNumber: row.ReferenceNumber, RecordedByName: names[row.RecordedByID],
+			Source: string(domain.ClientPayment{SubmittedByClientID: row.SubmittedByClientID}.Source()),
 		})
 	}
 	response.OKPaginated(w, "ok", items, pagination.BuildMeta(params, total).WithSort(sort))

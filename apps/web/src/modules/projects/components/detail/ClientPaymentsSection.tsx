@@ -119,7 +119,19 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   }
 
   const columns: Column<ClientPayment>[] = [
-    { id: "type", header: "Jenis", primary: true, className: "w-32", cell: (p) => <span className="font-medium whitespace-nowrap">{p.type}</span> },
+    {
+      id: "type",
+      header: "Jenis",
+      primary: true,
+      className: "w-32",
+      cell: (p) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-medium whitespace-nowrap">{p.type}</span>
+          {/* Sent from the Client Portal (ADR-0047): the WO still checks the money arrived before verifying. */}
+          {p.source === "client" && <Badge tone="info">Dikirim pasangan</Badge>}
+        </span>
+      ),
+    },
     { id: "date", header: "Tanggal", card: true, className: "w-32 whitespace-nowrap", cell: (p) => formatDate(p.paymentDate) },
     { id: "amount", header: "Nominal", align: "right", card: true, cell: (p) => formatCurrency(p.amount) },
     { id: "method", header: "Metode", className: "whitespace-nowrap", cell: (p) => p.method || "-" },

@@ -142,6 +142,10 @@ type ClientPayment struct {
 	// unknown, e.g. rows from before migration 000065). A primitive reference
 	// into `staff`, never a foreign key.
 	RecordedByStaffID int64
+	// SubmittedByClientID is the client who sent this payment's proof from the
+	// Client Portal (ADR-0047); 0 = staff recorded it. A primitive reference into
+	// `clients`, never a foreign key. Such a payment has no RecordedByStaffID.
+	SubmittedByClientID int64
 	// VerifiedAt/VerifiedByStaffID: a staff member confirmed the money arrived
 	// and the proof matches. A verified payment always has at least one
 	// evidence file and any change to what was paid clears the verification

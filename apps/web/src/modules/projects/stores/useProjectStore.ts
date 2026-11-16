@@ -142,6 +142,7 @@ export interface RawProject {
   description: string;
   isArchived: boolean;
   progress?: RawProgress;
+  coverUrl?: string | null;
 }
 
 function toProgress(raw: RawProgress): ProjectProgress {
@@ -180,6 +181,7 @@ export function toProject(raw: RawProject): Project {
     description: raw.description,
     isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,
+    coverUrl: raw.coverUrl ?? null,
   };
 }
 
@@ -250,6 +252,8 @@ interface RawMilestone {
   targetDate: string;
   completedDate: string | null;
   daysBeforeEvent?: number | null;
+  forClient?: boolean;
+  completedByClient?: boolean;
   evidence?: RawEvidenceRef[] | null;
 }
 
@@ -263,6 +267,8 @@ function toMilestone(raw: RawMilestone): ProjectMilestone {
     targetDate: raw.targetDate,
     completedDate: raw.completedDate,
     daysBeforeEvent: raw.daysBeforeEvent ?? null,
+    forClient: raw.forClient ?? false,
+    completedByClient: raw.completedByClient ?? false,
     evidence: toEvidenceRefs(raw.evidence),
   };
 }
@@ -271,6 +277,7 @@ export interface ProjectMilestoneUpdateFields {
   status: MilestoneStatus;
   targetDate: string;
   completedDate: string;
+  forClient: boolean;
 }
 
 interface RawProjectVendor {
@@ -434,12 +441,11 @@ interface RawClientPayment {
   verifiedAt?: string | null;
   verifiedBy?: { name: string } | null;
   evidence?: RawEvidenceRef[] | null;
-  source?: "client" | "staff";
+  source?: ClientPayment["source"];
 }
 
 function toClientPayment(raw: RawClientPayment): ClientPayment {
   return {
-    source: raw.source === "client" ? "client" : "staff",
     updatedAt: raw.updatedAt ?? "",
     recordedBy: raw.recordedBy?.name ?? null,
     verifiedAt: raw.verifiedAt ?? null,
@@ -453,6 +459,7 @@ function toClientPayment(raw: RawClientPayment): ClientPayment {
     referenceNumber: raw.referenceNumber,
     notes: raw.notes,
     evidenceComplete: raw.evidenceComplete,
+    source: raw.source ?? "staff",
   };
 }
 
@@ -728,6 +735,10 @@ interface ProjectState {
    * payment schedule from it; everything else on the page loads when its tab opens.
    */
   fetchOverview: (projectId: string) => Promise<void>;
+  /** Uploads (or replaces) the Client Portal cover photo; the payload is already compressed (ADR-0047). */
+  saveCover: (projectId: string, file: CompressedFilePayload) => Promise<void>;
+  /** Removes the cover photo: the portal hero falls back to navy. */
+  removeCover: (projectId: string) => Promise<void>;
   /** The server returns fresh progress with every mutation (E8): putting it here keeps the header from going stale. */
   applyProgress: (projectId: string, progress: unknown) => void;
   /** Reloads the overview without clearing what is on screen. */
@@ -1008,6 +1019,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set(await loadOverview(projectId));
   },
 
+  saveCover: async (projectId, file) => {
+    const res = await httpClient.put(API.projects.cover(projectId), file);
+    const coverUrl = (res.data.data as { coverUrl: string | null }).coverUrl;
+    // The cover does not change the project's version (ADR-0047): only this field moves.
+    const current = get().currentProject;
+    if (current?.id === projectId) set({ currentProject: { ...current, coverUrl } });
+  },
+
+  removeCover: async (projectId) => {
+    await httpClient.delete(API.projects.cover(projectId));
+    const current = get().currentProject;
+    if (current?.id === projectId) set({ currentProject: { ...current, coverUrl: null } });
+  },
+
   refreshOverview: async (projectId) => {
     const loaded = await loadOverview(projectId);
     if (get().currentProject?.id === projectId) set(loaded);
@@ -1042,7 +1067,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const existing = get().milestones.find((m) => m.id === milestoneId);
     await httpClient.patch(
       API.projects.milestone(projectId, milestoneId),
-      { status: fields.status, targetDate: fields.targetDate, completedDate: fields.completedDate || null },
+      { status: fields.status, targetDate: fields.targetDate, completedDate: fields.completedDate || null, forClient: fields.forClient },
       { headers: ifMatch(version ?? existing?.updatedAt) },
     );
     await get().fetchMilestones(projectId);

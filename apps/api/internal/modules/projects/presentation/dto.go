@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"strconv"
 	"time"
 
 	"elproof/internal/modules/projects/domain"
@@ -48,6 +49,10 @@ type projectResponse struct {
 	Description string            `json:"description"`
 	IsArchived  bool              `json:"isArchived"`
 	Progress    *progressResponse `json:"progress,omitempty"`
+	// CoverURL is where the Client Portal hero photo streams from
+	// (/api/v1/projects/{id}/cover?v=<unix of the last change>); null when the
+	// project has no cover (ADR-0047).
+	CoverURL *string `json:"coverUrl"`
 	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
 	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
 	UpdatedAt string `json:"updatedAt"`
@@ -61,8 +66,22 @@ func toProjectResponse(p domain.Project) projectResponse {
 		PrepStartDate: p.PrepStartDate.Format(dateLayout),
 		PackageName:   p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
 		PICStaffID: p.PICStaffID, PICSalesStaffID: p.PICSalesStaffID, Description: p.Description, IsArchived: p.IsArchived,
-		UpdatedAt: etag.Format(p.UpdatedAt),
+		CoverURL: coverURL(p), UpdatedAt: etag.Format(p.UpdatedAt),
 	}
+}
+
+// coverURL is the cover photo's address, versioned by when it last changed so a
+// browser never shows a cached old photo after a replace; nil without a cover.
+func coverURL(p domain.Project) *string {
+	if p.CoverPhotoPath == nil {
+		return nil
+	}
+	var v int64
+	if p.CoverUpdatedAt != nil {
+		v = p.CoverUpdatedAt.Unix()
+	}
+	u := "/api/v1/projects/" + strconv.FormatInt(p.ID, 10) + "/cover?v=" + strconv.FormatInt(v, 10)
+	return &u
 }
 
 // venueSummaryResponse is the public-safe subset backing GET
@@ -136,6 +155,10 @@ type milestoneResponse struct {
 	// DaysBeforeEvent is the Jadwal bawaan offset the target follows (H-14 = 14,
 	// H+3 = -3); null when the date is fixed (added or dated by hand). EP-06.
 	DaysBeforeEvent *int `json:"daysBeforeEvent"`
+	// ForClient: a task for the couple, shown on the Client Portal (ADR-0047).
+	ForClient bool `json:"forClient"`
+	// CompletedByClient: the couple marked it done from the portal.
+	CompletedByClient bool `json:"completedByClient"`
 	// Evidence is filled by GET /projects/{id}/milestones (all attachments for
 	// staff, only the ones the client may see for a client); `[]` elsewhere.
 	Evidence []evidenceRefResponse `json:"evidence"`
@@ -148,6 +171,7 @@ func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 	return milestoneResponse{
 		ID: m.ID, SortOrder: m.SortOrder, Name: m.Name, Status: string(m.Status),
 		TargetDate: m.TargetDate.Format(dateLayout), CompletedDate: formatDatePtr(m.CompletedDate), DaysBeforeEvent: m.DaysBeforeEvent,
+		ForClient: m.ForClient, CompletedByClient: m.CompletedByClientID != 0,
 		Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(m.UpdatedAt),
 	}
 }
@@ -279,6 +303,9 @@ type clientPaymentResponse struct {
 	ReferenceNumber  string `json:"referenceNumber"`
 	Notes            string `json:"notes"`
 	EvidenceComplete bool   `json:"evidenceComplete"`
+	// Source is "client" when the couple sent it from the portal, "staff" when
+	// the WO recorded it (ADR-0047).
+	Source string `json:"source"`
 	// RecordedBy is internal: always null for a client principal, and null when
 	// the recorder is unknown or no longer exists.
 	RecordedBy *personRef `json:"recordedBy"`
@@ -297,6 +324,7 @@ func toClientPaymentResponse(p domain.ClientPayment, evidenceComplete bool) clie
 	return clientPaymentResponse{
 		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
 		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
+		Source:     string(p.Source()),
 		VerifiedAt: formatTimePtr(p.VerifiedAt), Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(p.UpdatedAt),
 	}
 }

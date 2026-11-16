@@ -1,6 +1,6 @@
 {
   "generatedBy": "e2e/tests/axe.spec.ts (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa)",
-  "pagesScanned": 76,
+  "pagesScanned": 80,
   "violationsByImpact": {
     "critical": 0,
     "serious": 0,
@@ -290,12 +290,32 @@
       "violations": []
     },
     {
+      "page": "wo/proyek-jadwal",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-jadwal",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
       "page": "wo/proyek-kendala",
       "viewport": "desktop",
       "violations": []
     },
     {
       "page": "wo/proyek-kendala",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-keuangan-vendor",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-keuangan-vendor",
       "viewport": "mobile",
       "violations": []
     },

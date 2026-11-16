@@ -67,7 +67,7 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request, claims staf
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	route := r.Method + " " + r.URL.Path
-	outcome, rec, err := h.idem.Begin(r.Context(), claims.tenantID, claims.staffID, route, key, application.HashRequest(body))
+	outcome, rec, err := h.idem.Begin(r.Context(), claims.tenantID, claims.actorID(), route, key, application.HashRequest(body))
 	if err != nil {
 		writeAppError(w, err)
 		return

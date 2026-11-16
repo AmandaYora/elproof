@@ -347,7 +347,7 @@ func (r *MySQLFinanceRepository) ListVerifications(ctx context.Context, scope do
 	}
 	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT cp.id, cp.project_id, p.name, p.bride_name, p.groom_name, cp.type, cp.amount, cp.payment_date,
-		        COALESCE(cp.method, ''), COALESCE(cp.reference_number, ''), COALESCE(cp.recorded_by_staff_id, 0)`+
+		        COALESCE(cp.method, ''), COALESCE(cp.reference_number, ''), COALESCE(cp.recorded_by_staff_id, 0), COALESCE(cp.submitted_by_client_id, 0)`+
 			from+sort.OrderBy("cp.id")+` LIMIT ? OFFSET ?`,
 		append(args, params.Limit, params.Offset())...)
 	if err != nil {
@@ -359,7 +359,7 @@ func (r *MySQLFinanceRepository) ListVerifications(ctx context.Context, scope do
 		var v domain.VerificationRow
 		var typ string
 		if err := rows.Scan(&v.PaymentID, &v.ProjectID, &v.ProjectName, &v.BrideName, &v.GroomName, &typ, &v.Amount, &v.PaymentDate,
-			&v.Method, &v.ReferenceNumber, &v.RecordedByID); err != nil {
+			&v.Method, &v.ReferenceNumber, &v.RecordedByID, &v.SubmittedByClientID); err != nil {
 			return nil, 0, err
 		}
 		v.Type = domain.PaymentType(typ)

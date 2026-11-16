@@ -53,8 +53,14 @@ type Project struct {
 	PICSalesStaffID int64
 	Description     string
 	IsArchived      bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// CoverPhotoPath is the object-storage key of the Client Portal hero photo
+	// (ADR-0047); nil = no cover. CoverUpdatedAt is when it last changed (the
+	// `?v=` of the cover URL). Neither is part of the PATCH surface: the cover
+	// has its own PUT/DELETE and does not bump the project's version.
+	CoverPhotoPath *string
+	CoverUpdatedAt *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // ProjectRef is a minimal {id, name} projection of a project — backs the
@@ -98,6 +104,12 @@ type ProjectMilestone struct {
 	// H+3 = -3; see MilestoneTarget). nil: the date is fixed — the step was
 	// added by hand or its target was set by hand.
 	DaysBeforeEvent *int
+	// ForClient marks the step as a task for the couple: it shows on the Client
+	// Portal and a client with portal.tasks.complete may mark it done (ADR-0047).
+	ForClient bool
+	// CompletedByClientID is the client who marked it done (0 = staff did, or it
+	// is not completed). A primitive reference into `clients`, never a foreign key.
+	CompletedByClientID int64
 
 	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
 	// the ETag / `updatedAt` of ADR-0036.

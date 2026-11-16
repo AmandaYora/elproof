@@ -12,8 +12,9 @@ without calling the WO for updates.
 - **WO staff** (tenant side) — "WO Console". Three roles: `Owner`, `Admin`, `Staff`. The Owner
   account is special: it is the account created by ElProof's own platform team when the tenant is
   registered, and only the Owner can manage the tenant's ElProof subscription (`Langganan`).
-- **Clients** (the bride/groom/family of a wedding project) — "Client Portal", read-only view of
-  their own project's vendor progress, payments, and issues.
+- **Clients** (the bride/groom/family of a wedding project) — "Client Portal", a mostly read-only view of
+  their own project's vendor progress, payments, and issues (they may send a transfer proof and mark
+  their own tasks done, ADR-0047).
 - **ElProof's own internal team** (SaaS operator) — "Platform Console". Manages tenant onboarding,
   subscription plans, manual subscription activation (bypassing payment when needed), platform
   admin accounts, and platform-wide metrics.
