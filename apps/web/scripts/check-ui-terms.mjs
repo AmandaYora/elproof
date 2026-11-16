@@ -41,7 +41,8 @@ const SKIP_FILES = [/shared\/lib\/labels\.ts$/, /\.d\.ts$/, /\.test\.tsx?$/, /co
 const UPPERCASE_CLASS = /(^|\s)([\w-]+:)*uppercase(?=\s|$)/;
 // Screens being reworked on other branches of the WO Console revamp (2026-11-16): they still carry uppercase labels and are
 // checked once those branches are merged. Remove an entry when its module is clean.
-const UPPERCASE_PENDING = [/^modules\/projects\//, /^modules\/dashboard\//, /^modules\/finance\//, /^modules\/calendar\//];
+// Every console module follows the no-uppercase rule since the WO Console revamp merged (16 Nov 2026).
+const UPPERCASE_PENDING = [];
 
 function* walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
