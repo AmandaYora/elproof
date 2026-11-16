@@ -45,6 +45,7 @@ type Handler struct {
 	overview       *application.OverviewService
 	uploads        *application.UploadService
 	idem           *application.IdempotencyService
+	calendar       *application.CalendarService
 }
 
 func NewHandler(
