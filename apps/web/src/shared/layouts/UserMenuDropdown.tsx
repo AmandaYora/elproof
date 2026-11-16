@@ -20,7 +20,7 @@ export default function UserMenuDropdown({ name, role, collapsed, face, helpUrl 
   const navigate = useNavigate();
   return (
     <DropdownMenu defaultOpen>
-      <DropdownMenuTrigger aria-label={`Menu akun ${name}`} className={USER_BUTTON(collapsed)}>
+      <DropdownMenuTrigger aria-label={collapsed ? `Menu akun ${name}` : undefined} className={USER_BUTTON(collapsed)}>
         {face}
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="min-w-56">

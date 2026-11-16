@@ -156,7 +156,14 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
   const role = grants?.roleName ?? session?.role ?? "";
   const face = <UserButtonFace name={name} role={role} collapsed={collapsed} />;
   const plain = (
-    <button type="button" aria-label={`Menu akun ${name}`} aria-haspopup="menu" onClick={() => setWanted(true)} className={USER_BUTTON(collapsed)}>
+    <button
+      type="button"
+      // The visible name and role are the button's name (WCAG 2.5.3); only the narrow rail, which shows just the avatar, needs a label.
+      aria-label={collapsed ? `Menu akun ${name}` : undefined}
+      aria-haspopup="menu"
+      onClick={() => setWanted(true)}
+      className={USER_BUTTON(collapsed)}
+    >
       {face}
     </button>
   );
