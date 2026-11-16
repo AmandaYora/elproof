@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { PREVIEW_MENU, PREVIEW_TABS } from "@/modules/homepage/components/home/previewTabs";
+import { PREVIEW_MENU, PREVIEW_TAB_CLASS, PREVIEW_TABLIST_CLASS, PREVIEW_TABS } from "@/modules/homepage/components/home/previewTabs";
+import { SAMPLE } from "@/modules/homepage/data/sample";
 import { SampleTag } from "@/modules/homepage/components/home/mock";
 import { cn } from "@/shared/lib/cn";
 
@@ -41,13 +42,14 @@ export function PreviewFallback() {
   return (
     <PreviewWindow
       tabs={
-        <div className="flex gap-1 overflow-x-auto py-2">
+        <div className={PREVIEW_TABLIST_CLASS}>
           {PREVIEW_TABS.map((tab, i) => (
             <span
               key={tab.id}
               className={cn(
-                "inline-flex min-h-11 items-center rounded-lg px-3.5 text-[14px] font-semibold whitespace-nowrap",
-                i === 0 ? "bg-background text-foreground" : "text-muted-foreground",
+                PREVIEW_TAB_CLASS,
+                "border",
+                i === 0 ? "border-border bg-background text-foreground" : "border-transparent text-muted-foreground",
               )}
             >
               {tab.label}
@@ -57,8 +59,10 @@ export function PreviewFallback() {
       }
     >
       <div aria-busy="true" className="p-5 sm:p-6">
-        <p className="text-[20px] font-bold tracking-[-0.02em]">Raka &amp; Dinda</p>
-        <p className="mt-1 text-[14px] text-muted-foreground">Sabtu, 12 Desember 2026, Gedung Sasana Kriya</p>
+        <p className="text-[20px] font-bold tracking-[-0.02em]">{SAMPLE.couple}</p>
+        <p className="mt-1 text-[14px] text-muted-foreground">
+          {SAMPLE.eventDateLong}, {SAMPLE.venue}
+        </p>
       </div>
     </PreviewWindow>
   );

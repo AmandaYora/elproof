@@ -28,7 +28,7 @@ const QUESTIONS = [
   {
     question: "Bagaimana klien melihat perkembangan persiapannya?",
     answer:
-      "Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Klien hanya melihat yang Anda pilih untuk ditampilkan dan tidak bisa mengubah apa pun.",
+      "Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Klien hanya melihat yang Anda pilih untuk ditampilkan; selain itu mereka hanya bisa mengirim bukti transfer dan menandai selesai tugas yang Anda berikan.",
   },
 ];
 

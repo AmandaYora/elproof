@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Container } from "@/modules/homepage/components/Container";
+import { COMPANY, CONTACT } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
 
 export interface LegalSection {
@@ -54,9 +55,9 @@ function useActiveSection(ids: string[]) {
 }
 
 /**
- * Shared reading layout of the legal pages (Syarat & Ketentuan, Kebijakan
- * Privasi, Perjanjian Pemrosesan Data, Kebijakan Refund): a quiet title block,
- * a table of contents (sticky on the left on desktop, a disclosure above the
+ * Shared reading layout of the legal pages (Syarat dan ketentuan, Kebijakan
+ * privasi, Perjanjian pemrosesan data, Kebijakan refund): a quiet title block
+ * naming who provides ElProof (QA FQ-12), a table of contents (sticky on the left on desktop, a disclosure above the
  * text on phones), numbered sections in a ≤70-character column, and a contact
  * note. No entrance animation (ADR-0038): legal text is never hidden.
  */
@@ -89,6 +90,14 @@ export function LegalDocument({ title, updated, intro, sections, closing }: Lega
               {title}
             </h1>
             <p className="mt-4 text-[15px] text-muted-foreground">Terakhir diperbarui: {updated}</p>
+            <p className="mt-3 max-w-[38rem] text-[15px] leading-relaxed text-muted-foreground">
+              ElProof dikelola oleh {COMPANY.name} ({COMPANY.brand}), {CONTACT.address}. Pertanyaan tentang dokumen ini dan
+              pelindungan data pribadi:{" "}
+              <a href={`mailto:${COMPANY.privacyEmail}`} className="font-semibold whitespace-nowrap text-foreground underline underline-offset-4 hover:text-primary-hover">
+                {COMPANY.privacyEmail}
+              </a>{" "}
+              atau WhatsApp <span className="whitespace-nowrap">{CONTACT.phones[0].display}</span>.
+            </p>
             {intro && <div className="mt-5 max-w-[34rem] text-[17px] leading-relaxed text-foreground">{intro}</div>}
           </div>
         </Container>

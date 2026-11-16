@@ -64,11 +64,23 @@ Status (Lunas, Belum dibayar) tetap memakai token status konsol + ikon + teks. H
 
 - **Beranda:** hero (judul + Portal Klien dengan segel) → pita fakta → cara kerja H-180 → hari H (`#cara-kerja`) →
   pratinjau WO Console yang bisa diklik → dua layar, satu catatan (pita plum) → harga (`#harga`) → pertanyaan umum ringkas
-  → ajakan penutup.
-- **Tentang Kami:** satu kolom prosa, tiga prinsip, ajakan.
-- **FAQ:** akordeon berkelompok, setiap pertanyaan punya tautan `#id`.
+  → ajakan penutup. **Satu contoh data** untuk semua ilustrasi (hero, kartu "Cara kerja", pratinjau): `homepage/data/sample.ts`
+  (Raka & Dinda, Sabtu 12 Des 2026, kontrak Rp45.000.000 = uang muka 30% + Termin 2 40% + pelunasan 30%, diverifikasi Rina,
+  dipotret pada H-32). Angka H-, jumlah, dan tanggal diturunkan dari situ; jangan menulis angka contoh langsung di komponen
+  (QA FQ-11). Grid satu kolom di HP memakai `grid-cols-1` (`minmax(0,1fr)`), bukan trek `auto` yang melebar ke baris
+  terpanjang (QA RT-05; dijaga `structure.spec.ts` "no sideways scroll at 360 and 375 px").
+- **Tentang kami:** satu kolom prosa, tiga prinsip, ajakan.
+- **FAQ:** akordeon berkelompok, setiap pertanyaan punya tautan `#id`. Tidak menyebut nama paket atau harga (halaman
+  diprarender; paket yang dijual dibaca langsung oleh bagian Harga, QA FQ-10).
 - **Kontak:** WhatsApp dengan pesan terisi, email, jam layanan, alamat; tanpa formulir pajangan.
-- **Halaman hukum:** tata letak baca, daftar isi lengket (desktop) / lipat (HP), teks hukum tidak diubah.
+- **Halaman hukum:** tata letak baca, daftar isi lengket (desktop) / lipat (HP). Di bawah judul selalu ada penyelenggara
+  (`COMPANY` + `CONTACT` di `homepage/data/contact.ts`: PT Prayora Karya Pratama (Elcodelabs), alamat, kontak pelindungan
+  data; QA FQ-12). Istilah mengikuti glosarium aplikasi (proyek, klien, jadwal/tahapan, progres, baca-saja, Portal Klien,
+  anggota tim, workspace; "Owner" tetap karena nama peran terkunci) dan didefinisikan sekali di Syarat dan ketentuan §1
+  (QA FQ-09); `check:terms` juga memindai paragraf `body: [...]`.
+- **Nama halaman:** sentence case dan satu sumber: judul di `PUBLIC_PAGES` dipakai tab, h1 halaman hukum, tautan menu dan
+  footer, sitemap, dan Open Graph ("Tentang kami", "Syarat dan ketentuan", "Kebijakan privasi", "Perjanjian pemrosesan
+  data", "Kebijakan refund"; QA FQ-14).
 - **Masuk, Daftar, Siapkan workspace, Undangan:** `AuthSplitLayout` — panel plum dengan foto dari Platform Console (segel bila
   tidak ada foto), formulir di kanan; h1 di kolom formulir.
 

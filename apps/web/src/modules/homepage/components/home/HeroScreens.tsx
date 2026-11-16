@@ -1,56 +1,37 @@
 import { CircleAlert, Clock3 } from "lucide-react";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
-import { MockItem, PhoneFrame, ProgressRing, StatusChip } from "@/modules/homepage/components/home/mock";
+import { MockItem, PhoneFrame, ProgressBar, ProgressRing, StatusChip } from "@/modules/homepage/components/home/mock";
+import { SAMPLE } from "@/modules/homepage/data/sample";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { cn } from "@/shared/lib/cn";
 
 /*
- * The hero's product picture (example data): the WO Console the team works in,
- * and in front of it the Client Portal the couple opens from WhatsApp. One
- * payment, "Termin 2", is verified in the Console and carries the same gold seal
- * on the phone: the brand's promise drawn once. Plain HTML in the page chunk, so
- * it is in the prerendered page; the seal is pressed once by CSS (.seal-press).
+ * The hero's product picture (example data from data/sample.ts): the WO Console
+ * the team works in, and in front of it the Client Portal the couple opens from
+ * WhatsApp. One payment, "Termin 2", is verified in the Console and carries the
+ * same gold seal on the phone: the brand's promise drawn once. Plain HTML in the
+ * page chunk, so it is in the prerendered page; the seal is pressed once by CSS
+ * (.seal-press).
  */
 
 const MENU = ["Beranda", "Proyek", "Klien", "Vendor", "Venue"];
 
-const PAYMENTS = [
-  {
-    label: "Uang muka",
-    amount: 15_000_000,
-    state: "done" as const,
-    note: "Diverifikasi Rina, 2 Agu",
-  },
-  {
-    label: "Termin 2",
-    amount: 20_000_000,
-    state: "sealed" as const,
-    note: "Diverifikasi Rina, 4 Nov",
-  },
-  {
-    label: "Pelunasan",
-    amount: 10_000_000,
-    state: "due" as const,
-    note: "Jatuh tempo 5 Des",
-  },
-];
+const SEALED = SAMPLE.term("t2");
+const DUE = SAMPLE.term("lunas");
 
-const UPCOMING = [
-  {
-    name: "Konfirmasi menu tasting",
-    who: "Katering Rasa Nusantara",
-    when: "Besok",
-  },
-  { name: "Fitting baju kedua", who: "Sanggar Kebaya Laras", when: "H-21" },
-  { name: "Technical meeting", who: "Semua vendor", when: "H-14" },
-];
+const PAYMENTS = SAMPLE.terms.map((t) => ({
+  label: t.label,
+  amount: t.amount,
+  state: t === SEALED ? ("sealed" as const) : t.paid ? ("done" as const) : ("due" as const),
+  note: t.paid ? `Diverifikasi ${t.verifiedShort}` : `Jatuh tempo ${t.dueShort}`,
+}));
 
 function ConsoleWindow() {
   return (
     <div className="overflow-hidden rounded-[14px] border border-border bg-card text-[13px] leading-snug text-foreground shadow-[0_30px_60px_-30px] shadow-primary/40">
       <div className="flex h-10 items-center justify-between border-b border-border bg-muted px-4">
         <p className="text-[12.5px] font-bold">WO Console</p>
-        <p className="text-[12px] text-muted-foreground">Proyek / Raka &amp; Dinda</p>
+        <p className="text-[12px] text-muted-foreground">Proyek / {SAMPLE.couple}</p>
       </div>
       <div className="grid grid-cols-[132px_1fr]">
         <div className="border-r border-border px-2.5 py-3">
@@ -69,33 +50,35 @@ function ConsoleWindow() {
         <div className="min-w-0 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[17px] font-bold tracking-[-0.02em]">Raka &amp; Dinda</p>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">Sabtu, 12 Desember 2026, Gedung Sasana Kriya</p>
+              <p className="text-[17px] font-bold tracking-[-0.02em]">{SAMPLE.couple}</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                {SAMPLE.eventDateLong}, {SAMPLE.venue}
+              </p>
             </div>
             <span className="rounded-full bg-accent px-2.5 py-1 text-[12px] font-semibold text-accent-foreground tabular-nums">
-              H-32
+              {SAMPLE.countdown}
             </span>
           </div>
 
           <div className="mt-3.5 grid grid-cols-3 gap-2.5">
             <div className="rounded-lg border border-border p-2.5">
               <p className="text-[11.5px] text-muted-foreground">Tahapan</p>
-              <p className="mt-0.5 font-bold tabular-nums">18 dari 24</p>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full w-3/4 rounded-full bg-primary" />
-              </div>
+              <p className="mt-0.5 font-bold tabular-nums">
+                {SAMPLE.milestones.done} dari {SAMPLE.milestones.total}
+              </p>
+              <ProgressBar done={SAMPLE.milestones.done} total={SAMPLE.milestones.total} trackClassName="text-muted" className="mt-1.5 h-1.5" />
             </div>
             <div className="rounded-lg border border-border p-2.5">
               <p className="text-[11.5px] text-muted-foreground">Sudah dibayar</p>
-              <p className="mt-0.5 font-bold tabular-nums">{formatCurrency(35_000_000)}</p>
-              <p className="text-[11.5px] text-muted-foreground tabular-nums">dari {formatCurrency(45_000_000)}</p>
+              <p className="mt-0.5 font-bold tabular-nums">{formatCurrency(SAMPLE.paidTotal)}</p>
+              <p className="text-[11.5px] text-muted-foreground tabular-nums">dari {formatCurrency(SAMPLE.contract)}</p>
             </div>
             <div className="rounded-lg border border-border p-2.5">
               <p className="text-[11.5px] text-muted-foreground">Kendala terbuka</p>
               <p className="mt-0.5 flex items-center gap-1 font-bold">
                 <CircleAlert aria-hidden className="size-3.5 text-warning" /> 1
               </p>
-              <p className="text-[11.5px] text-muted-foreground">Jadwal loading venue</p>
+              <p className="text-[11.5px] text-muted-foreground">{SAMPLE.issue.short}</p>
             </div>
           </div>
 
@@ -133,7 +116,7 @@ function ConsoleWindow() {
             <div className="hidden lg:block">
               <p className="text-[12.5px] font-semibold">Tahapan berikutnya</p>
               <ul className="mt-1.5 divide-y divide-border rounded-lg border border-border">
-                {UPCOMING.map((m) => (
+                {SAMPLE.upcoming.map((m) => (
                   <li key={m.name} className="flex h-[50px] items-center justify-between gap-3 px-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{m.name}</p>
@@ -154,35 +137,37 @@ function ConsoleWindow() {
 function PortalPhone() {
   return (
     <PhoneFrame screenClassName="px-4 py-5">
-      <p className="text-[12px] text-muted-foreground">Portal Klien, Raka &amp; Dinda</p>
-      <p className="mt-1 text-[19px] leading-tight font-bold tracking-[-0.02em]">32 hari menuju hari H</p>
+      <p className="text-[12px] text-muted-foreground">Portal Klien, {SAMPLE.couple}</p>
+      <p className="mt-1 text-[19px] leading-tight font-bold tracking-[-0.02em]">{SAMPLE.daysLeft} hari menuju hari H</p>
       <div className="my-3.5 flex items-center gap-3">
-        <ProgressRing done={18} total={24} size={52} />
+        <ProgressRing done={SAMPLE.milestones.done} total={SAMPLE.milestones.total} size={52} />
         <div>
-          <p className="text-[13.5px] font-bold">18 dari 24 tahapan selesai</p>
-          <p className="text-[12px] text-muted-foreground">Terakhir: tasting katering</p>
+          <p className="text-[13.5px] font-bold">
+            {SAMPLE.milestones.done} dari {SAMPLE.milestones.total} tahapan selesai
+          </p>
+          <p className="text-[12px] text-muted-foreground">Terakhir: {SAMPLE.lastDone.name.toLowerCase()}</p>
         </div>
       </div>
       <MockItem
         className="relative border-seal bg-seal-soft pr-[72px]"
         title={
           <>
-            Termin 2 <span className="tabular-nums">{formatCurrency(20_000_000)}</span>
+            {SEALED.label} <span className="tabular-nums">{formatCurrency(SEALED.amount)}</span>
           </>
         }
-        detail={<span className="text-seal-text">Lunas, diverifikasi Rina 4 Nov</span>}
+        detail={<span className="text-seal-text">Lunas, diverifikasi {SEALED.verifiedShort}</span>}
       >
         <ProofSeal size={56} className="seal-press absolute top-1/2 right-2 -mt-7 text-seal" />
       </MockItem>
       <MockItem
         title={
           <>
-            Pelunasan <span className="tabular-nums">{formatCurrency(10_000_000)}</span>
+            {DUE.label} <span className="tabular-nums">{formatCurrency(DUE.amount)}</span>
           </>
         }
       >
         <StatusChip tone="warning" className="mt-2">
-          Jatuh tempo 5 Des 2026
+          Jatuh tempo {DUE.dueLabel}
         </StatusChip>
       </MockItem>
     </PhoneFrame>

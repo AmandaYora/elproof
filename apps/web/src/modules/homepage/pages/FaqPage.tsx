@@ -22,8 +22,9 @@ interface Faq {
   answer: ReactNode;
 }
 
-// What a WO weighing ElProof asks first. Every fact here comes from the product or the legal pages (Syarat &
-// Ketentuan §4–§6, Kebijakan Refund, Kebijakan Privasi); change both together.
+// What a WO weighing ElProof asks first. Every fact here comes from the product or the legal pages (Syarat dan
+// ketentuan §4–§6, Kebijakan refund, Kebijakan privasi); change both together. Nothing here names a plan or a price:
+// this page is prerendered, while the plans on sale are read live by the Harga section (QA FQ-10).
 const GROUPS: { id: string; title: string; items: Faq[] }[] = [
   {
     id: "tentang-elproof",
@@ -47,7 +48,7 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
           <>
             Untuk usaha wedding organizer yang ingin persiapan setiap pernikahan tercatat rapi dan bisa ditunjukkan ke
             klien. Setiap usaha punya satu workspace; pemiliknya menambahkan anggota tim dan mengatur peran serta
-            aksesnya. Pasangan klien cukup membaca lewat Portal Klien.
+            aksesnya. Pasangan klien cukup membuka Portal Klien.
           </>
         ),
       },
@@ -102,8 +103,9 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
             <Link to={`${ROUTE_PATHS.homepage}#harga`} className={linkClass}>
               bagian Harga di Beranda
             </Link>
-            . Paket dibedakan menurut lama masa aktifnya, dan semua fitur yang tercantum di paket sudah termasuk dalam
-            harga. Yang berlaku adalah harga yang tampil saat tagihan dibuat.
+            , lengkap dengan masa aktif dan fitur yang termasuk di setiap paket yang sedang tersedia. Semua fitur yang
+            tercantum di paket sudah termasuk dalam harganya, dan yang berlaku adalah harga yang tampil saat tagihan
+            dibuat.
           </>
         ),
       },
@@ -138,7 +140,7 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
             Bisa, dalam kondisi tertentu — misalnya kesalahan penagihan sistem. Syarat, kondisi yang tidak bisa
             direfund, dan cara mengajukannya ada di{" "}
             <Link to={ROUTE_PATHS.homepageRefund} className={linkClass}>
-              Kebijakan Refund
+              Kebijakan refund
             </Link>
             .
           </>
@@ -158,7 +160,7 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
             Data setiap usaha terpisah penuh dan tidak bisa diakses dari akun usaha lain. Akses juga dibatasi per peran
             (tim, klien, admin ElProof), jadi setiap pihak hanya melihat data yang menjadi haknya. Rinciannya ada di{" "}
             <Link to={ROUTE_PATHS.homepagePrivacy} className={linkClass}>
-              Kebijakan Privasi
+              Kebijakan privasi
             </Link>
             .
           </>
@@ -191,8 +193,9 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
           <>
             Lewat Portal Klien, yang dibuka dari tautan WhatsApp di HP tanpa memasang aplikasi. Anda mengirim tautan
             undangan ke nomor WhatsApp klien; dari situ klien membuat kata sandinya sendiri, lalu melihat tahapan
-            persiapan, tagihan, dan buktinya — hanya yang Anda pilih untuk ditampilkan. Klien hanya bisa membaca,
-            tidak bisa mengubah apa pun.
+            persiapan, tagihan, dan buktinya — hanya yang Anda pilih untuk ditampilkan. Selain melihat, klien hanya bisa
+            mengirim bukti transfer dan menandai selesai tugas yang Anda berikan; bukti transfer itu baru dihitung
+            setelah tim Anda memverifikasinya.
           </>
         ),
       },
