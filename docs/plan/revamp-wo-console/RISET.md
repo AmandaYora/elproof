@@ -176,6 +176,72 @@ dan terlalu banyak teks sekunder, kotak-kotak dengan bobot sama (terutama Berand
 membungkus dan berganti gaya. Ketiganya bisa diperbaiki dengan aturan 7.3 tanpa mengganti kit atau palet, dan sebaiknya
 dikerjakan **bersama** Tahap A–B (bagian 6) supaya setiap layar hanya disentuh sekali.
 
+### 7.7 Kalender (riset layar, 16 Nov 2026)
+
+**Kasus.** *Subjek:* tanggal yang menentukan kerja WO dari semua proyek — hari acara, tahapan jadwal yang belum selesai, dan
+jatuh tempo termin klien. *Audiens:* pemilik/admin di laptop (merencanakan bulan, melihat uang yang akan masuk) dan planner
+di HP (cek cepat minggu ini di lapangan). *Tugas utama:* "Acara apa saja bulan ini, apa yang jatuh tempo minggu ini, dan
+mana yang sudah terlambat?" terjawab dalam beberapa detik, lalu satu klik ke proyeknya.
+
+**Temuan → keputusan**
+
+| Temuan | Keputusan |
+|---|---|
+| Aisle Planner (desain ulang Agu 2025) menyatukan acara, tugas, dan jatuh tempo pembayaran dalam satu kalender akun; pembayaran baca-saja dengan pintasan ke record asalnya; butir hanya tampil bila punya tanggal dan pengguna berhak melihatnya [aisle-cal][aisle-help] | Satu kalender berisi tiga jenis butir; kalender **tidak mengubah apa pun**, setiap butir membuka tab proyek yang tepat (acara → Ringkasan, tahapan → Jadwal, termin → Keuangan). Cakupan per peran dari API, sama dengan daftar Proyek |
+| HoneyBook menampilkan tanggal proyek dan pembayaran di kalender yang sama, pembayaran bisa disembunyikan; di HP jenis dibedakan dengan titik warna [honeybook-cal] | Saringan **Jenis** (Hari acara · Tahapan · Termin) dan **PIC**. Jenis dibedakan dengan **ikon + teks + bentuk**, bukan warna saja (DESIGN T5) |
+| Kisi bulan di HP: kolom terlalu sempit, judul butir hilang jadi titik; daftar kronologis lebih mudah dibaca di layar kecil; pustaka kalender memakai titik henti ±700 px untuk menukar tampilan [teamup-views][schedulex-views] | **Bulan** di desktop, **Agenda** (daftar per hari) bawaan di < 768 px; pengguna bisa berpindah, pilihan tersimpan di URL (`?tampilan=`) |
+| Google Calendar dan kalender desktop umumnya menampilkan beberapa butir per hari lalu "+N lainnya" | Maks. 3 butir per sel; sisanya "+N lainnya" membuka panel hari (Drawer, dimuat saat diklik) berisi semua butir hari itu |
+| APG: kisi tanggal = `role="grid"`, satu titik Tab, panah memindah hari, PageUp/PageDown ganti bulan, judul bulan sebagai nama kisi [apg-datepicker]. Roselli: tabel biasa cukup, naikkan ke `grid` hanya bila ada navigasi panah antar-sel atau sel berisi tautan [roselli-cal] | Kisi bulan = `<table role="grid">` dengan **roving tabindex** di sel hari: panah, Home/End (awal/akhir minggu), PageUp/PageDown (bulan sebelumnya/berikutnya), Enter/Spasi membuka panel hari berisi tautan butir. Chip di dalam sel adalah pintasan tetikus (`tabindex=-1`) supaya satu bulan tidak menjadi ±90 titik Tab; tampilan **Agenda** adalah alternatif linear yang setara (judul per hari + daftar tautan). Nama hari lengkap untuk pembaca layar, singkatan untuk mata |
+
+**Elemen khas.** Hari acara adalah jangkar bulan: satu-satunya chip **terisi navy** dengan ikon cincin (permata) dan nama
+pasangan; tahapan = chip netral bergaris; termin = latar status lembut + ikon + teks status ("Terlambat", "Lunas"). Emas tidak
+dipakai (hanya untuk bukti, §4.2 DESIGN.md). Hari ini = angka dalam lingkaran navy; tanggal di luar bulan memudar.
+
+**Token & rupa (memakai 7.3).** Judul 24/600 (PageHeader); nama bulan 16/600; angka tanggal 13 `tabular-nums`; chip 12/500,
+tinggi 22 px, radius 6, satu baris dipotong elipsis + `title`. Sel bulan minimal 112 px tinggi; garis `--border` antar sel,
+tanpa kartu di dalam kartu. Termin memakai token status `-soft` + `-text` (kontras ≥ 4,5:1, DESIGN §4.2). Tanpa tema gelap
+(DESIGN §10, tidak diadopsi). Gerak hanya transisi hover 120 ms, hilang di `prefers-reduced-motion` (aturan global theme.css).
+
+**Wireframe**
+
+```
+Desktop (≥ 1024)
+Kalender                                   [‹] November 2026 [›] [Hari ini]   [Bulan|Agenda]
+Jenis: [◆ Hari acara ✓] [☐ Tahapan ✓] [Rp Termin ✓]   PIC [Semua PIC ▾]        12 agenda bulan ini
+┌ Sen ─┬ Sel ─┬ Rab ─┬ Kam ─┬ Jum ─┬ Sab ─────────┬ Min ─┐
+│ 26   │ 27   │ …    │      │      │ 1            │ 2    │
+│      │      │      │      │      │[◆ Citra&Bima]│      │  ← navy terisi
+│ 9    │ 10   │      │      │      │              │ (16) │  ← hari ini
+│      │[!Termin 2·Terlambat] │    │              │      │  ← status lembut + ikon
+│      │[☐ Fitting baju]     │     │ +2 lainnya   │      │
+└──────┴──────┴──────┴──────┴──────┴──────────────┴──────┘
+
+HP (375, Agenda bawaan)
+Kalender
+[‹] November 2026 [›]  [Hari ini]
+[Bulan|Agenda]   [Saring (1)]
+Sab, 21 Nov · H-5
+  ◆ Hari H · Citra & Bima        Persiapan
+  ! Termin 2 · Rp40 jt           Terlambat
+Sen, 23 Nov
+  ☐ Fitting baju · Ayu & Dimas   Berjalan
+```
+
+**Keadaan.** Memuat: kerangka kisi/daftar (tanpa kedip data lama). Galat: `LoadError` + Coba lagi. Bulan kosong: kisi tetap
+tampil (orientasi tanggal) dengan pesan di atasnya "Tidak ada agenda di November 2026" + tombol ke bulan berikutnya yang berisi
+bila filter tidak aktif; bila filter aktif: "Reset filter".
+
+**Aksesibilitas.** Kisi: `aria-labelledby` ke judul bulan (`aria-live="polite"` agar ganti bulan diumumkan), `aria-current="date"`
+di hari ini, sel di luar bulan tetap terfokus (tanggal tetap bisa dicapai). Saringan jenis = tombol `aria-pressed`. Target
+≥ 24 px (≥ 44 px di layar sentuh). Status termin selalu ikon + teks.
+
+**Hasil putaran kritik (setelah dibangun, potret 1440 px dan iPhone 13).** (1) Nama aksesibel chip dimulai dengan teks yang
+terlihat lalu menambah termin/nominal sebagai teks tersembunyi (axe `label-content-name-mismatch`, WCAG 2.5.3); di HP teks chip
+hanya disembunyikan secara visual. (2) Cincin fokus sel memakai `:focus`, bukan `:focus-visible`: fokus yang dipindah skrip
+setelah tombol panah tidak selalu dianggap *focus-visible* oleh peramban. (3) Ringkasan bulan hanya menyebut bagian yang
+bukan nol. (4) Baris hari acara tidak mengulang status dua kali. (5) Sel bulan di HP 64 px tinggi (chip jadi ikon saja).
+Tanpa tema gelap: ElProof tidak punya tema gelap (DESIGN §10), jadi tidak diverifikasi.
+
 ## Sumber (diakses 16 Nov 2026)
 
 - [nng-vnav] NN/g, Left-Side Vertical Navigation on Desktop — https://www.nngroup.com/articles/vertical-nav/
@@ -206,3 +272,9 @@ dikerjakan **bersama** Tahap A–B (bagian 6) supaya setiap layar hanya disentuh
 
 Catatan: sebagian sumber adalah blog vendor/design system (dipakai sebagai praktik umum, bukan standar). Bukti utama adalah
 pengamatan langsung atas potret WO Console dan kode menu/rute.
+- [aisle-help] Aisle Planner Help, AP Connect integrated account calendar — https://help.aisleplanner.com/en/articles/11786770-ap-connect-integrated-account-calendar
+- [honeybook-cal] HoneyBook Help Center, Your HoneyBook calendar — https://help.honeybook.com/en/articles/3444494-your-honeybook-calendar
+- [teamup-views] Teamup, How to use calendar views on Teamup mobile apps — https://calendar.teamup.com/kb/how-to-use-calendar-views-on-teamup-mobile-apps/
+- [schedulex-views] Schedule-X, Calendar views (small-screen views, 700 px breakpoint) — https://schedule-x.dev/docs/calendar/views
+- [apg-datepicker] W3C WAI-ARIA APG, Date Picker Dialog example (grid, keyboard) — https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/examples/datepicker-dialog/
+- [roselli-cal] Adrian Roselli, Brief Note on Calendar Tables (2022) — https://adrianroselli.com/2022/08/brief-note-on-calendar-tables.html
