@@ -306,7 +306,7 @@ export default function ProjectCreatePage() {
               <section aria-labelledby="venue-heading" className="flex flex-col gap-4">
                 <div>
                   <h2 id="venue-heading" className="text-[15px] font-semibold text-text-primary">Venue</h2>
-                  <p className="mt-0.5 text-[13px] text-text-secondary">Pilih dari direktori venue, atau lewati dan atur nanti dari tab Venue.</p>
+                  <p className="mt-0.5 text-[13px] text-text-secondary">Pilih dari direktori venue, atau lewati dan atur nanti dari tab Vendor & venue.</p>
                 </div>
                 <Field label="Venue dari direktori" name="venueId" error={venueErrors.venueId}>
                   <Select value={venueId} onChange={(e) => pickVenue(e.target.value)}>

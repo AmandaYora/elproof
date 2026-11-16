@@ -65,7 +65,7 @@ test("a payment and its proof are one call: a failure keeps the drawer open with
     if (r.method() === "POST" || r.method() === "PUT") posts.push({ url: r.url(), method: r.method(), key: r.headers()["idempotency-key"], body: r.postData() });
   });
 
-  await visit(page, `/proyek/${projectId}/pembayaran/client`);
+  await visit(page, `/proyek/${projectId}/keuangan/klien`);
   await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
   const drawer = page.getByRole("dialog");
   await expect(drawer).toBeVisible();
@@ -120,7 +120,7 @@ test("a JPG transfer proof is saved, and a file only named .jpg is refused under
   expect(made.status()).toBe(201);
   const projectId = ((await made.json()).data as { id: number }).id;
 
-  await visit(page, `/proyek/${projectId}/pembayaran/client`);
+  await visit(page, `/proyek/${projectId}/keuangan/klien`);
   await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
   const drawer = page.getByRole("dialog");
   await drawer.getByLabel(/Nominal/).fill("1000000");

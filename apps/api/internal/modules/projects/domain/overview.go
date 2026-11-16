@@ -3,7 +3,9 @@ package domain
 import (
 	"sort"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 )
 
 // Pure rules behind GET /projects/{id}/overview (E1): what needs attention on a
@@ -29,11 +31,25 @@ const (
 
 // Tab names are the project detail tabs an action links to.
 const (
-	TabClientPayments = "pembayaran/client"
+	TabClientPayments = "keuangan/klien"
 	TabIssues         = "kendala"
 	TabVendors        = "vendor"
-	TabMilestones     = "milestone"
+	TabMilestones     = "jadwal"
 )
+
+// TermLabel names an installment in a sentence: "Termin DP", but a label that
+// already says "Termin 2" stays as it is (never "Termin Termin 2").
+func TermLabel(label string) string {
+	trimmed := strings.TrimSpace(label)
+	const word = "termin"
+	if len(trimmed) >= len(word) && strings.EqualFold(trimmed[:len(word)], word) {
+		// Only the whole word: "Termin 2", "termin-3", not "Terminal".
+		if rest := trimmed[len(word):]; rest == "" || !unicode.IsLetter([]rune(rest)[0]) {
+			return trimmed
+		}
+	}
+	return "Termin " + trimmed
+}
 
 // ProjectAction is one item of "Perlu tindakan".
 type ProjectAction struct {
@@ -70,7 +86,7 @@ func BuildProjectActions(in ActionInput) []ProjectAction {
 		}
 		items = append(items, ProjectAction{
 			Kind: ActionTermOverdue, ID: "term-" + strconv.FormatInt(t.Term.ID, 10), Tone: ActionToneDanger,
-			Title:  "Termin " + t.Term.Label + " terlambat",
+			Title:  TermLabel(t.Term.Label) + " terlambat",
 			Detail: "Sisa " + FormatRupiah(t.Remaining) + ", jatuh tempo " + FormatDateID(t.Term.DueDate),
 			Tab:    TabClientPayments,
 		})

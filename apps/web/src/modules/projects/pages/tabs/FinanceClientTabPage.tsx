@@ -3,7 +3,7 @@ import { ClientPaymentsSection } from "@/modules/projects/components/detail/Clie
 import { PaymentTermsSection } from "@/modules/projects/components/detail/PaymentTermsSection";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 
-export default function PembayaranClientTabPage() {
+export default function FinanceClientTabPage() {
   const { projectId } = useOutletContext<ProjectDetailContext>();
   return (
     <div className="flex flex-col gap-5">

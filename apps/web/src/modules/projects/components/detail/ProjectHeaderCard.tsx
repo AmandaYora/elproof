@@ -1,15 +1,14 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { useNavigate } from "react-router-dom";
-import { Pencil, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban } from "lucide-react";
-import { Card, CardContent } from "@/shared/components/ui/Card";
+import { Pencil, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban, CalendarDays, Package, UserRound, MapPin, type LucideIcon } from "lucide-react";
+import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { ActionMenu } from "@/shared/components/ui/ActionMenu";
 import { Modal } from "@/shared/components/ui/Modal";
-import { ProgressMeter, type ProgressMeterStatus } from "@/shared/components/ui/ProgressMeter";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
-import { ProjectStatusBadge, ConditionBadge } from "@/modules/projects/components/StatusBadges";
+import { ProjectStatusBadge } from "@/modules/projects/components/StatusBadges";
 import { ProjectFormModal } from "@/modules/projects/components/ProjectFormModal";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
@@ -79,19 +78,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     return <div className="text-sm text-text-secondary">Proyek tidak ditemukan.</div>;
   }
 
-  const progress = project.progress;
-  // One notch per timeline item, in the order done > in progress > blocked > not started: the counts come with the project.
-  const segments: Array<{ status: ProgressMeterStatus }> = progress
-    ? (["Completed", "In Progress", "Blocked", "Not Started"] as const).flatMap((status) => {
-        const key = { Completed: "completed", "In Progress": "inProgress", Blocked: "blocked", "Not Started": "notStarted" }[status] as "completed" | "inProgress" | "blocked" | "notStarted";
-        return Array.from({ length: progress.projectMilestoneStats[key] + progress.vendorMilestoneStats[key] }, () => ({ status }));
-      })
-    : [];
-  const totalMilestones = (progress?.projectMilestoneStats.total ?? 0) + (progress?.vendorMilestoneStats.total ?? 0);
-  const completedMilestones = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
   const d = daysUntil(project.eventDate);
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
   const lifecycle = LIFECYCLE_ACTION[project.status];
+  const picName = overview?.team.picName || project.picName;
 
   // The two form handlers throw on failure so the modal can show the
   // message next to the form, with what the user typed still in place.
@@ -218,104 +208,85 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   }
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-5 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold text-text-primary">{project.name}</h1>
-              <ProjectStatusBadge status={project.status} />
-              {project.isArchived && <Badge tone="neutral">Diarsipkan</Badge>}
-            </div>
-            <p className="mt-1 text-[13px] text-text-secondary">
-              {project.brideName} &amp; {project.groomName} · {project.venue}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {canEdit && lifecycle && (
-              <Button
-                variant={lifecycle.primary ? "primary" : "secondary"}
-                size="sm"
-                disabled={transitioning}
-                onClick={() => (lifecycle.action === "complete" ? void openClosing() : void handleTransition(lifecycle.action, lifecycle.done))}
-              >
-                {transitioning ? "Memproses..." : lifecycle.label}
-              </Button>
-            )}
-            {canEdit && (
-              <Button variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => {
+    <header className="flex flex-col gap-3">
+      <Breadcrumbs items={[{ label: "Proyek", to: ROUTE_PATHS.projects }, { label: project.name }]} />
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h1 className="min-w-0 truncate text-[24px] leading-tight font-semibold tracking-[-0.02em] text-foreground">{project.name}</h1>
+          <ProjectStatusBadge status={project.status} />
+          {project.isArchived && <Badge tone="neutral">Diarsipkan</Badge>}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {canEdit && lifecycle && (
+            <Button
+              variant={lifecycle.primary ? "primary" : "secondary"}
+              size="sm"
+              disabled={transitioning}
+              onClick={() => (lifecycle.action === "complete" ? void openClosing() : void handleTransition(lifecycle.action, lifecycle.done))}
+            >
+              {transitioning ? "Memproses..." : lifecycle.label}
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-label="Ubah proyek"
+              icon={<Pencil className="h-3.5 w-3.5" />}
+              onClick={() => {
                 setEditVersion(project?.updatedAt);
                 setEditOpen(true);
-              }}>
-                Ubah proyek
-              </Button>
-            )}
-            <ActionMenu
-              items={[
-                { label: "Duplikat proyek", icon: <Copy className="h-4 w-4" />, onSelect: () => setDuplicateOpen(true), hidden: !canDuplicate },
-                {
-                  label: project.isArchived ? "Pulihkan dari arsip" : "Arsipkan",
-                  icon: project.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />,
-                  onSelect: () => void handleToggleArchive(),
-                  hidden: !canArchive,
-                },
-                { label: "Batalkan proyek", icon: <Ban className="h-4 w-4" />, tone: "danger", onSelect: () => setConfirmingCancel(true), hidden: !(canEdit && isOpenProject) },
-                {
-                  label: "Hapus permanen",
-                  icon: <Trash2 className="h-4 w-4" />,
-                  tone: "danger",
-                  onSelect: () => setConfirmingDelete(true),
-                  hidden: !(canDelete && (project.isArchived || project.status === "Cancelled")),
-                },
-              ]}
-            />
-          </div>
-        </div>
-
-        {actionError && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
-        )}
-
-        <div className="grid grid-cols-2 gap-4 border-t border-border-light pt-4 sm:grid-cols-3 lg:grid-cols-5">
-          <InfoField label="Tanggal acara" value={formatDate(project.eventDate)} />
-          <InfoField
-            label="Countdown"
-            value={isOpenProject ? formatDayCountdown(d) : project.status === "Completed" ? "Selesai" : "Dibatalkan"}
-            emphasize
+              }}
+            >
+              Ubah
+            </Button>
+          )}
+          <ActionMenu
+            items={[
+              { label: "Duplikat proyek", icon: <Copy className="h-4 w-4" />, onSelect: () => setDuplicateOpen(true), hidden: !canDuplicate },
+              {
+                label: project.isArchived ? "Pulihkan dari arsip" : "Arsipkan",
+                icon: project.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />,
+                onSelect: () => void handleToggleArchive(),
+                hidden: !canArchive,
+              },
+              { label: "Batalkan proyek", icon: <Ban className="h-4 w-4" />, tone: "danger", onSelect: () => setConfirmingCancel(true), hidden: !(canEdit && isOpenProject) },
+              {
+                label: "Hapus permanen",
+                icon: <Trash2 className="h-4 w-4" />,
+                tone: "danger",
+                onSelect: () => setConfirmingDelete(true),
+                hidden: !(canDelete && (project.isArchived || project.status === "Cancelled")),
+              },
+            ]}
           />
-          <InfoField label="Tanggal booking" value={formatDate(project.prepStartDate)} />
-          <InfoField label="Paket / Layanan" value={project.packageName} />
-          <InfoField label="Nilai kontrak" value={formatCurrency(project.contractValue)} />
-          {overview?.finance.margin !== undefined && <InfoField label="Margin" value={formatCurrency(overview.finance.margin)} />}
         </div>
+      </div>
 
-        {project.description && (
-          <p className="rounded-md bg-surface-muted px-4 py-3 text-[13px] text-text-secondary">{project.description}</p>
+      {/* One quiet row of properties (Linear's record header): when, what, who, where. The facts in full are on Ringkasan. */}
+      <ul aria-label="Data utama proyek" className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-muted-foreground">
+        <Property icon={CalendarDays} label="Tanggal acara">
+          <span className="text-foreground">{formatDate(project.eventDate)}</span>
+          {isOpenProject && <span className="ml-1.5 font-semibold tabular-nums text-highlight-text">{formatDayCountdown(d)}</span>}
+        </Property>
+        {project.packageName && (
+          <Property icon={Package} label="Paket">
+            {project.packageName}
+          </Property>
         )}
+        <Property icon={UserRound} label="PIC">
+          {picName || "PIC belum ditugaskan"}
+        </Property>
+        {project.venue && (
+          <Property icon={MapPin} label="Venue">
+            {project.venue}
+          </Property>
+        )}
+      </ul>
 
-        {progress && (
-          <div className="rounded-md bg-surface-muted/60 p-4">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl font-bold leading-none tabular-nums text-primary">{progress.overallPercent}%</span>
-                <ConditionBadge condition={progress.condition} />
-              </div>
-              <span className="text-[12.5px] text-text-secondary">
-                Tahapan proyek {progress.projectMilestoneStats.completed}/{progress.projectMilestoneStats.total} · Tahapan vendor{" "}
-                {progress.vendorMilestoneStats.completed}/{progress.vendorMilestoneStats.total}
-                {progress.overdueMilestoneCount > 0 && (
-                  <span className="font-semibold text-danger-text"> · {progress.overdueMilestoneCount} terlambat</span>
-                )}
-              </span>
-            </div>
-            <ProgressMeter
-              percent={progress.overallPercent}
-              segments={segments}
-              caption={`${completedMilestones}/${totalMilestones} tahapan selesai berdasarkan pencapaian nyata — bukan estimasi manual.`}
-            />
-          </div>
-        )}
-      </CardContent>
+      {actionError && (
+        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
+      )}
 
       {closing && (
         <Modal
@@ -422,17 +393,17 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
         initialProject={project}
         mode="duplicate"
       />
-    </Card>
+    </header>
   );
 }
 
-function InfoField({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+/** One property of the header: an icon, a name for assistive technology, the value. */
+function Property({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[12px] font-medium text-text-secondary">{label}</p>
-      <p className={emphasize ? "mt-0.5 text-[15px] font-bold tabular-nums text-primary" : "mt-0.5 text-[13.5px] font-medium text-text-primary"}>
-        {value}
-      </p>
-    </div>
+    <li className="flex min-w-0 max-w-full items-center gap-1.5">
+      <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      <span className="sr-only">{label}: </span>
+      <span className="min-w-0 truncate">{children}</span>
+    </li>
   );
 }

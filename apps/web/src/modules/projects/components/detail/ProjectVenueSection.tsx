@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { useOutletContext } from "react-router-dom";
-import { Building2, ExternalLink } from "lucide-react";
-import { Card } from "@/shared/components/ui/Card";
+import { Building2, ExternalLink, Unlink } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/shared/components/ui/Card";
+import { ActionMenu } from "@/shared/components/ui/ActionMenu";
+import { SkeletonRows } from "@/shared/components/ui/Skeleton";
 import { Button } from "@/shared/components/ui/Button";
 import { Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Modal } from "@/shared/components/ui/Modal";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
-import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 import type { Venue } from "@/modules/venues/types";
 import { httpClient } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
@@ -26,10 +25,9 @@ const FIELD_LABELS: Record<string, string> = { venueId: "Venue", rentalPrice: "H
 // the full record (rental price, charge, PIC contact), fetched directly
 // from GET /venues/{id} once currentProject.venueId is known, rather than
 // the public-safe GET /projects/{id}/venue summary (see ADR-0016).
-export default function ProjectVenueTabPage() {
+export function ProjectVenueSection({ projectId }: { projectId: string }) {
   // Attaching or changing the venue is a project change (ADR-0026).
   const canEdit = useCan("project.edit");
-  const { projectId } = useOutletContext<ProjectDetailContext>();
   const currentProject = useProjectStore((s) => s.currentProject);
   const setProjectVenue = useProjectStore((s) => s.setProjectVenue);
   const venues = useVenueStore((s) => s.venues);
@@ -52,10 +50,6 @@ export default function ProjectVenueTabPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchVenues();
-  }, [fetchVenues]);
-
-  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     if (!currentProject?.venueId) {
@@ -71,7 +65,7 @@ export default function ProjectVenueTabPage() {
         // The attached venue may have since been hard-deleted (PLAN.md) --
         // project.venueId is a stale primitive reference with no cleanup, so
         // a 404 here just means "no longer resolvable," same as no venue
-        // ever having been attached. Falls back to the same EmptyState below
+        // ever having been attached. Falls back to the same "no venue" line below
         // rather than leaving an unhandled rejection.
         if (!cancelled) setVenue(null);
       })
@@ -84,6 +78,8 @@ export default function ProjectVenueTabPage() {
   }, [currentProject?.venueId, fetchVenue]);
 
   function openPicker() {
+    // The directory is only needed to pick from: it loads when the picker opens, not with the tab.
+    void fetchVenues().catch(() => undefined);
     form.reset({
       venueId: currentProject?.venueId ?? "",
       rentalPrice: currentProject?.venueRentalPrice ?? 0,
@@ -140,108 +136,105 @@ export default function ProjectVenueTabPage() {
   }
 
   if (loading) {
-    return <p className="py-10 text-center text-[13px] text-text-secondary">Memuat...</p>;
+    return (
+      <Card>
+        <CardHeader title="Venue" />
+        <CardContent>
+          <SkeletonRows rows={2} label="Memuat venue" />
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {actionError && (
-        <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
-      )}
-
-      {!venue ? (
-        <Card>
-          <EmptyState
-            title="Belum ada venue terpasang"
-            description={canEdit ? "Pilih venue dari direktori untuk project ini." : "Venue project ini belum dipilih."}
-            action={canEdit ? <Button onClick={openPicker}>Pilih venue</Button> : undefined}
-          />
-        </Card>
-      ) : (
-        <Card className="flex flex-col gap-4 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Building2 className="h-5 w-5" />
+    <section aria-labelledby="venue-heading">
+      <Card>
+        <CardHeader
+          title={<span id="venue-heading">Venue</span>}
+          action={
+            venue && canEdit ? (
+              <div className="flex items-center gap-1">
+                <Button variant="secondary" size="sm" onClick={openPicker}>
+                  Ubah venue
+                </Button>
+                <ActionMenu items={[{ label: "Lepas venue dari proyek", icon: <Unlink className="h-4 w-4" />, tone: "danger", onSelect: () => void handleDetach() }]} label="Aksi lain untuk venue" />
               </div>
-              <div>
-                <p className="text-[15px] font-bold text-text-primary">{venue.name}</p>
+            ) : undefined
+          }
+        />
+        {actionError && (
+          <p className="mx-5 mt-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
+        )}
+        {!venue ? (
+          // One line, not a big empty state: the vendors below are what this tab is mostly about.
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <Building2 className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[13.5px] font-medium text-text-primary">Belum ada venue dari direktori</p>
                 <p className="text-[12.5px] text-text-secondary">
-                  {venue.address ?? "-"}
-                  {venue.city ? ` · ${venue.city}` : ""}
+                  {currentProject?.venue ? `Tertulis di proyek: ${currentProject.venue}. ` : ""}
+                  {canEdit ? "Pilih dari direktori untuk mencatat harga sewa dan kontak PIC-nya." : "Venue proyek ini belum dipilih."}
                 </p>
               </div>
             </div>
             {canEdit && (
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={openPicker}>
-                  Ubah venue
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => void handleDetach()}>
-                  Lepas
-                </Button>
+              <Button size="sm" variant="secondary" onClick={openPicker}>
+                Pilih venue
+              </Button>
+            )}
+          </CardContent>
+        ) : (
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
+                <Building2 className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[15px] font-semibold text-text-primary">{venue.name}</p>
+                <p className="text-[13px] text-text-secondary">{[venue.address, venue.city].filter(Boolean).join(", ") || "Alamat belum diisi"}</p>
+              </div>
+            </div>
+
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
+              <VenueFact label="Harga sewa" value={currentProject?.venueRentalPrice ? formatCurrency(currentProject.venueRentalPrice) : "Belum diisi"} numeric />
+              <VenueFact label="Charge" value={currentProject?.venueCharge ? formatCurrency(currentProject.venueCharge) : "-"} numeric />
+              <VenueFact label="Kapasitas" value={venue.capacity ? `${venue.capacity} orang` : "-"} />
+              <VenueFact label="PIC" value={venue.picName || "-"} />
+              <VenueFact label="Telepon PIC" value={venue.phonePic || "-"} numeric />
+              <VenueFact label="Telepon venue" value={venue.phoneVenue ?? "-"} numeric />
+              <VenueFact label="Email" value={venue.email ?? "-"} />
+            </dl>
+
+            {(venue.facilities || venue.socialMedia || venue.hasAttachment) && (
+              <div className="flex flex-col gap-3 border-t border-border-light pt-4">
+                {venue.facilities && (
+                  <div>
+                    <p className="mb-1 text-[12.5px] text-text-secondary">Fasilitas</p>
+                    <p className="whitespace-pre-line text-[13px] text-text-primary">{venue.facilities}</p>
+                  </div>
+                )}
+                {venue.socialMedia && (
+                  <div>
+                    <p className="mb-1 text-[12.5px] text-text-secondary">Media sosial</p>
+                    <p className="whitespace-pre-line text-[13px] text-text-primary">{venue.socialMedia}</p>
+                  </div>
+                )}
+                {venue.hasAttachment && (
+                  <div>
+                    <Button variant="secondary" size="sm" icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={() => void handleViewAttachment()}>
+                      {venue.attachmentIsImage ? "Lihat foto" : "Lihat dokumen"}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </CardContent>
+        )}
+      </Card>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border-light pt-4 sm:grid-cols-3">
-            <div>
-              <p className="text-[11.5px] text-text-secondary">Harga sewa</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">
-                {currentProject?.venueRentalPrice ? formatCurrency(currentProject.venueRentalPrice) : "Belum diisi"}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11.5px] text-text-secondary">Charge</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">
-                {currentProject?.venueCharge ? formatCurrency(currentProject.venueCharge) : "-"}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11.5px] text-text-secondary">Kapasitas</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">{venue.capacity ? `${venue.capacity} orang` : "-"}</p>
-            </div>
-            <div>
-              <p className="text-[11.5px] text-text-secondary">PIC</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">{venue.picName}</p>
-            </div>
-            <div>
-              <p className="text-[11.5px] text-text-secondary">No tlp PIC</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">{venue.phonePic}</p>
-            </div>
-            <div>
-              <p className="text-[11.5px] text-text-secondary">No tlp venue</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">{venue.phoneVenue ?? "-"}</p>
-            </div>
-            <div>
-              <p className="text-[11.5px] text-text-secondary">Email</p>
-              <p className="text-[13.5px] font-semibold text-text-primary">{venue.email ?? "-"}</p>
-            </div>
-          </div>
-
-          {venue.facilities && (
-            <div className="border-t border-border-light pt-4">
-              <p className="mb-1.5 text-[11.5px] text-text-secondary">Fasilitas</p>
-              <p className="whitespace-pre-line text-[13px] text-text-primary">{venue.facilities}</p>
-            </div>
-          )}
-
-          {venue.socialMedia && (
-            <div className="border-t border-border-light pt-4">
-              <p className="mb-1.5 text-[11.5px] text-text-secondary">Sosial media</p>
-              <p className="whitespace-pre-line text-[13px] text-text-primary">{venue.socialMedia}</p>
-            </div>
-          )}
-
-          {venue.hasAttachment && (
-            <div className="border-t border-border-light pt-4">
-              <Button variant="secondary" size="sm" icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={() => void handleViewAttachment()}>
-                {venue.attachmentIsImage ? "Lihat Foto" : "Lihat Dokumen"}
-              </Button>
-            </div>
-          )}
-        </Card>
-      )}
 
       <Modal
         open={pickerOpen}
@@ -283,6 +276,15 @@ export default function ProjectVenueTabPage() {
           </Field>
         </form>
       </Modal>
+    </section>
+  );
+}
+
+function VenueFact({ label, value, numeric }: { label: string; value: string; numeric?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[12.5px] text-text-secondary">{label}</dt>
+      <dd className={`mt-0.5 truncate text-[13.5px] font-medium text-text-primary ${numeric ? "tabular-nums" : ""}`}>{value}</dd>
     </div>
   );
 }

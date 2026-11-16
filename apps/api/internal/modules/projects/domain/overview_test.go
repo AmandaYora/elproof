@@ -51,7 +51,7 @@ func TestProjectActionsFollowTheRulesTheWebHadInTheBrowser(t *testing.T) {
 	for _, a := range got {
 		byID[a.ID] = a
 	}
-	if a := byID["term-7"]; a.Tone != "danger" || a.Kind != ActionTermOverdue || a.Tab != "pembayaran/client" ||
+	if a := byID["term-7"]; a.Tone != "danger" || a.Kind != ActionTermOverdue || a.Tab != "keuangan/klien" ||
 		a.Title != "Termin DP terlambat" || a.Detail != "Sisa Rp2.500.000, jatuh tempo 1 Nov 2026" {
 		t.Errorf("term action: %+v", a)
 	}
@@ -67,7 +67,7 @@ func TestProjectActionsFollowTheRulesTheWebHadInTheBrowser(t *testing.T) {
 	if byID["vendor-11"].Title != "Vendor belum terkonfirmasi" {
 		t.Errorf("an unresolved vendor name falls back to \"Vendor\": %q", byID["vendor-11"].Title)
 	}
-	if a := byID["ms-20"]; a.Title != `Tahapan "Fitting" lewat tenggat` || a.Detail != "Target 9 Nov 2026" || a.Tab != "milestone" || a.Kind != ActionMilestoneLate {
+	if a := byID["ms-20"]; a.Title != `Tahapan "Fitting" lewat tenggat` || a.Detail != "Target 9 Nov 2026" || a.Tab != "jadwal" || a.Kind != ActionMilestoneLate {
 		t.Errorf("milestone action: %+v", a)
 	}
 }
@@ -156,5 +156,30 @@ func TestOpenIssueCountAndUnconfirmed(t *testing.T) {
 	got := UnconfirmedEngagements([]ProjectVendor{{ID: 1, EngagementStatus: EngagementBooked}, {ID: 2, EngagementStatus: EngagementNegotiation}, {ID: 3, EngagementStatus: EngagementPlanned}})
 	if len(got) != 2 || got[0].ID != 2 || got[1].ID != 3 {
 		t.Errorf("unconfirmed: %+v", got)
+	}
+}
+
+func TestTermLabelIsNotDoubled(t *testing.T) {
+	for label, want := range map[string]string{
+		"DP":         "Termin DP",
+		"Pelunasan":  "Termin Pelunasan",
+		"Termin 2":   "Termin 2",
+		"termin 3":   "termin 3",
+		" Termin 4 ": "Termin 4",
+		"Termin":     "Termin",
+		"Termin-5":   "Termin-5",
+		"Terminal":   "Termin Terminal",
+	} {
+		if got := TermLabel(label); got != want {
+			t.Errorf("TermLabel(%q) = %q, want %q", label, got, want)
+		}
+	}
+	// The overdue action of a term labelled "Termin 2" reads "Termin 2 terlambat", not "Termin Termin 2 terlambat".
+	got := BuildProjectActions(ActionInput{
+		Today: d("2026-11-10"), EventDate: d("2027-06-01"),
+		Terms: []TermProgress{{Term: PaymentTerm{ID: 9, Label: "Termin 2", DueDate: d("2026-11-01")}, Remaining: 1, Status: TermOverdue}},
+	})
+	if len(got) != 1 || got[0].Title != "Termin 2 terlambat" {
+		t.Errorf("got %+v", got)
 	}
 }

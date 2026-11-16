@@ -794,6 +794,8 @@ interface ProjectState {
   fetchDocuments: (projectId: string) => Promise<void>;
 
   fetchActivity: (projectId: string, page?: number) => Promise<void>;
+  /** The few latest entries for the Riwayat panel on Ringkasan; returned, not stored, so the full list is left alone. */
+  fetchRecentActivity: (projectId: string, limit: number) => Promise<ActivityLogEntry[]>;
   /** What happened to the vendor steps (one filtered call, newest first), for the history inside each engagement. */
   fetchVendorMilestoneHistory: (projectId: string) => Promise<void>;
 }
@@ -1359,6 +1361,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   fetchActivity: async (projectId, page = 1) => {
     const res = await httpClient.get(API.projects.activity(projectId), { params: { page, limit: 20 } });
     set({ activity: (res.data.data as RawActivity[]).map(toActivity), activityMeta: toPaginationMeta(res.data.meta as RawPaginationMeta) });
+  },
+
+  fetchRecentActivity: async (projectId, limit) => {
+    const res = await httpClient.get(API.projects.activity(projectId), { params: { page: 1, limit } });
+    return (res.data.data as RawActivity[]).map(toActivity);
   },
 }));
 

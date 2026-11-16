@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, Pencil, Plus, RefreshCw } from "lucide-react";
-import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
+import { FinanceSection } from "@/modules/projects/components/detail/finance-ui";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { Drawer } from "@/shared/components/ui/Drawer";
@@ -73,19 +73,17 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Card>
-        <CardHeader
-          title="Jadwal Termin"
-          subtitle="Kapan klien harus membayar berapa, dan sudah sampai mana."
-          action={
-            canRecord && loaded && terms.length > 0 ? (
-              <Button size="sm" variant="secondary" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditing(true)}>
-                Atur jadwal
-              </Button>
-            ) : undefined
-          }
-        />
-        <CardContent>
+      <FinanceSection
+        title="Jadwal termin"
+        action={
+          canRecord && loaded && terms.length > 0 ? (
+            <Button size="sm" variant="secondary" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditing(true)}>
+              Atur jadwal
+            </Button>
+          ) : undefined
+        }
+      >
+        <div className="rounded-lg border border-border bg-card px-5 py-4">
           {!loaded ? (
             loadFailed ? (
               <LoadError message="Jadwal termin belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />
@@ -127,16 +125,16 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
                   <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
                     <div className="min-w-0">
                       <p className="text-[13.5px] font-semibold text-text-primary">{t.label}</p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-text-secondary">
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] whitespace-nowrap text-text-secondary">
                         <CalendarClock className="h-3.5 w-3.5" aria-hidden />
                         Jatuh tempo {formatDate(t.dueDate)}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-[13.5px] font-semibold tabular-nums text-text-primary">{formatCurrency(t.amount)}</p>
+                        <p className="text-[13.5px] font-semibold whitespace-nowrap tabular-nums text-text-primary">{formatCurrency(t.amount)}</p>
                         {t.status !== "paid" && t.paid > 0 && (
-                          <p className="text-[12px] tabular-nums text-text-secondary">Sisa {formatCurrency(t.remaining)}</p>
+                          <p className="text-[12px] whitespace-nowrap tabular-nums text-text-secondary">Sisa {formatCurrency(t.remaining)}</p>
                         )}
                       </div>
                       <Badge tone={TERM_STATUS_TONE[t.status]}>{TERM_STATUS_LABELS.staff[t.status]}</Badge>
@@ -146,8 +144,8 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
               </ul>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </FinanceSection>
 
       <ConfirmDialog
         open={confirmingRecalc}

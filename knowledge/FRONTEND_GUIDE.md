@@ -172,8 +172,7 @@ kept), and only a successful save closes it and shows a `toast.success`. Field e
 `Select`/`Combobox` handle Escape themselves so the dialog behind stays open. `ActionMenu` is the
 "⋯" list for secondary actions.
 
-**Project page and dashboard (Fase 4b/4c):** `ProjectDetailLayout` is header + full-width tabs +
-(content | `ProjectSidePanel`). The dashboard is action-first (`OverdueHero`, `DueList`). Creating a
+**Project page and dashboard (Fase 4b/4c):** `ProjectDetailLayout` is a compact header (breadcrumb, title + status + actions, one row of properties) + six full-width tabs (Ringkasan, Jadwal, Vendor & venue, Keuangan with `keuangan/klien|vendor|venue`, Kendala, Dokumen; old tab paths redirect, RISET WO Console §3 #3–4). Ringkasan carries the KPIs, the project facts and two panels, "Klien & akses portal" and "Riwayat" (each opening its full list in a `Drawer`); the former side panel is gone. The dashboard is action-first (`OverdueHero`, `DueList`). Creating a
 project is the two-step page `ProjectCreatePage` (`/projects/baru`); the installment list is the
 shared `PaymentTermsEditor` (also used by the schedule drawer on the Keuangan tab). Pages that load
 data separate three states: skeleton while loading, `LoadError` with "Coba lagi" when the request

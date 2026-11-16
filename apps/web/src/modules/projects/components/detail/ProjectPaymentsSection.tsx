@@ -1,19 +1,16 @@
 import { useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, Trash2, Eye } from "lucide-react";
-import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
-import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
 import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
-import { Table, THead, TBody, TR, TH, TD } from "@/shared/components/ui/Table";
-import { CardList, CardListField } from "@/shared/components/ui/CardList";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import type { Column } from "@/shared/data-table/DataTable";
+import { EvidenceBadge, FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
 import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
-import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
@@ -86,118 +83,64 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
     void deleteWithUndo("Pembayaran vendor", () => deletePayment(projectId, payment.id));
   }
 
+  function vendorNameOf(payment: VendorPayment): string {
+    const pv = vendorEngagements.find((v) => v.id === payment.projectVendorId);
+    const vendor = pv ? vendors.find((v) => v.id === pv.vendorId) : null;
+    return vendor?.name ?? (pv?.vendorName || "Vendor tidak diketahui");
+  }
+
+  const columns: Column<VendorPayment>[] = [
+    { id: "vendor", header: "Vendor", primary: true, truncate: true, className: "w-[28%] min-w-40", cell: (p) => <span className="font-medium" title={vendorNameOf(p)}>{vendorNameOf(p)}</span> },
+    { id: "type", header: "Jenis", card: true, className: "whitespace-nowrap", cell: (p) => p.type },
+    { id: "date", header: "Tanggal", card: true, className: "w-32 whitespace-nowrap", cell: (p) => formatDate(p.paymentDate) },
+    { id: "amount", header: "Nominal", align: "right", card: true, cell: (p) => formatCurrency(p.amount) },
+    { id: "method", header: "Metode", className: "whitespace-nowrap", cell: (p) => p.method || "-" },
+    { id: "ref", header: "No. referensi", truncate: true, className: "w-36 tabular-nums", cell: (p) => <span title={p.referenceNumber || undefined}>{p.referenceNumber || "-"}</span> },
+    { id: "proof", header: "Bukti", className: "whitespace-nowrap", cell: (p) => <EvidenceBadge complete={p.evidenceComplete} /> },
+  ];
+
   return (
     <div id="pembayaran">
-      <Card>
-        <CardHeader
-          title="Pembayaran ke vendor"
-          subtitle="Ringkasan nilai kerja sama dan seluruh riwayat pembayaran ke vendor pada proyek ini."
-          action={
-            canRecord && (<Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+      <FinanceSection
+        title="Pembayaran ke vendor"
+        action={
+          canRecord && (
+            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
               Tambah pembayaran
-            </Button>)
-          }
+            </Button>
+          )
+        }
+      >
+        <FinanceSummary
+          items={[
+            { label: "Total nilai kerja sama", value: formatCurrency(totalContractValue) },
+            { label: "Sudah dibayar", value: formatCurrency(totalPaid) },
+            { label: "Sisa pembayaran", value: formatCurrency(totalRemaining) },
+          ]}
         />
-        <CardContent className="flex flex-col gap-5">
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            <SummaryStat label="Total nilai kerja sama" value={formatCurrency(totalContractValue)} />
-            <SummaryStat label="Total sudah dibayar" value={formatCurrency(totalPaid)} />
-            <SummaryStat label="Sisa pembayaran" value={formatCurrency(totalRemaining)} />
-          </div>
-
-          {payments.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
-              Belum ada pembayaran tercatat untuk proyek ini.
-            </p>
-          ) : (
-            <>
-            <CardList
-              className="sm:hidden"
-              items={pageItems}
-              keyFor={(payment) => payment.id}
-              renderItem={(payment) => {
-                const pv = vendorEngagements.find((v) => v.id === payment.projectVendorId);
-                const vendor = pv ? vendors.find((v) => v.id === pv.vendorId) : null;
-                return (
-                  <>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="font-medium text-text-primary">{vendor?.name ?? "Vendor tidak diketahui"}</span>
-                      {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum lengkap</Badge>}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <CardListField label="Jenis" value={payment.type} />
-                      <CardListField label="Nominal" value={formatCurrency(payment.amount)} />
-                      <CardListField label="Tanggal" value={formatDate(payment.paymentDate)} />
-                      <CardListField label="Metode" value={payment.method} />
-                      <CardListField label="No. referensi" value={payment.referenceNumber} />
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                      {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
-                      {canDelete && (
-                        <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
-                      )}
-                    </div>
-                  </>
-                );
-              }}
+        <LedgerTable
+          label="Pembayaran ke vendor"
+          columns={columns}
+          rows={pageItems}
+          rowId={(p) => p.id}
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          empty={{ title: "Belum ada pembayaran ke vendor", description: "Catat setiap pembayaran ke vendor beserta tagihan dan bukti transfernya." }}
+          actions={(p) => (
+            <RowActions
+              rowLabel={`${vendorNameOf(p)} ${p.type} ${formatCurrency(p.amount)}`}
+              primary={{ label: "Ubah pembayaran", icon: <Pencil />, onClick: () => setEditingPayment(p), hidden: !canRecord }}
+              items={[
+                { label: "Lihat bukti", icon: <Eye className="h-4 w-4" />, onSelect: () => setViewingEvidencePayment(p) },
+                { label: "Hapus pembayaran", icon: <Trash2 className="h-4 w-4" />, tone: "danger", onSelect: () => handleDeletePayment(p), hidden: !canDelete },
+              ]}
             />
-            <div className="hidden sm:block">
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Vendor</TH>
-                  <TH>Jenis</TH>
-                  <TH className="text-right">Nominal</TH>
-                  <TH>Tanggal</TH>
-                  <TH>Metode</TH>
-                  <TH>No. Referensi</TH>
-                  <TH>Kelengkapan bukti</TH>
-                  <TH>Aksi</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {pageItems.map((payment) => {
-                  const pv = vendorEngagements.find((v) => v.id === payment.projectVendorId);
-                  const vendor = pv ? vendors.find((v) => v.id === pv.vendorId) : null;
-                  return (
-                    <TR key={payment.id}>
-                      <TD className="font-medium">{vendor?.name ?? "Vendor tidak diketahui"}</TD>
-                      <TD>{payment.type}</TD>
-                      <TD className="text-right tabular-nums">{formatCurrency(payment.amount)}</TD>
-                      <TD>{formatDate(payment.paymentDate)}</TD>
-                      <TD>{payment.method}</TD>
-                      <TD>{payment.referenceNumber}</TD>
-                      <TD>
-                        {payment.evidenceComplete ? <Badge tone="success">Lengkap</Badge> : <Badge tone="warning">Belum lengkap</Badge>}
-                      </TD>
-                      <TD>
-                        <div className="flex items-center gap-2">
-                          <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidencePayment(payment)} />
-                          {canRecord && <IconActionButton icon={Pencil} label="Ubah pembayaran" tone="neutral" onClick={() => setEditingPayment(payment)} />}
-                          {canDelete && (
-                            <IconActionButton icon={Trash2} label="Hapus pembayaran" tone="danger" onClick={() => handleDeletePayment(payment)} />
-                          )}
-                        </div>
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-            </div>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              totalItems={totalItems}
-              pageSize={pageSize}
-              onPageChange={setPage}
-              className="-mx-5 -mb-4 mt-1"
-            />
-            </>
           )}
-        </CardContent>
-      </Card>
+        />
+      </FinanceSection>
 
       <RecordPaymentDrawer
         open={modalOpen}
@@ -240,17 +183,6 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
     </div>
   );
 }
-
-function SummaryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-surface-muted/40 px-4 py-3">
-      <p className="text-[11.5px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
-      <p className="mt-1 text-[15px] font-bold tabular-nums text-primary">{value}</p>
-    </div>
-  );
-}
-
-
 
 // Edit scope is the ledger fields only -- no vendor picker (re-parenting a
 // payment isn't supported, PLAN.md §2.5) and no file inputs (already

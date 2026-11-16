@@ -39,7 +39,7 @@ function Kpis({ stats, canFinance }: { stats: DashboardStats; canFinance: boolea
   const { draft, preparation, ready } = stats.stageCounts;
   const active = preparation + ready;
   // Keuangan needs finance.record; without it the late-installment card opens the first late project instead.
-  const overdueTo = canFinance ? ROUTE_PATHS.finance : stats.overdueTerms[0] ? ROUTE_PATHS.projectDetail(stats.overdueTerms[0].projectId, "pembayaran/client") : undefined;
+  const overdueTo = canFinance ? ROUTE_PATHS.finance : stats.overdueTerms[0] ? ROUTE_PATHS.projectDetail(stats.overdueTerms[0].projectId, "keuangan/klien") : undefined;
 
   return (
     <section aria-label="Ringkasan angka" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
@@ -97,7 +97,7 @@ function FullDashboard() {
     () =>
       (stats?.tasksDueThisWeek ?? []).slice(0, 5).map((t, i) => ({
         id: `${t.projectId}-${i}`,
-        to: ROUTE_PATHS.projectDetail(t.projectId, "milestone"),
+        to: ROUTE_PATHS.projectDetail(t.projectId, "jadwal"),
         title: t.name,
         subtitle: t.projectName,
         trailing: daysUntil(t.targetDate) === 0 ? "Hari ini" : formatDate(t.targetDate).replace(/ \d{4}$/, ""),

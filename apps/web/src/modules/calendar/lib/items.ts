@@ -28,9 +28,9 @@ export function itemHref(item: CalendarItem): string {
     case "event":
       return ROUTE_PATHS.projectDetail(id);
     case "milestone":
-      return `${ROUTE_PATHS.projects}/${id}/jadwal`;
+      return ROUTE_PATHS.projectDetail(id, "jadwal");
     case "payment":
-      return ROUTE_PATHS.projectDetail(id, "pembayaran/client");
+      return ROUTE_PATHS.projectDetail(id, "keuangan/klien");
   }
 }
 

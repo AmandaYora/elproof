@@ -3,8 +3,9 @@ import { Navigate, type RouteObject } from "react-router-dom";
 import { AppLayout } from "@/shared/layouts/AppLayout";
 import { RequireAuth } from "@/shared/components/RequireAuth";
 import { RequirePermission } from "@/shared/components/RequirePermission";
-import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { LEGACY_PROJECT_TABS, ROUTE_PATHS } from "@/app/routes/route-paths";
 import { LegacyPathRedirect } from "@/shared/components/LegacyPathRedirect";
+import { ProjectTabRedirect } from "@/app/routes/ProjectTabRedirect";
 
 const DashboardPage = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
 const ProjectListPage = lazy(() => import("@/modules/projects/pages/ProjectListPage"));
@@ -14,14 +15,11 @@ const ProjectSummaryTabPage = lazy(() => import("@/modules/projects/pages/tabs/P
 const ProjectIssuesTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectIssuesTabPage"));
 const ProjectVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectVendorTabPage"));
 const ProjectMilestoneTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectMilestoneTabPage"));
-const ProjectClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectClientTabPage"));
-const ProjectPaymentsTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectPaymentsTabPage"));
-const PembayaranClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranClientTabPage"));
-const PembayaranVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVendorTabPage"));
-const PembayaranVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/PembayaranVenueTabPage"));
+const ProjectFinanceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectFinanceTabPage"));
+const FinanceClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceClientTabPage"));
+const FinanceVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceVendorTabPage"));
+const FinanceVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceVenueTabPage"));
 const ProjectEvidenceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectEvidenceTabPage"));
-const ProjectActivityTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectActivityTabPage"));
-const ProjectVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectVenueTabPage"));
 const ClientListPage = lazy(() => import("@/modules/clients/pages/ClientListPage"));
 const VendorCategoryListPage = lazy(() => import("@/modules/vendor-categories/pages/VendorCategoryListPage"));
 const MilestoneTemplateListPage = lazy(() => import("@/modules/milestone-templates/pages/MilestoneTemplateListPage"));
@@ -72,23 +70,22 @@ export const protectedRoutes: RouteObject = {
           children: [
             { index: true, element: <Navigate to="ringkasan" replace /> },
             { path: "ringkasan", element: <ProjectSummaryTabPage />, handle: { title: "Ringkasan proyek" } },
-            { path: "kendala", element: <ProjectIssuesTabPage />, handle: { title: "Kendala proyek" } },
-            { path: "vendor", element: <ProjectVendorTabPage />, handle: { title: "Vendor proyek" } },
-            { path: "milestone", element: <ProjectMilestoneTabPage />, handle: { title: "Jadwal proyek" } },
-            { path: "client", element: <ProjectClientTabPage />, handle: { title: "Klien proyek" } },
+            { path: "jadwal", element: <ProjectMilestoneTabPage />, handle: { title: "Jadwal proyek" } },
+            { path: "vendor", element: <ProjectVendorTabPage />, handle: { title: "Vendor dan venue proyek" } },
             {
-              path: "pembayaran",
-              element: <ProjectPaymentsTabPage />,
+              path: "keuangan",
+              element: <ProjectFinanceTabPage />,
               children: [
-                { index: true, element: <Navigate to="client" replace /> },
-                { path: "client", element: <PembayaranClientTabPage />, handle: { title: "Pembayaran klien" } },
-                { path: "vendor", element: <PembayaranVendorTabPage />, handle: { title: "Pembayaran vendor" } },
-                { path: "venue", element: <PembayaranVenueTabPage />, handle: { title: "Pembayaran venue" } },
+                { index: true, element: <Navigate to="klien" replace /> },
+                { path: "klien", element: <FinanceClientTabPage />, handle: { title: "Keuangan proyek: klien" } },
+                { path: "vendor", element: <FinanceVendorTabPage />, handle: { title: "Keuangan proyek: vendor" } },
+                { path: "venue", element: <FinanceVenueTabPage />, handle: { title: "Keuangan proyek: venue" } },
               ],
             },
+            { path: "kendala", element: <ProjectIssuesTabPage />, handle: { title: "Kendala proyek" } },
             { path: "dokumen", element: <ProjectEvidenceTabPage />, handle: { title: "Dokumen proyek" } },
-            { path: "aktivitas", element: <ProjectActivityTabPage />, handle: { title: "Aktivitas proyek" } },
-            { path: "venue", element: <ProjectVenueTabPage />, handle: { title: "Venue proyek" } },
+            // The tab paths before the page had six tabs (16 Nov 2026): old links land on the tab that holds it now.
+            ...Object.entries(LEGACY_PROJECT_TABS).map(([from, to]) => ({ path: from, element: <ProjectTabRedirect to={to} /> })),
           ],
         },
         // Each page follows the workspace role's permissions (ADR-0026).

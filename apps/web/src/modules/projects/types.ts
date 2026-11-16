@@ -413,5 +413,5 @@ export interface OverviewAction {
   tone: "danger" | "warning";
   title: string;
   detail: string;
-  tab: "pembayaran/client" | "kendala" | "vendor" | "milestone";
+  tab: "keuangan/klien" | "kendala" | "vendor" | "jadwal";
 }

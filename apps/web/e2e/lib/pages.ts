@@ -25,10 +25,13 @@ const P = 1; // the rich project ("Citra & Bima")
 
 export const WO_PAGES: GoldenPage[] = [
   { id: "beranda", auth: "owner", route: "/dashboard", fail: ["/api/v1/dashboard"], empty: true },
-  { id: "proyek", auth: "owner", route: "/projects", fail: ["/api/v1/projects"], empty: true },
-  { id: "proyek-ringkasan", auth: "owner", route: `/projects/${P}/ringkasan`, fail: [`/api/v1/projects/${P}`] },
+  { id: "proyek", auth: "owner", route: "/proyek", fail: ["/api/v1/projects"], empty: true },
+  // The project page's six tabs (RISET WO Console §3 #4); Keuangan is shown on its first ledger.
+  { id: "proyek-ringkasan", auth: "owner", route: `/proyek/${P}/ringkasan`, fail: [`/api/v1/projects/${P}`] },
+  { id: "proyek-jadwal", auth: "owner", route: `/proyek/${P}/jadwal` },
   { id: "proyek-vendor", auth: "owner", route: `/proyek/${P}/vendor` },
-  { id: "proyek-keuangan", auth: "owner", route: `/proyek/${P}/pembayaran/client` },
+  { id: "proyek-keuangan", auth: "owner", route: `/proyek/${P}/keuangan/klien` },
+  { id: "proyek-keuangan-vendor", auth: "owner", route: `/proyek/${P}/keuangan/vendor` },
   { id: "proyek-kendala", auth: "owner", route: `/proyek/${P}/kendala` },
   { id: "proyek-dokumen", auth: "owner", route: `/proyek/${P}/dokumen` },
   { id: "klien", auth: "owner", route: "/clients", fail: ["/api/v1/clients"], empty: true },
@@ -52,7 +55,7 @@ export const WO_DIALOGS: GoldenDialog[] = [
   {
     id: "tambah-pembayaran",
     auth: "owner",
-    route: `/proyek/${P}/pembayaran/client`,
+    route: `/proyek/${P}/keuangan/klien`,
     open: async (page) => {
       await page.getByRole("button", { name: "Tambah Pembayaran" }).click();
     },
