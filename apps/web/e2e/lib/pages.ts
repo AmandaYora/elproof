@@ -46,7 +46,7 @@ export const WO_DIALOGS: GoldenDialog[] = [
     auth: "owner",
     route: "/vendor",
     open: async (page) => {
-      await page.getByRole("button", { name: "Tambah Vendor" }).click();
+      await page.getByRole("button", { name: "Tambah vendor" }).click();
     },
   },
   {

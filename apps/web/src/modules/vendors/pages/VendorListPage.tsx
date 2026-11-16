@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Link } from "react-router-dom";
-import { Plus, Pencil, CheckCircle2, Ban, Eye, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, FolderKanban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { ActionMenu } from "@/shared/components/ui/ActionMenu";
+import { ListFilters, activeFilterCount } from "@/shared/data-table/ListFilters";
 import { Button } from "@/shared/components/ui/Button";
 import { Select } from "@/shared/components/ui/Input";
 import { Combobox } from "@/shared/components/ui/Combobox";
@@ -15,7 +19,6 @@ import { useListState } from "@/shared/data-table/useListState";
 import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { toast } from "@/shared/stores/useToastStore";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { VendorFormModal } from "@/modules/vendors/components/VendorFormModal";
 import { VendorStatusBadge } from "@/modules/vendors/components/VendorStatusBadge";
 import type { VendorFormValues, VendorCreateFormValues } from "@/modules/vendors/schemas/vendor.schema";
@@ -195,24 +198,45 @@ export default function VendorListPage() {
     }
   }
 
+  // There is no vendor page of its own: the name opens the vendor's details (the form) for someone who may change them,
+  // and the projects it worked on for everyone else.
+  const openVendor = (vendor: Vendor) => (canManage ? openEditModal(vendor) : setHistoryVendor(vendor));
+
   const columns: Column<Vendor>[] = [
-    { id: "name", header: "Nama vendor", sortKey: "name", primary: true, cell: (v) => <span className="font-semibold">{v.name}</span> },
-    { id: "category", header: "Kategori", sortKey: "categoryName", cell: (v) => v.categoryName || categories.find((c) => c.id === v.categoryId)?.name || "-" },
-    { id: "pic", header: "PIC", cell: (v) => v.picName },
     {
-      id: "contact",
-      header: "Kontak",
-      hideOnCard: false,
+      id: "name",
+      header: "Nama vendor",
+      sortKey: "name",
+      primary: true,
+      truncate: true,
+      className: "w-[34%] min-w-60",
       cell: (v) => (
         <>
-          <span className="block">{v.phone}</span>
-          <span className="block text-[12.5px] text-muted-foreground">{v.email ?? "-"}</span>
+          <button
+            type="button"
+            onClick={() => openVendor(v)}
+            className="block max-w-full truncate text-left font-semibold underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+          >
+            {v.name}
+          </button>
+          <span className="block truncate text-[12.5px] font-normal text-muted-foreground">
+            {[v.picName, v.phone].filter(Boolean).join(" · ")}
+          </span>
         </>
       ),
     },
-    { id: "city", header: "Kota", sortKey: "city", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
-    { id: "price", header: "Harga Akad", sortKey: "priceAkad", align: "right", cell: (v) => (v.priceAkad ? formatCurrency(v.priceAkad) : "-") },
-    { id: "status", header: "Status", sortKey: "isActive", cell: (v) => <VendorStatusBadge isActive={v.isActive} /> },
+    {
+      id: "category",
+      header: "Kategori",
+      sortKey: "categoryName",
+      card: true,
+      truncate: true,
+      className: "w-[20%]",
+      cell: (v) => v.categoryName || categories.find((c) => c.id === v.categoryId)?.name || "-",
+    },
+    { id: "city", header: "Kota", sortKey: "city", card: true, truncate: true, className: "w-[14%]", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
+    { id: "price", header: "Harga Akad", sortKey: "priceAkad", align: "right", card: true, className: "whitespace-nowrap", cell: (v) => (v.priceAkad ? formatCurrency(v.priceAkad) : "-") },
+    { id: "status", header: "Status", sortKey: "isActive", card: true, className: "whitespace-nowrap", cell: (v) => <VendorStatusBadge isActive={v.isActive} /> },
   ];
 
   async function handleExportVendors() {
@@ -235,27 +259,39 @@ export default function VendorListPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Vendor</h1>
-          <p className="mt-1 text-[13px] text-text-secondary">Kelola seluruh vendor yang bekerja sama dengan WO.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canManage && (
-            <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
-              Impor bulk
+      <PageHeader
+        className="mb-1"
+        title="Vendor"
+        description="Katering, dekorasi, foto, dan rekanan lain yang bisa Anda pasang ke proyek."
+        actions={
+          <>
+            {canManage && (
+              <Button variant="secondary" className="max-sm:hidden" icon={<Upload className="h-4 w-4" />} onClick={() => setImportModalOpen(true)}>
+                Impor bulk
+              </Button>
+            )}
+            <Button variant="secondary" className="max-sm:hidden" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVendors()} disabled={isExporting}>
+              {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
             </Button>
-          )}
-          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={() => void handleExportVendors()} disabled={isExporting}>
-            {isExporting ? "Mengekspor..." : "Ekspor ke Excel"}
-          </Button>
-          {canManage && (
-            <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
-              Tambah vendor
-            </Button>
-          )}
-        </div>
-      </div>
+            {canManage && (
+              <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>
+                Tambah vendor
+              </Button>
+            )}
+            {/* On a phone, Impor and Ekspor sit behind "⋯" so the header stays one row. */}
+            <div className="sm:hidden">
+              <ActionMenu
+                label="Impor dan ekspor vendor"
+                disabled={isExporting}
+                items={[
+                  { label: "Impor bulk", icon: <Upload />, onSelect: () => setImportModalOpen(true), hidden: !canManage },
+                  { label: "Ekspor ke Excel", icon: <Download />, onSelect: () => void handleExportVendors() },
+                ]}
+              />
+            </div>
+          </>
+        }
+      />
 
       {actionError && (
         <p className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
@@ -272,27 +308,29 @@ export default function VendorListPage() {
           onRemove: savedViews.remove,
         }}
       >
-        <Select className="w-52" aria-label="Kategori" value={list.filters.categoryId || "Semua"} onChange={(e) => list.setFilter("categoryId", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua kategori</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-        <Combobox className="w-52" value={list.filters.city || "Semua"} onChange={(e) => list.setFilter("city", e.target.value === "Semua" ? "" : e.target.value)} placeholder="Cari kota...">
-          <option value="Semua">Semua kota</option>
-          {CITIES.map((city) => (
-            <option key={city} value={city}>
-              {city}
-            </option>
-          ))}
-        </Combobox>
-        <Select className="w-40" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
-          <option value="Semua">Semua status</option>
-          <option value="true">Aktif</option>
-          <option value="false">Nonaktif</option>
-        </Select>
+        <ListFilters count={activeFilterCount(list.filters)} onClear={list.clearFilters}>
+          <Select className="w-44" aria-label="Kategori" value={list.filters.categoryId || "Semua"} onChange={(e) => list.setFilter("categoryId", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua kategori</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <Combobox className="w-44" value={list.filters.city || "Semua"} onChange={(e) => list.setFilter("city", e.target.value === "Semua" ? "" : e.target.value)} placeholder="Cari kota...">
+            <option value="Semua">Semua kota</option>
+            {CITIES.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+          </Combobox>
+          <Select className="w-36" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
+            <option value="Semua">Semua status</option>
+            <option value="true">Aktif</option>
+            <option value="false">Nonaktif</option>
+          </Select>
+        </ListFilters>
       </ListToolbar>
 
       <DataTable
@@ -323,16 +361,17 @@ export default function VendorListPage() {
           </>
         )}
         actions={(vendor) => (
-          <div className="flex items-center gap-1.5">
-            {canManage && <IconActionButton icon={Pencil} label="Ubah vendor" tone="neutral" onClick={() => openEditModal(vendor)} />}
-            {canManage && (vendor.isActive ? (
-              <IconActionButton icon={Ban} label="Nonaktifkan" tone="danger" onClick={() => void handleToggleActive(vendor)} />
-            ) : (
-              <IconActionButton icon={CheckCircle2} label="Aktifkan" tone="success" onClick={() => void handleToggleActive(vendor)} />
-            ))}
-            <IconActionButton icon={Eye} readOnly label="Lihat proyek" tone="info" onClick={() => setHistoryVendor(vendor)} />
-            {isOwner && <IconActionButton icon={Trash2} label="Hapus permanen" tone="danger" onClick={() => void openDeleteConfirm(vendor)} />}
-          </div>
+          <RowActions
+            rowLabel={vendor.name}
+            primary={{ label: "Ubah", icon: <Pencil />, onClick: () => openEditModal(vendor), hidden: !canManage }}
+            items={[
+              { label: "Lihat proyek", icon: <FolderKanban />, onSelect: () => setHistoryVendor(vendor) },
+              vendor.isActive
+                ? { label: "Nonaktifkan", icon: <Ban />, onSelect: () => void handleToggleActive(vendor), hidden: !canManage }
+                : { label: "Aktifkan", icon: <CheckCircle2 />, onSelect: () => void handleToggleActive(vendor), hidden: !canManage },
+              { label: "Hapus permanen", icon: <Trash2 />, tone: "danger", onSelect: () => void openDeleteConfirm(vendor), hidden: !isOwner },
+            ]}
+          />
         )}
       />
 

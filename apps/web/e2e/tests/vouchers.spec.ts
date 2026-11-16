@@ -67,7 +67,7 @@ async function openPayDialog(page: Page) {
   await page
     .getByText(PLAN_NAME, { exact: true })
     .locator("xpath=ancestor::div[.//button][1]")
-    .getByRole("button", { name: /Pilih Paket Ini|Perpanjang Paket Ini/ })
+    .getByRole("button", { name: /Pilih paket ini|Perpanjang paket ini/i })
     .click();
   const dialog = page.getByRole("dialog");
   const field = dialog.getByLabel("Kode voucher (opsional)");
@@ -153,7 +153,7 @@ test("Voucher: a WO Owner applies a code in Bayar Sekarang and sees the price be
   await expect(dialog.getByText("Harga akhir", { exact: true })).toHaveCount(0);
   await expect(priceLine(dialog, "Biaya")).toContainText("Rp2.000.000");
   // A typed code that was not checked is never dropped silently: paying asks to apply or clear it first.
-  await dialog.getByRole("button", { name: "Bayar Sekarang" }).click();
+  await dialog.getByRole("button", { name: "Bayar sekarang" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Tekan Pakai untuk memeriksa kode ini");
   await expect(dialog).toBeVisible();
 

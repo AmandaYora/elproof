@@ -42,7 +42,7 @@ test("kit button, search, input and combobox show a solid 2px focus ring in --ri
   const { page, close } = await open(browser, info, "owner");
   await visit(page, "/vendor");
 
-  const add = page.getByRole("button", { name: "Tambah Vendor" });
+  const add = page.getByRole("button", { name: "Tambah vendor" });
   await tabTo(page, add);
   const addRing = await focusRing(add);
   expect(addRing.style).toBe("solid");

@@ -28,7 +28,8 @@ interface Props {
 export function ListToolbar({ search, children, density, views, actions }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <SearchInput className="w-full max-w-xs" placeholder={search.placeholder} value={search.value} onChange={(e) => search.onChange(e.target.value)} aria-label={search.placeholder} />
+      {/* On a phone the search shares its row with the "Saring" button (ListFilters). */}
+      <SearchInput className="min-w-0 grow basis-48 md:w-full md:max-w-xs md:grow-0 md:basis-auto" placeholder={search.placeholder} value={search.value} onChange={(e) => search.onChange(e.target.value)} aria-label={search.placeholder} />
       {children}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {views && <SavedViewsMenu {...views} />}
@@ -39,6 +40,8 @@ export function ListToolbar({ search, children, density, views, actions }: Props
             aria-pressed={density.value === "padat"}
             onClick={() => density.onChange(density.value === "padat" ? "normal" : "padat")}
             title="Baris lebih rapat"
+            // A phone shows cards, which have no row height to choose.
+            className="max-md:hidden"
           >
             <Rows3 aria-hidden /> {density.value === "padat" ? "Padat" : "Normal"}
           </Button>
@@ -54,7 +57,8 @@ function SavedViewsMenu({ items, current, onApply, onSave, onRemove }: NonNullab
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button variant="outline" size="sm" />}>
+      {/* Saved views are a computer-sized tool: on a phone the toolbar keeps only search and "Saring" (RISET WO Console §3 #8). */}
+      <PopoverTrigger render={<Button variant="outline" size="sm" className="max-md:hidden" />}>
         <Bookmark aria-hidden /> Tampilan
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72">
