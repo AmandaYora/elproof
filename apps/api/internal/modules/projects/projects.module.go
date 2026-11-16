@@ -98,6 +98,7 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	handler.SetClientHome(clientHomeService)
 	handler.SetUploads(uploadService)
 	handler.SetIdempotency(application.NewIdempotencyService(idempotencyRepo))
+	handler.SetCalendar(application.NewCalendarService(infrastructure.NewMySQLCalendarRepository(db)))
 
 	return &Module{
 		references:               references,
@@ -177,6 +178,7 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) ht
 	mux.Handle("/api/v1/projects/", authed(http.HandlerFunc(m.handler.Item)))
 	mux.Handle("/api/v1/dashboard", authed(http.HandlerFunc(m.handler.Dashboard)))
 	mux.Handle("/api/v1/dashboard/mine", authed(http.HandlerFunc(m.handler.MyDashboard)))
+	mux.Handle("/api/v1/calendar", authed(http.HandlerFunc(m.handler.Calendar)))
 	mux.Handle("/api/v1/milestone-templates", authed(http.HandlerFunc(m.milestoneTemplateHandler.Collection)))
 	mux.Handle("/api/v1/milestone-templates/", authed(http.HandlerFunc(m.milestoneTemplateHandler.Item)))
 }
