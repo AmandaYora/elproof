@@ -176,6 +176,71 @@ dan terlalu banyak teks sekunder, kotak-kotak dengan bobot sama (terutama Berand
 membungkus dan berganti gaya. Ketiganya bisa diperbaiki dengan aturan 7.3 tanpa mengganti kit atau palet, dan sebaiknya
 dikerjakan **bersama** Tahap A–B (bagian 6) supaya setiap layar hanya disentuh sekali.
 
+### 7.6 Keuangan (brief layar, riset ketiga, 16 Nov 2026)
+
+**Kasus.** *Subjek:* uang semua proyek: termin klien (masuk), kewajiban ke vendor dan venue (keluar), arus kas ke depan, bukti
+transfer yang belum diperiksa. *Audiens:* pemilik WO dan admin keuangan (izin `finance.record`), di laptop untuk menagih dan
+membayar, sesekali di HP. *Tugas utama (≤ 5 detik):* "Siapa yang terlambat bayar dan berapa? Apa yang jatuh tempo bulan ini?
+Berapa yang masih harus saya bayar ke vendor?"
+
+| Pembanding | Yang diamati |
+|---|---|
+| HoneyBook, Finance › Overview [hb-finance] dan widget pembayaran Beranda [hb-home] | Pembayaran dipisah **lunas / terlambat / akan datang**; tab per status; angka "semua terlambat" berdiri sendiri; dari ringkasan ada jalan ke daftar pembayaran lengkap |
+| Dubsado, saring tagihan per status [dubsado] | Satu daftar tagihan dengan saringan status (belum dibayar, sebagian, lunas, terlambat) alih-alih halaman terpisah |
+| Wedsites (aplikasi wedding planner), pembayaran vendor [wedsites] | Setiap pembayaran vendor punya nominal, jatuh tempo, status; saringan Semua · Hari ini · Terlambat · Akan datang · Lunas |
+| OfficeRnD, dasbor piutang [officernd-ar]; masukan pengguna Xero [xero-ideas] | Ringkasan dibuka dengan **total terlambat**; "menunggu pembayaran" (belum jatuh tempo) dipisah dari "terlambat"; pengguna meminta **jumlah hari terlambat per baris** dan angka yang bisa diklik sampai ke baris tagihan |
+| Atlassian, grouped bar chart [atl-grouped] | Batang berkelompok cocok untuk membandingkan dua seri per periode (masuk vs keluar), garis dasar nol, sedikit seri; bukan untuk membandingkan total |
+
+**Temuan → keputusan.**
+
+| Temuan | Keputusan |
+|---|---|
+| Semua pembanding memisahkan terlambat / akan datang / lunas | Tab status di atas tabel tagihan: **Terlambat · Jatuh tempo 30 hari · Semua · Lunas** (pola Vercel/Wedsites, temuan 7.1), angka per tab |
+| Ringkasan dibuka dengan total terlambat; angka bisa diklik | 5 KPI (tagihan terlambat, jatuh tempo 30 hari, uang masuk 30 hari, belum dibayar ke vendor & venue, bukti menunggu verifikasi); setiap KPI membuka tab/saringan yang menjelaskan angkanya |
+| Hari terlambat per baris diminta pengguna | Kolom jatuh tempo menulis "terlambat 12 hari" (teks + warna bahaya, tidak warna saja) |
+| Keluar (vendor & venue) dicatat terpisah dari masuk | Tab **Pembayaran keluar**: vendor dan venue dalam satu tabel dengan lencana jenis; status Lunas / Belum lunas / Terlambat |
+| Grafik batang berkelompok untuk masuk vs keluar | Tab **Arus kas**: satu grafik batang berkelompok 8 minggu (data arus kas Beranda yang sama, dihitung server) + tabel angka yang sama; tanpa data → pesan kosong, bukan 8 batang nol |
+| Bukti transfer klien yang belum diperiksa tidak punya tempat | Tab **Verifikasi bukti (n)**: pembayaran klien yang sudah berbukti tetapi belum diverifikasi, klik baris → tab Keuangan proyek |
+
+**Elemen khas:** tidak ada hiasan baru; yang menonjol hanya **angka uang** (KPI 28 px tabular) dan **status termin** (ikon +
+teks). Mencatat pembayaran tetap di proyek; halaman ini membaca saja, aksi baris "Catat pembayaran" menautkan ke tab Keuangan
+proyek.
+
+**Token & grafik.** Token yang ada (`StatCard`, `Badge`, `DataTable`, status `--color-*`). Grafik: dua seri, *Masuk* biru navy
+`--chart-in` #33519c dan *Keluar* abu navy `--chart-out` #7d89ab (aturan 7.3: satu warna data + pembanding abu). Diuji dengan
+`validate_palette.js` skill dataviz: pita terang, CVD ΔE 18,5, penglihatan normal ΔE 19,4, kontras ≥ 3:1 pada putih: lolos;
+"chroma floor" gagal hanya untuk abu, disengaja (abu = pembanding). Identitas tidak bergantung warna: legenda selalu ada, tabel
+angka di bawahnya, tooltip per batang. Batang ≤ 24 px, ujung atas membulat 4 px, celah 2 px antar batang. Mode gelap ditunda
+proyek (DESIGN.md T13), jadi hanya tema terang yang diverifikasi.
+
+```
+Keuangan (desktop ≥ 1280)
+│ Keuangan                                                                 │
+│ Tagihan klien, pembayaran ke vendor dan venue, arus kas semua proyek.    │
+│ ┌Terlambat───┐┌Jatuh tempo 30h┐┌Masuk 30 hari┐┌Belum dibayar┐┌Bukti menunggu┐│
+│ │Rp40 jt     ││Rp25 jt        ││Rp45 jt      ││Rp12 jt      ││2 pembayaran  ││
+│ │1 termin·1 p││2 termin       ││3 pembayaran ││vendor & venue││verifikasi    ││
+│ Tagihan klien  Pembayaran keluar  Arus kas  Verifikasi bukti (2)          │
+│ [Terlambat 1] [Jatuh tempo 30 hari 2] [Semua] [Lunas]   [Cari] [PIC ▾] [tgl]│
+│ Proyek / pasangan      Termin  Jatuh tempo ↕         Nominal  Dibayar  Sisa ↕ Status  ⋯│
+│ Citra & Bima           Termin 2  2 Nov 2026 · terl. 7h  …                 ⓘ Terlambat │
+
+HP (375)
+│ Keuangan            │
+│ [KPI 2 kolom, 5]    │
+│ tab bergulir ⇢      │
+│ ┌ Citra & Bima ────┐│
+│ │ Termin 2         ││
+│ │ Jatuh tempo  2 Nov · terlambat 7 hari │
+│ │ Sisa      Rp40.000.000 │
+│ │ Status    ⓘ Terlambat  │
+```
+
+**Keadaan:** memuat (kerangka setelah 400 ms), galat dengan "Coba lagi" per bagian (KPI dan tabel gagal sendiri-sendiri),
+kosong yang mengajari (belum ada termin → buat jadwal pembayaran di proyek), kosong karena saringan ("Reset filter"), kosong
+yang menenangkan (tab Terlambat tanpa baris: "Tidak ada tagihan terlambat").
+**Aksesibilitas:** tab = tautan/`aria-current`, status ikon + teks, grafik punya tabel setara dan `role="img"` + ringkasan,
+fokus terlihat, tanpa animasi (aman untuk `prefers-reduced-motion`).
 ### 7.7 Kalender (riset layar, 16 Nov 2026)
 
 **Kasus.** *Subjek:* tanggal yang menentukan kerja WO dari semua proyek — hari acara, tahapan jadwal yang belum selesai, dan
@@ -269,6 +334,13 @@ Tanpa tema gelap: ElProof tidak punya tema gelap (DESIGN §10), jadi tidak diver
 - [dash-setproduct] Setproduct, dashboard UI design — https://setproduct.com/blog/dashboard-ui-design
 - [gitlab-empty] GitLab, chart-level empty state — https://gitlab.com/gitlab-org/gitlab-ce/issues/60947
 - [planningpod-blog] Planning Pod, How to choose wedding planner software — https://planningpod.com/blog/how-to-choose-the-best-online-wedding-planner-software-for-your-business
+- [hb-finance] HoneyBook Help, Use the Finance overview page — https://help.honeybook.com/en/articles/9510015-use-the-finance-overview-page
+- [hb-home] HoneyBook Help, Track upcoming payments from your home screen — https://help.honeybook.com/en/articles/8178991-new-and-improved-july-2023
+- [dubsado] Dubsado updates, Invoice filtering by payment status — https://updates.dubsado.com/3815-invoice-filtering-by-payment-status
+- [wedsites] Wedsites planner docs, Payments — https://docs.wedsites.com/planner/payments
+- [officernd-ar] OfficeRnD Help, AR aging dashboard — https://help.officernd.com/en/articles/248663-dashboard-ar-aging
+- [xero-ideas] Xero Product Ideas, Aged receivables: show days overdue — https://productideas.xero.com/forums/939198-for-small-businesses/suggestions/45721732-aged-receivables-report-show-days-overdue
+- [atl-grouped] Atlassian, A complete guide to grouped bar charts — https://www.atlassian.com/data/charts/grouped-bar-chart-complete-guide
 
 Catatan: sebagian sumber adalah blog vendor/design system (dipakai sebagai praktik umum, bukan standar). Bukti utama adalah
 pengamatan langsung atas potret WO Console dan kode menu/rute.

@@ -69,6 +69,11 @@ func TestClientPortalAllowed(t *testing.T) {
 		"/api/v1/subscriptions",
 		"/api/v1/dashboard",
 		"/api/v1/dashboard/mine",
+		// Keuangan: the WO's money across projects.
+		"/api/v1/finance/summary",
+		"/api/v1/finance/receivables",
+		"/api/v1/finance/payables",
+		"/api/v1/finance/verifications",
 		// Malformed ids and deeper paths.
 		"/api/v1/projects/abc/milestones",
 		"/api/v1/projects/0",

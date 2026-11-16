@@ -61,20 +61,29 @@ func AllocateTerms(terms []PaymentTerm, applied int64, today time.Time) []TermPr
 		}
 		left -= paid
 		tp := TermProgress{Term: t, Paid: paid, Remaining: t.Amount - paid}
-		days := daysBetween(today, t.DueDate)
-		switch {
-		case tp.Remaining == 0:
-			tp.Status = TermPaid
-		case days < 0:
-			tp.Status = TermOverdue
-		case paid > 0:
-			tp.Status = TermPartial
-		case days <= dueSoonDays:
-			tp.Status = TermDueSoon
-		default:
-			tp.Status = TermUpcoming
-		}
+		tp.Status = TermStatusOf(paid, tp.Remaining, t.DueDate, today)
 		out = append(out, tp)
 	}
 	return out
+}
+
+// TermStatusOf is the standing of one installment as of `today`, given how much
+// of it the client's payments cover — the rule AllocateTerms applies and the
+// finance list reproduces in SQL: paid when nothing is left; overdue once the
+// due date has passed (even when partly paid); partial; due soon within 7 days;
+// upcoming otherwise.
+func TermStatusOf(paid, remaining int64, dueDate, today time.Time) TermStatus {
+	days := daysBetween(today, dueDate)
+	switch {
+	case remaining <= 0:
+		return TermPaid
+	case days < 0:
+		return TermOverdue
+	case paid > 0:
+		return TermPartial
+	case days <= dueSoonDays:
+		return TermDueSoon
+	default:
+		return TermUpcoming
+	}
 }
