@@ -107,7 +107,7 @@ func (s *RoleService) validate(in *RoleInput) error {
 	if in.Kind == domain.KindClient {
 		in.Scope = domain.ScopeAll // a client only ever sees their own project
 	} else if in.Scope != domain.ScopeAll && in.Scope != domain.ScopeAssigned {
-		fields["projectScope"] = []string{"Pilih cakupan project"}
+		fields["projectScope"] = []string{"Pilih cakupan proyek"}
 	}
 	seen := map[string]bool{}
 	clean := make([]string, 0, len(in.Permissions))

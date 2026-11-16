@@ -39,6 +39,8 @@ export interface VendorProjectHistoryItem {
 export interface VendorImportRowError {
   row: number;
   message: string;
+  /** The same problems per column (template header); empty for a row the database refused as a whole. */
+  errors?: { column: string; message: string }[];
 }
 
 export interface VendorImportResult {

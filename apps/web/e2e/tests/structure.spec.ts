@@ -90,6 +90,45 @@ test("the not-found page has its own title and a way back that fits who is looki
   }
 });
 
+// QA RT-05: on a 375 px phone the Beranda was 382 px wide (the "Cara kerja" cards sized to their widest line and the preview
+// tabs ran past the edge), so the page scrolled sideways. Every page a visitor can open before signing in must fit a narrow
+// phone. The viewport is set without mobile emulation on purpose: with `isMobile` the browser widens the layout viewport to the
+// content, and scrollWidth <= innerWidth would hold even for a page that overflows.
+const PUBLIC_ROUTES = [
+  ...MARKETING_PAGES.map((p) => p.route),
+  "/kebijakan-privasi",
+  "/perjanjian-pemrosesan-data",
+  "/kebijakan-refund",
+];
+
+test("public pages: no sideways scroll at 360 and 375 px", async ({ browser }, info) => {
+  test.setTimeout(180_000);
+  const { page, close } = await open(browser, info, "anon");
+  const problems: string[] = [];
+  for (const width of [360, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const route of PUBLIC_ROUTES) {
+      await visit(page, route);
+      const found = await page.evaluate(() => {
+        const inner = window.innerWidth;
+        // The outermost elements whose right edge passes the screen, to say what overflows (not only that something does).
+        const culprits = Array.from(document.querySelectorAll<HTMLElement>("body *"))
+          .filter((el) => {
+            const box = el.getBoundingClientRect();
+            const parent = el.parentElement?.getBoundingClientRect();
+            return box.width > 0 && box.right > inner + 0.5 && !(parent && parent.right > inner + 0.5);
+          })
+          .slice(0, 3)
+          .map((el) => `${el.tagName.toLowerCase()} "${(el.textContent ?? "").trim().slice(0, 30)}"`);
+        return { scroll: document.documentElement.scrollWidth, inner, culprits };
+      });
+      if (found.scroll > found.inner) problems.push(`${route} at ${width} px: scrollWidth ${found.scroll} > ${found.inner} (${found.culprits.join(", ")})`);
+    }
+  }
+  expect(problems, problems.join("\n")).toEqual([]);
+  await close();
+});
+
 test("the menu and breadcrumbs are named landmarks on a project page", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "owner");
   await visit(page, "/proyek/1/ringkasan");

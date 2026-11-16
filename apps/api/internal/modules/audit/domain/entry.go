@@ -20,6 +20,10 @@ type Entry struct {
 	StatusCode int
 	IP         string
 	UserAgent  string
+	// Description is the sentence the handler stated when the request ran
+	// (middleware.SetAuditDescription), "" for most routes and for every row
+	// recorded before it existed.
+	Description string
 }
 
 // Filter narrows an audit query (Platform Console "Audit Log").
@@ -36,6 +40,16 @@ type Filter struct {
 	Query string
 	// From is inclusive, To exclusive; zero means unbounded.
 	From, To time.Time
+}
+
+// Sentence is the action as a person reads it: the sentence stored with the
+// entry when there is one (a toggle names its result and its object, RT-08),
+// otherwise the one built from the route (Describe), "" when unknown.
+func (e Entry) Sentence() string {
+	if e.Description != "" {
+		return e.Description
+	}
+	return Describe(e.Method, e.Path)
 }
 
 // Succeeded reports whether the audited request was applied (2xx).

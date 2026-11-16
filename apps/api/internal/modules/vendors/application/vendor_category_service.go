@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"elproof/internal/modules/vendors/domain"
 	"elproof/internal/shared/apperror"
@@ -72,7 +73,49 @@ type VendorCategoryInput struct {
 	Description string
 }
 
+// maxCategoryNameLen / maxCategoryDescriptionLen are the column widths of
+// vendor_categories (migration 000006).
+const (
+	maxCategoryNameLen        = 100
+	maxCategoryDescriptionLen = 255
+)
+
+// MsgCategoryNameTaken is the 422 a duplicate category name answers (FQ-03).
+const MsgCategoryNameTaken = "Kategori dengan nama ini sudah ada."
+
+// validateCategory trims the name in place and checks it: required, within the
+// column, and not the name of another category of the tenant (compared without
+// regard to case or surrounding spaces; selfID is the category being renamed,
+// 0 on create). Duplicates that already exist are left alone — only a new name
+// is refused, so no unique index is needed (one would fail on existing rows).
+func (s *VendorCategoryService) validateCategory(ctx context.Context, tenantID, selfID int64, input *VendorCategoryInput) error {
+	input.Name = strings.TrimSpace(input.Name)
+	f := fieldErrors{}
+	if input.Name == "" {
+		f.add("name", "Isi nama kategori")
+	} else {
+		f.maxLen("name", input.Name, "Nama kategori", maxCategoryNameLen)
+	}
+	f.maxLen("description", input.Description, "Deskripsi", maxCategoryDescriptionLen)
+	if len(f["name"]) == 0 {
+		existing, err := s.repo.List(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		for _, c := range existing {
+			if c.ID != selfID && strings.EqualFold(strings.TrimSpace(c.Name), input.Name) {
+				f.add("name", MsgCategoryNameTaken)
+				break
+			}
+		}
+	}
+	return f.err([]string{"name", "description"}, "Data kategori belum sesuai")
+}
+
 func (s *VendorCategoryService) Create(ctx context.Context, tenantID int64, input VendorCategoryInput) (*domain.VendorCategory, error) {
+	if err := s.validateCategory(ctx, tenantID, 0, &input); err != nil {
+		return nil, err
+	}
 	category := &domain.VendorCategory{TenantID: tenantID, Name: input.Name, Description: input.Description, IsActive: true}
 	if err := s.repo.Create(ctx, category); err != nil {
 		return nil, err
@@ -83,6 +126,9 @@ func (s *VendorCategoryService) Create(ctx context.Context, tenantID int64, inpu
 func (s *VendorCategoryService) Update(ctx context.Context, tenantID, id int64, input VendorCategoryInput) (*domain.VendorCategory, error) {
 	category, err := s.Get(ctx, tenantID, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateCategory(ctx, tenantID, id, &input); err != nil {
 		return nil, err
 	}
 	category.Name = input.Name

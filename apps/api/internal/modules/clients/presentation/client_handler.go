@@ -96,7 +96,7 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	if claims.PrincipalType != "staff" {
-		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat mengakses data client", nil)
+		response.Error(w, http.StatusForbidden, "Hanya anggota tim WO yang dapat mengakses data klien", nil)
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()
@@ -113,7 +113,7 @@ func requireTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 func requireTenantWideClients(w http.ResponseWriter, r *http.Request) bool {
 	g := middleware.GrantsFrom(r.Context())
 	if !g.Can("client.manage") || !g.AllProjects {
-		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat melihat seluruh client", map[string]string{"code": "forbidden_permission"})
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat melihat seluruh klien", map[string]string{"code": "forbidden_permission"})
 		return false
 	}
 	return true
@@ -125,7 +125,7 @@ func requireTenantWideClients(w http.ResponseWriter, r *http.Request) bool {
 func (h *Handler) requireClientManager(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) bool {
 	g := middleware.GrantsFrom(r.Context())
 	if !g.Can("client.manage") {
-		response.Error(w, http.StatusForbidden, "Peran Anda tidak memiliki izin mengelola client", map[string]string{"code": "forbidden_permission"})
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak memiliki izin mengelola klien", map[string]string{"code": "forbidden_permission"})
 		return false
 	}
 	if g.AllProjects {
@@ -136,7 +136,7 @@ func (h *Handler) requireClientManager(w http.ResponseWriter, r *http.Request, t
 	if err == nil && h.clients.VerifyAssignedProject(r.Context(), tenantID, projectID, staffID) == nil {
 		return true
 	}
-	response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke project ini", nil)
+	response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses ke proyek ini", nil)
 	return false
 }
 
@@ -209,7 +209,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, tenantID int64) {
 		// carries the tenant).
 		projectID, err := strconv.ParseInt(projectIDRaw, 10, 64)
 		if err != nil || projectID < 1 {
-			writeAppError(w, apperror.Validation("Filter client tidak valid", map[string][]string{"projectId": {"Project tidak valid"}}))
+			writeAppError(w, apperror.Validation("Filter klien tidak valid", map[string][]string{"projectId": {"Proyek tidak valid"}}))
 			return
 		}
 		if !middleware.GrantsFrom(r.Context()).AllProjects {
@@ -299,7 +299,7 @@ func clientListFilter(r *http.Request, projectID *int64) (domain.ListFilter, err
 		bad["loginStatus"] = []string{"Status akses harus salah satu dari: " + strings.Join(domain.LoginStatuses, ", ")}
 	}
 	if len(bad) > 0 {
-		return f, apperror.Validation("Filter client tidak valid", bad)
+		return f, apperror.Validation("Filter klien tidak valid", bad)
 	}
 	return f, nil
 }
@@ -334,7 +334,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, tenantID int64)
 	}
 	resp := toClientResponse(*c)
 	resp.LoginStatus = "invited"
-	response.Created(w, "Client ditambahkan. Kirim link undangan agar client mengatur kata sandinya sendiri.",
+	response.Created(w, "Klien ditambahkan. Kirim link undangan agar klien mengatur kata sandinya sendiri.",
 		clientWithLinkResponse{Client: resp, AccessLink: toAccessLinkResponse(link)})
 }
 
@@ -352,7 +352,7 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/clients/")
 	if len(segments) == 0 {
-		response.Error(w, http.StatusNotFound, "Client tidak ditemukan", nil)
+		response.Error(w, http.StatusNotFound, "Klien tidak ditemukan", nil)
 		return
 	}
 	id, err := strconv.ParseInt(segments[0], 10, 64)
@@ -429,7 +429,7 @@ func (h *Handler) updateContact(w http.ResponseWriter, r *http.Request, tenantID
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Kontak client berhasil diperbarui", h.withLoginStatus(r, *c))
+	response.OK(w, "Kontak klien berhasil diperbarui", h.withLoginStatus(r, *c))
 }
 
 // deletedResponse is the body of a soft DELETE: what was deleted and until when
@@ -447,7 +447,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request, tenantID, id in
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Client berhasil dihapus", deletedResponse{ID: id, RestorableUntil: until.Format(time.RFC3339)})
+	response.OK(w, "Klien berhasil dihapus", deletedResponse{ID: id, RestorableUntil: until.Format(time.RFC3339)})
 }
 
 // restore is POST /clients/{id}/restore: the client as the list shows it. 404
@@ -459,7 +459,7 @@ func (h *Handler) restore(w http.ResponseWriter, r *http.Request, tenantID, id i
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Client dipulihkan", h.withLoginStatus(r, *c))
+	response.OK(w, "Klien dipulihkan", h.withLoginStatus(r, *c))
 }
 
 // setActive sets a client's active state to exactly `want` (PATCH {"isActive":
@@ -473,7 +473,7 @@ func (h *Handler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id
 		return
 	}
 	if want == current.IsActive {
-		response.OK(w, "Status client diperbarui", toClientResponse(*current))
+		response.OK(w, "Status klien diperbarui", toClientResponse(*current))
 		return
 	}
 	c, err := h.clients.SetActive(r.Context(), tenantID, id, want)
@@ -481,7 +481,7 @@ func (h *Handler) setActive(w http.ResponseWriter, r *http.Request, tenantID, id
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Status client diperbarui", toClientResponse(*c))
+	response.OK(w, "Status klien diperbarui", toClientResponse(*c))
 }
 
 // accessLink is POST /clients/{id}/access-link: a new invitation (client

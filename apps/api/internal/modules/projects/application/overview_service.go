@@ -43,6 +43,25 @@ func NewOverviewService(projects *ProjectService, clientPayments ClientPaymentRe
 // overview lists no clients.
 func (s *OverviewService) SetClients(c ClientDirectory) { s.clients = c }
 
+// ClientNames names the project's live clients by id (RT-07: who sent a proof
+// file from the portal). A failure or a missing directory yields an empty map:
+// a name is context, never a reason to fail the request.
+func (s *OverviewService) ClientNames(ctx context.Context, tenantID, projectID int64) map[int64]string {
+	names := map[int64]string{}
+	if s == nil || s.clients == nil {
+		return names
+	}
+	list, err := s.clients.ListProjectClients(ctx, tenantID, projectID)
+	if err != nil {
+		logger.Error("naming the clients of project %d: %v", projectID, err)
+		return names
+	}
+	for _, c := range list {
+		names[c.ID] = c.Name
+	}
+	return names
+}
+
 // UnconfirmedVendor is an engagement still Planned or in Negotiation.
 type UnconfirmedVendor struct {
 	ID               int64

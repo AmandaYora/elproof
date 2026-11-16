@@ -78,7 +78,7 @@ func TestValidateVendorInput(t *testing.T) {
 
 func TestValidateVenueInput(t *testing.T) {
 	valid := func() VenueInput {
-		return VenueInput{Name: "Gedung Serbaguna", RentalPrice: i64(10_000_000), Charge: i64(0), Capacity: iptr(500)}
+		return VenueInput{Name: "Gedung Serbaguna", PhonePIC: "081234567", RentalPrice: i64(10_000_000), Charge: i64(0), Capacity: iptr(500)}
 	}
 	in := valid()
 	if err := validateVenueInput(&in); err != nil {
@@ -95,6 +95,10 @@ func TestValidateVenueInput(t *testing.T) {
 		{"negative charge", func(v *VenueInput) { v.Charge = i64(-1) }, "charge"},
 		{"negative capacity", func(v *VenueInput) { v.Capacity = iptr(-10) }, "capacity"},
 		{"capacity past INT UNSIGNED", func(v *VenueInput) { v.Capacity = iptr(maxVenueCapacity + 1) }, "capacity"},
+		{"no PIC phone (FQ-06)", func(v *VenueInput) { v.PhonePIC = "" }, "phonePic"},
+		{"blank PIC phone", func(v *VenueInput) { v.PhonePIC = "      " }, "phonePic"},
+		{"PIC phone too short", func(v *VenueInput) { v.PhonePIC = "12345" }, "phonePic"},
+		{"PIC phone too long", func(v *VenueInput) { v.PhonePIC = strings.Repeat("1", 31) }, "phonePic"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -125,32 +129,14 @@ func TestServicesValidateBeforeStoring(t *testing.T) {
 	}
 
 	venues := &VenueService{}
-	if _, err := venues.Create(ctx, 1, VenueInput{Name: "", RentalPrice: i64(-1)}); err == nil {
+	if _, err := venues.Create(ctx, 1, VenueInput{Name: "", PhonePIC: "081234567", RentalPrice: i64(-1)}); err == nil {
 		t.Fatal("venue create accepted a nameless venue")
 	} else if f := fieldsOf(t, err); len(f["name"]) == 0 || len(f["rentalPrice"]) == 0 {
 		t.Fatalf("venue create fields = %v", f)
 	}
-	if _, err := venues.Update(ctx, 1, 2, VenueInput{Name: "Gedung", Capacity: iptr(-1)}); err == nil {
+	if _, err := venues.Update(ctx, 1, 2, VenueInput{Name: "Gedung", PhonePIC: "081234567", Capacity: iptr(-1)}); err == nil {
 		t.Fatal("venue update accepted a negative capacity")
 	} else if f := fieldsOf(t, err); len(f["capacity"]) == 0 {
 		t.Fatalf("venue update fields = %v", f)
-	}
-}
-
-func TestImportRowProblem(t *testing.T) {
-	if msg := importRowProblem("Gedung", labeledNumber{label: "Harga sewa", value: i64(0)}, capacityNumber(iptr(100))); msg != "" {
-		t.Fatalf("valid row refused: %q", msg)
-	}
-	if msg := importRowProblem(strings.Repeat("a", 151)); msg == "" {
-		t.Fatal("long name accepted")
-	}
-	if msg := importRowProblem("Gedung", labeledNumber{label: "Charge", value: i64(-1)}); !strings.HasPrefix(msg, "Charge") {
-		t.Fatalf("negative charge: %q", msg)
-	}
-	if msg := importRowProblem("Gedung", capacityNumber(iptr(maxVenueCapacity+1))); !strings.HasPrefix(msg, "Kapasitas") {
-		t.Fatalf("huge capacity: %q", msg)
-	}
-	if msg := importRowProblem("Gedung", capacityNumber(nil)); msg != "" {
-		t.Fatalf("empty capacity refused: %q", msg)
 	}
 }

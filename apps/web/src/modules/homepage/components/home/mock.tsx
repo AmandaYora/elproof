@@ -48,6 +48,19 @@ export function StatusChip({ tone, children, className }: { tone: Tone; children
   );
 }
 
+/**
+ * A thin progress bar for "18 dari 24 tahapan". Drawn as SVG so the share is an attribute, not a style: the prerendered
+ * page runs under a strict style-src CSP that drops inline style attributes.
+ */
+export function ProgressBar({ done, total, className, trackClassName = "text-accent" }: { done: number; total: number; className?: string; trackClassName?: string }) {
+  return (
+    <svg aria-hidden className={cn("block w-full overflow-hidden rounded-full", className)} preserveAspectRatio="none" viewBox="0 0 100 1">
+      <rect width="100" height="1" className={cn("fill-current", trackClassName)} />
+      <rect width={(done / total) * 100} height="1" className="fill-current text-primary" />
+    </svg>
+  );
+}
+
 /** Progress ring for "18 dari 24 tahapan". */
 export function ProgressRing({ done, total, size = 60 }: { done: number; total: number; size?: number }) {
   const r = 15.5;

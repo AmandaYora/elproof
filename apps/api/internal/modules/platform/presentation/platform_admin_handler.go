@@ -175,6 +175,11 @@ func (h *PlatformAdminHandler) toggleActive(w http.ResponseWriter, r *http.Reque
 		writeAppError(w, err)
 		return
 	}
+	verb := "Menonaktifkan"
+	if admin.IsActive {
+		verb = "Mengaktifkan"
+	}
+	middleware.SetAuditDescription(r.Context(), verb+" pengguna platform "+admin.Name)
 	response.OK(w, "Status admin platform diperbarui", toPlatformAdminResponse(*admin))
 }
 

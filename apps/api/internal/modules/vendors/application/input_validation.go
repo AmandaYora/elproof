@@ -20,6 +20,8 @@ const (
 	maxDirectoryEmailLen   = 150
 	maxDirectoryAddressLen = 255
 	maxVenueCapacity       = math.MaxUint32
+	// minVenuePhonePICLen mirrors the venue form (venue.schema.ts phonePic min 6).
+	minVenuePhonePICLen = 6
 )
 
 // fieldErrors collects every problem of one input so the response names them
@@ -92,7 +94,14 @@ func validateVenueInput(in *VenueInput) error {
 		f.maxLen("name", in.Name, "Nama venue", maxDirectoryNameLen)
 	}
 	f.maxLen("picName", in.PICName, "Nama PIC", maxDirectoryPICNameLen)
-	f.maxLen("phonePic", in.PhonePIC, "No. telepon PIC", maxDirectoryPhoneLen)
+	// No. telepon PIC is required, the same rule as the venue form (FQ-06):
+	// at least minVenuePhonePICLen characters once trimmed.
+	in.PhonePIC = strings.TrimSpace(in.PhonePIC)
+	if utf8.RuneCountInString(in.PhonePIC) < minVenuePhonePICLen {
+		f.add("phonePic", "Isi nomor telepon PIC, minimal "+strconv.Itoa(minVenuePhonePICLen)+" angka")
+	} else {
+		f.maxLen("phonePic", in.PhonePIC, "No. telepon PIC", maxDirectoryPhoneLen)
+	}
 	f.maxLen("phoneVenue", in.PhoneVenue, "No. telepon venue", maxDirectoryPhoneLen)
 	f.maxLen("email", in.Email, "Email", maxDirectoryEmailLen)
 	f.maxLen("address", in.Address, "Alamat", maxDirectoryAddressLen)
@@ -106,40 +115,4 @@ func validateVenueInput(in *VenueInput) error {
 		}
 	}
 	return f.err(venueFieldOrder, "Data venue belum lengkap atau tidak sesuai")
-}
-
-// importRowProblem is the first reason an import row would be refused by the
-// database (a name too long for its column, a negative number); "" when none.
-// The row-level message is shown in the import result list.
-func importRowProblem(name string, numbers ...labeledNumber) string {
-	if utf8.RuneCountInString(name) > maxDirectoryNameLen {
-		return "Nama maksimal " + strconv.Itoa(maxDirectoryNameLen) + " karakter"
-	}
-	for _, n := range numbers {
-		if n.value == nil {
-			continue
-		}
-		if *n.value < 0 {
-			return n.label + " tidak boleh kurang dari 0"
-		}
-		if n.max > 0 && *n.value > n.max {
-			return n.label + " terlalu besar"
-		}
-	}
-	return ""
-}
-
-type labeledNumber struct {
-	label string
-	value *int64
-	max   int64 // 0 = no upper bound beyond int64
-}
-
-func capacityNumber(c *int) labeledNumber {
-	n := labeledNumber{label: "Kapasitas", max: maxVenueCapacity}
-	if c != nil {
-		v := int64(*c)
-		n.value = &v
-	}
-	return n
 }

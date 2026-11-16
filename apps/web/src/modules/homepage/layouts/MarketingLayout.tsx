@@ -1,20 +1,22 @@
 import { Suspense, useEffect, useId, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { Menu, MessageCircle, X } from "lucide-react";
+import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { APP_NAME } from "@/shared/constants/brand";
 import { useDocumentSurface } from "@/shared/hooks/useDocumentSurface";
 import { BrandMark } from "@/modules/homepage/components/BrandMark";
 import { Container } from "@/modules/homepage/components/Container";
 import { ctaClass } from "@/modules/homepage/components/cta";
-import { CONTACT, whatsappUrl } from "@/modules/homepage/data/contact";
+import { COMPANY, CONTACT, whatsappUrl } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
 
-// Sections of the Beranda the header can jump to (ids set by HomePage).
+// Sections of the Beranda the header can jump to (ids set by HomePage). A link to a page uses that page's own name
+// (PUBLIC_PAGES title: the tab, the h1 of the legal pages and the sitemap say the same), sentence case (QA FQ-14).
 const NAV_LINKS = [
   { to: `${ROUTE_PATHS.homepage}#cara-kerja`, label: "Cara kerja" },
   { to: `${ROUTE_PATHS.homepage}#harga`, label: "Harga" },
-  { to: ROUTE_PATHS.homepageAbout, label: "Tentang Kami" },
+  { to: ROUTE_PATHS.homepageAbout, label: PUBLIC_PAGES.about.title },
   { to: ROUTE_PATHS.homepageFaq, label: "FAQ" },
   { to: ROUTE_PATHS.homepageContact, label: "Kontak" },
 ];
@@ -32,17 +34,17 @@ const FOOTER_GROUPS = [
   {
     title: "Perusahaan",
     links: [
-      { to: ROUTE_PATHS.homepageAbout, label: "Tentang Kami" },
+      { to: ROUTE_PATHS.homepageAbout, label: PUBLIC_PAGES.about.title },
       { to: ROUTE_PATHS.homepageContact, label: "Kontak" },
     ],
   },
   {
     title: "Legal",
     links: [
-      { to: ROUTE_PATHS.homepageTerms, label: "Syarat & Ketentuan" },
-      { to: ROUTE_PATHS.homepagePrivacy, label: "Kebijakan Privasi" },
-      { to: ROUTE_PATHS.homepageDataProcessing, label: "Pemrosesan Data" },
-      { to: ROUTE_PATHS.homepageRefund, label: "Kebijakan Refund" },
+      { to: ROUTE_PATHS.homepageTerms, label: PUBLIC_PAGES.terms.title },
+      { to: ROUTE_PATHS.homepagePrivacy, label: PUBLIC_PAGES.privacy.title },
+      { to: ROUTE_PATHS.homepageDataProcessing, label: PUBLIC_PAGES.dataProcessing.title },
+      { to: ROUTE_PATHS.homepageRefund, label: PUBLIC_PAGES.refund.title },
     ],
   },
 ];
@@ -227,7 +229,9 @@ export default function MarketingLayout() {
             <div className="col-span-2 md:col-span-1">
               <BrandMark />
               <p className="mt-4 max-w-[30ch]">Aplikasi kerja untuk wedding organizer Indonesia.</p>
-              <p className="mt-3 max-w-[30ch] text-[13.5px]">Dibuat oleh Elcodelabs, PT Prayora Karya Pratama.</p>
+              <p className="mt-3 max-w-[30ch] text-[13.5px]">
+                Dibuat oleh {COMPANY.brand}, {COMPANY.name}.
+              </p>
             </div>
             {FOOTER_GROUPS.map((group) => (
               <div key={group.title}>

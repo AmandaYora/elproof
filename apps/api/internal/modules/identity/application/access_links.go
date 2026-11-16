@@ -65,7 +65,7 @@ func (s *AuthService) IssueAccessLink(ctx context.Context, principalType domain.
 		return nil, err
 	}
 	if cred == nil {
-		return nil, apperror.NotFound("Akun login tidak ditemukan")
+		return nil, apperror.NotFound("Akun masuk tidak ditemukan")
 	}
 	if !cred.IsActive {
 		return nil, apperror.Conflict("Akun ini nonaktif. Aktifkan dulu sebelum membuat link.")
@@ -87,7 +87,7 @@ func (s *AuthService) IssueAccessLink(ctx context.Context, principalType domain.
 			purpose, ttl = domain.PurposeClientReset, clientResetTTL
 		}
 	default:
-		return nil, apperror.Forbidden("Link akses hanya untuk staf dan client WO")
+		return nil, apperror.Forbidden("Link akses hanya untuk tim dan klien WO")
 	}
 	plain, hash, err := s.issuer.NewRefreshTokenValue()
 	if err != nil {
@@ -174,7 +174,7 @@ func (s *AuthService) AcceptStaffInvite(ctx context.Context, token, idToken stri
 		return nil, err
 	}
 	if link.Purpose != domain.PurposeStaffInvite {
-		return nil, linkError("link_invalid", "Link ini bukan undangan staf.")
+		return nil, linkError("link_invalid", "Link ini bukan undangan anggota tim.")
 	}
 	google, err := s.VerifyGoogle(ctx, idToken)
 	if err != nil {

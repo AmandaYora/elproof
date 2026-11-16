@@ -590,6 +590,8 @@ interface RawEvidence {
   uploadedAt: string;
   description: string;
   uploadedByStaffId: number;
+  uploadedByName?: string;
+  uploadedBySource?: "staff" | "client";
   relatedKind: EvidenceRelatedKind;
   relatedId: number;
   isClientVisible: boolean;
@@ -606,6 +608,8 @@ function toEvidence(raw: RawEvidence): Evidence {
     uploadedAt: raw.uploadedAt,
     description: raw.description,
     uploadedByStaffId: String(raw.uploadedByStaffId),
+    uploadedByName: raw.uploadedByName ?? "",
+    uploadedBySource: raw.uploadedBySource ?? "staff",
     relatedKind: raw.relatedKind,
     relatedId: String(raw.relatedId),
     isClientVisible: raw.isClientVisible,

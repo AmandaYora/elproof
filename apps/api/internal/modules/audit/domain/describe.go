@@ -91,7 +91,7 @@ var actionDescriptions = map[string]string{
 	"PUT /console/subscription-policy":          "Mengubah kebijakan langganan",
 	"POST /console/tenants/{id}/impersonate":    "Memulai sesi dukungan di tenant {1}",
 	"POST /console/support-sessions/{id}/end":   "Mengakhiri sesi dukungan #{1}",
-	"PUT /console/login-slides/{id}":            "Mengganti foto halaman login nomor {1}",
+	"PUT /console/login-slides/{id}":            "Mengganti foto halaman masuk nomor {1}",
 	// Own account
 	"POST /auth/logout":      "Keluar",
 	"POST /auth/mfa/setup":   "Menyiapkan verifikasi dua langkah",

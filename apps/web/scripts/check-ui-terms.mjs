@@ -27,6 +27,7 @@ const TERMS = [
   [/\bUpload\b/i, "Unggah"],
   [/\bPassword\b/i, "Kata sandi"],
   [/\bReset\b(?! filter)/i, "Atur ulang"],
+  [/\bread-only\b/i, "baca-saja"],
   // A vendor's price package (QA EP-15): one word per package, the stored field is priceAkad.
   [/\bPemberkatan\b/i, "Akad (paket harga vendor)"],
   [/\bResepsi Only\b/i, "Resepsi saja"],
@@ -75,6 +76,10 @@ function isDisplayLiteral(node) {
   if (ts.isJsxAttribute(p)) return DISPLAY_ATTRS.has(p.name.getText());
   if (ts.isJsxExpression(p)) return true; // {"text"} inside JSX
   if (ts.isPropertyAssignment(p) && p.initializer === node) return DISPLAY_KEYS.has(p.name.getText().replace(/["']/g, ""));
+  // body: ["…", "…"]: the paragraphs of a legal page (QA FQ-09 found "project", "Client", "timeline" there).
+  if (ts.isArrayLiteralExpression(p) && ts.isPropertyAssignment(p.parent) && p.parent.initializer === p) {
+    return DISPLAY_KEYS.has(p.parent.name.getText().replace(/["']/g, ""));
+  }
   if (ts.isCallExpression(p) || ts.isBinaryExpression(p) || ts.isConditionalExpression(p) || ts.isTemplateSpan(p)) return isDisplayCall(node);
   return false;
 }

@@ -53,7 +53,7 @@ func (r *References) Staff(ctx context.Context, tenantID int64, field string, id
 			return err
 		}
 		if !ok {
-			return notFoundField(field, "Staf tidak ditemukan")
+			return notFoundField(field, "Anggota tim tidak ditemukan")
 		}
 	}
 	return nil

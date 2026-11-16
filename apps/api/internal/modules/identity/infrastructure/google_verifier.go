@@ -69,13 +69,13 @@ type googleClaims struct {
 }
 
 func invalidGoogleToken() error {
-	return apperror.Unauthorized("Login Google tidak berhasil atau sudah kedaluwarsa. Silakan coba lagi.")
+	return apperror.Unauthorized("Masuk dengan Google tidak berhasil atau sudah kedaluwarsa. Silakan coba lagi.")
 }
 
 // Verify returns the Google account behind a valid ID token.
 func (v *GoogleVerifier) Verify(ctx context.Context, idToken string) (*application.GoogleIdentity, error) {
 	if v.clientID == "" {
-		return nil, apperror.Internal("Login dengan Google belum dikonfigurasi")
+		return nil, apperror.Internal("Masuk dengan Google belum dikonfigurasi")
 	}
 	var claims googleClaims
 	_, err := jwt.ParseWithClaims(idToken, &claims,

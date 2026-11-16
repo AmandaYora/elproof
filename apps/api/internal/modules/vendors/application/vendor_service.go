@@ -329,11 +329,18 @@ type VendorImportRow struct {
 	PriceAkad        *int64
 	PriceAkadResepsi *int64
 	Notes            string
+	// NotNumber names the numeric columns (template headers) whose cell held
+	// text that is not a whole number; their value above is then nil.
+	NotNumber []string
 }
 
+// VendorImportRowError is one refused row: Message is every problem in one
+// sentence, Errors the same problems per column (empty for a row the database
+// refused as a whole).
 type VendorImportRowError struct {
 	Row     int
 	Message string
+	Errors  []ImportCellError
 }
 
 type VendorImportResult struct {
@@ -395,22 +402,9 @@ func (s *VendorService) ImportVendors(ctx context.Context, tenantID int64, rows 
 
 	for i, row := range rows {
 		rowNum := i + 2 // header occupies row 1
-		if row.Name == "" || row.PICName == "" || row.Phone == "" || row.City == "" || row.CategoryName == "" ||
-			row.PriceAkad == nil || *row.PriceAkad < 1 || row.PriceAkadResepsi == nil || *row.PriceAkadResepsi < 1 {
-			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: "Nama Vendor, Kategori, Nama PIC, No Tlp Vendor, Kota, Harga Akad, dan Harga Akad+Resepsi wajib diisi dengan nilai yang valid"})
-			continue
-		}
-		if msg := importRowProblem(row.Name); msg != "" {
-			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: msg})
-			continue
-		}
-		if !domain.IsValidCity(row.City) {
-			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: "Kota tidak valid: " + row.City})
-			continue
-		}
-		categoryID, ok := categoryByName[strings.ToLower(row.CategoryName)]
-		if !ok {
-			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: "Kategori tidak ditemukan: " + row.CategoryName})
+		categoryID, check := checkVendorImportRow(row, categoryByName)
+		if check.failed() {
+			result.Errors = append(result.Errors, VendorImportRowError{Row: rowNum, Message: check.summary(), Errors: check.errs})
 			continue
 		}
 
@@ -447,9 +441,10 @@ func (s *VendorService) ImportVendors(ctx context.Context, tenantID int64, rows 
 		}
 		chunk := toInsert[start:end]
 		if err := s.repo.CreateBatch(ctx, chunk); err != nil {
+			logger.Error("import: batch insert failed: %v", err)
 			result.Errors = append(result.Errors, VendorImportRowError{
 				Row:     0,
-				Message: "Gagal menyimpan sekumpulan baris baru (baris data ke-" + strconv.Itoa(start+1) + " s.d. " + strconv.Itoa(end) + "): " + err.Error(),
+				Message: "Gagal menyimpan sekumpulan baris baru (baris data ke-" + strconv.Itoa(start+1) + " s.d. " + strconv.Itoa(end) + "). Coba impor ulang; bila tetap gagal, hubungi dukungan ElProof.",
 			})
 			continue
 		}
@@ -459,13 +454,58 @@ func (s *VendorService) ImportVendors(ctx context.Context, tenantID int64, rows 
 	for _, item := range toUpdate {
 		vendor := item.vendor
 		if err := s.repo.Update(ctx, &vendor); err != nil {
-			result.Errors = append(result.Errors, VendorImportRowError{Row: item.rowNum, Message: "Gagal memperbarui vendor: " + err.Error()})
+			logger.Error("import: update of row %d failed: %v", item.rowNum, err)
+			result.Errors = append(result.Errors, VendorImportRowError{Row: item.rowNum, Message: "Gagal memperbarui vendor. Coba impor ulang baris ini."})
 			continue
 		}
 		result.UpdatedCount++
 	}
 
 	return result, nil
+}
+
+// Columns of the vendor import template the row check names (template headers).
+const (
+	colVendorName        = "Nama Vendor"
+	colVendorCategory    = "Kategori"
+	colVendorPIC         = "Nama PIC"
+	colVendorPhone       = "No Tlp Vendor"
+	colVendorEmail       = "Email"
+	colVendorCity        = "Kota"
+	colVendorAddress     = "Alamat"
+	colVendorPriceAkad   = "Harga Akad"
+	colVendorPriceAkadRs = "Harga Akad+Resepsi"
+)
+
+// checkVendorImportRow judges every cell of one row (all problems at once, in
+// column order) and resolves its category; the id is 0 when the row failed.
+func checkVendorImportRow(row VendorImportRow, categoryByName map[string]int64) (int64, *rowCheck) {
+	c := &rowCheck{}
+	c.required(colVendorName, row.Name, maxDirectoryNameLen)
+	var categoryID int64
+	if row.CategoryName == "" {
+		c.add(colVendorCategory, colVendorCategory+" wajib diisi")
+	} else if id, ok := categoryByName[strings.ToLower(row.CategoryName)]; ok {
+		categoryID = id
+	} else {
+		c.add(colVendorCategory, colVendorCategory+" \""+row.CategoryName+"\" tidak ditemukan. Pilih dari daftar kategori di template.")
+	}
+	c.required(colVendorPIC, row.PICName, maxDirectoryPICNameLen)
+	c.required(colVendorPhone, row.Phone, maxDirectoryPhoneLen)
+	c.maxLen(colVendorEmail, row.Email, maxDirectoryEmailLen)
+	if row.City == "" {
+		c.add(colVendorCity, colVendorCity+" wajib diisi")
+	} else if !domain.IsValidCity(row.City) {
+		c.add(colVendorCity, colVendorCity+" \""+row.City+"\" tidak ada di daftar kota. Pilih dari daftar di template.")
+	}
+	c.maxLen(colVendorAddress, row.Address, maxDirectoryAddressLen)
+	price := numberRule{required: true, positive: true}
+	c.number(colVendorPriceAkad, row.PriceAkad, hasColumn(row.NotNumber, colVendorPriceAkad), price)
+	c.number(colVendorPriceAkadRs, row.PriceAkadResepsi, hasColumn(row.NotNumber, colVendorPriceAkadRs), price)
+	if c.failed() {
+		return 0, c
+	}
+	return categoryID, c
 }
 
 // Names resolves several vendors' names at once, scoped to the workspace.

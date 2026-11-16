@@ -33,7 +33,7 @@ type entryResponse struct {
 	ActorRole  string `json:"actorRole"`
 	TenantID   *int64 `json:"tenantId"`
 	Action     string `json:"action"`
-	// Description is the action as a sentence (domain.Describe), "" when the
+	// Description is the action as a sentence (domain.Entry.Sentence), "" when the
 	// route is unknown: the console then shows Action (EP-16).
 	Description string `json:"description"`
 	Method      string `json:"method"`
@@ -104,7 +104,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func toEntryResponse(e domain.Entry) entryResponse {
 	return entryResponse{
 		ID: e.ID, OccurredAt: e.OccurredAt.In(wib).Format("2006-01-02T15:04:05Z07:00"), ActorType: e.ActorType,
-		ActorID: e.ActorID, ActorRole: e.ActorRole, TenantID: e.TenantID, Action: e.Action, Description: domain.Describe(e.Method, e.Path), Method: e.Method, Path: e.Path,
+		ActorID: e.ActorID, ActorRole: e.ActorRole, TenantID: e.TenantID, Action: e.Action, Description: e.Sentence(), Method: e.Method, Path: e.Path,
 		StatusCode: e.StatusCode, Succeeded: e.Succeeded(), IP: e.IP,
 	}
 }
@@ -153,7 +153,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = cw.Write([]string{
 			strconv.FormatInt(e.ID, 10), e.OccurredAt.In(wib).Format("2006-01-02 15:04:05"), e.ActorType, csvCell(e.ActorID), csvCell(e.ActorRole),
-			tenant, csvCell(domain.Describe(e.Method, e.Path)), csvCell(e.Action), e.Method, csvCell(e.Path), strconv.Itoa(e.StatusCode), ok, e.IP,
+			tenant, csvCell(e.Sentence()), csvCell(e.Action), e.Method, csvCell(e.Path), strconv.Itoa(e.StatusCode), ok, e.IP,
 		})
 	}
 	cw.Flush()

@@ -49,7 +49,7 @@ func requireOwnerForTemplates(w http.ResponseWriter, r *http.Request) (int64, bo
 		return 0, false
 	}
 	if claims.PrincipalType != "staff" || !middleware.GrantsFrom(r.Context()).Can("template.manage") {
-		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola Timeline Default", map[string]string{"code": "forbidden_permission"})
+		response.Error(w, http.StatusForbidden, "Peran Anda tidak dapat mengelola jadwal bawaan", map[string]string{"code": "forbidden_permission"})
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()
@@ -99,7 +99,7 @@ func (h *MilestoneTemplateHandler) Collection(w http.ResponseWriter, r *http.Req
 			writeAppError(w, err)
 			return
 		}
-		response.Created(w, "Template timeline berhasil ditambahkan", toMilestoneTemplateResponse(*t))
+		response.Created(w, "Tahapan jadwal bawaan berhasil ditambahkan", toMilestoneTemplateResponse(*t))
 	case http.MethodPatch:
 		var body milestoneTemplateReorderBody
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -110,7 +110,7 @@ func (h *MilestoneTemplateHandler) Collection(w http.ResponseWriter, r *http.Req
 			writeAppError(w, err)
 			return
 		}
-		response.OK(w, "Urutan template timeline berhasil diperbarui", nil)
+		response.OK(w, "Urutan jadwal bawaan berhasil diperbarui", nil)
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 	}
@@ -146,13 +146,13 @@ func (h *MilestoneTemplateHandler) Item(w http.ResponseWriter, r *http.Request) 
 			writeAppError(w, err)
 			return
 		}
-		response.OK(w, "Template timeline berhasil diperbarui", toMilestoneTemplateResponse(*t))
+		response.OK(w, "Tahapan jadwal bawaan berhasil diperbarui", toMilestoneTemplateResponse(*t))
 	case http.MethodDelete:
 		if err := h.templates.Delete(r.Context(), tenantID, id); err != nil {
 			writeAppError(w, err)
 			return
 		}
-		response.OK(w, "Template timeline berhasil dihapus", nil)
+		response.OK(w, "Tahapan jadwal bawaan berhasil dihapus", nil)
 	default:
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
 	}

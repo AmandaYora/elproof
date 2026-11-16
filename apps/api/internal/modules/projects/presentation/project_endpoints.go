@@ -258,7 +258,7 @@ type projectCreatedResponse struct {
 // (terms), in one transaction, under the optional Idempotency-Key header.
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims staffClaims) {
 	if !claims.can("project.create") {
-		forbiddenPermission(w, "Peran Anda tidak dapat membuat project baru")
+		forbiddenPermission(w, "Peran Anda tidak dapat membuat proyek baru")
 		return
 	}
 	h.idempotent(w, r, claims, func(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +312,7 @@ func (h *Handler) createProjectNow(w http.ResponseWriter, r *http.Request, claim
 			resp.VenueSummary = &v
 		}
 	}
-	response.Created(w, "Project berhasil dibuat", resp)
+	response.Created(w, "Proyek berhasil dibuat", resp)
 }
 
 // me is the Client Portal's entry point (Fase 6) — a client principal has no
@@ -334,7 +334,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) resolveOwnClientProject(w http.ResponseWriter, r *http.Request) (tenantID, projectID int64, ok bool) {
 	claims, found := middleware.FromContext(r.Context())
 	if !found || claims.PrincipalType != "client" {
-		response.Error(w, http.StatusForbidden, "Hanya client yang dapat mengakses endpoint ini", nil)
+		response.Error(w, http.StatusForbidden, "Hanya klien yang dapat mengakses endpoint ini", nil)
 		return 0, 0, false
 	}
 	tenantID, ok = claims.TenantIDInt()
@@ -344,11 +344,11 @@ func (h *Handler) resolveOwnClientProject(w http.ResponseWriter, r *http.Request
 	}
 	clientID, err := strconv.ParseInt(claims.PrincipalID, 10, 64)
 	if err != nil {
-		response.Error(w, http.StatusForbidden, "Identitas client tidak valid", nil)
+		response.Error(w, http.StatusForbidden, "Identitas klien tidak valid", nil)
 		return 0, 0, false
 	}
 	if h.clientAccess == nil {
-		response.Error(w, http.StatusForbidden, "Akses client belum dikonfigurasi", nil)
+		response.Error(w, http.StatusForbidden, "Akses klien belum dikonfigurasi", nil)
 		return 0, 0, false
 	}
 	projectID, err = h.clientAccess.ProjectIDForClient(r.Context(), tenantID, clientID)
@@ -456,7 +456,7 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 		})
 		return
 	}
-	response.OK(w, "Project berhasil diperbarui", h.projectItem(r.Context(), claims.tenantID, *p))
+	response.OK(w, "Proyek berhasil diperbarui", h.projectItem(r.Context(), claims.tenantID, *p))
 }
 
 // getProjectVenue backs GET /projects/{id}/venue (ADR-0016) -- reachable by
@@ -486,7 +486,7 @@ func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims s
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
-	response.OK(w, "Project dibatalkan", resp)
+	response.OK(w, "Proyek dibatalkan", resp)
 }
 
 // deleteProject is the hard-delete endpoint (ADR-0013) — Owner-only, checked
@@ -497,14 +497,14 @@ func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims s
 // request.
 func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
 	if !claims.can("project.delete") {
-		forbiddenPermission(w, "Peran Anda tidak dapat menghapus project secara permanen")
+		forbiddenPermission(w, "Peran Anda tidak dapat menghapus proyek secara permanen")
 		return
 	}
 	if err := h.projects.Delete(r.Context(), claims.tenantID, projectID); err != nil {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Project berhasil dihapus permanen", nil)
+	response.OK(w, "Proyek berhasil dihapus permanen", nil)
 }
 
 // duplicateProject clones the source project's Project Milestones and Vendor
@@ -521,7 +521,7 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 	// resulting copy. Sales explicitly keeps only "create new" + "handover",
 	// never "duplicate as template" (PLAN.md revisi-timeline-vendor-role-sales).
 	if !claims.can("project.duplicate") {
-		forbiddenPermission(w, "Peran Anda tidak dapat menduplikasi project")
+		forbiddenPermission(w, "Peran Anda tidak dapat menduplikasi proyek")
 		return
 	}
 	var body projectInputBody
@@ -541,7 +541,7 @@ func (h *Handler) duplicateProject(w http.ResponseWriter, r *http.Request, claim
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
-	response.Created(w, "Project berhasil diduplikasi", resp)
+	response.Created(w, "Proyek berhasil diduplikasi", resp)
 }
 
 // --- Project milestones ---
@@ -590,7 +590,7 @@ func (h *Handler) createMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Timeline berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toMilestoneResponse(*m)))
+	response.Created(w, "Tahapan berhasil ditambahkan", h.mutated(r.Context(), claims.tenantID, projectID, toMilestoneResponse(*m)))
 }
 
 // milestoneItem is a project milestone as GET /projects/{id}/milestones lists it
@@ -611,7 +611,7 @@ func (h *Handler) milestoneItem(ctx context.Context, claims staffClaims, project
 func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, milestoneIDRaw string) {
 	milestoneID, err := parseInt64(milestoneIDRaw)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "ID timeline tidak valid", nil)
+		response.Error(w, http.StatusBadRequest, "ID tahapan tidak valid", nil)
 		return
 	}
 	expected, ok := requireIfMatch(w, r, func(ctx context.Context) error {
@@ -648,7 +648,7 @@ func (h *Handler) updateMilestone(w http.ResponseWriter, r *http.Request, claims
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Timeline berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, item))
+	response.OK(w, "Tahapan berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, item))
 }
 
 type milestoneReorderBody struct {
@@ -665,7 +665,7 @@ func (h *Handler) reorderMilestones(w http.ResponseWriter, r *http.Request, clai
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Urutan timeline berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, nil))
+	response.OK(w, "Urutan tahapan berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, nil))
 }
 
 type transitionBody struct {
@@ -687,7 +687,7 @@ func (h *Handler) transitionProject(w http.ResponseWriter, r *http.Request, clai
 	}
 	resp := toProjectResponse(*p)
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
-	response.OK(w, "Status project diperbarui", resp)
+	response.OK(w, "Status proyek diperbarui", resp)
 }
 
 type checklistItemResponse struct {

@@ -36,7 +36,7 @@ func (s *ClientService) checkClientQuota(ctx context.Context, tenantID int64) er
 	}
 	if n >= limit {
 		return apperror.Forbidden(fmt.Sprintf(
-			"Masa coba dibatasi %d akun client. Pilih paket langganan untuk menambah client tanpa batas.", limit,
+			"Masa coba dibatasi %d akun klien. Pilih paket langganan untuk menambah klien tanpa batas.", limit,
 		)).WithCode("trial_limit_reached")
 	}
 	return nil

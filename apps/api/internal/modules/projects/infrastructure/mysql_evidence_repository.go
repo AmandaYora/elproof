@@ -23,7 +23,7 @@ func NewMySQLEvidenceRepository(db *sql.DB) *MySQLEvidenceRepository {
 // client_hidden is computed: the file hangs off a kendala that is not shared with
 // the client, so no client may see it (domain.Evidence.ClientHidden).
 const evidenceColumns = `id, project_id, name, type, storage_path, file_name, document_date, uploaded_at,
-	description, uploaded_by_staff_id, related_kind, related_id, is_client_visible, updated_at,
+	description, uploaded_by_staff_id, IFNULL(uploaded_by_client_id, 0), related_kind, related_id, is_client_visible, updated_at,
 	(related_kind = 'issue' AND related_id IN (SELECT id FROM vendor_issues WHERE is_client_visible = FALSE)) AS client_hidden`
 
 func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error) {
@@ -32,7 +32,7 @@ func scanEvidence(scan func(dest ...interface{}) error) (*domain.Evidence, error
 	var documentDate sql.NullTime
 	var description sql.NullString
 	err := scan(&e.ID, &e.ProjectID, &e.Name, &evidenceType, &e.StoragePath, &e.FileName, &documentDate, &e.UploadedAt,
-		&description, &e.UploadedByStaffID, &relatedKind, &e.RelatedID, &e.IsClientVisible, &e.UpdatedAt, &e.ClientHidden)
+		&description, &e.UploadedByStaffID, &e.UploadedByClientID, &relatedKind, &e.RelatedID, &e.IsClientVisible, &e.UpdatedAt, &e.ClientHidden)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -162,10 +162,10 @@ func (r *MySQLEvidenceRepository) FindByID(ctx context.Context, projectID, id in
 func (r *MySQLEvidenceRepository) Create(ctx context.Context, e *domain.Evidence) error {
 	result, err := conn(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO evidence (project_id, name, type, storage_path, file_name, document_date, uploaded_at,
-		 description, uploaded_by_staff_id, related_kind, related_id, is_client_visible)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 description, uploaded_by_staff_id, uploaded_by_client_id, related_kind, related_id, is_client_visible)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ProjectID, e.Name, string(e.Type), e.StoragePath, e.FileName, e.DocumentDate, e.UploadedAt,
-		e.Description, e.UploadedByStaffID, string(e.RelatedKind), e.RelatedID, e.IsClientVisible,
+		e.Description, e.UploadedByStaffID, nullableID(e.UploadedByClientID), string(e.RelatedKind), e.RelatedID, e.IsClientVisible,
 	)
 	if err != nil {
 		var me *mysql.MySQLError

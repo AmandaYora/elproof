@@ -143,7 +143,7 @@ func (s *CoverService) Set(ctx context.Context, tenantID, projectID, actorStaffI
 			return err
 		}
 		if !found {
-			return apperror.NotFound("Project tidak ditemukan")
+			return apperror.NotFound("Proyek tidak ditemukan")
 		}
 		previous = old
 		return s.repo.SetCover(ctx, tenantID, projectID, &key, now)
@@ -176,7 +176,7 @@ func (s *CoverService) Remove(ctx context.Context, tenantID, projectID, actorSta
 			return err
 		}
 		if !found {
-			return apperror.NotFound("Project tidak ditemukan")
+			return apperror.NotFound("Proyek tidak ditemukan")
 		}
 		if old == nil {
 			return nil
@@ -202,7 +202,7 @@ func (s *CoverService) Open(ctx context.Context, tenantID, projectID int64) (io.
 		return nil, "", err
 	}
 	if p.CoverPhotoPath == nil {
-		return nil, "", apperror.NotFound("Project ini belum punya foto sampul")
+		return nil, "", apperror.NotFound("Proyek ini belum punya foto sampul")
 	}
 	reader, err := s.storage.Open(ctx, *p.CoverPhotoPath)
 	if err != nil {

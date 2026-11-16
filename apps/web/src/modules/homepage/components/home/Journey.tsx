@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { CalendarDays, EyeOff, FileImage, MessageSquareWarning } from "lucide-react";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
 import { StatusChip } from "@/modules/homepage/components/home/mock";
+import { SAMPLE } from "@/modules/homepage/data/sample";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { cn } from "@/shared/lib/cn";
 
@@ -9,7 +10,8 @@ import { cn } from "@/shared/lib/cn";
  * "Cara kerja" on the Beranda: one wedding, H-180 to the day itself, as five
  * cards of different sizes. The H-markers are real information (the order
  * work happens in), and every card shows a small piece of the actual screen
- * instead of an icon. Example data; plain HTML (prerendered, no chunk).
+ * instead of an icon. Example data from data/sample.ts (the same wedding as
+ * the hero); plain HTML (prerendered, no chunk).
  */
 
 function Card({ when, title, body, children, className, tone = "plain" }: {
@@ -47,8 +49,8 @@ function Row({ left, right, sub }: { left: ReactNode; right: ReactNode; sub?: Re
   return (
     <div className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
       <div className="min-w-0">
-        <p className="truncate font-semibold">{left}</p>
-        {sub && <p className="truncate text-[12px] text-muted-foreground">{sub}</p>}
+        <p className="font-semibold break-words">{left}</p>
+        {sub && <p className="text-[12px] break-words text-muted-foreground">{sub}</p>}
       </div>
       <div className="shrink-0">{right}</div>
     </div>
@@ -57,43 +59,44 @@ function Row({ left, right, sub }: { left: ReactNode; right: ReactNode; sub?: Re
 
 export function Journey() {
   return (
-    <ol className="mt-12 grid gap-4 md:grid-cols-6 md:gap-5">
+    <ol className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-6 md:gap-5">
       <Card
         className="md:col-span-3"
-        when="H-180"
+        when={SAMPLE.journey.contract}
         title="Termin terhitung sendiri dari nilai kontrak"
         body="Isi nilai kontrak sekali. Uang muka, termin, dan pelunasan terisi dari templat Anda, dan bisa dihitung ulang bila kontraknya berubah."
       >
         <Screen className="divide-y divide-border">
-          <Row left="Uang muka 30%" sub="15 Jun 2026" right={<span className="font-semibold tabular-nums">{formatCurrency(13_500_000)}</span>} />
-          <Row left="Termin 2, 40%" sub="1 Nov 2026" right={<span className="font-semibold tabular-nums">{formatCurrency(18_000_000)}</span>} />
-          <Row left="Pelunasan 30%" sub="5 Des 2026" right={<span className="font-semibold tabular-nums">{formatCurrency(13_500_000)}</span>} />
+          {SAMPLE.terms.map((t) => (
+            <Row key={t.id} left={t.labelWithPercent} sub={t.dueLabel} right={<span className="font-semibold tabular-nums">{formatCurrency(t.amount)}</span>} />
+          ))}
         </Screen>
       </Card>
 
       <Card
         className="md:col-span-3"
-        when="H-150"
+        when={SAMPLE.journey.schedule}
         title="Jadwal persiapan ikut bergeser bersama hari H"
         body="Tahapan dari jadwal bawaan Anda diberi tanggal mundur dari hari acara. Pasangan memindah tanggal? Jadwalnya ikut pindah, tanpa diatur ulang satu per satu."
       >
         <Screen className="divide-y divide-border">
-          <Row left="Survei venue dan vendor" right={<span className="text-[12px] font-semibold text-muted-foreground tabular-nums">H-90</span>} />
-          <Row left="Technical meeting" right={<span className="text-[12px] font-semibold text-muted-foreground tabular-nums">H-14</span>} />
+          {SAMPLE.schedule.map((s) => (
+            <Row key={s.name} left={s.name} right={<span className="text-[12px] font-semibold text-muted-foreground tabular-nums">{s.when}</span>} />
+          ))}
           <Row
             left={
               <span className="inline-flex items-center gap-1.5">
                 <CalendarDays className="size-3.5 text-muted-foreground" /> Hari pernikahan
               </span>
             }
-            right={<span className="text-[12px] font-semibold text-foreground">12 Des 2026</span>}
+            right={<span className="text-[12px] font-semibold text-foreground">{SAMPLE.eventDateShort}</span>}
           />
         </Screen>
       </Card>
 
       <Card
         className="md:col-span-2"
-        when="H-120"
+        when={SAMPLE.journey.vendors}
         title="DP dan sisa bayar vendor tidak tercecer"
         body="Kontrak, uang muka, dan pelunasan setiap vendor tersimpan di proyeknya, jadi margin acara terlihat jelas."
       >
@@ -109,7 +112,7 @@ export function Journey() {
       <Card
         className="md:col-span-2"
         tone="seal"
-        when="H-32"
+        when={SAMPLE.journey.proof}
         title="Setiap pembayaran klien ada buktinya"
         body="Tim mencatat pembayaran beserta bukti transfer, lalu memverifikasinya. Segel ini hanya muncul pada yang sudah diperiksa."
       >
@@ -118,8 +121,8 @@ export function Journey() {
             <FileImage className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold">Termin 2</p>
-            <p className="text-[12px] text-muted-foreground tabular-nums">{formatCurrency(20_000_000)}, bukti_transfer.jpg</p>
+            <p className="font-semibold">{SAMPLE.term("t2").label}</p>
+            <p className="text-[12px] text-muted-foreground tabular-nums">{formatCurrency(SAMPLE.term("t2").amount)}, bukti_transfer.jpg</p>
           </div>
           <ProofSeal size={40} className="shrink-0 text-seal" />
         </Screen>
@@ -127,7 +130,7 @@ export function Journey() {
 
       <Card
         className="md:col-span-2"
-        when="H-7"
+        when={SAMPLE.issue.countdown}
         title="Kendala tercatat, tidak ada yang terlupa"
         body="Catat kendala per vendor atau untuk acara secara umum, lalu pilih apakah pasangan perlu melihatnya."
       >
@@ -135,11 +138,11 @@ export function Journey() {
           <div className="flex items-start gap-2.5">
             <MessageSquareWarning className="mt-0.5 size-4 shrink-0 text-warning" />
             <div className="min-w-0">
-              <p className="font-semibold">Venue minta jadwal loading dimajukan</p>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">Dilaporkan 2 hari lalu, terlihat oleh pasangan</p>
+              <p className="font-semibold">{SAMPLE.issue.title}</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">Dilaporkan {SAMPLE.issue.reportedLabel}, terlihat oleh pasangan</p>
             </div>
           </div>
-          <StatusChip tone="success" className="mt-2.5">Selesai</StatusChip>
+          <StatusChip tone="warning" className="mt-2.5">Perlu ditangani</StatusChip>
         </Screen>
       </Card>
     </ol>

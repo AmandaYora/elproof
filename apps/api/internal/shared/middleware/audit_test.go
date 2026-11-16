@@ -44,3 +44,24 @@ func TestAuditTrail(t *testing.T) {
 		t.Errorf("refused attempt must be recorded with its status, got %d", rec.recs[1].StatusCode)
 	}
 }
+
+// RT-08: a handler can state what the request did (a toggle's result and the
+// object's name); the sentence lands in the record. Outside an audited request
+// setting it is harmless.
+func TestAuditDescription(t *testing.T) {
+	rec := &memRecorder{}
+	h := AuditTrail(rec, "platform_admin")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/plans/3/toggle-active" {
+			SetAuditDescription(r.Context(), "Menonaktifkan paket QA-TEST Paket")
+		}
+	}))
+	for _, path := range []string{"/api/v1/plans/3/toggle-active", "/api/v1/plans/3"} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req = req.WithContext(NewContextWithClaims(req.Context(), &Claims{PrincipalType: "platform_admin", PrincipalID: "9"}))
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	if len(rec.recs) != 2 || rec.recs[0].Description != "Menonaktifkan paket QA-TEST Paket" || rec.recs[1].Description != "" {
+		t.Fatalf("records: %+v", rec.recs)
+	}
+	SetAuditDescription(context.Background(), "tidak ke mana-mana") // no holder: no panic, no effect
+}

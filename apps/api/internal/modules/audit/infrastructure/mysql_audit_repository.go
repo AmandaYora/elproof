@@ -21,9 +21,9 @@ func NewMySQLAuditRepository(db *sql.DB) *MySQLAuditRepository {
 
 func (r *MySQLAuditRepository) Insert(ctx context.Context, e *domain.Entry) error {
 	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO audit_log (occurred_at, actor_type, actor_id, actor_role, tenant_id, action, method, path, status_code, ip, user_agent)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.OccurredAt, e.ActorType, e.ActorID, e.ActorRole, e.TenantID, e.Action, e.Method, e.Path, e.StatusCode, e.IP, e.UserAgent,
+		`INSERT INTO audit_log (occurred_at, actor_type, actor_id, actor_role, tenant_id, action, method, path, status_code, ip, user_agent, description)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.OccurredAt, e.ActorType, e.ActorID, e.ActorRole, e.TenantID, e.Action, e.Method, e.Path, e.StatusCode, e.IP, e.UserAgent, e.Description,
 	)
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func auditWhere(f domain.Filter) (string, []interface{}) {
 	}
 	if f.Query != "" {
 		like := "%" + utils.EscapeLike(f.Query) + "%"
-		conds, args = append(conds, "(action LIKE ? OR path LIKE ?)"), append(args, like, like)
+		conds, args = append(conds, "(action LIKE ? OR path LIKE ? OR description LIKE ?)"), append(args, like, like, like)
 	}
 	if !f.From.IsZero() {
 		conds, args = append(conds, "occurred_at >= ?"), append(args, f.From)
@@ -69,7 +69,7 @@ func auditWhere(f domain.Filter) (string, []interface{}) {
 	return " WHERE " + strings.Join(conds, " AND "), args
 }
 
-const auditColumns = `id, occurred_at, actor_type, actor_id, actor_role, tenant_id, action, method, path, status_code, ip, user_agent`
+const auditColumns = `id, occurred_at, actor_type, actor_id, actor_role, tenant_id, action, method, path, status_code, ip, user_agent, description`
 
 func scanAuditRows(rows *sql.Rows) ([]domain.Entry, error) {
 	var out []domain.Entry
@@ -77,7 +77,7 @@ func scanAuditRows(rows *sql.Rows) ([]domain.Entry, error) {
 		var e domain.Entry
 		var tenant sql.NullInt64
 		if err := rows.Scan(&e.ID, &e.OccurredAt, &e.ActorType, &e.ActorID, &e.ActorRole, &tenant, &e.Action, &e.Method,
-			&e.Path, &e.StatusCode, &e.IP, &e.UserAgent); err != nil {
+			&e.Path, &e.StatusCode, &e.IP, &e.UserAgent, &e.Description); err != nil {
 			return nil, err
 		}
 		if tenant.Valid {

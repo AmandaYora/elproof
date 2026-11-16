@@ -43,7 +43,7 @@ func (s *IssueService) validateEngagement(ctx context.Context, projectID, projec
 		return err
 	}
 	if pv == nil {
-		return apperror.Validation("Vendor tidak valid", map[string][]string{"projectVendorId": {"Vendor tidak ditemukan di project ini"}})
+		return apperror.Validation("Vendor tidak valid", map[string][]string{"projectVendorId": {"Vendor tidak ditemukan di proyek ini"}})
 	}
 	return nil
 }
@@ -74,14 +74,14 @@ func (s *IssueService) validateVendorMilestone(ctx context.Context, projectVendo
 	}
 	if projectVendorID == 0 {
 		// A deliverable belongs to a vendor: without one there is nothing to attach to.
-		return apperror.Validation("Timeline vendor tidak valid", map[string][]string{"vendorMilestoneId": {"Pilih vendornya dulu untuk memilih timeline vendor"}})
+		return apperror.Validation("Tahapan vendor tidak valid", map[string][]string{"vendorMilestoneId": {"Pilih vendornya dulu untuk memilih tahapan vendor"}})
 	}
 	milestone, err := s.vendorMilestones.FindByID(ctx, projectVendorID, *vendorMilestoneID)
 	if err != nil {
 		return err
 	}
 	if milestone == nil {
-		return apperror.Validation("Timeline vendor tidak valid", map[string][]string{"vendorMilestoneId": {"Timeline tidak ditemukan untuk vendor ini"}})
+		return apperror.Validation("Tahapan vendor tidak valid", map[string][]string{"vendorMilestoneId": {"Tahapan tidak ditemukan untuk vendor ini"}})
 	}
 	return nil
 }

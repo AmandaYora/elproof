@@ -1,78 +1,82 @@
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
+import { COMPANY, CONTACT } from "@/modules/homepage/data/contact";
 import { TERMS_UPDATED } from "@/modules/homepage/data/legal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
+// Terms follow the app glossary (DESIGN.md §7, QA FQ-09): proyek, klien, jadwal/tahapan, progres, baca-saja, Portal Klien,
+// anggota tim, workspace. Each is defined once in §1; the Owner keeps its name because it is the locked role in the app.
 const SECTIONS: LegalSection[] = [
   {
     id: "definisi",
     title: "1. Definisi",
     body: [
-      `"ElProof" adalah platform perangkat lunak berbasis langganan (Software as a Service) yang membantu wedding organizer ("WO") mendokumentasikan persiapan project pernikahan — termasuk vendor, timeline, pembayaran, dan kendala — serta membagikan sebagian informasi tersebut kepada pasangan client terkait.`,
-      `"Tenant" atau "Workspace" adalah satu akun bisnis WO di ElProof. "Owner" adalah orang yang mendaftarkan Workspace dan bertanggung jawab atasnya. "Staff" adalah pengguna yang bekerja di bawah satu Tenant. "Client" adalah pasangan atau keluarga yang project pernikahannya dikelola Tenant, dengan akses baca terbatas melalui Client Portal.`,
+      `"ElProof" adalah layanan perangkat lunak berbasis langganan yang membantu wedding organizer ("WO") mencatat persiapan setiap pernikahan — termasuk vendor, jadwal, pembayaran, dan kendala — serta menunjukkan sebagian informasi tersebut kepada klien. ElProof diselenggarakan oleh ${COMPANY.name} (${COMPANY.brand}), beralamat di ${CONTACT.address} ("kami").`,
+      `"Workspace" adalah ruang kerja satu usaha WO di ElProof; data setiap workspace terpisah dari workspace lain. "Owner" adalah orang yang mendaftarkan workspace dan bertanggung jawab atasnya. "Anggota tim" adalah orang yang diundang Owner untuk bekerja di workspace, dengan peran dan akses yang diatur Owner.`,
+      `"Proyek" adalah satu pernikahan yang dikelola WO di ElProof, beserta jadwal (daftar tahapan persiapan), vendor, pembayaran, kendala, dan dokumennya. "Klien" adalah pasangan atau keluarga yang pernikahannya dikelola WO. "Portal Klien" adalah tampilan khusus klien untuk memantau progres proyeknya sendiri.`,
     ],
   },
   {
     id: "ruang-lingkup",
-    title: "2. Ruang Lingkup Layanan",
+    title: "2. Ruang lingkup layanan",
     body: [
-      `ElProof menyediakan pencatatan project, manajemen vendor dan venue, pelacakan timeline dan pembayaran, log aktivitas, serta portal bagi Client untuk memantau progress project mereka sendiri secara read-only.`,
-      `ElProof tidak menjadi pihak dalam perjanjian antara Tenant dan vendor atau Client-nya. Seluruh kesepakatan bisnis, kontrak kerja, dan transaksi antara Tenant dengan pihak ketiga sepenuhnya menjadi tanggung jawab Tenant.`,
+      `ElProof menyediakan pencatatan proyek, pengelolaan vendor dan venue, pemantauan jadwal dan pembayaran, riwayat aktivitas, serta Portal Klien. Di Portal Klien, klien melihat progres proyeknya sendiri; selain itu klien hanya dapat mengirim bukti transfer dan menandai selesai tahapan yang ditugaskan WO kepadanya. Bukti transfer dari klien baru dihitung sebagai pembayaran setelah diverifikasi WO.`,
+      `ElProof tidak menjadi pihak dalam perjanjian antara WO dan vendor atau kliennya. Seluruh kesepakatan bisnis, kontrak kerja, dan transaksi antara WO dengan pihak ketiga sepenuhnya menjadi tanggung jawab WO.`,
     ],
   },
   {
     id: "pendaftaran-akun",
-    title: "3. Pendaftaran dan Akun",
+    title: "3. Pendaftaran dan akun",
     body: [
-      `Owner mendaftarkan Workspace sendiri melalui halaman Daftar dengan akun Google. Workspace juga dapat dibuatkan oleh tim ElProof atas permintaan WO. Owner menjamin bahwa ia berwenang mewakili usaha WO yang didaftarkan dan bahwa data yang diberikan benar.`,
-      `Owner dan Staff masuk menggunakan akun Google. Client masuk menggunakan nama pengguna yang dibuatkan Tenant dan kata sandi yang dibuat Client sendiri melalui tautan undangan dari Tenant. Setiap pengguna wajib menjaga keamanan akses akunnya dan segera melapor bila ada dugaan akses tidak sah.`,
-      `Setiap Tenant hanya dapat mengakses data miliknya sendiri. Data antar-Tenant terpisah dan tidak dapat diakses lintas akun bisnis. Client hanya dapat melihat data project-nya sendiri.`,
+      `Owner mendaftarkan workspace sendiri melalui halaman Daftar dengan akun Google. Workspace juga dapat dibuatkan oleh tim ElProof atas permintaan WO. Owner menjamin bahwa ia berwenang mewakili usaha WO yang didaftarkan dan bahwa data yang diberikan benar.`,
+      `Owner dan anggota tim masuk menggunakan akun Google. Klien masuk menggunakan nama pengguna yang dibuatkan WO dan kata sandi yang dibuat klien sendiri melalui tautan undangan dari WO. Setiap pengguna wajib menjaga keamanan akses akunnya dan segera melapor bila ada dugaan akses tidak sah.`,
+      `Setiap workspace hanya dapat mengakses datanya sendiri; data tidak dapat diakses dari workspace lain. Klien hanya dapat melihat data proyeknya sendiri.`,
     ],
   },
   {
     id: "masa-coba",
-    title: "4. Masa Coba Gratis",
+    title: "4. Masa coba gratis",
     body: [
-      `Workspace baru mendapat masa coba gratis selama 14 hari tanpa kartu kredit dan tanpa tagihan otomatis. Selama masa coba, penggunaan dibatasi jumlah staf, project aktif, dan akun client sesuai batas yang tampil di WO Console. Batas ini hilang setelah Tenant membayar paket langganan.`,
-      `Masa coba berlaku satu kali per akun Google dan per usaha. ElProof dapat menolak atau menghentikan masa coba yang digunakan untuk penyalahgunaan, misalnya membuat Workspace berulang untuk menghindari pembayaran.`,
+      `Workspace baru mendapat masa coba gratis selama 14 hari tanpa kartu kredit dan tanpa tagihan otomatis. Selama masa coba, jumlah anggota tim, proyek aktif, dan akun klien dibatasi sesuai batas yang tampil di WO Console. Batas ini hilang setelah Owner membayar paket langganan.`,
+      `Masa coba berlaku satu kali per akun Google dan per usaha. Kami dapat menolak atau menghentikan masa coba yang digunakan untuk penyalahgunaan, misalnya membuat workspace berulang untuk menghindari pembayaran.`,
     ],
   },
   {
     id: "langganan-pembayaran",
-    title: "5. Langganan dan Pembayaran",
+    title: "5. Langganan dan pembayaran",
     body: [
       `Akses penuh setelah masa coba diberikan per paket langganan dengan masa aktif tertentu. Harga yang berlaku adalah harga yang tampil saat tagihan dibuat. Pembayaran dilakukan oleh Owner melalui menu Langganan di WO Console.`,
-      `Pembayaran diproses oleh mitra pembayaran pihak ketiga. ElProof tidak menyimpan data kartu atau rekening pembayaran Tenant.`,
-      `Bila masa coba atau langganan berakhir tanpa pembayaran, akses dikurangi bertahap: 7 hari pertama akses tetap penuh dengan pengingat; 23 hari berikutnya hanya baca dan ekspor data; setelah itu Staff hanya dapat membuka halaman Langganan untuk membayar. Client Portal tetap dapat dibaca selama masa tersebut. Akses penuh kembali segera setelah pembayaran diterima.`,
+      `Pembayaran diproses oleh mitra pembayaran pihak ketiga. ElProof tidak menyimpan data kartu atau rekening pembayaran WO.`,
+      `Bila masa coba atau langganan berakhir tanpa pembayaran, akses dikurangi bertahap: 7 hari pertama akses tetap penuh dengan pengingat; 23 hari berikutnya baca-saja (data dapat dilihat dan diekspor, tetapi tidak diubah); setelah itu anggota tim hanya dapat membuka halaman Langganan untuk membayar. Portal Klien tetap dapat dibuka selama masa tersebut. Akses penuh kembali segera setelah pembayaran diterima.`,
     ],
   },
   {
     id: "data-kerahasiaan",
-    title: "6. Data dan Kerahasiaan",
+    title: "6. Data dan kerahasiaan",
     body: [
-      `Data project, vendor, client, dan dokumen yang diunggah Tenant adalah milik Tenant. Untuk data pribadi Client dan vendor, Tenant bertindak sebagai pengendali data dan ElProof sebagai prosesor data, sebagaimana diatur dalam Perjanjian Pemrosesan Data yang menjadi bagian dari ketentuan ini.`,
-      `ElProof tidak menghapus data Tenant secara otomatis karena langganan berakhir. Tenant dapat meminta ekspor atau penghapusan data melalui halaman Kontak.`,
+      `Data proyek, vendor, klien, dan dokumen yang diunggah WO adalah milik WO. Untuk data pribadi klien dan vendor, WO bertindak sebagai pengendali data dan kami sebagai prosesor data, sebagaimana diatur dalam Perjanjian pemrosesan data yang menjadi bagian dari ketentuan ini.`,
+      `Kami tidak menghapus data workspace secara otomatis karena langganan berakhir. Owner dapat meminta ekspor atau penghapusan data melalui halaman Kontak.`,
     ],
   },
   {
     id: "penggunaan-wajar",
-    title: "7. Penggunaan yang Dilarang",
+    title: "7. Penggunaan yang dilarang",
     body: [
-      `Tenant dilarang menggunakan ElProof untuk menyimpan konten yang melanggar hukum, mengunggah data pribadi tanpa dasar yang sah, mencoba mengakses data Tenant lain, atau mengganggu keamanan dan ketersediaan layanan.`,
-      `ElProof dapat membekukan Workspace yang melanggar ketentuan ini atau digunakan untuk penipuan. Bila memungkinkan, ElProof memberi tahu Owner beserta alasannya.`,
+      `WO dilarang menggunakan ElProof untuk menyimpan konten yang melanggar hukum, mengunggah data pribadi tanpa dasar yang sah, mencoba mengakses data workspace lain, atau mengganggu keamanan dan ketersediaan layanan.`,
+      `Kami dapat membekukan workspace yang melanggar ketentuan ini atau digunakan untuk penipuan. Bila memungkinkan, kami memberi tahu Owner beserta alasannya.`,
     ],
   },
   {
     id: "batasan-tanggung-jawab",
-    title: "8. Batasan Tanggung Jawab",
+    title: "8. Batasan tanggung jawab",
     body: [
-      `ElProof disediakan sebagai alat bantu dokumentasi dan transparansi, bukan sebagai penjamin terlaksananya perjanjian antara Tenant dengan vendor atau Client-nya. Perselisihan yang timbul dari hubungan bisnis tersebut diselesaikan langsung oleh pihak-pihak terkait.`,
-      `Tenant bertanggung jawab atas keakuratan data yang dimasukkan ke ElProof, termasuk status project, nilai kontrak, dan informasi vendor.`,
+      `ElProof disediakan sebagai alat bantu pencatatan dan transparansi, bukan sebagai penjamin terlaksananya perjanjian antara WO dengan vendor atau kliennya. Perselisihan yang timbul dari hubungan bisnis tersebut diselesaikan langsung oleh pihak-pihak terkait.`,
+      `WO bertanggung jawab atas keakuratan data yang dimasukkan ke ElProof, termasuk status proyek, nilai kontrak, dan informasi vendor.`,
     ],
   },
   {
     id: "perubahan-ketentuan",
-    title: "9. Perubahan Ketentuan",
+    title: "9. Perubahan ketentuan",
     body: [
       `Ketentuan ini dapat diperbarui mengikuti perkembangan layanan. Perubahan material diberitahukan kepada Owner melalui WO Console sebelum berlaku. Versi yang disetujui setiap Owner saat mendaftar tercatat beserta waktunya.`,
     ],
@@ -81,5 +85,5 @@ const SECTIONS: LegalSection[] = [
 
 export default function TermsPage() {
   usePageMeta(PUBLIC_PAGES.terms);
-  return <LegalDocument title="Syarat & Ketentuan" updated={TERMS_UPDATED} sections={SECTIONS} />;
+  return <LegalDocument title={PUBLIC_PAGES.terms.title} updated={TERMS_UPDATED} sections={SECTIONS} />;
 }
