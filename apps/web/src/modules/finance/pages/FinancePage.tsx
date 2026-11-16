@@ -58,7 +58,9 @@ export default function FinancePage() {
       <FinanceKpis summary={summary} status={summaryStatus} onRetry={loadSummary} />
 
       <div className="flex flex-col gap-4">
-        <nav aria-label="Bagian keuangan" className="-mx-1 flex gap-6 overflow-x-auto border-b border-border px-1">
+        {/* `relative`: the badge's sr-only word is absolutely positioned; without a positioned ancestor inside the scrolling
+            row it escapes it and widens the whole page on a phone (QA FQ-05). */}
+        <nav aria-label="Bagian keuangan" className="relative -mx-1 flex gap-6 overflow-x-auto border-b border-border px-1">
           {SECTIONS.map((s) => {
             const active = s.id === section;
             return (
@@ -67,7 +69,7 @@ export default function FinancePage() {
                 to={s.id === "tagihan" ? ROUTE_PATHS.finance : `${ROUTE_PATHS.finance}?tab=${s.id}`}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 border-b-2 py-3 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring",
+                  "relative inline-flex shrink-0 items-center gap-1.5 border-b-2 py-3 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring",
                   active ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >

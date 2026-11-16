@@ -30,6 +30,12 @@ const TERMS = [
   // A vendor's price package (QA EP-15): one word per package, the stored field is priceAkad.
   [/\bPemberkatan\b/i, "Akad (paket harga vendor)"],
   [/\bResepsi Only\b/i, "Resepsi saja"],
+  // QA FQ-08 / RT-06 (16 Nov 2026): signing in is "Masuk", the WO's start page is "Beranda".
+  [/\bLog ?in\b/i, "Masuk (mis. \"Masuk dengan Google\")"],
+  [/\bLog ?out\b/i, "Keluar"],
+  [/\bSign ?(in|up)\b/i, "Masuk / Daftar"],
+  [/\bDashboard\b/i, "Beranda (WO) / Ringkasan (Platform Console)"],
+  [/\bProgress\b/i, "Progres"],
 ];
 const DISPLAY_ATTRS = new Set(["aria-label", "title", "placeholder", "alt", "label", "description", "subtitle", "hint", "error", "message", "header", "confirmLabel", "emptyText", "caption", "tooltip", "text", "heading"]);
 const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail"]);

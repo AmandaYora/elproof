@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -14,7 +14,6 @@ import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { RowActions } from "@/shared/components/ui/RowActions";
 import type { Column } from "@/shared/data-table/DataTable";
 import { EvidenceBadge, FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
-import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
 import {
@@ -31,12 +30,13 @@ import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 // Sibling of ProjectPaymentsSection (Pembayaran ke Vendor) minus the vendor
 // picker -- a project has at most one venue (project.venueId), nothing to
 // choose. See PLAN.md "Venue Payments + Pembayaran tab restructuring".
+// The proof viewer is only needed once someone opens a payment's proof.
+const EvidenceListModal = lazy(() => import("@/shared/components/ui/EvidenceListModal").then((m) => ({ default: m.EvidenceListModal })));
+
 export function VenuePaymentsSection({ projectId }: { projectId: string }) {
   const project = useProjectStore((s) => s.currentProject);
   const venuePayments = useProjectStore((s) => s.venuePayments);
-  const evidence = useProjectStore((s) => s.evidence);
   const fetchVenuePayments = useProjectStore((s) => s.fetchVenuePayments);
-  const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const createVenuePayment = useProjectStore((s) => s.createVenuePayment);
   const updateVenuePayment = useProjectStore((s) => s.updateVenuePayment);
   const deleteVenuePayment = useProjectStore((s) => s.deleteVenuePayment);
@@ -53,8 +53,7 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     void fetchVenuePayments(projectId);
-    void fetchEvidence(projectId);
-  }, [projectId, fetchVenuePayments, fetchEvidence]);
+  }, [projectId, fetchVenuePayments]);
 
   const hasVenue = Boolean(project?.venueId);
   const venueValue = (project?.venueRentalPrice ?? 0) + (project?.venueCharge ?? 0);
@@ -187,13 +186,15 @@ export function VenuePaymentsSection({ projectId }: { projectId: string }) {
       )}
 
       {viewingEvidencePayment && (
-        <EvidenceListModal
-          open
-          projectId={projectId}
-          title={`Bukti — ${viewingEvidencePayment.type}`}
-          items={evidence.filter((e) => e.relatedKind === "venuePayment" && e.relatedId === viewingEvidencePayment.id)}
-          onClose={() => setViewingEvidencePayment(null)}
-        />
+        <Suspense fallback={null}>
+          <EvidenceListModal
+            open
+            projectId={projectId}
+            title={`Bukti — ${viewingEvidencePayment.type}`}
+            items={viewingEvidencePayment.evidence}
+            onClose={() => setViewingEvidencePayment(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -71,4 +71,29 @@ test.describe("project page", () => {
     }
     await close();
   });
+
+  test("Jadwal berikutnya counts H-n to the event day, like the Client Portal, with how soon as a second part (QA RT-02)", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "owner");
+    // A wedding on 12 Jul 2027 with its last two steps; the browser's today is fixed at 9 Nov 2026.
+    await page.route(/\/api\/v1\/projects\/1\/overview$/, async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.data.project.eventDate = "2027-07-12";
+      body.data.nextMilestones = [
+        { id: 9201, name: "Gladi resik", status: "Not Started", targetDate: "2027-07-11" },
+        { id: 9202, name: "Hari-H pernikahan", status: "Not Started", targetDate: "2027-07-12" },
+      ];
+      await route.fulfill({ response: res, json: body });
+    });
+    await visit(page, "/proyek/1/ringkasan");
+    const step = (name: string) => page.getByRole("listitem").filter({ hasText: name });
+    await expect(step("Gladi resik")).toContainText("11 Jul 2027 · H-1");
+    await expect(step("Gladi resik")).toContainText("dalam 244 hari");
+    await expect(step("Hari-H pernikahan")).toContainText("12 Jul 2027 · Hari H");
+    await expect(step("Hari-H pernikahan")).toContainText("dalam 245 hari");
+    await expect(step("Gladi resik")).not.toContainText("H-244");
+    // The header still counts down to the event itself, from today.
+    await expect(page.getByRole("list", { name: "Data utama proyek" })).toContainText("H-245");
+    await close();
+  });
 });

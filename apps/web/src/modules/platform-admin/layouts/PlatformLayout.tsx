@@ -54,7 +54,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     items: [
       { to: ROUTE_PATHS.platformUsers, label: "Pengguna", icon: UserCog },
       { to: ROUTE_PATHS.platformAudit, label: "Audit Log", icon: ScrollText, needs: "super-admin" },
-      { to: ROUTE_PATHS.platformLoginSlides, label: "Tampilan Login", icon: ImageIcon, needs: "super-admin" },
+      { to: ROUTE_PATHS.platformLoginSlides, label: "Tampilan halaman masuk", icon: ImageIcon, needs: "super-admin" },
       { to: ROUTE_PATHS.platformGatewayConfig, label: "Gateway Pembayaran", icon: Wallet },
       { to: ROUTE_PATHS.platformApps, label: "Manajemen Aplikasi", icon: Boxes },
     ],

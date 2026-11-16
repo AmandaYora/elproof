@@ -25,6 +25,8 @@ export interface SummaryItem {
   value: string;
   /** One line under the number ("Lebih bayar Rp500.000"). */
   note?: string;
+  /** "warning" (default) for a problem such as an overpayment, "muted" for plain context ("Rp2.000.000 menunggu verifikasi"). */
+  noteTone?: "warning" | "muted";
   tone?: "neutral" | "warning";
 }
 
@@ -39,7 +41,7 @@ export function FinanceSummary({ items }: { items: SummaryItem[] }) {
             <span className={cn("text-[17px] font-bold tracking-[-0.01em] whitespace-nowrap tabular-nums sm:text-[20px]", item.tone === "warning" ? "text-warning-text" : "text-foreground")}>
               {item.value}
             </span>
-            {item.note && <span className="mt-0.5 block text-[12.5px] text-warning-text">{item.note}</span>}
+            {item.note && <span className={cn("mt-0.5 block text-[12.5px]", item.noteTone === "muted" ? "text-muted-foreground" : "text-warning-text")}>{item.note}</span>}
           </dd>
         </div>
       ))}

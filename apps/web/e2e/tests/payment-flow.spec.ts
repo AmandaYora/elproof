@@ -139,6 +139,64 @@ test("a JPG transfer proof is saved, and a file only named .jpg is refused under
   const rows = page.getByRole("row").filter({ hasText: "Rp1.000.000" });
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("Bukti ada");
+
+  // QA RT-01: right after saving, "Lihat bukti" shows that photo (it said "Belum ada bukti" while the page's document
+  // list, loaded before the proof existed, was what it searched).
+  await rows.first().getByRole("button", { name: /^Aksi lain untuk/ }).click();
+  await page.getByRole("menuitem", { name: "Lihat bukti" }).click();
+  const viewer = page.getByRole("dialog");
+  await expect(viewer.locator("img")).toBeVisible();
+  await expect(viewer.getByText("Belum ada bukti")).toHaveCount(0);
+  await expect.poll(() => viewer.locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+  await close();
+});
+
+test("moving the event date offers to move the unpaid installments with it; paid ones stay (QA RT-04)", async ({ browser }, info) => {
+  const { page, close } = await open(browser, info, "paying");
+  await visit(page, "/beranda");
+  const session = await browserSession(page);
+  const auth = { Authorization: `Bearer ${session.accessToken}` };
+  const made = await page.request.post(API("/projects"), {
+    headers: auth,
+    data: {
+      name: "Uji Geser Termin", brideName: "Nadia Putri", groomName: "Rio Saputra", eventDate: "2027-06-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
+      packageName: "Paket Uji", contractValue: 10_000_000, status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
+      terms: [{ label: "DP", amount: 3_000_000, dueDate: "2026-12-01" }, { label: "Pelunasan", amount: 7_000_000, dueDate: "2027-05-25" }],
+    },
+  });
+  expect(made.status()).toBe(201);
+  const projectId = ((await made.json()).data as { id: number }).id;
+  // The DP is paid in full; Pelunasan is not.
+  const paid = await page.request.post(API(`/projects/${projectId}/client-payments`), {
+    headers: auth,
+    data: { type: "DP", amount: 3_000_000, paymentDate: "2026-11-09", method: "Transfer", referenceNumber: "", notes: "" },
+  });
+  expect(paid.status()).toBe(201);
+
+  await visit(page, `/proyek/${projectId}/ringkasan`);
+  await page.getByRole("button", { name: "Ubah proyek" }).click();
+  const form = page.getByRole("dialog", { name: "Ubah proyek" });
+  await form.getByLabel(/Tanggal acara/).fill("2027-06-29");
+  await form.getByRole("button", { name: "Simpan perubahan" }).click();
+  await expect(form).toBeHidden();
+
+  const ask = page.getByRole("alertdialog", { name: "Geser jatuh tempo termin?" });
+  await expect(ask).toBeVisible();
+  await expect(ask).toContainText("Tanggal acara mundur 28 hari");
+  await expect(ask.getByRole("button", { name: "Biarkan" })).toBeVisible();
+  const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith(`/projects/${projectId}/payment-terms`));
+  await ask.getByRole("button", { name: "Geser jatuh tempo" }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(ask).toBeHidden();
+  await expect(page.getByText("Jatuh tempo termin digeser")).toBeVisible();
+
+  const terms = (await (await page.request.get(API(`/projects/${projectId}/payment-terms`), { headers: auth })).json()).data as Array<{ label: string; dueDate: string; amount: number }>;
+  expect(terms.map((t) => [t.label, t.dueDate, t.amount])).toEqual([
+    ["DP", "2026-12-01", 3_000_000],
+    ["Pelunasan", "2027-06-22", 7_000_000],
+  ]);
   await close();
 });
 

@@ -59,6 +59,8 @@ export default function VenueListPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
+  // Why the server refused the delete (e.g. 409: still used by a project), shown inside the dialog that asked.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -141,18 +143,19 @@ export default function VenueListPage() {
   function closeDeleteConfirm() {
     setDeleteTarget(null);
     setDeleteImpact(null);
+    setDeleteError(null);
   }
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     setIsDeleting(true);
+    setDeleteError(null);
     try {
       await deleteVenue(deleteTarget.id);
       closeDeleteConfirm();
       await reload();
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menghapus venue"));
-      closeDeleteConfirm();
+      setDeleteError(getApiErrorMessage(err, "Venue belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setIsDeleting(false);
     }
@@ -351,6 +354,8 @@ export default function VenueListPage() {
         onClose={closeDeleteConfirm}
         title={deleteTarget ? `Hapus venue — ${deleteTarget.name}` : "Hapus venue"}
         size="sm"
+        busy={isDeleting}
+        error={deleteError}
       >
         {impactLoading ? (
           <p className="text-[13px] text-text-secondary">Memeriksa penggunaan...</p>

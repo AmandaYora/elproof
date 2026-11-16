@@ -286,7 +286,8 @@ export default function LoginPage() {
               </>
             ) : (
               <>
-                <GoogleSignInButton text="signin_with" context="signin" onCredential={handleGoogleCredential} busy={googleBusy} />
+                {/* Google draws its own label: in Indonesian "signin_with" reads "Login dengan Google" (QA FQ-08), "continue_with" reads "Lanjutkan dengan Google". */}
+                <GoogleSignInButton text="continue_with" context="signin" onCredential={handleGoogleCredential} busy={googleBusy} />
                 <div className="flex items-center gap-3 text-[12px] text-text-secondary" aria-hidden>
                   <span className="h-px flex-1 bg-border" />
                   atau dengan nama pengguna
@@ -306,7 +307,7 @@ export default function LoginPage() {
                       loginForm.setFormError(null);
                     }}
                     onBlur={() => loginForm.blur("username")}
-                    placeholder="Masukkan nama pengguna atau email Anda"
+                    placeholder="Nama pengguna atau email"
                   />
                 </Field>
 
@@ -322,7 +323,7 @@ export default function LoginPage() {
                         loginForm.set("password", e.target.value);
                         loginForm.setFormError(null);
                       }}
-                      placeholder="Masukkan kata sandi Anda"
+                      placeholder="Kata sandi"
                       aria-invalid={loginForm.errors.password ? true : undefined}
                       className="pr-10"
                     />

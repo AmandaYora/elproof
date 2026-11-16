@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
@@ -10,7 +10,6 @@ import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { RowActions } from "@/shared/components/ui/RowActions";
 import type { Column } from "@/shared/data-table/DataTable";
 import { EvidenceBadge, FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
-import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
 import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
@@ -26,13 +25,14 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { overpaymentMessage } from "@/modules/projects/lib/payments";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
+// The proof viewer is only needed once someone opens a payment's proof.
+const EvidenceListModal = lazy(() => import("@/shared/components/ui/EvidenceListModal").then((m) => ({ default: m.EvidenceListModal })));
+
 export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
   const payments = useProjectStore((s) => s.payments);
   const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
-  const evidence = useProjectStore((s) => s.evidence);
   const fetchPayments = useProjectStore((s) => s.fetchPayments);
   const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const createPayment = useProjectStore((s) => s.createPayment);
   const updatePayment = useProjectStore((s) => s.updatePayment);
   const deletePayment = useProjectStore((s) => s.deletePayment);
@@ -50,9 +50,8 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
   useEffect(() => {
     void fetchPayments(projectId);
     void fetchVendorSection(projectId);
-    void fetchEvidence(projectId);
     void fetchVendors();
-  }, [projectId, fetchPayments, fetchVendorSection, fetchEvidence, fetchVendors]);
+  }, [projectId, fetchPayments, fetchVendorSection, fetchVendors]);
 
   // Excludes Cancelled engagements, same as Margin/Keuntungan's own
   // vendorCost already does — a cancelled engagement's contract value isn't
@@ -172,13 +171,15 @@ export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
       )}
 
       {viewingEvidencePayment && (
-        <EvidenceListModal
-          open
-          projectId={projectId}
-          title={`Bukti — ${viewingEvidencePayment.type}`}
-          items={evidence.filter((e) => e.relatedKind === "payment" && e.relatedId === viewingEvidencePayment.id)}
-          onClose={() => setViewingEvidencePayment(null)}
-        />
+        <Suspense fallback={null}>
+          <EvidenceListModal
+            open
+            projectId={projectId}
+            title={`Bukti — ${viewingEvidencePayment.type}`}
+            items={viewingEvidencePayment.evidence}
+            onClose={() => setViewingEvidencePayment(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

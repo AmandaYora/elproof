@@ -14,11 +14,10 @@ import { ConditionBadge, MilestoneStatusBadge } from "@/modules/projects/compone
 import { ActivityList } from "@/modules/projects/components/detail/ActivityList";
 import { ProjectCoverCard } from "@/modules/projects/components/detail/ProjectCoverCard";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { daysUntil } from "@/modules/projects/lib/dates";
 import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
 import type { ActivityLogEntry, ProjectProgress } from "@/modules/projects/types";
 import { TERM_STATUS_LABELS } from "@/shared/lib/labels";
-import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
+import { formatCurrency, formatDate, formatDaysFromToday, formatEventOffset } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 
@@ -33,12 +32,6 @@ const CLIENT_ROLE_LABEL: Record<string, string> = {
   Groom: "Pengantin pria",
   "Family Representative": "Perwakilan keluarga",
 };
-
-function relativeDay(dateISO: string): string {
-  const d = daysUntil(dateISO);
-  if (d === 0) return "hari ini";
-  return d > 0 ? formatDayCountdown(d) : `terlambat ${Math.abs(d)} hari`;
-}
 
 /** One notch per timeline item, done first, then in progress, blocked, not started (the counts come with the project). */
 function progressSegments(progress: ProjectProgress): Array<{ status: ProgressMeterStatus }> {
@@ -153,8 +146,12 @@ export default function ProjectSummaryTabPage() {
                       <li key={m.id} className="flex items-center justify-between gap-3 py-2.5">
                         <div className="min-w-0">
                           <p className="truncate text-[13.5px] font-medium text-text-primary">{m.name}</p>
-                          <p className="text-[12.5px] whitespace-nowrap text-text-secondary">
-                            {formatDate(m.targetDate)} · {relativeDay(m.targetDate)}
+                          {/* H-n counts to the event day like a wedding checklist (Gladi resik = H-1); how soon it is from today comes after (QA RT-02). */}
+                          <p className="flex flex-wrap gap-x-1 text-[12.5px] text-text-secondary">
+                            <span className="whitespace-nowrap">
+                              {formatDate(m.targetDate)} · <span className="font-medium text-text-primary">{formatEventOffset(m.targetDate, project.eventDate)}</span>
+                            </span>
+                            <span className="whitespace-nowrap">· {formatDaysFromToday(m.targetDate)}</span>
                           </p>
                         </div>
                         <MilestoneStatusBadge status={m.status} />
@@ -176,7 +173,7 @@ export default function ProjectSummaryTabPage() {
                     <div className="min-w-0">
                       <p className="text-[14px] font-semibold text-text-primary">{nextTerm.label}</p>
                       <p className="text-[12.5px] text-text-secondary">
-                        Jatuh tempo {formatDate(nextTerm.dueDate)} · {relativeDay(nextTerm.dueDate)}
+                        Jatuh tempo {formatDate(nextTerm.dueDate)} · {formatDaysFromToday(nextTerm.dueDate)}
                       </p>
                       <p className="mt-2 text-[20px] leading-tight font-bold tabular-nums text-text-primary">{formatCurrency(nextTerm.remaining)}</p>
                     </div>

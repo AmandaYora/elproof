@@ -1,11 +1,13 @@
-import { Suspense } from "react";
+import { lazy, Suspense } from "react";
 import type { RouteObject } from "react-router-dom";
 import { publicRoutes } from "@/app/routes/public.routes";
 import { protectedRoutes } from "@/app/routes/protected.routes";
 import { clientPortalRoutes } from "@/app/routes/client-portal.routes";
 import { platformRoutes } from "@/app/routes/platform.routes";
 import { homepageRoutes, legacyHomepageRedirects } from "@/app/routes/homepage.routes";
-import { NotFoundPage } from "@/shared/components/NotFoundPage";
+
+// Only a wrong address needs it.
+const NotFoundPage = lazy(() => import("@/shared/components/NotFoundPage").then((m) => ({ default: m.NotFoundPage })));
 
 const loadingFallback = <div className="py-20 text-center text-sm text-text-secondary">Memuat halaman...</div>;
 
@@ -21,5 +23,5 @@ export const routes: RouteObject[] = [
   { ...platformRoutes },
   { ...homepageRoutes },
   ...legacyHomepageRedirects,
-  { path: "*", element: <NotFoundPage /> },
+  { path: "*", element: <Suspense fallback={null}><NotFoundPage /></Suspense> },
 ];

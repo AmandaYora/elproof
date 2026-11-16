@@ -6,8 +6,10 @@ import { Button } from "@/shared/components/ui/Button";
 import { formatDateTime } from "@/shared/lib/formatters";
 
 /**
- * Shown on every WO Console page during a support session, so the platform
- * admin never forgets whose workspace this is or that nothing can be changed.
+ * Shown on every WO Console page during a support session, so the platform admin never forgets whose workspace this
+ * is or that nothing can be changed. One line pinned to the bottom edge (beside the menu from `lg` up); AppLayout keeps
+ * the same height free under the page (`pb-12`), so it never sits on top of content (QA FQ-15). On a phone it says only
+ * what matters: support session, view only, minutes left.
  */
 export function SupportSessionBanner() {
   const info = useAuthStore((s) => s.session?.impersonation);
@@ -28,12 +30,16 @@ export function SupportSessionBanner() {
   return (
     <div
       role="status"
-      // z-70: above dialogs (50) and toasts (60) so the person never forgets whose workspace this is (DESIGN.md §4.4).
-      className="print:hidden fixed inset-x-3 bottom-3 z-[70] mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-warning/50 bg-warning-soft px-4 py-2.5 text-[13px] font-semibold text-warning-text shadow-xl"
+      // From sm up z-70: above dialogs (50) and toasts (60) so the person never forgets whose workspace this is (DESIGN.md
+      // §4.4). On a phone it stays under the menu sheet and dialogs (z-40), which would otherwise lose their last row.
+      className="print:hidden fixed inset-x-0 bottom-0 z-40 flex h-12 items-center justify-between gap-3 border-t border-warning/50 bg-warning-soft px-4 text-[13px] font-semibold text-warning-text sm:z-[70] lg:left-(--sidebar-w)"
     >
       <span className="flex min-w-0 items-center gap-2">
-        <Eye className="h-4 w-4 shrink-0" />
-        <span className="min-w-0">
+        <Eye aria-hidden className="h-4 w-4 shrink-0" />
+        <span className="truncate sm:hidden">
+          Sesi dukungan · hanya lihat · {minutesLeft > 0 ? `${minutesLeft} menit` : "hampir berakhir"}
+        </span>
+        <span className="hidden truncate sm:inline">
           Anda melihat {info.tenantName} sebagai Owner, hanya untuk dilihat.{" "}
           <span className="font-medium">
             {minutesLeft > 0 ? `Berakhir ${formatDateTime(info.expiresAt)} (${minutesLeft} menit lagi).` : "Sesi hampir berakhir."}
@@ -44,12 +50,14 @@ export function SupportSessionBanner() {
         size="sm"
         variant="secondary"
         disabled={ending}
+        aria-label="Akhiri sesi dukungan"
         onClick={() => {
           setEnding(true);
           void endSupportSession();
         }}
       >
-        Akhiri sesi
+        <span className="sm:hidden">Akhiri</span>
+        <span className="hidden sm:inline">Akhiri sesi</span>
       </Button>
     </div>
   );

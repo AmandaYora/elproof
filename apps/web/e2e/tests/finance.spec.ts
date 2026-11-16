@@ -45,4 +45,32 @@ test.describe("Keuangan", () => {
     await expect(page).toHaveURL(/\/proyek\/\d+\/keuangan\/klien$/);
     await close();
   });
+
+  test("a couple's unverified submission is shown apart, not counted as received (QA RT-03)", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "owner");
+    const figure = (label: string) => page.locator("dt", { hasText: label }).locator("xpath=following-sibling::dd[1]");
+    await visit(page, "/proyek/1/keuangan/klien");
+    const received = (await figure("Total diterima").innerText()).trim();
+    const remaining = (await figure("Sisa tagihan").innerText()).trim();
+    await expect(figure("Total diterima")).not.toContainText("menunggu verifikasi");
+
+    // The same ledger plus a transfer the couple sent from the portal that the WO has not verified yet (ADR-0047):
+    // the server does not count it as paid, so neither may the page.
+    await page.route(/\/api\/v1\/projects\/\d+\/client-payments$/, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const res = await route.fetch();
+      const body = await res.json();
+      body.data = [
+        ...body.data,
+        { id: 9101, type: "Termin", amount: 2_000_000, paymentDate: "2026-11-08", method: "Transfer", referenceNumber: "", notes: "", evidenceComplete: true, recordedBy: null, verifiedAt: null, verifiedBy: null, evidence: [], source: "client", updatedAt: "2026-11-08T03:00:00.000000Z" },
+      ];
+      await route.fulfill({ response: res, json: body });
+    });
+    await visit(page, "/proyek/1/keuangan/klien");
+    await expect(page.getByRole("row").filter({ hasText: "Dikirim pasangan" })).toHaveCount(1);
+    await expect(figure("Total diterima")).toContainText("Rp2.000.000 menunggu verifikasi");
+    expect((await figure("Total diterima").innerText()).trim().split("\n")[0]).toBe(received.split("\n")[0]);
+    await expect(figure("Sisa tagihan")).toHaveText(remaining);
+    await close();
+  });
 });
