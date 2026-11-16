@@ -7,7 +7,7 @@ import { open } from "../lib/suite";
 test.describe("Tambah vendor", () => {
   test("Enter on an empty form shows every problem at once and focuses the summary", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     await page.getByRole("button", { name: "Tambah Vendor" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -39,7 +39,7 @@ test.describe("Tambah vendor", () => {
         body: JSON.stringify({ success: false, message: "Data vendor belum lengkap", errors: { name: ["Nama vendor sudah dipakai. Gunakan nama lain."] } }),
       });
     });
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     await page.getByRole("button", { name: "Tambah Vendor" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel(/Nama Vendor/).fill("Katering Rasa Nusantara");
@@ -89,7 +89,7 @@ test.describe("Peran dan akses", () => {
 test.describe("Tab order", () => {
   test("Tab never traps the keyboard on the new-project form", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/projects/baru");
+    await visit(page, "/proyek/baru");
     await expect(page.getByLabel(/Nama mempelai wanita/)).toBeFocused(); // starts on the first field
     const seen = new Set<string>();
     for (let i = 0; i < 40; i++) {

@@ -4,6 +4,7 @@ import { AppLayout } from "@/shared/layouts/AppLayout";
 import { RequireAuth } from "@/shared/components/RequireAuth";
 import { RequirePermission } from "@/shared/components/RequirePermission";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { LegacyPathRedirect } from "@/shared/components/LegacyPathRedirect";
 
 const DashboardPage = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
 const ProjectListPage = lazy(() => import("@/modules/projects/pages/ProjectListPage"));
@@ -31,10 +32,28 @@ const SubscriptionPage = lazy(() => import("@/modules/subscription/pages/Subscri
 const SubscriptionReceiptPage = lazy(() => import("@/modules/subscription/pages/SubscriptionReceiptPage"));
 const BusinessProfilePage = lazy(() => import("@/modules/business-profile/pages/BusinessProfilePage"));
 const RolesPage = lazy(() => import("@/modules/access/pages/RolesPage"));
+const CalendarPage = lazy(() => import("@/modules/calendar/pages/CalendarPage"));
+const FinancePage = lazy(() => import("@/modules/finance/pages/FinancePage"));
+
+// The console's addresses before they moved to Indonesian (16 Nov 2026): kept as redirects so old links still work.
+const LEGACY_PREFIXES: Array<[string, string]> = [
+  ["/dashboard", ROUTE_PATHS.dashboard],
+  ["/projects", ROUTE_PATHS.projects],
+  ["/clients", ROUTE_PATHS.clients],
+  ["/vendors", ROUTE_PATHS.vendors],
+  ["/venues", ROUTE_PATHS.venues],
+  ["/vendor-categories", ROUTE_PATHS.vendorCategories],
+  ["/pengguna", ROUTE_PATHS.users],
+  ["/timeline-default", ROUTE_PATHS.milestoneTemplates],
+];
 
 export const protectedRoutes: RouteObject = {
   element: <RequireAuth allow={["staff"]} />,
   children: [
+    ...LEGACY_PREFIXES.flatMap(([from, to]) => [
+      { path: from, element: <LegacyPathRedirect from={from} to={to} /> },
+      { path: `${from}/*`, element: <LegacyPathRedirect from={from} to={to} /> },
+    ]),
     {
       element: <AppLayout />,
       children: [
@@ -42,13 +61,13 @@ export const protectedRoutes: RouteObject = {
         // (scoped server-side to their own PIC'd projects — see PLAN.md's
         // RBAC section) — no RequireRole wrapper needed here.
         { path: ROUTE_PATHS.projects, element: <ProjectListPage />, handle: { title: "Proyek" } },
-        // A static path wins over "/projects/:projectId" below.
+        // A static path wins over "/proyek/:projectId" below.
         {
           element: <RequirePermission all={["project.create"]} />,
           children: [{ path: ROUTE_PATHS.projectNew, element: <ProjectCreatePage />, handle: { title: "Proyek baru" } }],
         },
         {
-          path: "/projects/:projectId",
+          path: "/proyek/:projectId",
           element: <ProjectDetailLayout />,
           children: [
             { index: true, element: <Navigate to="ringkasan" replace /> },
@@ -76,6 +95,12 @@ export const protectedRoutes: RouteObject = {
         // Open to every staff role: the page itself shows the tenant-wide
         // dashboard to roles that reach every project, "Proyek saya" to the rest.
         { path: ROUTE_PATHS.dashboard, element: <DashboardPage />, handle: { title: "Beranda" } },
+        // Every staff role: the API scopes the calendar to the projects the role reaches.
+        { path: ROUTE_PATHS.calendar, element: <CalendarPage />, handle: { title: "Kalender" } },
+        {
+          element: <RequirePermission all={["finance.record"]} />,
+          children: [{ path: ROUTE_PATHS.finance, element: <FinancePage />, handle: { title: "Keuangan" } }],
+        },
         {
           element: <RequirePermission all={["client.manage"]} allProjects />,
           children: [{ path: ROUTE_PATHS.clients, element: <ClientListPage />, handle: { title: "Klien" } }],

@@ -40,7 +40,7 @@ test("sign-in from the keyboard: Tab order, empty submit lands on the first prob
 // Every kit control reached with the keyboard must show a solid outline of at least 2px in the --ring colour (plum, >= 11.5:1).
 test("kit button, search, input and combobox show a solid 2px focus ring in --ring when reached with Tab", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "owner");
-  await visit(page, "/vendors");
+  await visit(page, "/vendor");
 
   const add = page.getByRole("button", { name: "Tambah Vendor" });
   await tabTo(page, add);

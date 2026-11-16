@@ -81,7 +81,7 @@ test.describe("role screens follow the API", () => {
     }));
     const finance = await staff(ws, "Uji Keuangan", roleId(ws, "Keuangan"));
     const { page, close } = await as(browser, info, finance);
-    for (const [route, row] of [["/vendors", "Katering Uji Akses"], ["/venues", "Gedung Uji Akses"]] as const) {
+    for (const [route, row] of [["/vendor", "Katering Uji Akses"], ["/venue", "Gedung Uji Akses"]] as const) {
       await visit(page, route);
       await expect(page.getByText(row).first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Ekspor ke Excel" })).toBeVisible();
@@ -108,7 +108,7 @@ test.describe("role screens follow the API", () => {
     });
     expect(refused.status).toBe(403);
     const { page, close } = await as(browser, info, finance);
-    await visit(page, `/projects/${project}/dokumen`);
+    await visit(page, `/proyek/${project}/dokumen`);
     await page.getByRole("button", { name: "Tambah dokumen" }).click();
     const dialog = page.getByRole("dialog", { name: "Tambah dokumen" });
     await dialog.getByLabel("Konteks").click();
@@ -129,7 +129,7 @@ test.describe("role screens follow the API", () => {
     expect((await call(apiURL(), manager.accessToken, "GET", `/api/v1/staff/${admin.principalId}/delete-impact`)).status).toBe(403);
     const { page, close } = await as(browser, info, manager);
 
-    await visit(page, "/pengguna");
+    await visit(page, "/tim");
     const adminRow = page.getByRole("row", { name: /Uji Admin/ });
     await expect(adminRow.getByText("Hanya dapat diubah oleh Owner")).toBeVisible();
     await expect(adminRow.getByRole("button", { name: "Ubah anggota tim" })).toHaveCount(0);
@@ -162,7 +162,7 @@ test.describe("role screens follow the API", () => {
     const ws = await workspace();
     const planner = await staff(ws, "Uji Planner", roleId(ws, "Wedding Planner"));
     const { page, close } = await as(browser, info, planner);
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const asked: string[] = [];
     page.on("request", (r) => {
       const url = new URL(r.url());

@@ -42,7 +42,7 @@ test("a WO's logo shows in its console, and the per-WO colour is gone from the A
   const put = await page.request.put(API("/tenants/me/logo"), { headers: auth, data: { fileName: "logo.png", mimeType: "image/png", base64Data } });
   expect(put.status()).toBe(200);
 
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const logo = page.getByRole("img", { name: branding.data.businessName, exact: true }).first();
   await expect(logo).toBeVisible();
   expect(await logo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);

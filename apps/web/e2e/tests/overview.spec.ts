@@ -18,7 +18,7 @@ test.describe("project page", () => {
       const u = new URL(r.url());
       if (u.pathname.startsWith("/api/v1/") && r.method() === "GET") calls.push(`GET ${u.pathname}`);
     });
-    await visit(page, "/projects/1/ringkasan");
+    await visit(page, "/proyek/1/ringkasan");
     const data = dataCalls(calls);
     expect(data.filter((c) => c.endsWith("/projects/1/overview")), data.join("\n")).toHaveLength(1);
     for (const old of ["/milestones", "/vendors", "/client-payments", "/payment-terms", "/issues", "/staff", "/evidence", "/activity"]) {
@@ -30,7 +30,7 @@ test.describe("project page", () => {
 
   test("opening the Vendor tab costs at most two data calls", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/projects/1/ringkasan");
+    await visit(page, "/proyek/1/ringkasan");
     const calls: string[] = [];
     page.on("request", (r) => {
       const u = new URL(r.url());
@@ -38,7 +38,7 @@ test.describe("project page", () => {
     });
     // The sidebar also has a "Vendor" link (the directory); the project's tab bar comes after it.
     await page.getByRole("link", { name: "Vendor", exact: true }).last().click();
-    await expect(page).toHaveURL(/\/projects\/1\/vendor/);
+    await expect(page).toHaveURL(/\/proyek\/1\/vendor/);
     await expect(page.getByRole("heading", { name: /Vendor/ }).first()).toBeVisible();
     await page.waitForLoadState("networkidle");
     const data = dataCalls(calls);

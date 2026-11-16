@@ -24,9 +24,9 @@ async function newProject(page: import("@playwright/test").Page, name: string) {
 
 test("finishing a step updates the header percentage without a reload", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const { id } = await newProject(page, "Uji Header");
-  await visit(page, `/projects/${id}/milestone`);
+  await visit(page, `/proyek/${id}/milestone`);
   const percent = page.locator("h1").locator("xpath=ancestor::*[contains(@class,'flex-col')][1]").getByText(/^\d+%$/).first();
   await expect(percent).toHaveText("0%");
   const firstRow = page.getByRole("row").filter({ hasText: /^1\./ }).first();
@@ -42,7 +42,7 @@ test("finishing a step updates the header percentage without a reload", async ({
 
 test("deleting a payment is instant, the side panel follows, and Urungkan brings it back", async ({ browser }, info) => {
   const { page, close } = await open(browser, info, "paying");
-  await visit(page, "/dashboard");
+  await visit(page, "/beranda");
   const { id, auth } = await newProject(page, "Uji Hapus");
   const paid = await page.request.post(API(`/projects/${id}/client-payments`), {
     headers: auth,
@@ -50,7 +50,7 @@ test("deleting a payment is instant, the side panel follows, and Urungkan brings
   });
   expect(paid.status()).toBe(201);
 
-  await visit(page, `/projects/${id}/pembayaran/client`);
+  await visit(page, `/proyek/${id}/pembayaran/client`);
   const panel = page.getByRole("complementary", { name: "Ringkasan proyek" });
   await expect(panel).toContainText("Rp8.000.000");
   const rows = page.getByRole("row").filter({ hasText: "Rp2.000.000" });

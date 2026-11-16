@@ -112,7 +112,7 @@ test("Aktifkan Langganan offers ElProof's plans only, and a WO sees only ElProof
   await close();
 
   const wo = await open(browser, info, "paying");
-  await visit(wo.page, "/dashboard");
+  await visit(wo.page, "/beranda");
   const plans = (await (await wo.page.request.get(API("/plans?all=true"), { headers: await auth(wo.page) })).json()).data as Array<{ name: string; appId: string }>;
   expect(plans.length).toBeGreaterThan(0);
   expect(plans.every((p) => p.appId === "platform-billing"), JSON.stringify(plans)).toBe(true);

@@ -6,7 +6,7 @@ import { open } from "../lib/suite";
 test.describe("menu", () => {
   test("Direktori holds Vendor and Venue and opens on the page it contains", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const menu = page.getByRole("navigation", { name: "Menu utama" });
     await expect(menu.getByRole("link", { name: "Proyek" })).toBeVisible();
     await expect(menu.getByRole("link", { name: "Klien" })).toBeVisible();
@@ -16,7 +16,7 @@ test.describe("menu", () => {
     await expect(menu.getByRole("link", { name: "Vendor" })).toBeVisible();
     await expect(menu.getByRole("link", { name: "Venue" })).toBeVisible();
     // Landing straight on a page of the group opens it.
-    await visit(page, "/vendors");
+    await visit(page, "/vendor");
     await expect(page.getByRole("navigation", { name: "Menu utama" }).getByRole("button", { name: "Direktori" })).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("navigation", { name: "Menu utama" }).getByRole("link", { name: "Vendor" })).toHaveAttribute("aria-current", "page");
     await close();
@@ -24,7 +24,7 @@ test.describe("menu", () => {
 
   test("Ctrl+B narrows the menu to icons and the choice is remembered", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const aside = page.getByRole("complementary", { name: "Menu" });
     const wide = (await aside.boundingBox())!.width;
     await page.keyboard.press("Control+b");
@@ -41,12 +41,12 @@ test.describe("menu", () => {
   test("on a phone the menu is a sheet that closes after choosing a page", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
     await page.setViewportSize({ width: 375, height: 812 });
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     await page.getByRole("button", { name: "Buka menu" }).click();
     const sheet = page.getByRole("dialog", { name: "Menu" });
     await expect(sheet).toBeVisible();
     await sheet.getByRole("link", { name: "Proyek" }).click();
-    await expect(page).toHaveURL(/\/projects$/);
+    await expect(page).toHaveURL(/\/proyek$/);
     await expect(sheet).toBeHidden();
     await close();
   });
@@ -55,12 +55,12 @@ test.describe("menu", () => {
 test.describe("breadcrumbs", () => {
   test("a project page shows Proyek > its name, and the first is a link back", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/projects/1/ringkasan");
+    await visit(page, "/proyek/1/ringkasan");
     const trail = page.getByRole("navigation", { name: "Jejak halaman" });
     await expect(trail.getByRole("link", { name: "Proyek" })).toBeVisible();
     await expect(trail.getByText("Citra & Bima")).toHaveAttribute("aria-current", "page");
     await trail.getByRole("link", { name: "Proyek" }).click();
-    await expect(page).toHaveURL(/\/projects$/);
+    await expect(page).toHaveURL(/\/proyek$/);
     await close();
   });
 });
@@ -68,21 +68,21 @@ test.describe("breadcrumbs", () => {
 test.describe("palette Ctrl+K", () => {
   test("finds a project from the keyboard and goes to it", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     await page.keyboard.press("Control+k");
     const dialog = page.getByRole("dialog", { name: "Pencarian" });
     await expect(dialog).toBeVisible();
     await page.keyboard.type("Citra");
     await expect(dialog.getByRole("option", { name: /Citra & Bima/ })).toBeVisible();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/projects\/1/);
+    await expect(page).toHaveURL(/\/proyek\/1/);
     await expect(dialog).toBeHidden();
     await close();
   });
 
   test("lists pages too, and Escape closes it with focus back where it was", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/dashboard");
+    await visit(page, "/beranda");
     const trigger = page.getByRole("button", { name: /Cari proyek, vendor, atau klien/ });
     await trigger.focus();
     await page.keyboard.press("Enter");
@@ -99,7 +99,7 @@ test.describe("vendor rows", () => {
   // Axe flagged the row actions as controls nested inside the toggle: they were unnamed and out of keyboard reach.
   test("a row's actions are named buttons beside the toggle, not inside it", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
-    await visit(page, "/projects/1/vendor");
+    await visit(page, "/proyek/1/vendor");
     const toggle = page.getByRole("button", { name: /Katering Rasa Nusantara/ }).first();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(await toggle.locator("button, [role=button]").count()).toBe(0);
