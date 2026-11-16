@@ -54,7 +54,8 @@
       "apiCalls": 9
     },
     "wo-proyek-ringkasan": {
-      "apiCalls": 5
+      "apiCalls": 6,
+      "_reason": "ADR-0046 (16 Nov 2026): the Aktivitas tab became the Riwayat panel on Ringkasan, so Ringkasan now reads the 5 latest entries (GET /projects/{id}/activity?limit=5); the separate tab and its own call are gone"
     },
     "wo-proyek-vendor": {
       "apiCalls": 7

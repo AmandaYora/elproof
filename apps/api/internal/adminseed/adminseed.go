@@ -50,8 +50,8 @@ func Run(ctx context.Context, db *sql.DB) error {
 		Name:  "Paket 1 Tahun", DurationMonths: 12, Price: 2_000_000,
 		Features: []string{
 			"Akses penuh aplikasi ElProof untuk seluruh tim WO Console",
-			"Kelola project, vendor, dan client tanpa batas",
-			"Penyimpanan dokumen & bukti transaksi project",
+			"Kelola proyek, vendor, dan klien tanpa batas",
+			"Penyimpanan dokumen & bukti transaksi proyek",
 			"Backup data otomatis setiap hari",
 			"Dukungan teknis prioritas dari tim ElProof",
 		},

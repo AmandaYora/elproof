@@ -73,7 +73,8 @@ test.describe("palette Ctrl+K", () => {
     const dialog = page.getByRole("dialog", { name: "Pencarian" });
     await expect(dialog).toBeVisible();
     await page.keyboard.type("Citra");
-    await expect(dialog.getByRole("option", { name: /Citra & Bima/ })).toBeVisible();
+    // The record search goes to the API after a short debounce; under a full parallel run that can take a few seconds.
+    await expect(dialog.getByRole("option", { name: /Citra & Bima/ })).toBeVisible({ timeout: 15_000 });
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/proyek\/1/);
     await expect(dialog).toBeHidden();

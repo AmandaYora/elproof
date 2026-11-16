@@ -245,7 +245,7 @@ export default function UserListPage() {
     },
     { id: "title", header: "Jabatan", sortKey: "title", card: true, truncate: true, className: "w-[20%]", cell: (u) => u.title },
     { id: "role", header: "Peran", sortKey: "roleName", card: true, className: "whitespace-nowrap", cell: (u) => <UserRoleBadge role={u.roleName ?? u.role} /> },
-    { id: "phone", header: "Telepon", className: "w-36 whitespace-nowrap", cell: (u) => u.phone },
+    { id: "phone", header: "Telepon", className: "hidden w-36 whitespace-nowrap xl:table-cell", cell: (u) => u.phone },
     { id: "login", header: "Status masuk", card: true, className: "whitespace-nowrap", cell: (u) => <StaffLoginStatus user={u} /> },
     { id: "status", header: "Status", sortKey: "isActive", card: true, className: "whitespace-nowrap", cell: (u) => <StaffActiveBadge isActive={u.isActive} /> },
   ];

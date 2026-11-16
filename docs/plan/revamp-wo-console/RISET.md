@@ -1,5 +1,7 @@
 # Riset WO Console — menu, penyajian fitur, dan penggunaan
 
+> **Status: dibangun 16 Nov 2026** (branch `feat/revamp-wo-console`, ADR-0046, DESIGN.md §4.5): semua temuan 1–12 dan aturan visual §7.
+
 Tech Lead · 2026-11-16 · Mengikuti skill `rudis-riset-desain` (langkah 1–3: kasus, riset, temuan → keputusan). Bagian 7 = riset UI visual. Belum ada kode
 yang diubah. Bahan: 16 potret e2e WO Console terbaru (desktop 1280 px dan HP 375 px, data contoh, palet navy), konfigurasi
 menu `apps/web/src/shared/layouts/Sidebar.tsx`, rute `app/routes/route-paths.ts`, dan riset luar (sumber di akhir).
