@@ -21,6 +21,11 @@
 - **Arah sekarang (16 Nov 2026, ADR-0045):** navy + emas segel dari logo; hero = judul lebar + `HeroScreens` (WO Console + Portal Klien,
   segel yang sama pada "Termin 2" di kedua layar); pita bukti berisi fakta yang bisa dicek; bento `Journey` "Dari H-180 sampai hari H";
   kartu harga; WhatsApp di header, di samping setiap "Coba gratis", dan bilah aksi HP yang muncul setelah hero lewat.
+- **Copy (16 Nov 2026, keputusan pemilik):** ditulis dari sudut pandang pemilik WO, di dua pilar yang mereka pedulikan:
+  **kerja tim lebih ringan** (efektif, efisien) dan **klien lebih percaya, penjualan ikut naik**. Hero "Kerja tim lebih ringan,
+  klien makin percaya."; pita di bawah hero berisi manfaat (bukan siapa pembuatnya); bento = pilar 1; pita navy = pilar 2.
+  Setiap manfaat disertai mekanismenya (fitur yang benar-benar ada), tanpa angka yang tidak bisa dibuktikan. Siapa pembuatnya
+  (Elcodelabs) cukup di footer dan Tentang Kami.
 
 ## 2. Temuan → keputusan (ringkas)
 
