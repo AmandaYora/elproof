@@ -1,41 +1,86 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { usePermissionStore } from "@/shared/stores/usePermissionStore";
+import { useLocation } from "react-router-dom";
+import { usePermissionStore, hasPermission } from "@/shared/stores/usePermissionStore";
 import { useAuthStore } from "@/shared/stores/useAuthStore";
 import { AttentionQueue } from "@/modules/dashboard/components/AttentionQueue";
-import { OverdueHero } from "@/modules/dashboard/components/OverdueHero";
+import { CashFlowChart } from "@/modules/dashboard/components/CashFlowChart";
 import { DueList, type DueListRow } from "@/modules/dashboard/components/DueList";
 import { RecentActivity } from "@/modules/dashboard/components/RecentActivity";
 import { ProjectTrendChart } from "@/modules/dashboard/components/ProjectTrendChart";
-import { CashFlowCard } from "@/modules/dashboard/components/CashFlowCard";
 import { RevenueTrendChart } from "@/modules/dashboard/components/RevenueTrendChart";
-import { buildAttentionItems, type AttentionItem } from "@/modules/dashboard/lib/attention";
+import { UpcomingEvents } from "@/modules/dashboard/components/UpcomingEvents";
+import { buildAttentionItems } from "@/modules/dashboard/lib/attention";
+import { greeting, todayLong } from "@/modules/dashboard/lib/greeting";
 import { useDashboardStore } from "@/modules/dashboard/stores/useDashboardStore";
+import type { DashboardStats } from "@/modules/dashboard/types";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
+import { KpiMoney } from "@/modules/dashboard/components/KpiMoney";
+import { formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { LoadError } from "@/shared/components/feedback/LoadError";
+import { PageHeader } from "@/shared/components/ui/PageHeader";
+import { StatCard } from "@/shared/components/ui/StatCard";
 import { SkeletonRows } from "@/shared/components/ui/Skeleton";
 import MyProjectsPage from "@/modules/dashboard/pages/MyProjectsPage";
 import { OnboardingChecklist } from "@/modules/onboarding/components/OnboardingChecklist";
 
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 11) return "Selamat pagi";
-  if (h < 15) return "Selamat siang";
-  if (h < 18) return "Selamat sore";
-  return "Selamat malam";
-}
+/**
+ * A 12-month trend is shown only once at least three months have something in them: a new workspace would otherwise
+ * see a row of zero bars that reads as broken (RISET WO Console §7.2). Until then the cash flow is the page's chart.
+ */
+const MIN_TREND_MONTHS = 3;
+const monthsWithData = (values: number[]) => values.filter((v) => v > 0).length;
 
-const TODAY_LABEL = () =>
-  new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+function Kpis({ stats, canFinance }: { stats: DashboardStats; canFinance: boolean }) {
+  const overdueProjects = new Set(stats.overdueTerms.map((t) => t.projectId)).size;
+  const overdue = stats.overdueTermsTotal;
+  const dueSoon = stats.dueSoonTerms.reduce((n, t) => n + t.remaining, 0);
+  const events = stats.nearDDayProjects.filter((p) => daysUntil(p.eventDate) >= 0).sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+  const { draft, preparation, ready } = stats.stageCounts;
+  const active = preparation + ready;
+  // Keuangan needs finance.record; without it the late-installment card opens the first late project instead.
+  const overdueTo = canFinance ? ROUTE_PATHS.finance : stats.overdueTerms[0] ? ROUTE_PATHS.projectDetail(stats.overdueTerms[0].projectId, "pembayaran/client") : undefined;
+
+  return (
+    <section aria-label="Ringkasan angka" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <StatCard
+        label="Tagihan terlambat"
+        value={<KpiMoney amount={overdue} />}
+        tone={overdue > 0 ? "danger" : "neutral"}
+        sublabel={overdue > 0 ? `${stats.overdueTerms.length} termin di ${overdueProjects} proyek` : "Tidak ada termin lewat jatuh tempo"}
+        to={overdueTo}
+      />
+      <StatCard
+        label="Tagihan jatuh tempo 30 hari"
+        value={<KpiMoney amount={dueSoon} />}
+        sublabel={stats.dueSoonTerms.length > 0 ? `${stats.dueSoonTerms.length} termin klien belum lunas` : "Belum ada termin yang jatuh tempo"}
+        to={canFinance ? ROUTE_PATHS.finance : undefined}
+      />
+      <StatCard
+        label="Acara 30 hari ke depan"
+        value={events.length}
+        sublabel={events[0] ? `Terdekat ${formatDayCountdown(daysUntil(events[0].eventDate))}, ${events[0].name}` : "Tidak ada acara dalam 30 hari"}
+        to={ROUTE_PATHS.calendar}
+      />
+      <StatCard
+        label="Proyek aktif"
+        value={active}
+        sublabel={active + draft > 0 ? `${preparation} persiapan, ${ready} siap · ${draft} draf` : "Belum ada proyek berjalan"}
+        to={ROUTE_PATHS.projects}
+      />
+    </section>
+  );
+}
 
 function FullDashboard() {
   const stats = useDashboardStore((s) => s.stats);
   const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const displayName = useAuthStore((s) => s.session?.displayName ?? "");
+  const grants = usePermissionStore((s) => s.grants);
   // The "Mulai di sini" checklist belongs to whoever runs the workspace.
-  const isOwner = usePermissionStore((s) => Boolean(s.grants?.isOwner));
+  const isOwner = Boolean(grants?.isOwner);
+  const canFinance = hasPermission(grants, "finance.record");
+  const canCreate = hasPermission(grants, "project.create");
   const welcome = Boolean((useLocation().state as { welcome?: boolean } | null)?.welcome);
 
   const [loadFailed, setLoadFailed] = useState(false);
@@ -46,132 +91,83 @@ function FullDashboard() {
     fetchDashboard().catch(() => setLoadFailed(true));
   }, [fetchDashboard, attempt]);
 
-  const { items, counts } = useMemo(
-    () => (stats ? buildAttentionItems(stats) : { items: [] as AttentionItem[], counts: {} as Record<string, number> }),
-    [stats],
-  );
+  const attention = useMemo(() => (stats ? buildAttentionItems(stats) : null), [stats]);
 
-  const events = useMemo<DueListRow[]>(
-    () =>
-      (stats?.upcomingProjects ?? [])
-        .filter((p) => daysUntil(p.eventDate) <= 14)
-        .map((p) => ({
-          id: p.id,
-          to: ROUTE_PATHS.projectDetail(p.id),
-          title: p.name,
-          subtitle: `${formatDate(p.eventDate)} · ${p.venue}`,
-          trailing: formatDayCountdown(daysUntil(p.eventDate)),
-        })),
-    [stats],
-  );
   const tasks = useMemo<DueListRow[]>(
     () =>
-      (stats?.tasksDueThisWeek ?? []).slice(0, 6).map((t, i) => ({
+      (stats?.tasksDueThisWeek ?? []).slice(0, 5).map((t, i) => ({
         id: `${t.projectId}-${i}`,
         to: ROUTE_PATHS.projectDetail(t.projectId, "milestone"),
         title: t.name,
         subtitle: t.projectName,
-        trailing: daysUntil(t.targetDate) === 0 ? "Hari ini" : formatDate(t.targetDate),
-      })),
-    [stats],
-  );
-  const payments = useMemo<DueListRow[]>(
-    () =>
-      (stats?.dueSoonTerms ?? []).slice(0, 6).map((t, i) => ({
-        id: `${t.projectId}-${i}`,
-        to: ROUTE_PATHS.projectDetail(t.projectId, "pembayaran/client"),
-        title: `${t.projectName} · ${t.label}`,
-        subtitle: `Jatuh tempo ${formatDate(t.dueDate)}`,
-        trailing: formatCurrency(t.remaining),
+        trailing: daysUntil(t.targetDate) === 0 ? "Hari ini" : formatDate(t.targetDate).replace(/ \d{4}$/, ""),
       })),
     [stats],
   );
 
-  const vendorDue = useMemo<DueListRow[]>(
-    () =>
-      (stats?.vendorPaymentsDue ?? []).slice(0, 6).map((v, i) => ({
-        id: `${v.projectId}-${i}`,
-        to: ROUTE_PATHS.projectDetail(v.projectId, "pembayaran/vendor"),
-        title: `${v.projectName} · ${v.vendorName}`,
-        subtitle: daysUntil(v.dueDate) < 0 ? `Terlambat ${Math.abs(daysUntil(v.dueDate))} hari` : `Jatuh tempo ${formatDate(v.dueDate)}`,
-        trailing: formatCurrency(v.remaining),
-      })),
-    [stats],
-  );
+  const first = displayName.split(" ")[0];
+  const header = <PageHeader title={`${greeting()}${first ? `, ${first}` : ""}`} description={todayLong()} />;
 
-  if (!stats) {
-    return loadFailed ? (
-      <LoadError message="Beranda belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />
-    ) : (
-      <div className="rounded-lg border border-border bg-surface p-5"><SkeletonRows rows={5} label="Memuat beranda" /></div>
+  if (!stats || !attention) {
+    return (
+      <div>
+        {header}
+        {loadFailed ? (
+          <LoadError message="Beranda belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={() => setAttempt((n) => n + 1)} />
+        ) : (
+          <div className="rounded-lg border border-border bg-surface p-5">
+            <SkeletonRows rows={5} label="Memuat beranda" />
+          </div>
+        )}
+      </div>
     );
   }
 
-  const first = displayName.split(" ")[0];
-  const stage = stats.stageCounts;
+  const showRevenue = monthsWithData(stats.revenueTrend.map((p) => p.total)) >= MIN_TREND_MONTHS;
+  const showProjects = monthsWithData(stats.projectTrend.map((p) => p.count)) >= MIN_TREND_MONTHS;
+  const emptyAction = stats.totalProjects === 0 && canCreate ? { label: "Buat proyek", to: ROUTE_PATHS.projectNew } : { label: "Buka daftar proyek", to: ROUTE_PATHS.projects };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold text-text-primary">
-          {greeting()}
-          {first ? `, ${first}` : ""}
-        </h1>
-        <p className="mt-1 text-[13px] text-text-secondary">{TODAY_LABEL()}</p>
-      </div>
+    <div>
+      {header}
+      <div className="flex flex-col gap-6">
+        {isOwner && <OnboardingChecklist welcome={welcome} />}
 
-      {/* Money that is late comes first; with none, the setup guide leads. */}
-      {stats.overdueTermsTotal > 0 && <OverdueHero total={stats.overdueTermsTotal} terms={stats.overdueTerms} />}
-      {isOwner && <OnboardingChecklist welcome={welcome} />}
-      {stats.overdueTermsTotal === 0 && <OverdueHero total={0} terms={[]} />}
+        <Kpis stats={stats} canFinance={canFinance} />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <AttentionQueue items={items} counts={counts} />
-        </div>
-        <div className="flex flex-col gap-6">
-          <DueList title="Acara 14 hari ke depan" subtitle="Hitung mundur per proyek." rows={events} empty="Tidak ada acara dalam 14 hari ke depan." />
-          <DueList title="Tugas minggu ini" subtitle="Tahapan proyek yang jatuh tempo 7 hari ke depan." rows={tasks} empty="Tidak ada tahapan yang jatuh tempo minggu ini." />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DueList title="Pembayaran masuk 30 hari ke depan" subtitle="Termin klien yang belum lunas." rows={payments} empty="Belum ada termin jatuh tempo dalam 30 hari. Atur jadwal termin di tab Keuangan proyek." />
-        </div>
-        <section aria-labelledby="stage-heading" className="rounded-lg border border-border bg-surface px-5 py-4">
-          <h2 id="stage-heading" className="text-[15px] font-semibold text-text-primary">Proyek per tahap</h2>
-          <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-            {[
-              ["Draf", stage.draft],
-              ["Persiapan", stage.preparation],
-              ["Siap", stage.ready],
-            ].map(([label, n]) => (
-              <div key={label as string} className="rounded-md bg-surface-muted px-2 py-3">
-                <dd className="text-xl font-bold tabular-nums text-primary">{n}</dd>
-                <dt className="text-[12px] text-text-secondary">{label}</dt>
-              </div>
-            ))}
-          </dl>
-          <Link to={ROUTE_PATHS.projects} className="mt-3 inline-block text-[13px] font-medium text-primary underline-offset-2 hover:underline">
-            Lihat semua proyek
-          </Link>
-        </section>
-      </div>
-
-      {stats.cashFlow && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <CashFlowCard weeks={stats.cashFlow} />
+        {stats.cashFlow ? (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <CashFlowChart weeks={stats.cashFlow} emptyAction={emptyAction} />
+            </div>
+            {/* The chart's empty state already offers the next step. */}
+            <UpcomingEvents projects={stats.upcomingProjects} canCreate={false} />
           </div>
-          <DueList title="Tagihan vendor 30 hari ke depan" subtitle="Termasuk yang sudah lewat." rows={vendorDue} empty="Tidak ada tagihan vendor yang jatuh tempo dalam 30 hari." />
+        ) : null}
+
+        {/* Phone order: what needs doing, this week's steps, then history. Desktop: the side column spans both rows. */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <AttentionQueue items={attention.items} counts={attention.counts} hasProjects={stats.totalProjects > 0} />
+          </div>
+          <div className="flex flex-col gap-6 lg:col-start-3 lg:row-span-2 lg:row-start-1">
+            {/* Without money figures there is no cash flow; the events list moves here. */}
+            {!stats.cashFlow && <UpcomingEvents projects={stats.upcomingProjects} canCreate={canCreate} />}
+            <DueList title="Tahapan 7 hari ke depan" rows={tasks} empty="Tidak ada tahapan proyek yang jatuh tempo minggu ini." />
+          </div>
+          <div className="lg:col-span-2">
+            <RecentActivity activity={stats.recentActivity} />
+          </div>
         </div>
-      )}
 
-      <RevenueTrendChart points={stats.revenueTrend} />
-      <ProjectTrendChart points={stats.projectTrend} />
-
-      <RecentActivity activity={stats.recentActivity} />
+        {/* Twelve narrow bars do not fit a phone; the trends are a desk-side look back. */}
+        {(showRevenue || showProjects) && (
+          <div className="hidden grid-cols-1 gap-6 md:grid lg:grid-cols-2">
+            {showRevenue && <RevenueTrendChart points={stats.revenueTrend} />}
+            {showProjects && <ProjectTrendChart points={stats.projectTrend} />}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

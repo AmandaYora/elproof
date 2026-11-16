@@ -57,27 +57,25 @@ function buildSteps(s: OnboardingStatus, openProfile: () => void): Step[] {
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   const full = used >= limit;
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
-        <span className="text-text-secondary">{label}</span>
-        <span className={cn("font-semibold tabular-nums", full ? "text-warning-text" : "text-text-primary")}>
-          {used} / {limit}
-        </span>
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="shrink-0 text-[12px] text-muted-foreground">{label}</span>
+      <div aria-hidden className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
+        <div className={cn("h-full rounded-full", full ? "bg-warning" : "bg-primary")} style={{ width: `${Math.min(100, (used / Math.max(1, limit)) * 100)}%` }} />
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted">
-        <div
-          className={cn("h-full rounded-full", full ? "bg-warning" : "bg-primary")}
-          style={{ width: `${Math.min(100, (used / Math.max(1, limit)) * 100)}%` }}
-        />
-      </div>
+      <span className={cn("shrink-0 text-[12px] font-semibold tabular-nums", full ? "text-warning-text" : "text-foreground")}>
+        {used} / {limit}
+      </span>
     </div>
   );
 }
 
+const actionClass =
+  "inline-flex h-8 shrink-0 items-center justify-center rounded-md px-3 text-[13px] font-semibold outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-10";
+
 /**
- * The Owner's "Mulai di sini" checklist (PLAN.md §3 step 4) plus the
- * free-trial usage caps. Hidden once every step is done or the Owner
- * dismisses it.
+ * The Owner's "Mulai di sini" checklist (PLAN.md §3 step 4) plus the free-trial usage caps, kept compact so the
+ * Beranda numbers stay near the top: the five steps on one row, only the next step explained with its action.
+ * Hidden once every step is done or the Owner dismisses it ("Sembunyikan panduan").
  */
 export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) {
   const status = useOnboardingStore((s) => s.status);
@@ -95,83 +93,85 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
   const showChecklist = !status.dismissed && doneCount < steps.length;
   const limits = status.trialLimits;
   if (!showChecklist && !limits) return null;
+  const next = steps.find((s) => !s.done);
 
   return (
-    <section aria-labelledby="onboarding-title" className="rounded-xl border border-border bg-surface shadow-sm">
+    <section aria-labelledby={showChecklist ? "onboarding-title" : "trial-limits-title"} className="rounded-lg border border-border bg-card">
       {showChecklist && (
-        <>
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-light px-5 py-4 sm:px-6">
-            <div>
-              <h2 id="onboarding-title" className="text-[15px] font-semibold text-text-primary">
+        <div className="px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 id="onboarding-title" className="text-[16px] font-semibold text-foreground">
                 {welcome ? "Workspace Anda siap. Mulai dari sini." : "Mulai di sini"}
               </h2>
-              <p className="mt-0.5 text-[13px] text-text-secondary">
+              <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <span aria-hidden className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                  <span className="block h-full rounded-full bg-primary" style={{ width: `${(doneCount / steps.length) * 100}%` }} />
+                </span>
                 {doneCount} dari {steps.length} langkah selesai
-              </p>
+              </span>
             </div>
             <button
               type="button"
               onClick={() => void dismiss()}
-              className="rounded-md px-2 py-1 text-[12.5px] font-medium text-text-secondary hover:bg-surface-muted hover:text-text-primary"
+              className="rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
             >
               Sembunyikan panduan
             </button>
           </div>
-          <ol className="divide-y divide-border-light">
+
+          <ol className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-5">
             {steps.map((step, i) => (
-              <li key={step.key} className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:gap-4 sm:px-6">
+              <li key={step.key} className="flex min-w-0 items-center gap-2">
                 <span
                   aria-hidden
                   className={cn(
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12.5px] font-semibold",
-                    step.done ? "bg-success text-white" : "border border-border text-text-secondary",
+                    "flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold",
+                    step.done ? "bg-success text-white" : step === next ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground",
                   )}
                 >
-                  {step.done ? <Check className="h-4 w-4" /> : i + 1}
+                  {step.done ? <Check className="size-3.5" /> : i + 1}
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className={cn("text-[14px] font-medium", step.done ? "text-text-secondary line-through decoration-text-secondary/40" : "text-text-primary")}>
-                    {step.title}
-                    <span className="sr-only">{step.done ? " (selesai)" : ""}</span>
-                  </p>
-                  {!step.done && <p className="mt-0.5 text-[12.5px] leading-relaxed text-text-secondary">{step.body}</p>}
-                </div>
-                {!step.done &&
-                  (step.action.to ? (
-                    <Link
-                      to={step.action.to}
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border bg-card px-3 text-[13px] font-medium text-text-primary hover:bg-surface-muted"
-                    >
-                      {step.action.label}
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={step.action.onClick}
-                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:bg-primary-hover"
-                    >
-                      {step.action.label}
-                    </button>
-                  ))}
+                <span className={cn("truncate text-[13px]", step.done ? "text-muted-foreground line-through decoration-muted-foreground/40" : step === next ? "font-semibold text-foreground" : "text-foreground")}>
+                  {step.title}
+                  <span className="sr-only">{step.done ? " (selesai)" : step === next ? " (berikutnya)" : ""}</span>
+                </span>
               </li>
             ))}
           </ol>
-        </>
+
+          {next && (
+            <div className="mt-3 flex flex-col gap-3 rounded-md bg-muted px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="min-w-0 text-[13px] text-muted-foreground">
+                <span className="font-semibold text-foreground">Berikutnya: {next.title}.</span> {next.body}
+              </p>
+              {next.action.to ? (
+                <Link to={next.action.to} className={cn(actionClass, "bg-primary text-primary-foreground hover:bg-primary-hover")}>
+                  {next.action.label}
+                </Link>
+              ) : (
+                <button type="button" onClick={next.action.onClick} className={cn(actionClass, "bg-primary text-primary-foreground hover:bg-primary-hover")}>
+                  {next.action.label}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {limits && (
-        <div className={cn("px-5 py-4 sm:px-6", showChecklist && "border-t border-border-light bg-surface-muted/40")}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-[13px] font-semibold text-text-primary">Batas masa coba</h3>
-            <Link to={ROUTE_PATHS.subscription} className="text-[12.5px] font-medium text-primary hover:underline">
-              Pilih paket untuk tanpa batas
-            </Link>
-          </div>
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:gap-6">
+        <div className={cn("flex flex-col gap-2 px-5 py-3 lg:flex-row lg:items-center lg:gap-6", showChecklist && "border-t border-border-light")}>
+          <h3 id="trial-limits-title" className="shrink-0 text-[13px] font-semibold text-foreground">
+            Batas masa coba
+          </h3>
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:gap-6">
             <UsageMeter label="Anggota tim selain Owner" used={status.usage.staff} limit={limits.maxStaff} />
             <UsageMeter label="Proyek aktif" used={status.usage.activeProjects} limit={limits.maxActiveProjects} />
             <UsageMeter label="Akun klien" used={status.usage.clients} limit={limits.maxClients} />
           </div>
+          <Link to={ROUTE_PATHS.subscription} className="shrink-0 text-[13px] font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring">
+            Pilih paket untuk tanpa batas
+          </Link>
         </div>
       )}
 
