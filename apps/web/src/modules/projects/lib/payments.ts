@@ -24,6 +24,15 @@ export function appliedToContract(payments: PaymentLike[]): number {
   }, 0);
 }
 
+/**
+ * Mirrors apps/api's domain.ClientPayment.CountsTowardContract (ADR-0047): a payment staff recorded counts as paid at
+ * once; one the couple sent from the Client Portal counts only after staff verified it. Only "paid", "remaining" and the
+ * schedule wait for it: the overpayment check (overpaymentMessage) still sees every live payment.
+ */
+export function countsTowardContract(p: { source: string; verifiedAt: string | null }): boolean {
+  return p.source !== "client" || p.verifiedAt !== null;
+}
+
 /** What is still owed. Negative means the contract has been overpaid. */
 export function remainingToPay(contractValue: number, payments: PaymentLike[]): number {
   return contractValue - appliedToContract(payments);

@@ -35,7 +35,7 @@ export function PlatformAdminResetPasswordModal({ open, onClose, adminName, onSu
 
   const submit = form.handleSubmit(onSubmit, {
     root: () => formRef.current,
-    fallback: "Password belum direset. Periksa koneksi lalu coba lagi.",
+    fallback: "Kata sandi belum diatur ulang. Periksa koneksi lalu coba lagi.",
     known: (key) => key in FIELD_LABELS,
   });
 

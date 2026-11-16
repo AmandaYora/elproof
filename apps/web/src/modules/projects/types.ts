@@ -248,6 +248,8 @@ export interface VendorPayment {
   referenceNumber: string;
   notes: string;
   evidenceComplete: boolean;
+  /** The payment's own proof files (invoice and/or transfer proof), as the API embeds them. */
+  evidence: EvidenceRef[];
 }
 
 // Money coming IN from the client against the project's own contractValue —
@@ -293,6 +295,8 @@ export interface VenuePayment {
   referenceNumber: string;
   notes: string;
   evidenceComplete: boolean;
+  /** The payment's own proof files (invoice and/or transfer proof), as the API embeds them. */
+  evidence: EvidenceRef[];
 }
 
 export interface VendorIssue {

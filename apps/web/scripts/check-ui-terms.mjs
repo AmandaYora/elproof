@@ -31,9 +31,15 @@ const TERMS = [
   // A vendor's price package (QA EP-15): one word per package, the stored field is priceAkad.
   [/\bPemberkatan\b/i, "Akad (paket harga vendor)"],
   [/\bResepsi Only\b/i, "Resepsi saja"],
+  // QA FQ-08 / RT-06 (16 Nov 2026): signing in is "Masuk", the WO's start page is "Beranda".
+  [/\bLog ?in\b/i, "Masuk (mis. \"Masuk dengan Google\")"],
+  [/\bLog ?out\b/i, "Keluar"],
+  [/\bSign ?(in|up)\b/i, "Masuk / Daftar"],
+  [/\bDashboard\b/i, "Beranda (WO) / Ringkasan (Platform Console)"],
+  [/\bProgress\b/i, "Progres"],
 ];
 const DISPLAY_ATTRS = new Set(["aria-label", "title", "placeholder", "alt", "label", "description", "subtitle", "hint", "error", "message", "header", "confirmLabel", "emptyText", "caption", "tooltip", "text", "heading"]);
-const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail"]);
+const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail", "fallback"]);
 const SKIP_FILES = [/shared\/lib\/labels\.ts$/, /\.d\.ts$/, /\.test\.tsx?$/, /constants\/cities/];
 
 // No capitals-only labels (RISET WO Console §7.3, DESIGN.md): a label is 12–13 px, sentence case, muted. A class string with
@@ -60,6 +66,8 @@ function isDisplayCall(node) {
   if (!call) return false;
   const text = call.expression.getText();
   // setError("..."), setFileError("..."), form.setFormError("..."), setLoginNotice("..."): state that is drawn as text.
+  // z.string().min(3, "…"), .refine(fn, "…"): a schema message is shown under the field (QA FQ-08 found "Isi nama timeline" there).
+  if (/\.(min|max|length|regex|email|url|nonempty|refine|superRefine|positive|nonnegative|int|gte|lte|gt|lt|startsWith|endsWith)$/.test(text)) return true;
   return /^toast\.(success|error|info)$/.test(text) || text === "getApiErrorMessage" || text === "deleteWithUndo" || /(^|\.)set\w*(Error|Message|Notice)$/.test(text);
 }
 

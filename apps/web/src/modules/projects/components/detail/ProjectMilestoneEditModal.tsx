@@ -50,7 +50,7 @@ export function ProjectMilestoneEditModal({ open, onClose, milestone, onSave }: 
     if (status !== "Completed" && values.completedDate) set("completedDate", "");
   }
 
-  const submit = form.handleSubmit(onSave, { root: () => formRef.current, fallback: "Timeline belum tersimpan. Periksa koneksi lalu coba lagi." });
+  const submit = form.handleSubmit(onSave, { root: () => formRef.current, fallback: "Tahapan belum tersimpan. Periksa koneksi lalu coba lagi." });
 
   return (
     <Modal

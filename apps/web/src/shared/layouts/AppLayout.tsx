@@ -73,8 +73,10 @@ export function AppLayout() {
 
   return (
     <SidebarProvider>
-    <div className="min-h-screen bg-background" data-density="compact">
-      <Toaster />
+    {/* A support session keeps its one-line banner pinned to the bottom edge: the page ends above it, never under it. */}
+    <div className={supportSession ? "min-h-screen bg-background pb-12 print:pb-0" : "min-h-screen bg-background"} data-density="compact">
+      {/* Toasts clear the support-session banner instead of sliding under it. */}
+      <Toaster {...(supportSession ? { offset: { bottom: "4rem" }, mobileOffset: { bottom: "4rem" } } : {})} />
       <ConflictHost />
       <SupportSessionBanner />
       <Sidebar />

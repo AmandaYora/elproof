@@ -17,7 +17,7 @@ export const activateSubscriptionSchema = z
     proofReference: z
       .string()
       .trim()
-      .min(3, "Isi bukti aktivasi, misalnya no. transfer, no. invoice, atau tautan dokumen")
+      .min(3, "Isi bukti aktivasi, misalnya no. transfer, no. tagihan, atau tautan dokumen")
       .max(255, "Bukti maksimal 255 karakter"),
     note: z.string().trim().max(500, "Catatan maksimal 500 karakter"),
   })

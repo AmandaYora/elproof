@@ -378,7 +378,7 @@ function ReplaceRepresentativeModal({
       open
       onClose={onClose}
       title="Ganti perwakilan keluarga"
-      description={`${client.name} akan digantikan. Akses login ${client.name} langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru.`}
+      description={`${client.name} akan digantikan. Akses masuk ${client.name} ke Portal Klien langsung dicabut, lalu Anda mendapat link undangan untuk perwakilan baru.`}
       busy={form.submitting}
       footer={
         <>

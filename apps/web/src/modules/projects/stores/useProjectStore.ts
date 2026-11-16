@@ -409,6 +409,7 @@ interface RawPayment {
   referenceNumber: string;
   notes: string;
   evidenceComplete: boolean;
+  evidence?: RawEvidenceRef[] | null;
 }
 
 function toPayment(raw: RawPayment): VendorPayment {
@@ -423,6 +424,7 @@ function toPayment(raw: RawPayment): VendorPayment {
     referenceNumber: raw.referenceNumber,
     notes: raw.notes,
     evidenceComplete: raw.evidenceComplete,
+    evidence: toEvidenceRefs(raw.evidence),
   };
 }
 
@@ -474,6 +476,7 @@ interface RawVenuePayment {
   referenceNumber: string;
   notes: string;
   evidenceComplete: boolean;
+  evidence?: RawEvidenceRef[] | null;
 }
 
 function toVenuePayment(raw: RawVenuePayment): VenuePayment {
@@ -487,6 +490,7 @@ function toVenuePayment(raw: RawVenuePayment): VenuePayment {
     referenceNumber: raw.referenceNumber,
     notes: raw.notes,
     evidenceComplete: raw.evidenceComplete,
+    evidence: toEvidenceRefs(raw.evidence),
   };
 }
 
@@ -925,7 +929,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setProjectVenue: async (id, venueId, rentalPrice, charge) => {
     const current = get().currentProject;
     if (!current || current.id !== id) {
-      throw new Error("Project belum dimuat");
+      throw new Error("Proyek belum dimuat");
     }
     // Only the venue changes: nothing else of the project is sent (ADR-0036). 0 is never a real venue id; the backend reads it
     // as "detach" (ADR-0016) and clears both prices itself.

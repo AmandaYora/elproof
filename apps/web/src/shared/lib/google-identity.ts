@@ -72,7 +72,7 @@ function loadClientId(): Promise<string> {
       .get(API.public.config)
       .then((res) => {
         const id = (res.data.data as { googleClientId?: string }).googleClientId;
-        if (!id) throw new Error("Login Google belum dikonfigurasi");
+        if (!id) throw new Error("Masuk dengan Google belum dikonfigurasi");
         return id;
       })
       .catch((err) => {

@@ -8,7 +8,7 @@ import { z } from "zod";
 // fromDaysBeforeEvent below for the conversion to/from the API's signed
 // daysBeforeEvent.
 export const milestoneTemplateSchema = z.object({
-  name: z.string().min(3, "Isi nama timeline, minimal 3 karakter"),
+  name: z.string().min(3, "Isi nama tahapan, minimal 3 karakter"),
   daysOffset: z.number().int("Isi jumlah hari dengan angka bulat").min(0, "Jumlah hari tidak boleh negatif. Pilih Setelah Acara untuk H+"),
   daysDirection: z.enum(["before", "after"]),
 });
