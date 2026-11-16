@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 // shadcn/ui Button on Base UI, tuned to ElProof (DESIGN.md §4/§6): solid
-// plum primary, a visible 2px focus outline (the stock 50%-opacity ring does
+// navy primary, a visible 2px focus outline (the stock 50%-opacity ring does
 // not reach 3:1; outline-solid is required because Tailwind 4's outline-none
 // also sets --tw-outline-style: none, which outline-2 reads), control height from the density token (36px console, 44px
 // portal) and 44px on coarse pointers.

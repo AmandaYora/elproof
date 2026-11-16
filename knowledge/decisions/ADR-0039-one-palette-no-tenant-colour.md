@@ -1,7 +1,7 @@
 # ADR-0039: One palette for every surface — the per-WO colour choice is removed
 
 ## Status
-Accepted — implemented 2026-11-10 (task T-20261110-11). Supersedes the colour half of ADR-0012 (the logo half stays) and the
+Accepted — implemented 2026-11-10. **Palette values superseded by ADR-0045 (2026-11-16: navy + seal gold from the logo); the one-palette, no-per-WO-colour rule stands.** (task T-20261110-11). Supersedes the colour half of ADR-0012 (the logo half stays) and the
 "Tenant branding overrides only `--brand-navy-*`" line of ADR-0037; takes the decision ADR-0038 left open ("aligning the consoles
 to the new palette is a separate decision"). Visual contract: `knowledge/DESIGN.md` §4–§5; contrast table in §4.1.
 

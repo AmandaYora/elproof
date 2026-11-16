@@ -1,8 +1,8 @@
 /*
  * ElProof design tokens (DESIGN.md §4, ADR-0039).
  *
- * One palette for every surface ("Janji Terbukti": plum + seal gold, one
- * typeface). The WO Console, Client Portal and Platform Console read these
+ * One palette for every surface, taken from the logo: navy + seal gold, one
+ * typeface (ADR-0045, which replaced the plum of ADR-0039). The WO Console, Client Portal and Platform Console read these
  * values; the public site (marketing.css) only swaps the few surface tokens
  * that differ there (white page, blush bands). There is no per-tenant colour:
  * a tenant keeps its logo and name, never its own palette (ADR-0039).
@@ -14,31 +14,31 @@
  * WCAG 2.x, computed: DESIGN.md §4.1.
  */
 :root {
-  /* Neutrals: a plum-tinted near-white, calmer than the public blush for dense
-     work screens (tables, forms) but from the same family of text greys. */
-  --background: #faf8f9;
-  --foreground: #2a1a27; /* 15.6:1 on --background */
+  /* Neutrals: a navy-tinted near-white for dense work screens (tables, forms),
+     from the same family of text greys as the public site. */
+  --background: #f6f7fb;
+  --foreground: #0b1b43; /* 15.67:1 on --background, 16.77:1 on white */
   --card: #ffffff;
   --card-foreground: var(--foreground);
   --popover: #ffffff;
   --popover-foreground: var(--foreground);
-  --muted: #f4eff2;
-  --muted-foreground: #6b5566; /* 6.74:1 on white, 6.37:1 on --background, 5.93:1 on --muted */
-  --subtle-foreground: #7e6a7a; /* placeholder / helper text, on white or --background only (4.96 / 4.70) */
-  --border: #e8dfe5; /* decorative separators and card outlines */
-  --border-light: #f2ecef;
-  --input: #8e7a8b; /* control boundary (WCAG 1.4.11): 3.96:1 on white, 3.74 on --background, 3.48 on --muted */
+  --muted: #edf0f6;
+  --muted-foreground: #4f5a78; /* 6.85:1 on white, 6.40:1 on --background, 6.00:1 on --muted */
+  --subtle-foreground: #646f8c; /* placeholder / helper text, on white or --background only (5.01 / 4.68) */
+  --border: #dfe3ee; /* decorative separators and card outlines */
+  --border-light: #edf0f6;
+  --input: #7a84a0; /* control boundary (WCAG 1.4.11): 3.73:1 on white, 3.48 on --background, 3.26 on --muted */
 
-  /* Plum: the one brand colour (actions, active navigation, focus). */
-  --primary: #3e1f3b; /* 14.34:1 with white text */
+  /* Navy (the logo's): the one brand colour (actions, active navigation, focus). */
+  --primary: #0b1b43; /* 16.77:1 with white text */
   --primary-foreground: #ffffff;
-  --primary-hover: #2f162c;
-  --secondary: #f4eff2;
+  --primary-hover: #16245a; /* 14.64:1 with white text */
+  --secondary: #edf0f6;
   --secondary-foreground: var(--foreground);
-  --accent: #efe3ec; /* active nav item, soft highlight; plum text on it 11.5:1 */
-  --accent-foreground: #3e1f3b;
+  --accent: #e4e9f5; /* active nav item, soft highlight; navy text on it 13.8:1 */
+  --accent-foreground: #0b1b43;
   --destructive: var(--color-danger-text);
-  --ring: #3e1f3b; /* focus: >= 11.5:1 on every neutral surface */
+  --ring: #0b1b43; /* focus: >= 13.8:1 on every neutral surface */
 
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
@@ -49,14 +49,16 @@
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 
-  /* Seal gold: proof only, never status. --seal is a graphic colour (rules,
-     seal outline) on white (3.11:1) or plum (4.61:1), never on --background;
-     text in seal colour uses --seal-text. */
-  --seal: #b88a3e;
+  /* Seal gold (the logo's check circles): proof only, never status. --seal is a
+     graphic colour (rules, seal outline) on white (3.30:1); on navy use
+     --seal-on-primary, the logo's own gold (8.49:1). Text in seal colour on a
+     light surface uses --seal-text. */
+  --seal: #b4853d;
+  --seal-on-primary: #e0b074;
   --seal-text: #7a5a1e; /* 6.35:1 on white, 5.60:1 on --seal-soft */
   --seal-soft: #f8f0e1;
-  --highlight-text: #9b3d4a; /* small accents such as "H-180": 6.65:1 on white */
-  --on-primary-muted: #e9d9c4; /* secondary text on plum: 10.37:1 */
+  --highlight-text: #8a5a12; /* small accents such as "H-180": 5.91:1 on white */
+  --on-primary-muted: #c3cbe0; /* secondary text on navy: 10.33:1 */
 
   /* Status (DESIGN.md §4.2). The bare colors are for icons, dots, bars and
      borders (3:1); -text is for any text in a status color (4.5:1); -soft is
@@ -73,7 +75,7 @@
   --color-warning-soft: #fffbeb;
   --color-danger-soft: #fef2f2;
   --color-info-soft: #eff6ff;
-  --color-neutral-soft: #f1eaee;
+  --color-neutral-soft: #eceff5;
 
   /* WhatsApp: the one third-party colour, only on "Kirim via WhatsApp" (white text 5.32:1). */
   --whatsapp: #1f7a4d;
@@ -173,6 +175,7 @@
 
   /* Seal gold and the small accents shared with the public site. */
   --color-seal: var(--seal);
+  --color-seal-on-primary: var(--seal-on-primary);
   --color-seal-text: var(--seal-text);
   --color-seal-soft: var(--seal-soft);
   --color-highlight-text: var(--highlight-text);
@@ -191,7 +194,7 @@
    the old default of the theme's border color. The outline colour rests on
    --ring too: `transition-colors` also animates outline-color, so a focus ring
    whose colour only appears on :focus-visible would fade in from currentColor
-   (white on a plum button) instead of showing at once (ADR-0039). */
+   (white on a navy button) instead of showing at once (ADR-0039). */
 @layer base {
   *,
   ::before,

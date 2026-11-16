@@ -8,3 +8,8 @@ export const CONTACT = {
   address: "Jl. Ciptakarya II No.33, Bandung Kota, 40292, Jawa Barat",
   hours: "Setiap Hari, 08.00–21.00 WIB",
 };
+
+/** A wa.me link to the first ElProof number with a ready message (the visitor still presses send). */
+export function whatsappUrl(text = "Halo ElProof, saya ingin bertanya tentang ElProof untuk WO saya."): string {
+  return `https://wa.me/${CONTACT.phones[0].number}?text=${encodeURIComponent(text)}`;
+}
