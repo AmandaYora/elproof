@@ -266,6 +266,8 @@ export interface ClientPayment {
   verifiedAt: string | null;
   verifiedBy: string | null;
   evidence: EvidenceRef[];
+  /** Who entered it: the WO ("staff") or the client from the Portal ("client"); older APIs omit it (= staff). */
+  source: "client" | "staff";
 }
 
 // Money going OUT to the project's venue -- same accounting direction and

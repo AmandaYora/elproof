@@ -1,4 +1,4 @@
-import type { EvidenceType, PaymentTermStatus, ProjectStatus } from "@/modules/projects/types";
+import type { EvidenceType, MilestoneStatus, PaymentTermStatus, ProjectStatus } from "@/modules/projects/types";
 
 /**
  * GET /projects/me/home (PLAN.md E5): everything Beranda shows, in one call.
@@ -17,6 +17,8 @@ export interface PortalHome {
     status: ProjectStatus;
     picName: string;
     picPhone: string;
+    /** Cover photo the WO uploaded for the hero; null or absent (older API) = the plain navy hero. */
+    coverUrl?: string | null;
   };
   countdown: { daysToEvent: number };
   progress?: { overallPercent: number; condition: string };
@@ -33,6 +35,16 @@ export interface PortalHome {
   openIssueCount?: number;
   recentUpdates: PortalUpdate[];
   pic: { name: string; phone: string };
+  /** Steps the WO assigned to the couple; absent on an older API (the section then does not show). */
+  clientTasks?: ClientTask[];
+}
+
+export interface ClientTask {
+  id: string;
+  name: string;
+  targetDate: string;
+  status: MilestoneStatus;
+  completedDate: string | null;
 }
 
 export interface PortalAction {

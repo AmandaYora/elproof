@@ -434,10 +434,12 @@ interface RawClientPayment {
   verifiedAt?: string | null;
   verifiedBy?: { name: string } | null;
   evidence?: RawEvidenceRef[] | null;
+  source?: "client" | "staff";
 }
 
 function toClientPayment(raw: RawClientPayment): ClientPayment {
   return {
+    source: raw.source === "client" ? "client" : "staff",
     updatedAt: raw.updatedAt ?? "",
     recordedBy: raw.recordedBy?.name ?? null,
     verifiedAt: raw.verifiedAt ?? null,

@@ -1,6 +1,7 @@
 import { Suspense, useEffect } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { CalendarDays, Ellipsis, Heart, House, Loader2, LogOut, Store, Wallet, type LucideIcon } from "lucide-react";
+import { CalendarDays, Ellipsis, House, Loader2, LogOut, MessageCircle, Store, Wallet, type LucideIcon } from "lucide-react";
+import { AppLogoMark } from "@/shared/components/AppLogoMark";
 import { Toaster } from "@/shared/components/ui/Toaster";
 import { Button } from "@/shared/components/ui/Button";
 import { cn } from "@/shared/lib/cn";
@@ -15,6 +16,7 @@ import { hasPermission, usePermissionStore } from "@/shared/stores/usePermission
 import { useContactStore } from "@/shared/stores/useContactStore";
 import { useClientHomeStore } from "@/modules/client-portal/stores/useClientHomeStore";
 import { OfflineBanner } from "@/modules/client-portal/components/OfflineBanner";
+import { askMessage, usePortalContact } from "@/modules/client-portal/lib/usePortalContact";
 
 /** What every portal page gets: which project it is looking at. Each page loads its own data. */
 export interface ClientPortalContext {
@@ -66,6 +68,23 @@ function HelpLink({ message, label }: { message: string; label: string }) {
   );
 }
 
+/** A count on a menu item (open kendala on Lainnya). Navy, never red: a kendala is being handled, not an alarm. */
+function NavCount({ count, inverted = false, className }: { count: number; inverted?: boolean; className?: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] leading-none font-semibold tabular-nums ring-2 ring-card",
+        inverted ? "bg-primary-foreground text-primary ring-transparent" : "bg-primary text-primary-foreground",
+        className,
+      )}
+    >
+      {count}
+      <span className="sr-only"> kendala sedang ditangani</span>
+    </span>
+  );
+}
+
 function FullScreenMessage({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-card px-6 text-center">
@@ -89,6 +108,7 @@ export default function ClientPortalLayout() {
   const grants = usePermissionStore((s) => s.grants);
   const grantsLoaded = usePermissionStore((s) => s.loaded);
   const fetchGrants = usePermissionStore((s) => s.fetch);
+  const contact = usePortalContact();
 
   // The three calls the shell needs, in parallel: permissions, branding and the
   // landing page's data (which also tells every page which project this is).
@@ -135,6 +155,9 @@ export default function ClientPortalLayout() {
   if (guard && !hasPermission(grants, guard)) return <Navigate to={ROUTE_PATHS.portal("beranda")} replace />;
 
   const isActive = (item: NavItem) => here === item.tab || (here !== undefined && item.alsoActiveOn?.includes(here) === true);
+  // Open kendala live under Lainnya: its menu item carries their count (RISET #7).
+  const openIssues = hasPermission(grants, "portal.issues.view") ? (home.openIssueCount ?? 0) : 0;
+  const badgeFor = (item: NavItem) => (item.tab === "lainnya" ? openIssues : 0);
 
   return (
     <div className="min-h-screen bg-background" data-density="comfortable">
@@ -142,16 +165,18 @@ export default function ClientPortalLayout() {
       <OfflineBanner />
 
       <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
-          <NavLink to={ROUTE_PATHS.portal("beranda")} className="flex shrink-0 items-center gap-2 text-[14px] font-bold text-foreground">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+          <NavLink
+            to={ROUTE_PATHS.portal("beranda")}
+            className="flex min-w-0 items-center gap-2.5 rounded-md text-[15px] font-semibold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+          >
             {logoUrl ? (
-              <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-8 w-auto max-w-[140px] object-contain" />
+              // The WO's own logo carries its name; "Didukung ElProof" sits on Lainnya.
+              <img src={logoUrl} alt={brandName ?? APP_NAME} className="h-9 w-auto max-w-[150px] object-contain" />
             ) : (
               <>
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Heart className="h-4 w-4" fill="currentColor" aria-hidden />
-                </span>
-                {brandName ?? APP_NAME}
+                <AppLogoMark className="size-9 rounded-lg" />
+                <span className="truncate">{brandName ?? APP_NAME}</span>
               </>
             )}
           </NavLink>
@@ -162,26 +187,41 @@ export default function ClientPortalLayout() {
                 key={item.tab}
                 to={ROUTE_PATHS.portal(item.tab)}
                 className={cn(
-                  "rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[14px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring",
                   isActive(item) ? "bg-primary text-primary-foreground" : "text-text-secondary hover:bg-surface-muted hover:text-text-primary",
                 )}
               >
                 {item.label}
+                <NavCount count={badgeFor(item)} inverted={isActive(item)} />
               </NavLink>
             ))}
           </nav>
 
-          <button
-            type="button"
-            onClick={() => void logoutAndRedirect(navigate)}
-            className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring md:flex"
-          >
-            <LogOut className="h-3.5 w-3.5" aria-hidden /> Keluar
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {contact.phone && (
+              <a
+                href={whatsappUrl(contact.phone, askMessage(contact))}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Hubungi ${contact.name} lewat WhatsApp`}
+                title={`Hubungi ${contact.name} lewat WhatsApp`}
+                className="flex size-11 items-center justify-center rounded-full text-whatsapp hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+              >
+                <MessageCircle className="size-5" aria-hidden />
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => void logoutAndRedirect(navigate)}
+              className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium text-text-secondary hover:bg-danger-soft hover:text-danger-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring md:flex"
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden /> Keluar
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5 pb-28 sm:px-6 sm:py-8 md:pb-10">
+      <main className="mx-auto max-w-6xl px-4 py-5 pb-28 sm:px-6 sm:py-8 md:pb-10">
         <Suspense fallback={<div className="py-16 text-center text-sm text-text-secondary">Memuat...</div>}>
           <Outlet context={{ projectId: home.project.id } satisfies ClientPortalContext} />
         </Suspense>
@@ -200,12 +240,14 @@ export default function ClientPortalLayout() {
                   to={ROUTE_PATHS.portal(item.tab)}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11.5px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                    "relative flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11.5px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
                     active ? "text-primary" : "text-text-secondary",
                   )}
                 >
                   <item.icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
                   {item.label}
+                  {/* After the label so it is read "Lainnya, 1 kendala…"; drawn on the icon's corner. */}
+                  <NavCount count={badgeFor(item)} className="absolute top-2 left-1/2 ml-1" />
                 </NavLink>
               </li>
             );

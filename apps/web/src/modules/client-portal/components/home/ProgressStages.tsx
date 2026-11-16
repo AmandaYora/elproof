@@ -10,7 +10,7 @@ export function ProgressStages({ status, daysToEvent, percent }: { status: Proje
   return (
     <section aria-labelledby="stages-heading" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="stages-heading" className="text-[15px] font-semibold text-text-primary">Progres persiapan</h2>
+        <h2 id="stages-heading" className="text-base font-semibold text-text-primary">Progres persiapan</h2>
         {percent !== undefined && <span className="text-[13px] font-semibold tabular-nums text-primary">{percent}% selesai</span>}
       </div>
       <ol className="mt-4 flex flex-col">
