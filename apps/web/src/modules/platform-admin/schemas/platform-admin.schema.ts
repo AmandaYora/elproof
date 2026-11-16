@@ -24,8 +24,8 @@ export type PlatformAdminFormValues = z.infer<typeof platformAdminSchema>;
 export const platformAdminCreateSchema = platformAdminSchema
   .extend({
     username: usernameSchema,
-    password: z.string().min(8, "Password minimal 8 karakter"),
-    confirmPassword: z.string().min(1, "Ulangi password"),
+    password: z.string().min(8, "Kata sandi minimal 8 karakter"),
+    confirmPassword: z.string().min(1, "Ulangi kata sandi"),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: "Kedua kata sandi belum sama",
@@ -36,8 +36,8 @@ export type PlatformAdminCreateFormValues = z.infer<typeof platformAdminCreateSc
 
 export const resetPlatformAdminPasswordSchema = z
   .object({
-    password: z.string().min(8, "Password minimal 8 karakter"),
-    confirmPassword: z.string().min(1, "Ulangi password"),
+    password: z.string().min(8, "Kata sandi minimal 8 karakter"),
+    confirmPassword: z.string().min(1, "Ulangi kata sandi"),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: "Kedua kata sandi belum sama",

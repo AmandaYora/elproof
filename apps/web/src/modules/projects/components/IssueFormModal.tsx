@@ -9,7 +9,7 @@ import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import type { IssueImpact, IssueStatus, ProjectVendor, VendorMilestone } from "@/modules/projects/types";
 
 const FIELD_LABELS: Record<string, string> = {
-  title: "Judul kendala", description: "Deskripsi", projectVendorId: "Vendor", vendorMilestoneId: "Timeline", impact: "Dampak", status: "Status",
+  title: "Judul kendala", description: "Deskripsi", projectVendorId: "Vendor", vendorMilestoneId: "Tahapan", impact: "Dampak", status: "Status",
   foundDate: "Tanggal ditemukan", targetResolutionDate: "Target penyelesaian", picStaffId: "PIC", resolutionPlan: "Rencana penanganan",
 };
 

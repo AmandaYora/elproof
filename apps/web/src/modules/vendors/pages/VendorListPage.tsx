@@ -28,7 +28,7 @@ import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVe
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
-import type { AffectedProject } from "@/shared/types/delete-impact";
+import { describeAffectedProjects, inUseProjectsOf, type AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VendorListPage() {
   // Adding, editing, importing and (de)activating need vendor.manage (ADR-0026); useCan also reads "no" while the
@@ -182,7 +182,27 @@ export default function VendorListPage() {
       closeDeleteConfirm();
       await reload();
     } catch (err) {
+      // A project started using it since the check (409 vendor_in_use): the dialog turns into "deactivate instead".
+      const inUse = inUseProjectsOf(err);
+      if (inUse) setDeleteImpact(inUse);
       setDeleteError(getApiErrorMessage(err, "Vendor belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  /** What the dialog offers for a vendor a project still uses (QA FQ-02): it stays in those projects, out of new ones. */
+  async function handleDeactivateInstead() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await setVendorActive(deleteTarget.id, false);
+      closeDeleteConfirm();
+      toast.success("Vendor dinonaktifkan");
+      await reload();
+    } catch (err) {
+      setDeleteError(getApiErrorMessage(err, "Vendor belum bisa dinonaktifkan. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setIsDeleting(false);
     }
@@ -426,27 +446,42 @@ export default function VendorListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={closeDeleteConfirm}
-        title={deleteTarget ? `Hapus vendor — ${deleteTarget.name}` : "Hapus vendor"}
+        title={deleteTarget ? `${deleteImpact?.length ? "Vendor masih dipakai" : "Hapus vendor"} — ${deleteTarget.name}` : "Hapus vendor"}
         size="sm"
         busy={isDeleting}
         error={deleteError}
       >
         {impactLoading ? (
           <p className="text-[13px] text-text-secondary">Memeriksa penggunaan...</p>
+        ) : deleteImpact && deleteImpact.length > 0 ? (
+          // A vendor a project still uses cannot be deleted (the server answers 409, QA FQ-02): say where, offer to deactivate.
+          <div className="flex flex-col gap-4">
+            <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-text" />
+              <span>
+                Vendor ini masih dipakai di <strong className="text-text-primary">{describeAffectedProjects(deleteImpact)}</strong>, jadi belum bisa
+                dihapus.{" "}
+                {deleteTarget?.isActive
+                  ? "Nonaktifkan saja: vendor tidak muncul lagi saat menambah vendor ke proyek, dan data di proyek tadi tetap utuh."
+                  : "Vendor ini sudah nonaktif, jadi tidak muncul lagi saat menambah vendor ke proyek."}
+              </span>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+                {deleteTarget?.isActive && canManage ? "Batal" : "Tutup"}
+              </Button>
+              {deleteTarget?.isActive && canManage && (
+                <Button onClick={() => void handleDeactivateInstead()} disabled={isDeleting}>
+                  {isDeleting ? "Menyimpan..." : "Nonaktifkan vendor"}
+                </Button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             <p className="flex items-start gap-2 text-[13px] text-text-secondary">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
-              {deleteImpact && deleteImpact.length > 0 ? (
-                <span>
-                  Vendor ini masih digunakan oleh proyek berikut:{" "}
-                  <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, data
-                  vendor pada proyek tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
-                  menghapus vendor ini secara permanen?
-                </span>
-              ) : (
-                <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
-              )}
+              <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>

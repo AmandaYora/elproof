@@ -3,7 +3,7 @@ import { z } from "zod";
 export const PROJECT_STATUS_OPTIONS = ["Draft", "Preparation", "Ready", "Completed", "Cancelled"] as const;
 
 export const projectSchema = z.object({
-  name: z.string().min(3, "Isi nama project, minimal 3 karakter"),
+  name: z.string().min(3, "Isi nama proyek, minimal 3 karakter"),
   brideName: z.string().min(2, "Isi nama mempelai wanita"),
   groomName: z.string().min(2, "Isi nama mempelai pria"),
   eventDate: z.string().min(1, "Pilih tanggal acara"),

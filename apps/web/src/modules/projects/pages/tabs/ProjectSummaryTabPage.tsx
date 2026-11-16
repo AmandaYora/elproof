@@ -147,11 +147,11 @@ export default function ProjectSummaryTabPage() {
                         <div className="min-w-0">
                           <p className="truncate text-[13.5px] font-medium text-text-primary">{m.name}</p>
                           {/* H-n counts to the event day like a wedding checklist (Gladi resik = H-1); how soon it is from today comes after (QA RT-02). */}
-                          <p className="flex flex-wrap gap-x-1 text-[12.5px] text-text-secondary">
+                          <p className="flex flex-wrap gap-x-1.5 text-[12.5px] text-text-secondary">
                             <span className="whitespace-nowrap">
                               {formatDate(m.targetDate)} · <span className="font-medium text-text-primary">{formatEventOffset(m.targetDate, project.eventDate)}</span>
                             </span>
-                            <span className="whitespace-nowrap">· {formatDaysFromToday(m.targetDate)}</span>
+                            <span className="whitespace-nowrap">({formatDaysFromToday(m.targetDate)})</span>
                           </p>
                         </div>
                         <MilestoneStatusBadge status={m.status} />

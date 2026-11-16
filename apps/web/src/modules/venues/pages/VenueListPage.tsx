@@ -24,7 +24,7 @@ import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
 import type { Venue } from "@/modules/venues/types";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
-import type { AffectedProject } from "@/shared/types/delete-impact";
+import { describeAffectedProjects, inUseProjectsOf, type AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
   // Adding, editing, importing and (de)activating need vendor.manage (ADR-0026); useCan also reads "no" while the
@@ -155,7 +155,27 @@ export default function VenueListPage() {
       closeDeleteConfirm();
       await reload();
     } catch (err) {
+      // A project started using it since the check (409 venue_in_use): the dialog turns into "deactivate instead".
+      const inUse = inUseProjectsOf(err);
+      if (inUse) setDeleteImpact(inUse);
       setDeleteError(getApiErrorMessage(err, "Venue belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  /** What the dialog offers for a venue a project still uses (QA FQ-02): it stays in those projects, out of new ones. */
+  async function handleDeactivateInstead() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await setVenueActive(deleteTarget.id, false);
+      closeDeleteConfirm();
+      toast.success("Venue dinonaktifkan");
+      await reload();
+    } catch (err) {
+      setDeleteError(getApiErrorMessage(err, "Venue belum bisa dinonaktifkan. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setIsDeleting(false);
     }
@@ -352,27 +372,42 @@ export default function VenueListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={closeDeleteConfirm}
-        title={deleteTarget ? `Hapus venue — ${deleteTarget.name}` : "Hapus venue"}
+        title={deleteTarget ? `${deleteImpact?.length ? "Venue masih dipakai" : "Hapus venue"} — ${deleteTarget.name}` : "Hapus venue"}
         size="sm"
         busy={isDeleting}
         error={deleteError}
       >
         {impactLoading ? (
           <p className="text-[13px] text-text-secondary">Memeriksa penggunaan...</p>
+        ) : deleteImpact && deleteImpact.length > 0 ? (
+          // A venue a project still uses cannot be deleted (the server answers 409, QA FQ-02): say where, offer to deactivate.
+          <div className="flex flex-col gap-4">
+            <p className="flex items-start gap-2 text-[13px] text-text-secondary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-text" />
+              <span>
+                Venue ini masih dipakai di <strong className="text-text-primary">{describeAffectedProjects(deleteImpact)}</strong>, jadi belum bisa
+                dihapus.{" "}
+                {deleteTarget?.isActive
+                  ? "Nonaktifkan saja: venue tidak muncul lagi saat memilih venue proyek, dan data di proyek tadi tetap utuh."
+                  : "Venue ini sudah nonaktif, jadi tidak muncul lagi saat memilih venue proyek."}
+              </span>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+                {deleteTarget?.isActive && canManage ? "Batal" : "Tutup"}
+              </Button>
+              {deleteTarget?.isActive && canManage && (
+                <Button onClick={() => void handleDeactivateInstead()} disabled={isDeleting}>
+                  {isDeleting ? "Menyimpan..." : "Nonaktifkan venue"}
+                </Button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             <p className="flex items-start gap-2 text-[13px] text-text-secondary">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" />
-              {deleteImpact && deleteImpact.length > 0 ? (
-                <span>
-                  Venue ini masih digunakan oleh proyek berikut:{" "}
-                  <strong className="text-text-primary">{deleteImpact.map((p) => p.name).join(", ")}</strong>. Jika dihapus, data
-                  venue pada proyek tersebut akan kehilangan sumber datanya dan tidak dapat ditelusuri lagi. Apakah Anda yakin ingin
-                  menghapus venue ini secara permanen?
-                </span>
-              ) : (
-                <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
-              )}
+              <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>

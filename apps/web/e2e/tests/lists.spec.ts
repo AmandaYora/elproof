@@ -87,6 +87,42 @@ test.describe("Vendor list", () => {
     expect(style.nums).toContain("tabular-nums");
     await close();
   });
+
+  test("a vendor a project uses is not offered for deletion: the dialog says where and offers to deactivate (QA FQ-02)", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "owner");
+    await visit(page, "/vendor");
+    await page.getByRole("button", { name: "Aksi lain untuk Katering Rasa Nusantara" }).click();
+    await page.getByRole("menuitem", { name: "Hapus permanen" }).click();
+    const dialog = page.getByRole("dialog", { name: /Vendor masih dipakai|Hapus vendor/ });
+    await expect(dialog).toContainText("Vendor ini masih dipakai di 1 proyek: Citra & Bima");
+    await expect(dialog.getByRole("button", { name: "Nonaktifkan vendor" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Hapus vendor permanen" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Batal" }).click();
+    await expect(dialog).toBeHidden();
+
+    // Used by a project after the check: the server's 409 reason shows in the dialog, which turns into the same offer.
+    await page.route(/\/api\/v1\/vendors\/\d+$/, (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({
+              success: false,
+              message: "Vendor ini masih dipakai di 1 proyek: Sari & Doni. Nonaktifkan saja bila tidak dipakai lagi.",
+              errors: { code: "vendor_in_use" },
+              data: { affectedProjects: [{ id: "3", name: "Sari & Doni" }], hiddenProjectCount: 0 },
+            }),
+          })
+        : route.fallback(),
+    );
+    await page.getByRole("button", { name: "Aksi lain untuk Foto Cahaya Studio" }).click();
+    await page.getByRole("menuitem", { name: "Hapus permanen" }).click();
+    await dialog.getByRole("button", { name: "Hapus vendor permanen" }).click();
+    await expect(dialog.getByText("Vendor ini masih dipakai di 1 proyek: Sari & Doni. Nonaktifkan saja bila tidak dipakai lagi.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Nonaktifkan vendor" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Hapus vendor permanen" })).toHaveCount(0);
+    await close();
+  });
 });
 
 test.describe("no list loads every row to filter in the browser", () => {

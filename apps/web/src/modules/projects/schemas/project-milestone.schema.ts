@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const projectMilestoneSchema = z.object({
-  name: z.string().min(3, "Isi nama timeline, minimal 3 karakter"),
+  name: z.string().min(3, "Isi nama tahapan, minimal 3 karakter"),
   targetDate: z.string().min(1, "Pilih target tanggal"),
 });
 
