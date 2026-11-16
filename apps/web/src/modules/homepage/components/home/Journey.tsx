@@ -61,8 +61,8 @@ export function Journey() {
       <Card
         className="md:col-span-3"
         when="H-180"
-        title="Kontrak dan termin dibuat sekali"
-        body="Isi data pasangan, paket, dan nilai kontrak. Termin terhitung dari templat Anda dan bisa dihitung ulang bila nilai kontrak berubah."
+        title="Termin terhitung sendiri dari nilai kontrak"
+        body="Isi nilai kontrak sekali. Uang muka, termin, dan pelunasan terisi dari templat Anda, dan bisa dihitung ulang bila kontraknya berubah."
       >
         <Screen className="divide-y divide-border">
           <Row left="Uang muka 30%" sub="15 Jun 2026" right={<span className="font-semibold tabular-nums">{formatCurrency(13_500_000)}</span>} />
@@ -74,8 +74,8 @@ export function Journey() {
       <Card
         className="md:col-span-3"
         when="H-150"
-        title="Jadwal persiapan mengikuti hari H"
-        body="Tahapan dari jadwal bawaan Anda diberi tanggal mundur dari hari acara. Tanggal acara bergeser, jadwalnya ikut bergeser."
+        title="Jadwal persiapan ikut bergeser bersama hari H"
+        body="Tahapan dari jadwal bawaan Anda diberi tanggal mundur dari hari acara. Pasangan memindah tanggal? Jadwalnya ikut pindah, tanpa diatur ulang satu per satu."
       >
         <Screen className="divide-y divide-border">
           <Row left="Survei venue dan vendor" right={<span className="text-[12px] font-semibold text-muted-foreground tabular-nums">H-90</span>} />
@@ -94,8 +94,8 @@ export function Journey() {
       <Card
         className="md:col-span-2"
         when="H-120"
-        title="Vendor dan venue per proyek"
-        body="Kontrak, uang muka, dan sisa pembayaran vendor tersimpan di proyeknya."
+        title="DP dan sisa bayar vendor tidak tercecer"
+        body="Kontrak, uang muka, dan pelunasan setiap vendor tersimpan di proyeknya, jadi margin acara terlihat jelas."
       >
         <Screen className="divide-y divide-border">
           <Row left="Katering Rasa Nusantara" right={<StatusChip tone="success">Uang muka lunas</StatusChip>} />
@@ -110,7 +110,7 @@ export function Journey() {
         className="md:col-span-2"
         tone="seal"
         when="H-32"
-        title="Setiap pembayaran ada buktinya"
+        title="Setiap pembayaran klien ada buktinya"
         body="Tim mencatat pembayaran beserta bukti transfer, lalu memverifikasinya. Segel ini hanya muncul pada yang sudah diperiksa."
       >
         <Screen className="flex items-center gap-3 border-seal/40">
@@ -128,7 +128,7 @@ export function Journey() {
       <Card
         className="md:col-span-2"
         when="H-7"
-        title="Kendala ditangani, klien ikut tahu"
+        title="Kendala tercatat, tidak ada yang terlupa"
         body="Catat kendala per vendor atau untuk acara secara umum, lalu pilih apakah pasangan perlu melihatnya."
       >
         <Screen>

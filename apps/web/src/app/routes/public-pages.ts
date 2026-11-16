@@ -21,9 +21,9 @@ export interface PublicPageMeta {
 export const PUBLIC_PAGES = {
   home: {
     path: ROUTE_PATHS.homepage,
-    title: "Bukti kerja WO yang bisa dilihat klien",
+    title: "Aplikasi wedding organizer: kerja tim lebih ringan, klien makin percaya",
     description:
-      "ElProof membantu wedding organizer mencatat tahapan, vendor, dan termin pembayaran beserta buktinya, lalu menunjukkannya ke klien lewat Portal Klien.",
+      "Catat tahapan, vendor, dan pembayaran klien di satu tempat. Pasangan memantau persiapan sendiri lewat Portal Klien, tim Anda punya waktu untuk lebih banyak acara.",
   },
   about: {
     path: ROUTE_PATHS.homepageAbout,
