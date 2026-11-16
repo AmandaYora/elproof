@@ -19,13 +19,9 @@ func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, tenantID,
 		writeAppError(w, err)
 		return
 	}
-	var names map[int64]string
+	uploader := func(domain.Evidence) string { return "" }
 	if !isClient {
-		ids := make([]int64, 0, len(list))
-		for _, e := range list {
-			ids = append(ids, e.UploadedByStaffID)
-		}
-		names = h.projects.StaffNames(r.Context(), tenantID, ids)
+		uploader = h.uploaderNames(r.Context(), tenantID, projectID, list)
 	}
 	result := make([]evidenceResponse, 0, len(list))
 	for _, e := range list {
@@ -33,7 +29,7 @@ func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, tenantID,
 			continue
 		}
 		resp := toEvidenceResponse(e)
-		resp.UploadedByName = names[e.UploadedByStaffID]
+		resp.UploadedByName = uploader(e)
 		if isClient {
 			redactEvidenceForClient(&resp)
 		}
@@ -96,7 +92,7 @@ func (h *Handler) uploadEvidence(w http.ResponseWriter, r *http.Request, claims 
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Evidence berhasil diunggah", h.mutated(r.Context(), claims.tenantID, projectID, h.evidenceResponseFor(r.Context(), claims.tenantID, *e)))
+	response.Created(w, "Dokumen berhasil diunggah", h.mutated(r.Context(), claims.tenantID, projectID, h.evidenceResponseFor(r.Context(), claims.tenantID, *e)))
 }
 
 // updateEvidence is PATCH /projects/{id}/evidence/{eid} with {"isClientVisible":
@@ -138,8 +134,41 @@ func (h *Handler) updateEvidence(w http.ResponseWriter, r *http.Request, claims 
 // uploader's name.
 func (h *Handler) evidenceResponseFor(ctx context.Context, tenantID int64, e domain.Evidence) evidenceResponse {
 	resp := toEvidenceResponse(e)
-	resp.UploadedByName = h.projects.ResolvePICName(ctx, tenantID, e.UploadedByStaffID)
+	resp.UploadedByName = h.uploaderNames(ctx, tenantID, e.ProjectID, []domain.Evidence{e})(e)
 	return resp
+}
+
+// clientUploaderFallback names a client uploader who is no longer on the
+// project's client list (deleted since).
+const clientUploaderFallback = "Klien"
+
+// uploaderNames resolves, in at most two lookups, who uploaded each of the
+// files: the staff member's name, or for a file the couple sent from the Client
+// Portal the client's name (RT-07). Unknown staff resolve to "".
+func (h *Handler) uploaderNames(ctx context.Context, tenantID, projectID int64, list []domain.Evidence) func(domain.Evidence) string {
+	staffIDs := make([]int64, 0, len(list))
+	anyClient := false
+	for _, e := range list {
+		if e.UploadedByClientID != 0 {
+			anyClient = true
+			continue
+		}
+		staffIDs = append(staffIDs, e.UploadedByStaffID)
+	}
+	staff := h.projects.StaffNames(ctx, tenantID, staffIDs)
+	var clients map[int64]string
+	if anyClient {
+		clients = h.overview.ClientNames(ctx, tenantID, projectID)
+	}
+	return func(e domain.Evidence) string {
+		if e.UploadedByClientID != 0 {
+			if n := clients[e.UploadedByClientID]; n != "" {
+				return n
+			}
+			return clientUploaderFallback
+		}
+		return staff[e.UploadedByStaffID]
+	}
 }
 
 // deleteEvidence is DELETE /projects/{id}/evidence/{eid}: removes one proof file
@@ -170,7 +199,7 @@ func (h *Handler) deleteEvidence(w http.ResponseWriter, r *http.Request, claims 
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Evidence berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, map[string]int64{"id": evidenceID}))
+	response.OK(w, "Dokumen berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, map[string]int64{"id": evidenceID}))
 }
 
 func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string, isClient bool) {

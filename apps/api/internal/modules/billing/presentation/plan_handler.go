@@ -209,6 +209,11 @@ func (h *PlanHandler) toggleActive(w http.ResponseWriter, r *http.Request, id in
 		writeAppError(w, err)
 		return
 	}
+	verb := "Menonaktifkan"
+	if plan.IsActive {
+		verb = "Mengaktifkan"
+	}
+	middleware.SetAuditDescription(r.Context(), verb+" paket "+plan.Name)
 	response.OK(w, "Status paket diperbarui", toPlanResponseValue(*plan))
 }
 

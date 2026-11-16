@@ -77,7 +77,7 @@ func (s *ClientService) GetDeleted(ctx context.Context, tenantID, id int64) (*do
 		return nil, err
 	}
 	if c == nil {
-		return nil, apperror.NotFound("Client tidak ditemukan atau sudah tidak dapat dipulihkan")
+		return nil, apperror.NotFound("Klien tidak ditemukan atau sudah tidak dapat dipulihkan")
 	}
 	return c, nil
 }
@@ -100,7 +100,7 @@ func (s *ClientService) VerifyAssignedProject(ctx context.Context, tenantID, pro
 	if picSales == staffID {
 		return nil
 	}
-	return apperror.Forbidden("Anda tidak memiliki akses ke project ini")
+	return apperror.Forbidden("Anda tidak memiliki akses ke proyek ini")
 }
 
 // ListByTenant powers the WO Console's global search, which needs to match
@@ -240,7 +240,7 @@ func (s *ClientService) Get(ctx context.Context, tenantID, id int64) (*domain.Cl
 		return nil, err
 	}
 	if c == nil {
-		return nil, apperror.NotFound("Client tidak ditemukan")
+		return nil, apperror.NotFound("Klien tidak ditemukan")
 	}
 	return c, nil
 }
@@ -275,7 +275,7 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 	// ("Data truncated"), and the ENUM's case-insensitive match let "bride"
 	// through while the login kept the lowercase spelling.
 	if !domain.IsClientRole(string(input.Role)) {
-		return nil, nil, apperror.Validation("Hubungan client tidak dikenal", map[string][]string{
+		return nil, nil, apperror.Validation("Hubungan klien tidak dikenal", map[string][]string{
 			"role": {"Pilih salah satu: Pengantin wanita, Pengantin pria, atau Perwakilan keluarga"},
 		})
 	}
@@ -284,7 +284,7 @@ func (s *ClientService) Create(ctx context.Context, tenantID int64, input Create
 		return nil, nil, err
 	}
 	if !exists {
-		return nil, nil, apperror.Validation("Project tidak valid", map[string][]string{"projectId": {"Project tidak ditemukan"}})
+		return nil, nil, apperror.Validation("Proyek tidak valid", map[string][]string{"projectId": {"Proyek tidak ditemukan"}})
 	}
 	if err := s.checkClientQuota(ctx, tenantID); err != nil {
 		return nil, nil, err
@@ -394,7 +394,7 @@ func (s *ClientService) Delete(ctx context.Context, tenantID, id int64, now time
 	}
 	ok, err := s.repo.SoftDelete(ctx, tenantID, id, now)
 	if err == nil && !ok {
-		err = apperror.NotFound("Client tidak ditemukan")
+		err = apperror.NotFound("Klien tidak ditemukan")
 	}
 	if err != nil {
 		// Put the login back as it was; the row is still live.
@@ -418,14 +418,14 @@ func (s *ClientService) Restore(ctx context.Context, tenantID, id int64, now tim
 		return nil, err
 	}
 	if c == nil || c.DeletedAt == nil || !domain.CanRestore(*c.DeletedAt, now) {
-		return nil, apperror.NotFound("Client tidak ditemukan atau sudah tidak dapat dipulihkan")
+		return nil, apperror.NotFound("Klien tidak ditemukan atau sudah tidak dapat dipulihkan")
 	}
 	exists, err := s.projects.ProjectExists(ctx, tenantID, c.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, apperror.Validation("Project client ini sudah tidak ada", map[string][]string{"projectId": {"Project tidak ditemukan"}})
+		return nil, apperror.Validation("Proyek klien ini sudah tidak ada", map[string][]string{"projectId": {"Proyek tidak ditemukan"}})
 	}
 	if c.IsActive {
 		if err := s.checkClientQuota(ctx, tenantID); err != nil {
@@ -437,7 +437,7 @@ func (s *ClientService) Restore(ctx context.Context, tenantID, id int64, now tim
 		return nil, err
 	}
 	if !ok {
-		return nil, apperror.NotFound("Client tidak ditemukan atau sudah tidak dapat dipulihkan")
+		return nil, apperror.NotFound("Klien tidak ditemukan atau sudah tidak dapat dipulihkan")
 	}
 	if err := s.identity.SetActive(ctx, identitycontracts.PrincipalClient, formatID(c.ID), c.IsActive); err != nil {
 		// Without its login the client would be restored but locked out: undo.
@@ -592,7 +592,7 @@ func (s *ClientService) AccessLink(ctx context.Context, tenantID, id int64) (*Ac
 		return nil, err
 	}
 	if !c.IsActive {
-		return nil, apperror.Conflict("Aktifkan client ini dulu sebelum membuat link")
+		return nil, apperror.Conflict("Aktifkan klien ini dulu sebelum membuat link")
 	}
 	link, err := s.identity.IssueAccessLink(ctx, identitycontracts.PrincipalClient, formatID(c.ID))
 	if err != nil {
@@ -667,7 +667,7 @@ func (s *ClientService) ReplaceRepresentative(ctx context.Context, tenantID, id 
 		return nil, nil, apperror.Forbidden("Hanya Family Representative yang dapat diganti")
 	}
 	if !c.IsActive {
-		return nil, nil, apperror.Conflict("Aktifkan client ini dulu sebelum mengganti perwakilannya")
+		return nil, nil, apperror.Conflict("Aktifkan klien ini dulu sebelum mengganti perwakilannya")
 	}
 	// Check what can fail before changing anything, then cut off the
 	// previous person first: a later failure must never leave them with

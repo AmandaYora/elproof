@@ -69,7 +69,7 @@ function SlideSlot({ index, canEdit }: { index: number; canEdit: boolean }) {
       <CardContent className="flex flex-col gap-3">
         <div className="aspect-[4/5] w-full overflow-hidden rounded-md bg-surface-muted">
           {src ? (
-            <img src={src} alt={`Foto login ${index + 1}`} className="h-full w-full object-cover" />
+            <img src={src} alt={`Foto halaman masuk ${index + 1}`} className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full items-center justify-center px-4 text-center text-[12.5px] text-text-secondary">Foto belum ada atau belum bisa dimuat</div>
           )}
@@ -111,7 +111,7 @@ export default function LoginSlidesPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-text-primary">Tampilan Login</h1>
+        <h1 className="text-xl font-bold text-text-primary">Tampilan halaman masuk</h1>
         <p className="mt-1 max-w-2xl text-[13px] text-text-secondary">
           Tiga foto yang bergantian di halaman masuk. Pilih foto tegak (rasio sekitar 4:5), minimal 1200 piksel di sisi terpanjang. Foto baru langsung dipakai, tetapi browser pengunjung bisa
           menampilkan foto lama sampai 24 jam.

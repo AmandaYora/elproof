@@ -6,15 +6,29 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal";
 import { formatDate } from "@/shared/lib/formatters";
-import type { Evidence } from "@/modules/projects/types";
+import type { EvidenceType } from "@/modules/projects/types";
 import { evidenceTypeLabel } from "@/shared/lib/labels";
+
+/**
+ * One file to list: the short form an item carries itself (`EvidenceRef`: id, type, file name, upload time) is enough;
+ * a full evidence row (with its own name and document date) shows those instead.
+ */
+export interface EvidenceListItem {
+  id: string;
+  type: EvidenceType;
+  fileName: string;
+  name?: string;
+  documentDate?: string | null;
+  uploadedAt?: string;
+}
 
 interface EvidenceListModalProps {
   open: boolean;
   onClose: () => void;
   projectId: string;
   title: string;
-  items: Evidence[];
+  /** The files of that one item, as the item itself carries them (e.g. `payment.evidence`), not a filter of a list loaded elsewhere. */
+  items: EvidenceListItem[];
 }
 
 // Domain-agnostic list-then-view picker for a small set of evidence rows
@@ -25,9 +39,14 @@ interface EvidenceListModalProps {
 // other's `children`) -- verified against Modal.tsx's own implementation:
 // neither introduces a transform/filter/opacity that would create a new
 // containing block, so both stay correctly stacked (same z-50, later DOM
-// order wins) regardless of nesting.
+// order wins) regardless of nesting. With exactly one file there is nothing to
+// pick: the viewer opens straight away (the same one as the Dokumen tab and the portal).
 export function EvidenceListModal({ open, onClose, projectId, title, items }: EvidenceListModalProps) {
-  const [viewingEvidence, setViewingEvidence] = useState<Evidence | null>(null);
+  const [viewingEvidence, setViewingEvidence] = useState<EvidenceListItem | null>(null);
+
+  if (open && items.length === 1) {
+    return <EvidenceViewerModal open onClose={onClose} projectId={projectId} evidence={toViewerEvidence(items[0])} contextLabel={title} />;
+  }
 
   return (
     <>
@@ -47,13 +66,13 @@ export function EvidenceListModal({ open, onClose, projectId, title, items }: Ev
               >
                 <FileText className="h-4 w-4 shrink-0 text-text-secondary" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-text-primary">{item.name}</p>
+                  <p className="truncate text-[13px] font-medium text-text-primary">{item.name || item.fileName}</p>
                   <div className="mt-0.5 flex items-center gap-2 text-[12px] text-text-secondary">
                     <Badge tone="neutral">{evidenceTypeLabel(item.type)}</Badge>
-                    <span>{formatDate(item.documentDate)}</span>
+                    <span>{formatDate(item.documentDate ?? item.uploadedAt ?? null)}</span>
                   </div>
                 </div>
-                <IconActionButton icon={Eye} readOnly label="Lihat" tone="info" onClick={() => setViewingEvidence(item)} />
+                <IconActionButton icon={Eye} readOnly label={`Lihat ${item.name || item.fileName}`} tone="info" onClick={() => setViewingEvidence(item)} />
               </div>
             ))}
           </div>
@@ -65,9 +84,13 @@ export function EvidenceListModal({ open, onClose, projectId, title, items }: Ev
           open
           onClose={() => setViewingEvidence(null)}
           projectId={projectId}
-          evidence={viewingEvidence}
+          evidence={toViewerEvidence(viewingEvidence)}
         />
       )}
     </>
   );
+}
+
+function toViewerEvidence(item: EvidenceListItem) {
+  return { id: item.id, name: item.name || item.fileName, type: item.type, documentDate: item.documentDate ?? item.uploadedAt ?? null, fileName: item.fileName };
 }

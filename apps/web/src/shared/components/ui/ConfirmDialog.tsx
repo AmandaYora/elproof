@@ -17,6 +17,8 @@ interface ConfirmDialogProps {
   children: ReactNode;
   /** Button label naming the action, e.g. "Bekukan tenant". */
   confirmLabel: string;
+  /** The button that leaves things as they are; "Batal" unless the choice reads better otherwise ("Biarkan"). */
+  cancelLabel?: string;
   tone?: "danger" | "primary";
   /**
    * For actions that are hard to undo: the user must type this exact text
@@ -40,6 +42,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  cancelLabel = "Batal",
   tone = "danger",
   confirmText,
   isSubmitting = false,
@@ -92,7 +95,7 @@ export function ConfirmDialog({
         )}
         <AlertDialogFooter>
           <Button ref={cancelRef} variant="secondary" onClick={handleClose} disabled={isSubmitting}>
-            Batal
+            {cancelLabel}
           </Button>
           <Button variant={tone} onClick={onConfirm} disabled={!matches || isSubmitting}>
             {isSubmitting ? "Memproses..." : confirmLabel}

@@ -124,7 +124,7 @@ func (h *Handler) createClientPaymentNow(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
-	response.Created(w, "Pembayaran client berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, clientPaymentCreatedResponse{
+	response.Created(w, "Pembayaran klien berhasil dicatat", h.mutated(r.Context(), claims.tenantID, projectID, clientPaymentCreatedResponse{
 		clientPaymentResponse: resp,
 		LedgerSummary: clientLedgerSummaryResponse{
 			ledgerSummaryResponse: toLedgerSummary(created.Ledger), Terms: toPaymentTermResponses(created.Terms),
@@ -174,7 +174,7 @@ func (h *Handler) updateClientPayment(w http.ResponseWriter, r *http.Request, cl
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", ledger}))
+	response.OK(w, "Pembayaran klien berhasil diperbarui", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", ledger}))
 }
 
 // clientLedgerSummary is where the contract and the schedule stand now.
@@ -206,7 +206,7 @@ func (h *Handler) verifyClientPayment(w http.ResponseWriter, r *http.Request, cl
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client diverifikasi", h.mutated(r.Context(), claims.tenantID, projectID, resp))
+	response.OK(w, "Pembayaran klien diverifikasi", h.mutated(r.Context(), claims.tenantID, projectID, resp))
 }
 
 // deleteClientPayment soft-deletes the payment (finance.payment.delete): it
@@ -232,7 +232,7 @@ func (h *Handler) deleteClientPayment(w http.ResponseWriter, r *http.Request, cl
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, toDeletedResponse(paymentID, until), extra{"ledgerSummary", ledger}))
+	response.OK(w, "Pembayaran klien berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, toDeletedResponse(paymentID, until), extra{"ledgerSummary", ledger}))
 }
 
 // restoreClientPayment is POST /projects/{id}/client-payments/{pid}/restore
@@ -260,5 +260,5 @@ func (h *Handler) restoreClientPayment(w http.ResponseWriter, r *http.Request, c
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Pembayaran client dipulihkan", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", ledger}))
+	response.OK(w, "Pembayaran klien dipulihkan", h.mutated(r.Context(), claims.tenantID, projectID, resp, extra{"ledgerSummary", ledger}))
 }

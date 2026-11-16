@@ -69,6 +69,33 @@ test.describe("portal Pembayaran", () => {
   });
 });
 
+test.describe("WO Keuangan > Klien", () => {
+  test("Lihat bukti opens the payment's own proof, not an empty list (QA RT-01)", async ({ browser }, info) => {
+    test.skip(!state().storage, "needs object storage (MinIO) so the seed can attach proof");
+    const { page, close } = await open(browser, info, "owner");
+    // The viewer reads the files the payment itself carries: the project-wide document list is not needed (it was
+    // filtered before, and was stale or empty whenever it had not been loaded since the proof was attached).
+    const evidenceLists: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "GET" && /\/api\/v1\/projects\/\d+\/evidence$/.test(new URL(r.url()).pathname)) evidenceLists.push(r.url());
+    });
+    await visit(page, "/proyek/1/keuangan/klien");
+    const row = page.getByRole("row").filter({ hasText: "DP" }).filter({ hasText: "Rp" }).first();
+    await row.getByRole("button", { name: /^Aksi lain untuk DP/ }).click();
+    await page.getByRole("menuitem", { name: "Lihat bukti" }).click();
+    const viewer = page.getByRole("dialog");
+    await expect(viewer).toBeVisible();
+    await expect(viewer.getByText("Belum ada bukti")).toHaveCount(0);
+    // The seeded proof is a PDF: it is shown in a frame named after the file (an image would be an <img>).
+    await expect(viewer.locator('iframe[title="bukti-dp.pdf"], img[alt="bukti-dp.pdf"]')).toBeVisible();
+    await expect(viewer.getByText("Dokumen belum bisa dimuat.")).toHaveCount(0);
+    expect(evidenceLists, evidenceLists.join("\n")).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(viewer).toBeHidden();
+    await close();
+  });
+});
+
 test.describe("client boundary", () => {
   test("a client cannot read the tenant's vendor names or categories", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "client");

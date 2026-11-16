@@ -82,8 +82,20 @@ for (const page of pages) {
   console.log(`prerendered ${page.path.padEnd(30)} → dist/${file} (${(Buffer.byteLength(html) / 1024).toFixed(1)} KB)`);
 }
 
+// The shell for a path no route answers (QA RT-06): the same empty app, but its tab already says what happened and search
+// engines drop it. The browser draws the not-found page itself (the way back depends on who is signed in). The Go server
+// sends it with status 404 when routes.json names it under "notFound", and index.html otherwise.
+const notFound = "prerendered/404.html";
+fs.writeFileSync(
+  path.join(dist, notFound),
+  shell.replace(META_BLOCK, () =>
+    [`<title>${escapeHtml(`Halaman tidak ditemukan — ${APP_NAME}`)}</title>`, `<meta name="robots" content="noindex" />`].join("\n    "),
+  ),
+);
+console.log(`prerendered 404 shell${" ".repeat(19)} → dist/${notFound}`);
+
 const routes = routePatterns();
-fs.writeFileSync(path.join(dist, "routes.json"), `${JSON.stringify({ pages: manifestPages, routes }, null, 2)}\n`);
+fs.writeFileSync(path.join(dist, "routes.json"), `${JSON.stringify({ pages: manifestPages, routes, notFound }, null, 2)}\n`);
 console.log(`routes.json: ${Object.keys(manifestPages).length} pages, ${routes.length} route patterns`);
 
 const indexable = pages.filter((p) => !p.noindex);

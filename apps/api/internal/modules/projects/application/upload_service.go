@@ -149,7 +149,7 @@ func tokenMessage(err error) string {
 	case ErrTokenExpired:
 		return "Unggahan ini sudah kedaluwarsa. Unggah ulang berkasnya."
 	case ErrTokenScope:
-		return "Berkas ini diunggah untuk project lain. Unggah ulang berkasnya di sini."
+		return "Berkas ini diunggah untuk proyek lain. Unggah ulang berkasnya di sini."
 	default:
 		return "Berkas ini tidak valid. Unggah ulang berkasnya."
 	}

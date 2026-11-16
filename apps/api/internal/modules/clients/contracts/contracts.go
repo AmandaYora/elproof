@@ -51,7 +51,7 @@ func (c *impl) ProjectIDForClient(ctx context.Context, tenantID, clientID int64)
 		return 0, err
 	}
 	if !client.IsActive {
-		return 0, apperror.Forbidden("Akun client ini sudah dinonaktifkan")
+		return 0, apperror.Forbidden("Akun klien ini sudah dinonaktifkan")
 	}
 	return client.ProjectID, nil
 }

@@ -305,7 +305,7 @@ func (s *AuthService) completeLogin(ctx context.Context, cred *domain.Credential
 }
 
 func sessionEnded() error {
-	return apperror.Unauthorized("Sesi sudah berakhir, silakan login kembali")
+	return apperror.Unauthorized("Sesi sudah berakhir, silakan masuk kembali")
 }
 
 // Refresh rotates a refresh token (ADR-0005, ADR-0044): the presented token
@@ -460,12 +460,12 @@ func (s *AuthService) issueSessionInFamily(ctx context.Context, cred *domain.Cre
 	}
 	access, err := s.issuer.IssueAccessToken(cred, mfa, s.accessTTL)
 	if err != nil {
-		return nil, apperror.Internal("Gagal membuat sesi login")
+		return nil, apperror.Internal("Gagal membuat sesi masuk")
 	}
 
 	plainRefresh, hash, err := s.issuer.NewRefreshTokenValue()
 	if err != nil {
-		return nil, apperror.Internal("Gagal membuat sesi login")
+		return nil, apperror.Internal("Gagal membuat sesi masuk")
 	}
 
 	record := &domain.RefreshToken{

@@ -1,4 +1,4 @@
-import type { PaymentTermInput } from "@/modules/projects/types";
+import type { PaymentTerm, PaymentTermInput } from "@/modules/projects/types";
 
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -40,4 +40,17 @@ export function termsVsContract(total: number, contractValue: number, count: num
   if (contractValue <= 0 || count === 0) return "none";
   if (total === contractValue) return "match";
   return total < contractValue ? "under" : "over";
+}
+
+/** Whether moving the event date leaves installments behind (QA RT-04): any installment not paid in full. */
+export function hasUnpaidTerms(terms: PaymentTerm[]): boolean {
+  return terms.some((t) => t.remaining > 0);
+}
+
+/**
+ * The whole schedule (for PUT /payment-terms) with every installment not paid in full due `days` later (earlier when
+ * negative), after the event date moved by that much. Paid installments, labels, amounts and order stay as they are.
+ */
+export function shiftUnpaidTerms(terms: PaymentTerm[], days: number): PaymentTermInput[] {
+  return terms.map((t) => ({ label: t.label, amount: t.amount, dueDate: t.remaining > 0 ? addDays(t.dueDate, days) : t.dueDate }));
 }

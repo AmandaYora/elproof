@@ -137,15 +137,15 @@ export default function WorkspaceSetupPage() {
               <span>
                 Saya menyetujui{" "}
                 <Link to={ROUTE_PATHS.homepageTerms} target="_blank" className="font-medium underline underline-offset-2">
-                  Syarat & Ketentuan
+                  syarat dan ketentuan
                 </Link>{" "}
                 dan{" "}
                 <Link to={ROUTE_PATHS.homepageDataProcessing} target="_blank" className="font-medium underline underline-offset-2">
-                  Perjanjian Pemrosesan Data
+                  perjanjian pemrosesan data
                 </Link>
                 , serta telah membaca{" "}
                 <Link to={ROUTE_PATHS.homepagePrivacy} target="_blank" className="font-medium underline underline-offset-2">
-                  Kebijakan Privasi
+                  kebijakan privasi
                 </Link>{" "}
                 ElProof.
               </span>

@@ -1,42 +1,41 @@
 import { Link } from "react-router-dom";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { LegalDocument, type LegalSection } from "@/modules/homepage/components/LegalDocument";
+import { REFUND_UPDATED } from "@/modules/homepage/data/legal";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
-// Dated separately from TERMS_UPDATED (data/legal.ts): this policy has its own revision.
-const UPDATED = "18 Juli 2026";
-
+// Words as in the app and in Syarat dan ketentuan §1 (QA FQ-09): WO, workspace, Owner, anggota tim, proyek.
 const SECTIONS: LegalSection[] = [
   {
     id: "ketentuan-umum",
-    title: "1. Ketentuan Umum",
+    title: "1. Ketentuan umum",
     body: [
-      `ElProof adalah layanan berbasis langganan (Software as a Service), bukan barang fisik. Kebijakan refund ini mengatur kondisi di mana Tenant berhak mengajukan pengembalian dana atas pembayaran langganan yang telah diproses melalui mitra pembayaran pihak ketiga.`,
+      `ElProof adalah layanan perangkat lunak berbasis langganan, bukan barang fisik. Kebijakan refund (pengembalian dana) ini mengatur kondisi di mana WO berhak mengajukan pengembalian dana atas pembayaran langganan yang telah diproses melalui mitra pembayaran pihak ketiga.`,
     ],
   },
   {
     id: "kondisi-berhak",
-    title: "2. Kondisi yang Berhak Direfund",
+    title: "2. Kondisi yang berhak direfund",
     body: [
-      `Kesalahan penagihan sistem — misalnya Tenant tertagih dua kali (duplikat) untuk paket langganan yang sama pada periode yang sama.`,
-      `Layanan tidak dapat diakses sama sekali akibat gangguan di pihak ElProof selama lebih dari 3 (tiga) hari kerja berturut-turut sejak pembayaran diterima, dan belum sempat digunakan sama sekali oleh Tenant.`,
-      `Pembayaran berhasil diproses namun aktivasi akun Tenant tidak dilakukan dalam waktu wajar akibat kesalahan di pihak ElProof.`,
+      `Kesalahan penagihan sistem — misalnya WO tertagih dua kali (duplikat) untuk paket langganan yang sama pada periode yang sama.`,
+      `Layanan tidak dapat diakses sama sekali akibat gangguan di pihak ElProof selama lebih dari 3 (tiga) hari kerja berturut-turut sejak pembayaran diterima, dan belum sempat digunakan sama sekali oleh WO.`,
+      `Pembayaran berhasil diproses namun langganan workspace tidak diaktifkan dalam waktu wajar akibat kesalahan di pihak ElProof.`,
     ],
   },
   {
     id: "kondisi-tidak-berhak",
-    title: "3. Kondisi yang Tidak Dapat Direfund",
+    title: "3. Kondisi yang tidak dapat direfund",
     body: [
-      `Langganan yang sudah digunakan sebagian atau seluruhnya untuk mengelola project, sejak Owner atau Staff pertama kali login ke akun tersebut.`,
-      `Perubahan pikiran (change of mind) setelah pembayaran berhasil, tanpa adanya kegagalan layanan di pihak ElProof.`,
-      `Akses yang dinonaktifkan sementara karena keterlambatan perpanjangan langganan — ini bukan pemutusan layanan, dan dapat diaktifkan kembali kapan saja setelah perpanjangan dilakukan.`,
-      `Kesalahan input data, kesalahan pemilihan paket, atau kendala penggunaan yang berasal dari pihak Tenant sendiri.`,
+      `Langganan yang sudah digunakan sebagian atau seluruhnya untuk mengelola proyek, sejak Owner atau anggota tim pertama kali masuk ke workspace tersebut.`,
+      `Berubah pikiran setelah pembayaran berhasil, tanpa adanya kegagalan layanan di pihak ElProof.`,
+      `Akses yang dibatasi sementara karena keterlambatan perpanjangan langganan — ini bukan pemutusan layanan, dan akses penuh kembali kapan saja setelah perpanjangan dibayar.`,
+      `Kesalahan input data, kesalahan pemilihan paket, atau kendala penggunaan yang berasal dari pihak WO sendiri.`,
     ],
   },
   {
     id: "cara-mengajukan",
-    title: "4. Cara Mengajukan Refund",
+    title: "4. Cara mengajukan refund",
     body: [
       `Ajukan permintaan refund melalui salah satu kanal pada halaman Kontak (telepon, WhatsApp, atau email), selambat-lambatnya 7 (tujuh) hari kalender sejak tanggal pembayaran, dengan menyertakan bukti pembayaran dan alasan pengajuan.`,
       `Tim kami akan memverifikasi kelayakan pengajuan berdasarkan kondisi pada Bagian 2 dan 3 di atas, dan memberikan keputusan selambat-lambatnya 5 (lima) hari kerja setelah pengajuan diterima lengkap.`,
@@ -44,15 +43,15 @@ const SECTIONS: LegalSection[] = [
   },
   {
     id: "proses-waktu",
-    title: "5. Proses dan Waktu Pengembalian Dana",
+    title: "5. Proses dan waktu pengembalian dana",
     body: [
-      `Refund yang disetujui diproses melalui mitra pembayaran yang sama dengan metode pembayaran awal, dan diteruskan ke rekening atau instrumen pembayaran Tenant selambat-lambatnya 14 (empat belas) hari kerja sejak persetujuan — mengikuti waktu proses mitra pembayaran terkait.`,
+      `Refund yang disetujui diproses melalui mitra pembayaran yang sama dengan metode pembayaran awal, dan diteruskan ke rekening atau instrumen pembayaran WO selambat-lambatnya 14 (empat belas) hari kerja sejak persetujuan — mengikuti waktu proses mitra pembayaran terkait.`,
       `ElProof tidak memungut biaya tambahan atas proses refund yang disetujui; biaya administrasi yang mungkin dikenakan oleh mitra pembayaran di luar kendali ElProof.`,
     ],
   },
   {
     id: "perubahan-kebijakan",
-    title: "6. Perubahan Kebijakan",
+    title: "6. Perubahan kebijakan",
     body: [
       `Kebijakan ini dapat diperbarui sewaktu-waktu mengikuti perkembangan layanan. Perubahan berlaku sejak dipublikasikan pada halaman ini dan tidak berlaku surut terhadap pengajuan refund yang sudah diputuskan sebelumnya.`,
     ],
@@ -63,8 +62,8 @@ export default function RefundPolicyPage() {
   usePageMeta(PUBLIC_PAGES.refund);
   return (
     <LegalDocument
-      title="Kebijakan Refund"
-      updated={UPDATED}
+      title={PUBLIC_PAGES.refund.title}
+      updated={REFUND_UPDATED}
       sections={SECTIONS}
       closing={{
         title: "Ingin mengajukan pengembalian dana?",
@@ -81,4 +80,3 @@ export default function RefundPolicyPage() {
     />
   );
 }
-

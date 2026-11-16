@@ -374,7 +374,7 @@ func (s *VendorEngagementService) MilestoneExists(ctx context.Context, projectID
 		return err
 	}
 	if m == nil {
-		return apperror.NotFound("Timeline vendor tidak ditemukan")
+		return apperror.NotFound("Tahapan vendor tidak ditemukan")
 	}
 	return nil
 }
@@ -396,7 +396,7 @@ func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID,
 	if _, err := s.Get(ctx, projectID, projectVendorID); err != nil {
 		return nil, err
 	}
-	missing := apperror.NotFound("Timeline vendor tidak ditemukan")
+	missing := apperror.NotFound("Tahapan vendor tidak ditemukan")
 	m, err := s.milestones.FindByID(ctx, projectVendorID, milestoneID)
 	if err != nil {
 		return nil, err
@@ -405,7 +405,7 @@ func (s *VendorEngagementService) PatchMilestone(ctx context.Context, projectID,
 		return nil, missing
 	}
 	if patch.Status.Present() && !domain.IsValidMilestoneStatus(patch.Status.Value()) {
-		return nil, apperror.Validation("Status timeline tidak valid", map[string][]string{"status": {"Status timeline tidak valid"}})
+		return nil, apperror.Validation("Status tahapan tidak valid", map[string][]string{"status": {"Status tahapan tidak valid"}})
 	}
 	loaded := *m
 	var ch changeSet

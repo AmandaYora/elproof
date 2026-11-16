@@ -9,7 +9,7 @@ import (
 // + Kebijakan Privasi text a new WO accepts at signup. Change it whenever
 // those pages change materially; it is stored with every consent (UU PDP:
 // proof of which text was agreed to, when, and from where).
-const TermsVersion = "2026-11-06"
+const TermsVersion = "2026-11-16"
 
 // ErrSignupExists: this Google account already has a signup row.
 var ErrSignupExists = errors.New("signup request already exists")

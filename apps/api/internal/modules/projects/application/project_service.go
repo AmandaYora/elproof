@@ -43,8 +43,10 @@ type ProjectRepository interface {
 	ChangeStatus(ctx context.Context, tenantID, id int64, from, to domain.ProjectStatus) (bool, error)
 	// DeleteCascade permanently removes the project and every same-module row
 	// referencing it — see the infrastructure implementation's doc comment
-	// (ADR-0013) for the exact deletion order and why it matters.
-	DeleteCascade(ctx context.Context, tenantID, id int64) error
+	// (ADR-0013) for the exact deletion order and why it matters. found is
+	// false when the project is not in the tenant; a foreign key that still
+	// refuses is domain.ErrProjectDeleteBlocked.
+	DeleteCascade(ctx context.Context, tenantID, id int64) (found bool, err error)
 	// CountActive counts projects that are not completed, cancelled or
 	// archived (trial cap, PLAN.md K6).
 	CountActive(ctx context.Context, tenantID int64) (int, error)
@@ -363,7 +365,7 @@ func (s *ProjectService) Get(ctx context.Context, tenantID, id int64) (*domain.P
 		return nil, err
 	}
 	if p == nil {
-		return nil, apperror.NotFound("Project tidak ditemukan")
+		return nil, apperror.NotFound("Proyek tidak ditemukan")
 	}
 	return p, nil
 }
@@ -592,7 +594,7 @@ func (s *ProjectService) checkSetupTerms(contractValue int64, inputs []PaymentTe
 		return nil, apperror.Internal("Jadwal pembayaran belum tersedia")
 	}
 	if len(inputs) > maxPaymentTerms {
-		fe.add("Maksimal 20 termin per project", "terms")
+		fe.add("Maksimal 20 termin per proyek", "terms")
 		return nil, nil
 	}
 	terms, total, err := buildTerms(0, inputs)
@@ -631,7 +633,7 @@ func (s *ProjectService) checkPICs(ctx context.Context, tenantID int64, ids ...i
 			return err
 		}
 		if !ok {
-			return apperror.Validation("Staf tidak ditemukan", map[string][]string{"picStaffId": {"Staf tidak ditemukan"}})
+			return apperror.Validation("Anggota tim tidak ditemukan", map[string][]string{"picStaffId": {"Anggota tim tidak ditemukan"}})
 		}
 	}
 	return nil
@@ -678,7 +680,7 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 		return nil, err
 	}
 	fe := newFieldErrors()
-	requiredText(fe, "name", "Nama project wajib diisi", patch.Name)
+	requiredText(fe, "name", "Nama proyek wajib diisi", patch.Name)
 	requiredText(fe, "brideName", "Nama pengantin wanita wajib diisi", patch.BrideName)
 	requiredText(fe, "groomName", "Nama pengantin pria wajib diisi", patch.GroomName)
 	requiredText(fe, "packageName", "Nama paket wajib diisi", patch.PackageName)
@@ -698,10 +700,10 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 		}
 	}
 	if patch.PICStaffID.Present() && patch.PICStaffID.Value() < 0 {
-		fe.add("Staf tidak ditemukan", "picStaffId")
+		fe.add("Anggota tim tidak ditemukan", "picStaffId")
 	}
 	if patch.PICSalesStaffID.Present() && patch.PICSalesStaffID.Value() < 0 {
-		fe.add("Staf tidak ditemukan", "picSalesStaffId")
+		fe.add("Anggota tim tidak ditemukan", "picSalesStaffId")
 	}
 	if err := fe.err(); err != nil {
 		return nil, err
@@ -730,7 +732,7 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	// must not make every later edit of the project fail.
 	if ch.has("picStaffId") || ch.has("picSalesStaffId") {
 		if !actor.CanAssignPIC {
-			return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC project").WithCode("forbidden_permission")
+			return nil, apperror.Forbidden("Peran Anda tidak dapat mengganti PIC proyek").WithCode("forbidden_permission")
 		}
 		var changed []int64
 		if ch.has("picStaffId") {
@@ -780,7 +782,7 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	}
 	fresh, err := finishPatch(ctx, expected, wrote, func(ctx context.Context) (*domain.Project, error) {
 		return s.repo.FindByID(ctx, tenantID, id)
-	}, func(p *domain.Project) time.Time { return p.UpdatedAt }, apperror.NotFound("Project tidak ditemukan"))
+	}, func(p *domain.Project) time.Time { return p.UpdatedAt }, apperror.NotFound("Proyek tidak ditemukan"))
 	if err != nil {
 		return nil, err
 	}
@@ -936,7 +938,7 @@ func (s *ProjectService) Transition(ctx context.Context, tenantID, id, actorStaf
 	next, ok := domain.NextStatus(p.Status, action)
 	if !ok {
 		return nil, apperror.Conflict(fmt.Sprintf(
-			"Aksi ini tidak bisa dilakukan pada project berstatus %s. Muat ulang halaman untuk melihat status terbaru.", projectStatusLabel(p.Status),
+			"Aksi ini tidak bisa dilakukan pada proyek berstatus %s. Muat ulang halaman untuk melihat status terbaru.", projectStatusLabel(p.Status),
 		)).WithCode("invalid_status_transition")
 	}
 	if !isActiveProject(p.Status, p.IsArchived) && isActiveProject(next, p.IsArchived) {
@@ -967,7 +969,7 @@ func (s *ProjectService) Cancel(ctx context.Context, tenantID, id, actorStaffID 
 	// one would just log a second "dibatalkan" (reopen it first).
 	if p.Status == domain.StatusCompleted || p.Status == domain.StatusCancelled {
 		return nil, apperror.Conflict(fmt.Sprintf(
-			"Project berstatus %s tidak bisa dibatalkan. Muat ulang halaman untuk melihat status terbaru.", projectStatusLabel(p.Status),
+			"Proyek berstatus %s tidak bisa dibatalkan. Muat ulang halaman untuk melihat status terbaru.", projectStatusLabel(p.Status),
 		)).WithCode("invalid_status_transition")
 	}
 	changed, err := s.repo.ChangeStatus(ctx, tenantID, id, p.Status, domain.StatusCancelled)
@@ -997,7 +999,7 @@ func (s *ProjectService) afterWrite(ctx context.Context, tenantID int64, p *doma
 // errStatusMoved: someone else changed the project's status between this
 // request reading it and writing it.
 func errStatusMoved() error {
-	return apperror.Conflict("Status project baru saja diubah orang lain. Muat ulang halaman untuk melihat status terbaru.").WithCode("invalid_status_transition")
+	return apperror.Conflict("Status proyek baru saja diubah orang lain. Muat ulang halaman untuk melihat status terbaru.").WithCode("invalid_status_transition")
 }
 
 // Delete permanently removes a project and every row across this module
@@ -1017,8 +1019,8 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 		return err
 	}
 	if !p.IsArchived && p.Status != domain.StatusCancelled {
-		return apperror.Validation("Project belum bisa dihapus permanen", map[string][]string{
-			"status": {"Arsipkan atau batalkan project ini terlebih dahulu sebelum menghapusnya secara permanen"},
+		return apperror.Validation("Proyek belum bisa dihapus permanen", map[string][]string{
+			"status": {"Arsipkan atau batalkan proyek ini terlebih dahulu sebelum menghapusnya secara permanen"},
 		})
 	}
 
@@ -1029,8 +1031,16 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 		return err
 	}
 
-	if err := s.repo.DeleteCascade(ctx, tenantID, id); err != nil {
+	found, err := s.repo.DeleteCascade(ctx, tenantID, id)
+	if errors.Is(err, domain.ErrProjectDeleteBlocked) {
+		logger.Error("hard delete of project %d refused by a foreign key: %v", id, err)
+		return apperror.Conflict("Proyek ini belum bisa dihapus permanen karena masih ada data lain yang terhubung. Hubungi dukungan ElProof agar datanya diperiksa.").WithCode("project_delete_blocked")
+	}
+	if err != nil {
 		return err
+	}
+	if !found {
+		return apperror.NotFound("Proyek tidak ditemukan")
 	}
 
 	// Both cleanup steps below run only after the DB cascade has committed —
@@ -1214,7 +1224,7 @@ func (s *ProjectService) MilestoneExists(ctx context.Context, tenantID, projectI
 		return err
 	}
 	if m == nil {
-		return apperror.NotFound("Timeline tidak ditemukan")
+		return apperror.NotFound("Tahapan tidak ditemukan")
 	}
 	return nil
 }
@@ -1244,7 +1254,7 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 	if _, err := s.Get(ctx, tenantID, projectID); err != nil {
 		return nil, err
 	}
-	missing := apperror.NotFound("Timeline tidak ditemukan")
+	missing := apperror.NotFound("Tahapan tidak ditemukan")
 	m, err := s.milestones.FindByID(ctx, projectID, milestoneID)
 	if err != nil {
 		return nil, err
@@ -1253,7 +1263,7 @@ func (s *ProjectService) PatchMilestone(ctx context.Context, tenantID, projectID
 		return nil, missing
 	}
 	if patch.Status.Present() && !domain.IsValidMilestoneStatus(patch.Status.Value()) {
-		return nil, apperror.Validation("Status timeline tidak valid", map[string][]string{"status": {"Status timeline tidak valid"}})
+		return nil, apperror.Validation("Status tahapan tidak valid", map[string][]string{"status": {"Status tahapan tidak valid"}})
 	}
 	loaded := *m
 	var ch changeSet
@@ -1362,7 +1372,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 		return err
 	}
 	if len(orderedIDs) != len(existing) {
-		return apperror.Validation("Urutan timeline tidak valid", nil)
+		return apperror.Validation("Urutan tahapan tidak valid", nil)
 	}
 	existingIDs := make(map[int64]bool, len(existing))
 	for _, m := range existing {
@@ -1371,7 +1381,7 @@ func (s *ProjectService) ReorderMilestones(ctx context.Context, tenantID, projec
 	seen := make(map[int64]bool, len(orderedIDs))
 	for _, id := range orderedIDs {
 		if !existingIDs[id] || seen[id] {
-			return apperror.Validation("Urutan timeline tidak valid", nil)
+			return apperror.Validation("Urutan tahapan tidak valid", nil)
 		}
 		seen[id] = true
 	}

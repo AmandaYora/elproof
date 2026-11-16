@@ -56,10 +56,12 @@ func (p *ProofSupport) resolve(ctx context.Context, tenantID, projectID int64, i
 type proofTarget struct {
 	ProjectID    int64
 	ActorStaffID int64
-	Kind         domain.EvidenceRelatedKind
-	RelatedID    int64
-	Date         time.Time
-	Reference    string
+	// ActorClientID is the client who sent the proof from the portal (0 = staff).
+	ActorClientID int64
+	Kind          domain.EvidenceRelatedKind
+	RelatedID     int64
+	Date          time.Time
+	Reference     string
 }
 
 // defaultProofName is what the two-call flow named a proof when the person did
@@ -96,7 +98,7 @@ func (p *ProofSupport) attach(ctx context.Context, t proofTarget, proofs []Resol
 		date := t.Date
 		e := domain.Evidence{
 			ProjectID: t.ProjectID, Name: name, Type: pr.Type, StoragePath: pr.Claims.Key, FileName: pr.Claims.FileName,
-			DocumentDate: &date, UploadedAt: time.Now(), UploadedByStaffID: t.ActorStaffID,
+			DocumentDate: &date, UploadedAt: time.Now(), UploadedByStaffID: t.ActorStaffID, UploadedByClientID: t.ActorClientID,
 			RelatedKind: t.Kind, RelatedID: t.RelatedID,
 		}
 		if err := p.evidence.repo.Create(ctx, &e); err != nil {

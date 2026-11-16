@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { ProofStamp } from "@/shared/components/ui/ProofStamp";
-import { daysBetween, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
+import { formatDate, formatEventOffset } from "@/shared/lib/formatters";
 import type { ProjectMilestone } from "@/modules/projects/types";
 import type { ProofToOpen } from "@/modules/client-portal/components/useProofViewer";
 
@@ -11,7 +11,7 @@ export type RailStep = Pick<ProjectMilestone, "id" | "name" | "status" | "target
 /** What a step says about itself, in plain words that never blame anyone. */
 function stepNote(m: RailStep, eventDate?: string): string {
   // With the event date a step reads like a wedding checklist: "H-30 · 12 Des 2026".
-  const when = eventDate ? `${formatDayCountdown(daysBetween(m.targetDate, eventDate))} · ${formatDate(m.targetDate)}` : `Target ${formatDate(m.targetDate)}`;
+  const when = eventDate ? `${formatEventOffset(m.targetDate, eventDate)} · ${formatDate(m.targetDate)}` : `Target ${formatDate(m.targetDate)}`;
   switch (m.status) {
     case "Completed":
       return `Selesai ${formatDate(m.completedDate)}`;

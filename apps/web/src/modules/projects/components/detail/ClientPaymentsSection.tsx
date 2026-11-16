@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, Trash2, Eye, BadgeCheck } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -9,7 +9,6 @@ import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { RowActions } from "@/shared/components/ui/RowActions";
 import type { Column } from "@/shared/data-table/DataTable";
 import { FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
-import { EvidenceListModal } from "@/shared/components/ui/EvidenceListModal";
 import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
 import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
 import { deleteWithUndo } from "@/shared/lib/undo-delete";
@@ -26,7 +25,7 @@ import { PAYMENT_METHOD_OPTIONS } from "@/modules/projects/schemas/payment.schem
 import type { ClientPayment } from "@/modules/projects/types";
 import { verifiedLabel } from "@/modules/projects/lib/proof";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { remainingToPay, overpaymentMessage, countsAgainstContract } from "@/modules/projects/lib/payments";
+import { remainingToPay, overpaymentMessage, countsAgainstContract, countsTowardContract } from "@/modules/projects/lib/payments";
 import { toast } from "@/shared/stores/useToastStore";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 
@@ -36,12 +35,13 @@ import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 // (there's only one evidence slot to begin with, nothing to be "partially"
 // complete about), and the proof file is attached in the same submit that
 // records the payment.
+// The proof viewer is only needed once someone opens a payment's proof.
+const EvidenceListModal = lazy(() => import("@/shared/components/ui/EvidenceListModal").then((m) => ({ default: m.EvidenceListModal })));
+
 export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const project = useProjectStore((s) => s.currentProject);
   const clientPayments = useProjectStore((s) => s.clientPayments);
-  const evidence = useProjectStore((s) => s.evidence);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
-  const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const createClientPayment = useProjectStore((s) => s.createClientPayment);
   const updateClientPayment = useProjectStore((s) => s.updateClientPayment);
   const deleteClientPayment = useProjectStore((s) => s.deleteClientPayment);
@@ -62,17 +62,17 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     void fetchClientPayments(projectId);
-    void fetchEvidence(projectId);
-  }, [projectId, fetchClientPayments, fetchEvidence]);
+  }, [projectId, fetchClientPayments]);
 
   const contractValue = project?.contractValue ?? 0;
-  const totalReceived = clientPayments.reduce(
-    (sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount),
-    0
-  );
+  // A couple's submission from the portal counts as received only once it is verified, the server's rule for the
+  // overview and the schedule too (QA RT-03, ADR-0047); until then it is shown apart as waiting for verification.
+  const counted = clientPayments.filter(countsTowardContract);
+  const totalReceived = counted.reduce((sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount), 0);
+  const pendingVerification = clientPayments.filter((p) => !countsTowardContract(p)).reduce((sum, p) => (p.type === "Refund" ? sum - p.amount : sum + p.amount), 0);
   // Sisa tagihan counts only DP/Termin/Pelunasan (minus refunds): Tambahan is
   // outside the contract, so it must not shrink what the client still owes.
-  const totalRemaining = remainingToPay(contractValue, clientPayments);
+  const totalRemaining = remainingToPay(contractValue, counted);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(clientPayments);
 
   async function handleVerify() {
@@ -160,7 +160,12 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
         <FinanceSummary
           items={[
             { label: "Nilai kontrak", value: formatCurrency(contractValue) },
-            { label: "Total diterima", value: formatCurrency(totalReceived) },
+            {
+              label: "Total diterima",
+              value: formatCurrency(totalReceived),
+              note: pendingVerification > 0 ? `${formatCurrency(pendingVerification)} menunggu verifikasi` : undefined,
+              noteTone: "muted",
+            },
             {
               label: "Sisa tagihan",
               value: formatCurrency(Math.max(totalRemaining, 0)),
@@ -245,13 +250,15 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
       </ConfirmDialog>
 
       {viewingEvidencePayment && (
-        <EvidenceListModal
-          open
-          projectId={projectId}
-          title={`Bukti — ${viewingEvidencePayment.type}`}
-          items={evidence.filter((e) => e.relatedKind === "clientPayment" && e.relatedId === viewingEvidencePayment.id)}
-          onClose={() => setViewingEvidencePayment(null)}
-        />
+        <Suspense fallback={null}>
+          <EvidenceListModal
+            open
+            projectId={projectId}
+            title={`Bukti — ${viewingEvidencePayment.type}`}
+            items={viewingEvidencePayment.evidence}
+            onClose={() => setViewingEvidencePayment(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -14,8 +14,8 @@ import type { ProjectFormValues } from "@/modules/projects/schemas/project.schem
 import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
-import { formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
+import { hasUnpaidTerms, shiftUnpaidTerms, termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
+import { daysBetween, formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { toast } from "@/shared/stores/useToastStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -44,6 +44,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
   const fetchPaymentTerms = useProjectStore((s) => s.fetchPaymentTerms);
   const recalculatePaymentTerms = useProjectStore((s) => s.recalculatePaymentTerms);
+  const savePaymentTerms = useProjectStore((s) => s.savePaymentTerms);
   const canRecordFinance = useCan("finance.record");
   // Actions follow the workspace role's permissions (ADR-0026).
   const canDelete = useCan("project.delete");
@@ -73,6 +74,10 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [termsMismatch, setTermsMismatch] = useState<{ total: number; contractValue: number } | null>(null);
   const [recalculating, setRecalculating] = useState(false);
   const [recalcError, setRecalcError] = useState<string | null>(null);
+  // The event date moved but unpaid installments did not: offer to move their due dates by the same number of days (QA RT-04).
+  const [dueShift, setDueShift] = useState<number | null>(null);
+  const [shifting, setShifting] = useState(false);
+  const [shiftError, setShiftError] = useState<string | null>(null);
 
   if (!project) {
     return <div className="text-sm text-text-secondary">Proyek tidak ditemukan.</div>;
@@ -94,6 +99,34 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
     if (saved.eventDate !== before.eventDate || saved.prepStartDate !== before.prepStartDate) void fetchMilestones(projectId).catch(() => undefined);
     // A new contract value no longer matches the schedule: offer to fit it (EP-05).
     if (saved.contractValue !== before.contractValue && canRecordFinance) void offerRecalculation(saved.contractValue);
+    // The installments do not follow the event date on their own (QA RT-04): offer to move the unpaid ones with it.
+    if (saved.eventDate !== before.eventDate && canRecordFinance) void offerDueShift(daysBetween(before.eventDate, saved.eventDate));
+  }
+
+  async function offerDueShift(days: number) {
+    if (days === 0) return;
+    try {
+      await fetchPaymentTerms(projectId);
+    } catch {
+      return; // the schedule can still be edited by hand on the Keuangan tab
+    }
+    if (hasUnpaidTerms(useProjectStore.getState().paymentTerms)) setDueShift(days);
+  }
+
+  async function handleDueShift() {
+    if (dueShift === null) return;
+    setShiftError(null);
+    setShifting(true);
+    try {
+      // Read the schedule as it is now: "Hitung ulang termin" may have just changed the amounts.
+      await savePaymentTerms(projectId, shiftUnpaidTerms(useProjectStore.getState().paymentTerms, dueShift));
+      setDueShift(null);
+      toast.success("Jatuh tempo termin digeser");
+    } catch (err) {
+      setShiftError(getApiErrorMessage(err, "Jatuh tempo termin belum digeser. Periksa koneksi Anda, lalu coba lagi."));
+    } finally {
+      setShifting(false);
+    }
   }
 
   async function offerRecalculation(contractValue: number) {
@@ -385,7 +418,30 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           </p>
         )}
       </ConfirmDialog>
-      <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
+      <ConfirmDialog
+        // After "Hitung ulang jadwal termin?" when both were changed at once: one question at a time.
+        open={dueShift !== null && termsMismatch === null}
+        title="Geser jatuh tempo termin?"
+        confirmLabel="Geser jatuh tempo"
+        cancelLabel="Biarkan"
+        tone="primary"
+        isSubmitting={shifting}
+        error={shiftError}
+        onConfirm={() => void handleDueShift()}
+        onClose={() => {
+          setDueShift(null);
+          setShiftError(null);
+        }}
+      >
+        {dueShift !== null && (
+          <p>
+            Tanggal acara {dueShift > 0 ? "mundur" : "maju"} {Math.abs(dueShift)} hari. Geser jatuh tempo termin yang belum lunas{" "}
+            {dueShift > 0 ? "mundur" : "maju"} {Math.abs(dueShift)} hari juga? Termin yang sudah lunas tidak berubah. Pilih Biarkan untuk
+            mengatur jatuh tempo sendiri di tab Keuangan.
+          </p>
+        )}
+      </ConfirmDialog>
+      <ProjectFormModal open={editOpen}onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
       <ProjectFormModal
         open={duplicateOpen}
         onClose={() => setDuplicateOpen(false)}

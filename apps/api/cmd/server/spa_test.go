@@ -180,3 +180,34 @@ func TestMatchSPARoute(t *testing.T) {
 		}
 	}
 }
+
+// A build with a 404 shell (prerender.mjs writes dist/prerendered/404.html and routes.json "notFound") answers every
+// not-found path with it, so the tab already reads "Halaman tidak ditemukan" before the app loads (QA RT-06).
+func TestSPAFileServerNotFoundShell(t *testing.T) {
+	root := writeWebBuild(t, true)
+	manifest := strings.Replace(testManifest, `"routes":`, `"notFound": "prerendered/404.html", "routes":`, 1)
+	notFound := `<!doctype html><html lang="id"><head><title>Halaman tidak ditemukan — ElProof</title><meta name="robots" content="noindex"></head><body><div id="root"></div></body></html>`
+	for name, body := range map[string]string{"routes.json": manifest, "prerendered/404.html": notFound} {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := spaFileServer(root)
+	for _, target := range []string{"/halaman-tidak-ada", "/projects/42/tidak-ada", "/routes.json", "/prerendered/faq.html"} {
+		rec := spaGet(h, http.MethodGet, target)
+		if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "<title>Halaman tidak ditemukan — ElProof</title>") {
+			t.Errorf("GET %s: %d %q, want 404 with the not-found shell", target, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := spaGet(h, http.MethodGet, "/dashboard"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>shell</title>") {
+		t.Errorf("an app route still gets the app shell with 200: %d", rec.Code)
+	}
+
+	// A manifest naming a file the build lacks falls back to index.html.
+	if err := os.Remove(filepath.Join(root, "prerendered", "404.html")); err != nil {
+		t.Fatal(err)
+	}
+	if rec := spaGet(spaFileServer(root), http.MethodGet, "/tidak-ada"); rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "<title>shell</title>") {
+		t.Errorf("missing 404 shell: %d %q, want 404 with index.html", rec.Code, rec.Body.String())
+	}
+}

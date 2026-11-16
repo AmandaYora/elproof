@@ -75,6 +75,13 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
     return pv ? vendors.find((v) => v.id === pv.vendorId)?.name ?? "Vendor tidak diketahui" : "Vendor tidak diketahui";
   }
 
+  // Who uploaded a file: the staff member (from the team list, or the name the API sent), or for a proof the couple
+  // sent from the Client Portal the client, marked as such (RT-07).
+  function uploaderLabel(item: Evidence): string {
+    if (item.uploadedBySource === "client") return `${item.uploadedByName || "Klien"} (klien)`;
+    return staff.find((s) => s.id === item.uploadedByStaffId)?.name || item.uploadedByName || "-";
+  }
+
   function contextLabel(item: Evidence): string {
     if (item.relatedKind === "vendorMilestone") {
       const milestone = vendorMilestones.find((m) => m.id === item.relatedId);
@@ -205,7 +212,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <CardListField label="Tanggal dokumen" value={formatDate(item.documentDate)} />
-                    <CardListField label="Diunggah oleh" value={staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"} />
+                    <CardListField label="Diunggah oleh" value={uploaderLabel(item)} />
                     <CardListField label="Konteks" value={contextLabel(item)} />
                     {canEdit && item.relatedKind === "general" && (
                       <CardListField
@@ -246,7 +253,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <TD className="font-medium">{item.name}</TD>
                     <TD><Badge tone="neutral">{evidenceTypeLabel(item.type)}</Badge></TD>
                     <TD>{formatDate(item.documentDate)}</TD>
-                    <TD>{staff.find((s) => s.id === item.uploadedByStaffId)?.name ?? "-"}</TD>
+                    <TD>{uploaderLabel(item)}</TD>
                     <TD className="text-text-secondary">
                       <div className="flex items-center gap-2">
                         <span>{contextLabel(item)}</span>

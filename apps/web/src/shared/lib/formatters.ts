@@ -74,6 +74,23 @@ export function formatDayCountdown(days: number, todayLabel = "Hari H"): string 
   return days > 0 ? `H-${days}` : `H+${Math.abs(days)}`;
 }
 
+/**
+ * Where a step of the schedule falls against the event day, the way a wedding checklist reads (QA RT-02): Gladi resik
+ * the day before is "H-1", the wedding day "Hari H", the album delivery two weeks later "H+14". Never the distance from
+ * today: that is `formatDaysFromToday`. Shared by the WO Console and the Client Portal.
+ */
+export function formatEventOffset(dateISO: string, eventDateISO: string): string {
+  return formatDayCountdown(daysBetween(dateISO, eventDateISO));
+}
+
+/** How soon a day is from today, for a secondary line next to its date: "hari ini", "besok", "dalam 12 hari", "terlambat 3 hari". */
+export function formatDaysFromToday(dateISO: string): string {
+  const days = daysBetween(todayISO(), dateISO);
+  if (days === 0) return "hari ini";
+  if (days === 1) return "besok";
+  return days > 0 ? `dalam ${days} hari` : `terlambat ${Math.abs(days)} hari`;
+}
+
 export function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();

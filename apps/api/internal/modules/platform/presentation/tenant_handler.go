@@ -297,7 +297,7 @@ func (h *TenantHandler) myBranding(w http.ResponseWriter, r *http.Request) {
 func (h *TenantHandler) mySubscription(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "staff" {
-		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat melihat status langganan", nil)
+		response.Error(w, http.StatusForbidden, "Hanya anggota tim WO yang dapat melihat status langganan", nil)
 		return
 	}
 	tenantID, ok := selfTenantID(r)
@@ -457,6 +457,11 @@ func (h *TenantHandler) toggleSuspension(w http.ResponseWriter, r *http.Request,
 		writeAppError(w, err)
 		return
 	}
+	verb := "Mengaktifkan kembali"
+	if tenant.IsSuspended {
+		verb = "Membekukan"
+	}
+	middleware.SetAuditDescription(r.Context(), verb+" tenant "+tenant.BusinessName)
 	response.OK(w, "Status tenant diperbarui", toTenantResponse(*tenant))
 }
 

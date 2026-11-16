@@ -6,7 +6,19 @@ export const CONTACT = {
   ],
   website: "elproof.elcodelabs.com",
   address: "Jl. Ciptakarya II No.33, Bandung Kota, 40292, Jawa Barat",
-  hours: "Setiap Hari, 08.00–21.00 WIB",
+  hours: "Setiap hari, 08.00–21.00 WIB",
+};
+
+/**
+ * Who provides ElProof: the company named in the footer and, as provider and data controller, at the top of every legal
+ * document (QA FQ-12). The correspondence address and contact are CONTACT's.
+ */
+export const COMPANY = {
+  name: "PT Prayora Karya Pratama",
+  brand: "Elcodelabs",
+  // TODO(FQ-12): no dedicated data-protection address exists yet; the general customer-service email stands in. Replace
+  // it here when the company names a data-protection officer or mailbox (e.g. privasi@…), and every legal page follows.
+  privacyEmail: CONTACT.email,
 };
 
 /** A wa.me link to the first ElProof number with a ready message (the visitor still presses send). */

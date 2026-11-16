@@ -43,18 +43,19 @@ async function installFontCache(context: BrowserContext) {
  * Google's sign-in script (accounts.google.com/gsi/client) and the button iframe it draws come from the internet: they
  * make a screenshot depend on Google's servers and sometimes keep the network busy past `networkidle` (seen on Masuk
  * and Daftar). Every test gets a local stand-in instead: the same API surface (initialize, renderButton,
- * disableAutoSelect) drawing a plain, stable button, and nothing else from accounts.google.com is fetched. The real
+ * disableAutoSelect) drawing a plain, stable button labelled as Google labels it in Indonesian (locale "id": "signin_with"
+ * reads "Login dengan Google", which is why Masuk asks for "continue_with"), and nothing else from accounts.google.com is fetched. The real
  * sign-in path is covered against the fake Google token issuer (scripts/fake-google.mjs) through the API.
  */
 const GSI_STUB = `(() => {
-  const labels = { signin_with: "Masuk dengan Google", signup_with: "Daftar dengan Google", continue_with: "Lanjutkan dengan Google", signin: "Masuk dengan Google" };
+  const labels = { signin_with: "Login dengan Google", signup_with: "Daftar dengan Google", continue_with: "Lanjutkan dengan Google", signin: "Login" };
   let callback = null;
   window.google = { accounts: { id: {
     initialize(cfg) { callback = cfg.callback; },
     renderButton(parent, opts) {
       const b = document.createElement("button");
       b.type = "button";
-      b.textContent = labels[opts.text] || "Masuk dengan Google";
+      b.textContent = labels[opts.text] || "Login dengan Google";
       b.style.cssText = "width:" + (opts.width || 320) + "px;height:40px;border:1px solid #dadce0;border-radius:4px;background:#fff;color:#3c4043;font:500 14px system-ui,sans-serif";
       b.dataset.e2eGoogle = "1";
       b.addEventListener("click", () => callback && window.__e2eGoogleCredential && callback({ credential: window.__e2eGoogleCredential }));

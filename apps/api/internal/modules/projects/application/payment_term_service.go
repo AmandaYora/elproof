@@ -80,7 +80,7 @@ func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, a
 	}
 	if len(inputs) > maxPaymentTerms {
 		return nil, apperror.Validation("Jadwal pembayaran terlalu panjang", map[string][]string{
-			"terms": {"Maksimal 20 termin per project"},
+			"terms": {"Maksimal 20 termin per proyek"},
 		})
 	}
 	terms, total, err := buildTerms(projectID, inputs)
@@ -133,7 +133,7 @@ func (s *PaymentTermService) Recalculate(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(projectID), p.Name,
-		"Jadwal pembayaran client dihitung ulang mengikuti nilai kontrak "+formatRupiah(p.ContractValue))
+		"Jadwal termin klien dihitung ulang mengikuti nilai kontrak "+formatRupiah(p.ContractValue))
 	return s.progressWith(ctx, projectID, payments, today)
 }
 

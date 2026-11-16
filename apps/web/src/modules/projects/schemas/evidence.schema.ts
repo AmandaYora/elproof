@@ -28,7 +28,7 @@ export const EVIDENCE_RELATED_KIND_OPTIONS = [
 
 export const evidenceUploadSchema = z
   .object({
-    name: z.string().min(3, "Nama evidence wajib diisi"),
+    name: z.string().min(3, "Isi nama dokumen, minimal 3 karakter"),
     type: z.enum(EVIDENCE_TYPE_OPTIONS),
     relatedKind: z.enum(EVIDENCE_RELATED_KIND_OPTIONS),
     relatedId: z.string().optional().default(""),

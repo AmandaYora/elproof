@@ -7,6 +7,7 @@ import (
 
 	"elproof/internal/modules/payment/infrastructure"
 	"elproof/internal/shared/httpx"
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
 
@@ -128,6 +129,11 @@ func (h *Handler) AppItem(w http.ResponseWriter, r *http.Request) {
 			writeAppError(w, err)
 			return
 		}
+		verb := "Mengaktifkan"
+		if current.IsActive {
+			verb = "Menonaktifkan"
+		}
+		middleware.SetAuditDescription(r.Context(), verb+" aplikasi "+current.Name)
 		response.OK(w, "Status aplikasi diperbarui", nil)
 	default:
 		response.Error(w, http.StatusNotFound, "Endpoint tidak ditemukan", nil)

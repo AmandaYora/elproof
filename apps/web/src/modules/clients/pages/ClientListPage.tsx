@@ -353,7 +353,7 @@ export default function ClientListPage() {
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         title={deleteTarget ? `Hapus ${deleteTarget.name}?` : "Hapus klien"}
-        description="Akun login yang terkait (jika ada) ikut dinonaktifkan. Anda bisa mengurungkannya beberapa detik setelah dihapus."
+        description="Akses masuk klien ini ke Portal Klien (jika ada) ikut dinonaktifkan. Anda bisa mengurungkannya beberapa detik setelah dihapus."
         size="sm"
         busy={isDeleting}
         footer={

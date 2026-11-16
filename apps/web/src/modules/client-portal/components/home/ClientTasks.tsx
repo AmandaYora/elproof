@@ -4,7 +4,7 @@ import { Button } from "@/shared/components/kit/button";
 import { toast } from "@/shared/stores/useToastStore";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { daysBetween, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
+import { formatDate, formatEventOffset } from "@/shared/lib/formatters";
 import { daysUntil } from "@/modules/projects/lib/dates";
 import { useClientHomeStore } from "@/modules/client-portal/stores/useClientHomeStore";
 import type { ClientTask } from "@/modules/client-portal/types";
@@ -66,7 +66,7 @@ export function ClientTasksCard({ tasks, eventDate }: { tasks: ClientTask[]; eve
               <span className="min-w-0 flex-1">
                 <span className="block text-[14px] font-medium text-foreground">{t.name}</span>
                 <span className="block text-[13px] text-muted-foreground">
-                  {formatDayCountdown(daysBetween(t.targetDate, eventDate))} · {formatDate(t.targetDate)}
+                  {formatEventOffset(t.targetDate, eventDate)} · {formatDate(t.targetDate)}
                 </span>
               </span>
               <CompleteTaskButton task={t} />

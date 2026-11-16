@@ -29,7 +29,7 @@ import (
 func requireStaffTenant(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "staff" {
-		response.Error(w, http.StatusForbidden, "Hanya staff WO yang dapat mengakses endpoint ini", nil)
+		response.Error(w, http.StatusForbidden, "Hanya anggota tim WO yang dapat mengakses endpoint ini", nil)
 		return 0, false
 	}
 	tenantID, ok := claims.TenantIDInt()
@@ -338,6 +338,21 @@ func (h *VenueHandler) Item(w http.ResponseWriter, r *http.Request) {
 		if !requirePermission(w, r, "vendor.delete") {
 			return
 		}
+		if _, err := h.venues.Get(r.Context(), tenantID, id); err != nil {
+			writeAppError(w, err)
+			return
+		}
+		refs, err := h.projects.ListAffectedProjectsForVenue(r.Context(), tenantID, id)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+		if refused, err := refuseWhileInUse(r.Context(), w, h.projects, tenantID, refs, "Venue", codeVenueInUse); err != nil {
+			writeAppError(w, err)
+			return
+		} else if refused {
+			return
+		}
 		if err := h.venues.Delete(r.Context(), tenantID, id); err != nil {
 			writeAppError(w, err)
 			return
@@ -522,61 +537,26 @@ type venueImportRequestBody struct {
 	Base64Data string `json:"base64Data"`
 }
 
-type venueImportRowErrorBody struct {
-	Row     int    `json:"row"`
-	Message string `json:"message"`
-}
-
-type venueImportResultBody struct {
-	InsertedCount int                       `json:"insertedCount"`
-	UpdatedCount  int                       `json:"updatedCount"`
-	Errors        []venueImportRowErrorBody `json:"errors"`
-}
-
-func toVenueImportResultBody(result application.VenueImportResult) venueImportResultBody {
-	errs := make([]venueImportRowErrorBody, 0, len(result.Errors))
+func toVenueImportResultBody(result application.VenueImportResult) importResultBody {
+	errs := make([]importRowErrorBody, 0, len(result.Errors))
 	for _, e := range result.Errors {
-		errs = append(errs, venueImportRowErrorBody{Row: e.Row, Message: e.Message})
+		errs = append(errs, toImportRowErrorBody(e.Row, e.Message, e.Errors))
 	}
-	return venueImportResultBody{InsertedCount: result.InsertedCount, UpdatedCount: result.UpdatedCount, Errors: errs}
+	return importResultBody{InsertedCount: result.InsertedCount, UpdatedCount: result.UpdatedCount, Errors: errs}
 }
 
 // parseVenueImportRow reads one spreadsheet row's cells in venueTemplateHeaders'
-// exact column order. Optional numeric cells that don't parse as an integer
-// are treated as blank rather than a hard row failure -- the service layer's
-// own required-field check (name/picName/phonePic/city) is the real gate.
+// exact column order. A numeric cell that is not a whole number is noted
+// (NotNumber) so the row check names it.
 func parseVenueImportRow(cells []string) application.VenueImportRow {
-	get := func(i int) string {
-		if i < len(cells) {
-			return strings.TrimSpace(cells[i])
-		}
-		return ""
+	c := &importCells{cells: cells, headers: venueTemplateHeaders}
+	row := application.VenueImportRow{
+		Name: c.text(0), PICName: c.text(1), PhonePIC: c.text(2), PhoneVenue: c.text(3), Email: c.text(4),
+		Address: c.text(5), City: c.text(6), RentalPrice: c.number(7), Charge: c.number(8),
+		Capacity: c.smallNumber(9), Facilities: c.text(10), SocialMedia: c.text(11), Notes: c.text(12),
 	}
-	parseIntPtr := func(s string) *int64 {
-		if s == "" {
-			return nil
-		}
-		n, err := strconv.ParseInt(stripThousandsSeparators(s), 10, 64)
-		if err != nil {
-			return nil
-		}
-		return &n
-	}
-	parseIntPtrSmall := func(s string) *int {
-		if s == "" {
-			return nil
-		}
-		n, err := strconv.Atoi(s)
-		if err != nil {
-			return nil
-		}
-		return &n
-	}
-	return application.VenueImportRow{
-		Name: get(0), PICName: get(1), PhonePIC: get(2), PhoneVenue: get(3), Email: get(4),
-		Address: get(5), City: get(6), RentalPrice: parseIntPtr(get(7)), Charge: parseIntPtr(get(8)),
-		Capacity: parseIntPtrSmall(get(9)), Facilities: get(10), SocialMedia: get(11), Notes: get(12),
-	}
+	row.NotNumber = c.notNumber
+	return row
 }
 
 func (h *VenueHandler) Import(w http.ResponseWriter, r *http.Request) {

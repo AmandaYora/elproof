@@ -1,51 +1,48 @@
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, EyeOff } from "lucide-react";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
-import { PREVIEW_TABS } from "@/modules/homepage/components/home/previewTabs";
+import { PREVIEW_TAB_CLASS, PREVIEW_TABLIST_CLASS, PREVIEW_TABS } from "@/modules/homepage/components/home/previewTabs";
 import { PreviewWindow } from "@/modules/homepage/components/home/PreviewWindow";
-import { MockItem, PhoneFrame, StatusChip } from "@/modules/homepage/components/home/mock";
+import { MockItem, PhoneFrame, ProgressBar, StatusChip } from "@/modules/homepage/components/home/mock";
+import { SAMPLE } from "@/modules/homepage/data/sample";
 import { formatCurrency } from "@/shared/lib/formatters";
 import { cn } from "@/shared/lib/cn";
 
+// Example data: the same wedding as the hero and the "Cara kerja" cards (data/sample.ts).
 const STATS = [
-  { value: "18 dari 24", label: "tahapan selesai" },
-  { value: formatCurrency(35_000_000), label: `terbayar dari ${formatCurrency(45_000_000)}` },
+  { value: `${SAMPLE.milestones.done} dari ${SAMPLE.milestones.total}`, label: "tahapan selesai" },
+  { value: formatCurrency(SAMPLE.paidTotal), label: `terbayar dari ${formatCurrency(SAMPLE.contract)}` },
   { value: "1", label: "kendala perlu ditangani" },
 ];
 
+const NEXT = SAMPLE.upcoming[0];
 const TASKS = [
-  { title: "Konfirmasi menu tasting", detail: "Katering Rasa Nusantara, PIC Rina", status: "Besok", tone: "warning" as const },
-  { title: "Venue minta jadwal loading dimajukan", detail: "Kendala, dilaporkan 2 hari lalu", status: "Perlu ditangani", tone: "warning" as const },
-  { title: "Fitting baju kedua", detail: "Sanggar Kebaya Laras, PIC Yoga", status: "Selesai", tone: "success" as const },
+  { title: NEXT.name, detail: `${NEXT.who}, PIC ${NEXT.pic}`, status: NEXT.when, tone: "warning" as const },
+  { title: SAMPLE.issue.title, detail: `Kendala, dilaporkan ${SAMPLE.issue.reportedAgo}`, status: "Perlu ditangani", tone: "warning" as const },
+  { title: SAMPLE.lastDone.name, detail: `${SAMPLE.lastDone.who}, PIC ${SAMPLE.lastDone.pic}`, status: "Selesai", tone: "success" as const },
 ];
 
-const INSTALLMENTS = [
-  {
-    id: "t1",
-    name: "Termin 1, uang muka",
-    amount: 15_000_000,
-    detail: "Dibayar 2 Agu 2026",
-    proof: { uploaded: "2 Agu 2026, 10.15", verified: "Yoga, 3 Agu 2026" },
-  },
-  {
-    id: "t2",
-    name: "Termin 2",
-    amount: 20_000_000,
-    detail: "Dibayar 3 Nov 2026",
-    proof: { uploaded: "3 Nov 2026, 19.42", verified: "Rina, 4 Nov 2026" },
-  },
-  { id: "t3", name: "Pelunasan", amount: 10_000_000, detail: "Jatuh tempo 5 Des 2026", proof: null },
-];
+const INSTALLMENTS = SAMPLE.terms.map((t) => ({
+  id: t.id,
+  name: t.label,
+  amount: t.amount,
+  detail: t.paid ? `Dibayar ${t.paidLabel}` : `Jatuh tempo ${t.dueLabel}`,
+  proof: t.paid ? { uploaded: t.uploadedLabel, verified: t.verifiedLabel } : null,
+}));
+const DUE = SAMPLE.term("lunas");
+const SEALED = SAMPLE.term("t2");
 
 function ProjectPanel() {
   return (
     <div className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[20px] font-bold tracking-[-0.02em]">Raka &amp; Dinda</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">Sabtu, 12 Desember 2026, Gedung Sasana Kriya</p>
+          <p className="text-[20px] font-bold tracking-[-0.02em]">{SAMPLE.couple}</p>
+          <p className="mt-1 text-[14px] text-muted-foreground">
+            {SAMPLE.eventDateLong}, {SAMPLE.venue}
+          </p>
         </div>
-        <span className="rounded-full bg-accent px-3 py-1 text-[13px] font-bold text-accent-foreground">H-32</span>
+        <span className="rounded-full bg-accent px-3 py-1 text-[13px] font-bold text-accent-foreground">{SAMPLE.countdown}</span>
       </div>
       <dl className="mt-5 grid gap-2.5 sm:grid-cols-3">
         {STATS.map((stat) => (
@@ -78,8 +75,10 @@ function InstallmentPanel() {
     <div className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[20px] font-bold tracking-[-0.02em]">Tagihan Raka &amp; Dinda</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">3 termin, sisa {formatCurrency(10_000_000)}</p>
+          <p className="text-[20px] font-bold tracking-[-0.02em]">Tagihan {SAMPLE.couple}</p>
+          <p className="mt-1 text-[14px] text-muted-foreground">
+            {SAMPLE.terms.length} termin, sisa {formatCurrency(SAMPLE.remaining)}
+          </p>
         </div>
         <StatusChip tone="success">Sesuai jadwal</StatusChip>
       </div>
@@ -154,14 +153,22 @@ function PortalPanel() {
         </p>
       </div>
       <PhoneFrame className="mx-auto w-[236px] p-2.5" screenClassName="min-h-[300px] px-3.5 py-4 text-[13px]">
-        <p className="text-[12px] text-muted-foreground">Halo, Dinda</p>
-        <p className="mt-0.5 text-[16px] leading-tight font-bold">32 hari lagi menuju hari H</p>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-accent" aria-hidden>
-          <div className="h-full w-3/4 rounded-full bg-primary" />
-        </div>
-        <p className="mt-1.5 text-[12px] text-muted-foreground">18 dari 24 tahapan selesai</p>
-        <MockItem title={<>Pelunasan <span className="tabular-nums">{formatCurrency(10_000_000)}</span></>} detail="Jatuh tempo 5 Des 2026" className="px-3 py-2.5" />
-        <MockItem title="Termin 2 lunas" className="border-seal bg-seal-soft px-3 py-2.5">
+        <p className="text-[12px] text-muted-foreground">Halo, {SAMPLE.greeted}</p>
+        <p className="mt-0.5 text-[16px] leading-tight font-bold">{SAMPLE.daysLeft} hari lagi menuju hari H</p>
+        <ProgressBar done={SAMPLE.milestones.done} total={SAMPLE.milestones.total} className="mt-3 h-2" />
+        <p className="mt-1.5 text-[12px] text-muted-foreground">
+          {SAMPLE.milestones.done} dari {SAMPLE.milestones.total} tahapan selesai
+        </p>
+        <MockItem
+          title={
+            <>
+              {DUE.label} <span className="tabular-nums">{formatCurrency(DUE.amount)}</span>
+            </>
+          }
+          detail={`Jatuh tempo ${DUE.dueLabel}`}
+          className="px-3 py-2.5"
+        />
+        <MockItem title={`${SEALED.label} lunas`} className="border-seal bg-seal-soft px-3 py-2.5">
           <p className="mt-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-seal-text">
             <ProofSeal size={22} className="shrink-0 text-seal" />
             Terverifikasi
@@ -199,7 +206,7 @@ export default function AppPreview() {
   return (
     <PreviewWindow
       tabs={
-        <div role="tablist" aria-label="Bagian pratinjau" className="flex gap-1 overflow-x-auto py-2 [scrollbar-width:none]">
+        <div role="tablist" aria-label="Bagian pratinjau" className={PREVIEW_TABLIST_CLASS}>
           {PREVIEW_TABS.map((tab, i) => {
             const on = i === selected;
             return (
@@ -217,7 +224,8 @@ export default function AppPreview() {
                 onClick={() => setSelected(i)}
                 onKeyDown={onKeyDown}
                 className={cn(
-                  "inline-flex min-h-11 shrink-0 items-center rounded-lg border px-3.5 text-[14px] font-semibold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+                  PREVIEW_TAB_CLASS,
+                  "border focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
                   on ? "border-border bg-background text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >

@@ -2,6 +2,9 @@ package application
 
 import (
 	"context"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/apperror"
@@ -35,7 +38,7 @@ func (s *MilestoneTemplateService) Get(ctx context.Context, tenantID, id int64) 
 		return nil, err
 	}
 	if t == nil {
-		return nil, apperror.NotFound("Template timeline tidak ditemukan")
+		return nil, apperror.NotFound("Tahapan jadwal bawaan tidak ditemukan")
 	}
 	return t, nil
 }
@@ -45,12 +48,47 @@ type MilestoneTemplateInput struct {
 	DaysBeforeEvent int
 }
 
+// MaxTemplateDays bounds a template's offset either side of the event (FQ-04):
+// two years before (H-730) to two years after (H+730). A project's own
+// Timeline offsets are copied only from templates, so this one bound covers
+// both.
+const MaxTemplateDays = 730
+
+// Column width of project_milestone_templates.name (migration 000024) and the
+// form's minimum (milestone-template.schema.ts).
+const (
+	minTemplateNameLen = 3
+	maxTemplateNameLen = 255
+)
+
+// validateTemplate trims the name in place and checks the name and the offset.
+func validateTemplate(input *MilestoneTemplateInput) error {
+	f := newFieldErrors()
+	input.Name = strings.TrimSpace(input.Name)
+	switch n := utf8.RuneCountInString(input.Name); {
+	case n < minTemplateNameLen:
+		f.add("Isi nama tahapan, minimal "+strconv.Itoa(minTemplateNameLen)+" karakter", "name")
+	case n > maxTemplateNameLen:
+		f.add("Nama tahapan maksimal "+strconv.Itoa(maxTemplateNameLen)+" karakter", "name")
+	}
+	switch {
+	case input.DaysBeforeEvent > MaxTemplateDays:
+		f.add("Jumlah hari maksimal "+strconv.Itoa(MaxTemplateDays)+" (2 tahun) sebelum acara.", "daysBeforeEvent")
+	case input.DaysBeforeEvent < -MaxTemplateDays:
+		f.add("Jumlah hari maksimal "+strconv.Itoa(MaxTemplateDays)+" (2 tahun) setelah acara.", "daysBeforeEvent")
+	}
+	return f.err()
+}
+
 // Create accepts a negative DaysBeforeEvent as a deliberate "H+" (Setelah
 // Acara) offset -- default_milestones.go's AddDate(0, 0, -DaysBeforeEvent)
 // already resolves this correctly to eventDate+N with no change needed
-// there, so there is no lower bound to validate here (PLAN.md "Timeline
-// Default: dukung H+").
+// there (PLAN.md "Timeline Default: dukung H+"). Either way the offset is at
+// most MaxTemplateDays.
 func (s *MilestoneTemplateService) Create(ctx context.Context, tenantID int64, input MilestoneTemplateInput) (*domain.ProjectMilestoneTemplate, error) {
+	if err := validateTemplate(&input); err != nil {
+		return nil, err
+	}
 	order, err := s.repo.NextSortOrder(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -64,6 +102,9 @@ func (s *MilestoneTemplateService) Create(ctx context.Context, tenantID int64, i
 
 // Update -- see Create's doc comment re: negative DaysBeforeEvent (H+).
 func (s *MilestoneTemplateService) Update(ctx context.Context, tenantID, id int64, input MilestoneTemplateInput) (*domain.ProjectMilestoneTemplate, error) {
+	if err := validateTemplate(&input); err != nil {
+		return nil, err
+	}
 	t, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
@@ -96,7 +137,7 @@ func (s *MilestoneTemplateService) Reorder(ctx context.Context, tenantID int64, 
 		return err
 	}
 	if len(orderedIDs) != len(existing) {
-		return apperror.Validation("Urutan template timeline tidak valid", nil)
+		return apperror.Validation("Urutan jadwal bawaan tidak valid", nil)
 	}
 	existingIDs := make(map[int64]bool, len(existing))
 	for _, t := range existing {
@@ -105,7 +146,7 @@ func (s *MilestoneTemplateService) Reorder(ctx context.Context, tenantID int64, 
 	seen := make(map[int64]bool, len(orderedIDs))
 	for _, id := range orderedIDs {
 		if !existingIDs[id] || seen[id] {
-			return apperror.Validation("Urutan template timeline tidak valid", nil)
+			return apperror.Validation("Urutan jadwal bawaan tidak valid", nil)
 		}
 		seen[id] = true
 	}
