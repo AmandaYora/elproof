@@ -199,7 +199,7 @@ func (h *PlatformAdminHandler) resetPassword(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	// Never echo the new password back (see tenant resetCredential).
-	response.OK(w, "Password admin platform berhasil direset", map[string]string{"username": admin.Username})
+	response.OK(w, "Kata sandi admin platform berhasil direset", map[string]string{"username": admin.Username})
 }
 
 // resetMFA is POST /platform-admins/{id}/reset-mfa — for an admin who lost

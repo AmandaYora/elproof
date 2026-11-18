@@ -14,6 +14,10 @@ import (
 // app. Messages only the platform team sees (inside the Platform Console) may still say "admin platform".
 var revealsInternalTeam = regexp.MustCompile(`"[^"]*(?i:hanya (admin|super admin|tim) (platform|elproof)|(hanya )?tersedia untuk admin platform|ke endpoint ini)[^"]*"`)
 
+// Messages are Indonesian and use the glossary terms (knowledge/DESIGN.md §7): "Nama pengguna", "kata sandi",
+// "autentikator". The web guard (npm run check:terms) cannot see the texts the API sends back.
+var englishTerm = regexp.MustCompile(`"(?:[^"]*\s)?(?:Username|Password|Authenticator)\s[^"]*"`)
+
 func TestRefusalsDoNotNameTheInternalTeam(t *testing.T) {
 	root := filepath.Join("..", "..", "internal")
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -27,6 +31,9 @@ func TestRefusalsDoNotNameTheInternalTeam(t *testing.T) {
 		for i, line := range strings.Split(string(src), "\n") {
 			if m := revealsInternalTeam.FindString(line); m != "" {
 				t.Errorf("%s:%d: %s (use \"Anda tidak memiliki akses untuk aksi ini\")", path, i+1, m)
+			}
+			if m := englishTerm.FindString(line); m != "" {
+				t.Errorf("%s:%d: %s (use \"Nama pengguna\", \"kata sandi\", \"autentikator\")", path, i+1, m)
 			}
 		}
 		return nil

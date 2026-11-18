@@ -73,7 +73,7 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		return err
 	}
 	if existing != nil {
-		return apperror.Validation("Username sudah digunakan", map[string][]string{"username": {"Username ini sudah dipakai, pilih yang lain"}})
+		return apperror.Validation("Nama pengguna sudah digunakan", map[string][]string{"username": {"Nama pengguna ini sudah dipakai, pilih yang lain"}})
 	}
 
 	// Login can resolve either identifier now (see AuthService.Login), so an

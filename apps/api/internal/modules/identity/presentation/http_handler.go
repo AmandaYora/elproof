@@ -119,8 +119,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Username == "" || req.Password == "" {
 		response.Error(w, http.StatusUnprocessableEntity, "Nama pengguna/email dan kata sandi wajib diisi", map[string][]string{
-			"username": {"Username atau email wajib diisi"},
-			"password": {"Password wajib diisi"},
+			"username": {"Nama pengguna atau email wajib diisi"},
+			"password": {"Kata sandi wajib diisi"},
 		})
 		return
 	}
