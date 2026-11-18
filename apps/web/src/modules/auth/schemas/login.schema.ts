@@ -14,5 +14,5 @@ export const googleLinkSchema = z.object({
 
 /** Second login step (and Platform Console enrolment): the 6-digit authenticator code. */
 export const mfaCodeSchema = z.object({
-  code: z.string().trim().length(6, "Masukkan 6 digit kode dari aplikasi authenticator"),
+  code: z.string().trim().length(6, "Masukkan 6 digit kode dari aplikasi autentikator"),
 });

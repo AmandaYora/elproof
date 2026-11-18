@@ -28,7 +28,7 @@ export const clientCreateSchema = clientContactSchema.extend({
   username: z
     .string()
     .trim()
-    .refine((v) => v === "" || /^[a-z0-9_.]{4,32}$/.test(v), "Username 4–32 karakter: huruf kecil, angka, titik, atau garis bawah"),
+    .refine((v) => v === "" || /^[a-z0-9_.]{4,32}$/.test(v), "Nama pengguna 4–32 karakter: huruf kecil, angka, titik, atau garis bawah"),
 });
 
 export type ClientCreateFormValues = z.infer<typeof clientCreateSchema>;

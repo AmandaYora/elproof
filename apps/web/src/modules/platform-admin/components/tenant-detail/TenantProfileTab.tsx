@@ -29,7 +29,7 @@ export function TenantProfileTab({ tenant, consent }: { tenant: Tenant; consent:
               { label: "Nama WO", value: tenant.businessName },
               { label: "Kota", value: tenant.city },
               { label: "Owner", value: tenant.ownerName },
-              { label: "Username Owner", value: `@${tenant.username}` },
+              { label: "Nama pengguna Owner", value: `@${tenant.username}` },
               { label: "Email (akun Google Owner)", value: tenant.email },
               { label: "Telepon", value: tenant.phone },
               { label: "Bergabung", value: formatDate(tenant.joinedAt) },

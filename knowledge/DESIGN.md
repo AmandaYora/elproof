@@ -333,6 +333,12 @@ FLOW-IDEAL §0 menetapkan Bahasa Indonesia penuh dengan "Anda", tetapi UI sekara
   "Hari H", "H+3", selalu lewat `formatDayCountdown` (`shared/lib/formatters.ts`) sehingga tidak pernah "H--3"; antrean
   "Mendekati hari H" hanya memuat acara yang belum lewat.
 - Status untuk klien selalu bahasa awam dan tidak menyalahkan (FLOW-IDEAL §4, D12).
+- **Tim internal ElProof tidak disebut di luar Platform Console** (18 Nov 2026). Situs publik, halaman Masuk, WO Console,
+  Portal Klien, dan pesan galat server yang bisa sampai ke WO atau klien hanya mengenal dua pihak: **tim wedding organizer**
+  dan **klien**. Tidak ada "admin platform", "admin ElProof", "Platform Console", "Super Admin"; dokumen hukum menulis
+  "personel ElProof yang berwenang". Galat hak akses selalu umum: "Anda tidak memiliki akses untuk aksi ini" (tanpa menyebut
+  peran yang boleh). `robots.txt` tidak mendaftar jalur internal; halaman aplikasi dan 404 dikirim dengan
+  `X-Robots-Tag: noindex, nofollow` (`cmd/server/spa.go`). Dijaga `npm run check:terms` (di luar `modules/platform-admin`).
 
 ## 8. Bantuan dan onboarding (baru di revisi 2)
 

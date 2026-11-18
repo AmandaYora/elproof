@@ -120,7 +120,7 @@ export function PlatformAdminFormModal({ open, onClose, initialAdmin, onSubmitCr
           </Field>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Username" required={!isEditing} name="username" error={errors.username}>
+          <Field label="Nama pengguna" required={!isEditing} name="username" error={errors.username}>
             <Input
               value={values.username}
               disabled={isEditing}

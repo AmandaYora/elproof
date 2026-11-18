@@ -23,7 +23,7 @@ func RestrictPrincipal(principalType string, allow RouteAllowFunc) func(http.Han
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := FromContext(r.Context())
 			if ok && claims.PrincipalType == principalType && !allow(r.Method, r.URL.Path) {
-				response.Error(w, http.StatusForbidden, "Akun ini tidak memiliki akses ke endpoint ini", nil)
+				response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses untuk aksi ini", nil)
 				return
 			}
 			next.ServeHTTP(w, r)

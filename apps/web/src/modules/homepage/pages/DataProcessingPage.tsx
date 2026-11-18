@@ -25,7 +25,7 @@ const SECTIONS: LegalSection[] = [
     id: "kerahasiaan-keamanan",
     title: "3. Kerahasiaan dan keamanan",
     body: [
-      `ElProof menjaga kerahasiaan data dan menerapkan langkah teknis dan organisasi yang wajar: pemisahan data per workspace, akses berdasarkan peran, enkripsi koneksi, verifikasi dua langkah untuk admin ElProof, dan pencatatan aktivitas admin. Personel ElProof hanya mengakses data workspace bila diperlukan untuk dukungan dan dengan izin Owner.`,
+      `ElProof menjaga kerahasiaan data dan menerapkan langkah teknis dan organisasi yang wajar: pemisahan data per workspace, akses berdasarkan peran, enkripsi koneksi, serta akses internal yang dibatasi pada personel berwenang, dilindungi verifikasi dua langkah, dan dicatat. Personel ElProof hanya mengakses data workspace bila diperlukan untuk dukungan dan dengan izin Owner.`,
     ],
   },
   {

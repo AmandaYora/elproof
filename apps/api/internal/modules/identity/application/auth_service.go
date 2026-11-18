@@ -281,7 +281,7 @@ func (s *AuthService) Login(ctx context.Context, identifier, password string) (*
 		}
 	}
 
-	return nil, apperror.Unauthorized("Username/email atau password salah")
+	return nil, apperror.Unauthorized("Nama pengguna/email atau kata sandi salah")
 }
 
 // completeLogin runs after the password matched: an admin with two-factor
@@ -290,7 +290,7 @@ func (s *AuthService) completeLogin(ctx context.Context, cred *domain.Credential
 	// WO staff sign in with Google only (decision K5). The password was
 	// right, so saying how to sign in leaks nothing new.
 	if cred.PrincipalType == domain.PrincipalStaff {
-		return nil, apperror.Forbidden("Tim WO masuk dengan tombol \"Masuk dengan Google\". Akun lama yang belum terhubung: klik tombol tersebut, lalu konfirmasi kata sandi ini sekali.").WithCode("use_google")
+		return nil, apperror.Forbidden("Tim WO masuk dengan tombol Google di halaman ini. Akun lama yang belum terhubung: klik tombol tersebut, lalu konfirmasi kata sandi ini sekali.").WithCode("use_google")
 	}
 	if requiresMFA(cred) && cred.TOTPEnabled {
 		// A frozen tenant is checked again in issueSession; admins have no

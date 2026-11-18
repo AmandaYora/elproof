@@ -53,7 +53,7 @@ func decode(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 func adminOf(w http.ResponseWriter, r *http.Request) (*middleware.Claims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "platform_admin" {
-		response.Error(w, http.StatusForbidden, "Hanya admin platform yang dapat melakukan aksi ini", nil)
+		response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses untuk aksi ini", nil)
 		return nil, false
 	}
 	return claims, true

@@ -1,8 +1,8 @@
-# Marketing pages are public. The app itself is private and has nothing for search engines.
+# Marketing pages are public. The app itself is private and has nothing for search engines; its pages also send
+# X-Robots-Tag: noindex. Internal tools are never listed here (this file is public).
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /platform/
 Disallow: /portal/
 Disallow: /login
 Disallow: /dashboard

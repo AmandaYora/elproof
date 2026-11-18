@@ -69,7 +69,7 @@ export const PUBLIC_PAGES = {
   login: {
     path: ROUTE_PATHS.login,
     title: "Masuk",
-    description: "Masuk ke ElProof sebagai tim WO, klien, atau admin platform.",
+    description: "Masuk ke ElProof sebagai tim wedding organizer atau klien.",
     noindex: true,
   },
 } as const satisfies Record<string, PublicPageMeta>;

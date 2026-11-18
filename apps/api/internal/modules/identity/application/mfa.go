@@ -140,7 +140,7 @@ func (s *AuthService) mfaCandidate(ctx context.Context, principalType, principal
 		return nil, apperror.Unauthorized("Akun tidak ditemukan")
 	}
 	if !requiresMFA(cred) {
-		return nil, apperror.Forbidden("Verifikasi dua langkah hanya tersedia untuk admin platform")
+		return nil, apperror.Forbidden("Verifikasi dua langkah tidak tersedia untuk akun ini")
 	}
 	return cred, nil
 }
@@ -154,7 +154,7 @@ func (s *AuthService) checkCode(ctx context.Context, cred *domain.Credential, co
 	}
 	raw, err := s.mfa.Open(cred.TOTPSecretEnc)
 	if err != nil {
-		return apperror.Internal("Kunci verifikasi tidak dapat dibaca; minta Super Admin mereset verifikasi dua langkah")
+		return apperror.Internal("Kode verifikasi belum bisa diperiksa. Hubungi pengelola akun Anda untuk mengatur ulang verifikasi dua langkah.")
 	}
 	step, ok := s.mfa.Verify(raw, code, cred.TOTPLastStep)
 	if !ok {
