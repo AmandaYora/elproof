@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/base64"
 	"io"
 	"regexp"
@@ -274,7 +275,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 	if err != nil {
 		return nil, err
 	}
-	trialEndsAt := time.Now().Truncate(time.Second).AddDate(0, 0, domain.CurrentSubscriptionPolicy().TrialDays)
+	trialEndsAt := clock.Now().Truncate(time.Second).AddDate(0, 0, domain.CurrentSubscriptionPolicy().TrialDays)
 	tenant := &domain.Tenant{
 		BusinessName:       name,
 		OwnerName:          normalizeName(input.OwnerName),
@@ -282,7 +283,7 @@ func (s *TenantService) Register(ctx context.Context, input RegisterTenantInput)
 		Email:              input.Email,
 		Phone:              NormalizeWhatsAppOrRaw(input.Phone),
 		City:               normalizeName(input.City),
-		JoinedAt:           time.Now(),
+		JoinedAt:           clock.Now(),
 		SubscriptionStatus: domain.StatusTrialing,
 		TrialEndsAt:        &trialEndsAt,
 		SignupSource:       domain.SignupSourcePlatform,
@@ -520,7 +521,7 @@ func (s *TenantService) ReinviteOwner(ctx context.Context, id int64) (*OwnerInvi
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.SetCredentialResetAt(ctx, id, time.Now()); err != nil {
+	if err := s.repo.SetCredentialResetAt(ctx, id, clock.Now()); err != nil {
 		return nil, err
 	}
 	return inv, nil
@@ -839,7 +840,7 @@ func txTypeFor(tenant *domain.Tenant) billingcontracts.TransactionType {
 // top of the remaining paid time, and paying during the free trial starts
 // the paid period when the trial ends. A lapsed tenant restarts from now.
 func computeNewExpiry(tenant *domain.Tenant, plan *billingcontracts.Plan) time.Time {
-	return computeNewExpiryAt(tenant, plan.DurationMonths, time.Now())
+	return computeNewExpiryAt(tenant, plan.DurationMonths, clock.Now())
 }
 
 func computeNewExpiryAt(tenant *domain.Tenant, durationMonths int, now time.Time) time.Time {

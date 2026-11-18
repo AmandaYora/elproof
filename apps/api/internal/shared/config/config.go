@@ -73,6 +73,12 @@ type Config struct {
 	// GoogleJWKSURL overrides Google's signing-key URL. Only honoured
 	// outside production (end-to-end tests sign their own tokens).
 	GoogleJWKSURL string
+
+	// ClockStart (APP_CLOCK_START, RFC 3339) starts the business clock at a
+	// fixed instant instead of real time (internal/shared/clock). Only the
+	// end-to-end stack sets it, so the server's "today" matches the test
+	// browser's; refused when APP_ENV=production.
+	ClockStart string
 }
 
 // DefaultGoogleClientID is ElProof's own OAuth web client (decision K9). It
@@ -120,6 +126,8 @@ func Load() Config {
 
 		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", DefaultGoogleClientID),
 		GoogleJWKSURL:  getEnv("GOOGLE_JWKS_URL", ""),
+
+		ClockStart: getEnv("APP_CLOCK_START", ""),
 	}
 }
 

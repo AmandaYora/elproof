@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"strconv"
 	"strings"
 	"time"
@@ -147,7 +148,7 @@ func (s *ConsoleService) AddNote(ctx context.Context, tenantID int64, adminID, a
 	if err := s.repo.AddNote(ctx, note); err != nil {
 		return nil, err
 	}
-	note.CreatedAt = time.Now()
+	note.CreatedAt = clock.Now()
 	return note, nil
 }
 

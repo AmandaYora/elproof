@@ -2,9 +2,9 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -196,7 +196,7 @@ func (h *Handler) verifyClientPayment(w http.ResponseWriter, r *http.Request, cl
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	p, err := h.clientPayments.Verify(r.Context(), projectID, paymentID, claims.staffID, time.Now())
+	p, err := h.clientPayments.Verify(r.Context(), projectID, paymentID, claims.staffID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -222,7 +222,7 @@ func (h *Handler) deleteClientPayment(w http.ResponseWriter, r *http.Request, cl
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	until, err := h.clientPayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	until, err := h.clientPayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -245,7 +245,7 @@ func (h *Handler) restoreClientPayment(w http.ResponseWriter, r *http.Request, c
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	p, err := h.clientPayments.Restore(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	p, err := h.clientPayments.Restore(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return

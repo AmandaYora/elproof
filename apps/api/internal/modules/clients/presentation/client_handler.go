@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -442,7 +443,7 @@ type deletedResponse struct {
 // delete soft-deletes the client (ADR-0034): it leaves every list at once, the
 // login is switched off, and POST /clients/{id}/restore brings it back for 24 hours.
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
-	until, err := h.clients.Delete(r.Context(), tenantID, id, time.Now())
+	until, err := h.clients.Delete(r.Context(), tenantID, id, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -454,7 +455,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request, tenantID, id in
 // when it is not deleted or was purged; 422 when the project is gone or the
 // workspace's trial quota has no room for it.
 func (h *Handler) restore(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
-	c, err := h.clients.Restore(r.Context(), tenantID, id, time.Now())
+	c, err := h.clients.Restore(r.Context(), tenantID, id, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return

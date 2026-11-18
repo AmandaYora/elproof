@@ -2,12 +2,12 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"elproof/internal/shared/response"
 	"encoding/csv"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/middleware"
@@ -66,7 +66,7 @@ func (h *TenantHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plans := h.tenants.PlanNames(r.Context(), tenants)
-	now := time.Now()
+	now := clock.Now()
 
 	// No record, no export: the audit entry is written before any data leaves.
 	if h.auditor != nil {

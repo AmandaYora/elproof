@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"time"
 
 	"elproof/internal/modules/projects/domain"
@@ -98,7 +99,7 @@ func (p *ProofSupport) attach(ctx context.Context, t proofTarget, proofs []Resol
 		date := t.Date
 		e := domain.Evidence{
 			ProjectID: t.ProjectID, Name: name, Type: pr.Type, StoragePath: pr.Claims.Key, FileName: pr.Claims.FileName,
-			DocumentDate: &date, UploadedAt: time.Now(), UploadedByStaffID: t.ActorStaffID, UploadedByClientID: t.ActorClientID,
+			DocumentDate: &date, UploadedAt: clock.Now(), UploadedByStaffID: t.ActorStaffID, UploadedByClientID: t.ActorClientID,
 			RelatedKind: t.Kind, RelatedID: t.RelatedID,
 		}
 		if err := p.evidence.repo.Create(ctx, &e); err != nil {

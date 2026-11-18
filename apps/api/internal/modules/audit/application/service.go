@@ -3,6 +3,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,7 +29,7 @@ type Service struct {
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, now: time.Now}
+	return &Service{repo: repo, now: clock.Now}
 }
 
 // Record implements middleware.AuditRecorder.

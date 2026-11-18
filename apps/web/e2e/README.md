@@ -32,7 +32,7 @@ membangun biner API (`go build`), membuat basis data sementara `elproof_e2e_pw` 
 | `E2E_S3_ENDPOINT`, `E2E_S3_ACCESS_KEY`, `E2E_S3_SECRET_KEY` | kosong | tanpa ini API memakai `127.0.0.1:9` dan **tidak ada dokumen bukti** yang dibenihkan (tab Dokumen kosong). Dengan MinIO lokal, dokumen "Kontrak katering" ikut dibuat |
 | `E2E_REUSE` | kosong | `1` = pakai tumpukan yang menyala, jangan matikan di akhir |
 | `E2E_WORKERS` | 3 | jumlah worker potret |
-| `E2E_API_WRAPPER` | kosong | awalan perintah untuk API, mis. `faketime -f "@2026-11-09 03:00:00"` untuk membekukan jam server (lihat Determinisme) |
+| `E2E_API_WRAPPER` | kosong | awalan perintah untuk proses API (mis. profiler). Tidak perlu untuk jam: tumpukan sudah memberi `APP_CLOCK_START` (lihat Determinisme) |
 | `AXE_STRICT` | kosong | `1` = axe gagal pada pelanggaran serius/kritis |
 
 ## Empat proyek Playwright
@@ -67,15 +67,18 @@ satu pengumuman, satu permintaan data. Semua tanggal benih dihitung dari hari te
 ## Determinisme dan batasnya
 
 Dibuat tetap: jam peramban dibekukan di **9 Nov 2026 10:00 WIB** (`page.clock.setFixedTime`, timer tetap jalan; zona
-`Asia/Jakarta`, locale `id-ID`), animasi dan gerak dimatikan, font Google (bila ada) disajikan dari cache lokal
+`Asia/Jakarta`, locale `id-ID`), **jam bisnis server** mulai di instan yang sama (`APP_CLOCK_START=FIXED_NOW` dari
+`lib/stack.ts`, lalu berdetak normal; `internal/shared/clock` di API) sehingga H-n, termin terlambat, persiapan tertinggal
+dan sisa hari masa coba dihitung terhadap 9 Nov 2026 di lokal maupun CI tanpa `faketime`, animasi dan gerak dimatikan, font Google (bila ada) disajikan dari cache lokal
 (`e2e/.tmp/fonts`) setelah unduhan pertama, service worker diblokir, semua cap waktu basis data (created_at, paid_at, audit)
 dinormalkan ke 10:00 WIB + id detik, dan tunggu jaringan idle + font siap + teks "Memuat" hilang.
 
 **Batas yang jujur:**
-1. **Jam server tidak bisa dibekukan** tanpa alat tambahan. Teks yang dihitung server terhadap jam nyata (sisa hari masa coba,
-   "terlambat N hari") **ditutup magenta** di setiap potret (`volatile()` di `lib/fixtures.ts`). Data benih berpatokan pada
-   9 Nov 2026; bila dijalankan jauh setelah tanggal itu, angka seperti "jatuh tempo ≤ 7 hari" dapat berubah. Di CI pakai
-   `libfaketime` lewat `E2E_API_WRAPPER`.
+1. **Hanya jam bisnis server yang digeser.** Token (JWT, refresh), TOTP, tautan masuk, rate limit, URL bertanda tangan
+   penyimpanan, dan `NOW()` MySQL tetap memakai jam nyata, karena dicek terhadap pihak yang hanya tahu jam nyata (TOTP
+   dihitung Node dengan jam nyata). Teks yang tetap bisa bergeser **ditutup magenta** (`volatile()` di `lib/fixtures.ts`).
+   Bila potret berubah sendiri seiring tanggal nyata, cari `time.Now()` di kode modul yang seharusnya `clock.Now()`.
+   Tanggal yang dikirim tes ke API (mis. `validUntil` voucher) dihitung dari `FIXED_NOW`, **bukan** `Date.now()` di Node.
 2. **Potret berbeda per platform.** Baseline ini diambil di macOS (Chromium 156 dari Playwright 1.64). Rendering teks di Linux
    berbeda sedikit; CI harus memakai satu lingkungan saja dan membuat ulang potret di sana (`npm run e2e:update`) sebelum
    dipakai sebagai gerbang. Ambang `maxDiffPixelRatio: 0.01`.

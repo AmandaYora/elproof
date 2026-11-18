@@ -2,9 +2,9 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -153,7 +153,7 @@ func (h *Handler) deleteVenuePayment(w http.ResponseWriter, r *http.Request, cla
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	until, err := h.venuePayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	until, err := h.venuePayments.Delete(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -174,7 +174,7 @@ func (h *Handler) restoreVenuePayment(w http.ResponseWriter, r *http.Request, cl
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	p, err := h.venuePayments.Restore(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, time.Now())
+	p, err := h.venuePayments.Restore(r.Context(), claims.tenantID, projectID, paymentID, claims.staffID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return

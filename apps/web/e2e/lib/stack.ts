@@ -2,7 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import { API_ROOT, E2E_ROOT, PIDS_FILE, STATE_FILE, TMP, WEB_ROOT, apiURL, config, webURL, type State } from "./config";
+import { API_ROOT, E2E_ROOT, FIXED_NOW, PIDS_FILE, STATE_FILE, TMP, WEB_ROOT, apiURL, config, webURL, type State } from "./config";
 import { databaseURL, admin, sql } from "./sql";
 import { seed, writeState } from "./seed";
 
@@ -164,6 +164,10 @@ export async function startStack(): Promise<State> {
     S3_ACCESS_KEY: storage ? storage.access : config.s3Access,
     S3_SECRET_KEY: storage ? storage.secret : config.s3Secret,
     PAYMENT_ENCRYPTION_KEY: "e2e-payment-encryption-key-long-random-0123456789",
+    // The server's business clock (what "today" is for H-n, overdue terms, lagging preparation, trial days) starts at the
+    // instant the browser clock is frozen at and ticks from there, so pages look the same whatever day the suite runs.
+    // Tokens, TOTP and signed URLs stay on real time (internal/shared/clock). Refused by a production API.
+    APP_CLOCK_START: FIXED_NOW,
   };
   log("migrating and seeding the platform admin");
   execFileSync(bin, ["migrate", "up"], { cwd: TMP, env: apiEnv, stdio: "inherit" });

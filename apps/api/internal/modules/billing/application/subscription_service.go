@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"strings"
 	"time"
 
@@ -166,7 +167,7 @@ func (s *SubscriptionService) StartSubscriptionCharge(ctx context.Context, appID
 // that's already expired. Deliberately stateless (doesn't read any
 // SubscriptionService field) so it's testable without a database (§7.1).
 func (s *SubscriptionService) ComputeUntil(currentUntil *time.Time, durationMonths int) time.Time {
-	now := time.Now()
+	now := clock.Now()
 	base := now
 	if currentUntil != nil && currentUntil.After(now) {
 		base = *currentUntil

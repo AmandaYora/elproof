@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -62,7 +63,7 @@ func NewCoverService(projects *ProjectService, repo CoverRepository, tx Transact
 	if tx == nil {
 		tx = noTransactor{}
 	}
-	return &CoverService{projects: projects, repo: repo, tx: tx, storage: storage, buildKey: buildKey, activity: activity, now: time.Now}
+	return &CoverService{projects: projects, repo: repo, tx: tx, storage: storage, buildKey: buildKey, activity: activity, now: clock.Now}
 }
 
 func coverError(msg string) error {

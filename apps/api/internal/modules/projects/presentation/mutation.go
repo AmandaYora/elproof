@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"errors"
 	"time"
@@ -77,7 +78,7 @@ func (w withExtras) MarshalJSON() ([]byte, error) {
 // an error (a retry of a create would duplicate): it is logged and the key is
 // left out.
 func (h *Handler) projectProgress(ctx context.Context, tenantID, projectID int64) *progressResponse {
-	p, err := h.projects.ComputeProgress(ctx, tenantID, projectID, time.Now())
+	p, err := h.projects.ComputeProgress(ctx, tenantID, projectID, clock.Now())
 	if err != nil {
 		logger.Error("projectProgress for project %d after a mutation: %v", projectID, err)
 		return nil

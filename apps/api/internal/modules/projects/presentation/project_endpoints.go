@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -150,7 +151,7 @@ func (h *Handler) toProjectResponsesWithProgress(r *http.Request, tenantID int64
 	for i, p := range projects {
 		ids[i] = p.ID
 	}
-	progressByID, err := h.projects.ComputeProgressBatch(r.Context(), tenantID, ids, time.Now())
+	progressByID, err := h.projects.ComputeProgressBatch(r.Context(), tenantID, ids, clock.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +371,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 	if isClient {
 		compute = h.projects.ComputeClientProgress
 	}
-	progress, err := compute(r.Context(), tenantID, projectID, time.Now())
+	progress, err := compute(r.Context(), tenantID, projectID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -395,7 +396,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 func (h *Handler) projectItem(ctx context.Context, tenantID int64, p domain.Project) projectResponse {
 	resp := toProjectResponse(p)
 	resp.PICName = h.projects.ResolvePICName(ctx, tenantID, p.PICStaffID)
-	if progress, err := h.projects.ComputeProgress(ctx, tenantID, p.ID, time.Now()); err == nil {
+	if progress, err := h.projects.ComputeProgress(ctx, tenantID, p.ID, clock.Now()); err == nil {
 		pr := toProgressResponse(*progress)
 		resp.Progress = &pr
 	}

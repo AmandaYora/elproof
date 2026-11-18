@@ -2,7 +2,7 @@ package application
 
 import (
 	"context"
-	"time"
+	"elproof/internal/shared/clock"
 
 	"elproof/internal/modules/projects/domain"
 	"elproof/internal/shared/logger"
@@ -35,7 +35,7 @@ func (s *ActivityService) Record(ctx context.Context, projectID *int64, activity
 	entry := &domain.ActivityLogEntry{
 		ProjectID: projectID, Type: activityType, ActorStaffID: actorStaffID,
 		EntityType: entityType, EntityID: entityID, EntityLabel: entityLabel,
-		Description: description, CreatedAt: time.Now(),
+		Description: description, CreatedAt: clock.Now(),
 	}
 	if err := s.repo.Create(ctx, entry); err != nil {
 		logger.Error("failed to record activity log entry: %v", err)

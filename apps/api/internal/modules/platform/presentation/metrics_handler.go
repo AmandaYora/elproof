@@ -1,10 +1,10 @@
 package presentation
 
 import (
+	"elproof/internal/shared/clock"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"elproof/internal/modules/platform/domain"
 	"elproof/internal/shared/response"
@@ -62,7 +62,7 @@ func (h *TenantHandler) Metrics(w http.ResponseWriter, r *http.Request) {
 	if !requirePlatformAdmin(w, r) {
 		return
 	}
-	m, err := h.tenants.PlatformMetrics(r.Context(), time.Now())
+	m, err := h.tenants.PlatformMetrics(r.Context(), clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -107,7 +107,7 @@ func (h *TenantHandler) Trends(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "period harus month atau year", nil)
 		return
 	}
-	t, err := h.tenants.PlatformTrends(r.Context(), period, time.Now())
+	t, err := h.tenants.PlatformTrends(r.Context(), period, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return

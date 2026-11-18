@@ -28,6 +28,7 @@ import (
 	"elproof/internal/modules/staff"
 	staffcontracts "elproof/internal/modules/staff/contracts"
 	"elproof/internal/modules/vendors"
+	"elproof/internal/shared/clock"
 	"elproof/internal/shared/config"
 	"elproof/internal/shared/database"
 	"elproof/internal/shared/middleware"
@@ -142,6 +143,7 @@ func (r clientRoles) RoleNames(ctx context.Context, tenantID int64) (map[int64]s
 //	                                  marketing photos to object storage
 func main() {
 	cfg := config.Load()
+	startClock(cfg)
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -164,6 +166,24 @@ func main() {
 	}
 
 	serve(cfg)
+}
+
+// startClock applies APP_CLOCK_START (end-to-end tests only): the business
+// clock starts at that instant and ticks from there. A production server
+// refuses to start with it, like GOOGLE_JWKS_URL.
+func startClock(cfg config.Config) {
+	if cfg.ClockStart == "" {
+		return
+	}
+	if cfg.AppEnv == "production" {
+		log.Fatalf("APP_CLOCK_START is only for end-to-end tests; remove it from this environment")
+	}
+	start, err := clock.Parse(cfg.ClockStart)
+	if err != nil {
+		log.Fatal(err)
+	}
+	clock.StartAt(start)
+	log.Printf("business clock starts at %s (APP_CLOCK_START, tests only)", start.Format(time.RFC3339))
 }
 
 func runMigrate(cfg config.Config, args []string) {

@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -90,7 +91,7 @@ func dateOrNil(t *time.Time) *string {
 }
 
 func toTenantResponse(t domain.Tenant) tenantResponse {
-	lc := domain.ComputeLifecycle(t, time.Now(), domain.CurrentSubscriptionPolicy())
+	lc := domain.ComputeLifecycle(t, clock.Now(), domain.CurrentSubscriptionPolicy())
 	return tenantResponse{
 		ID: t.ID, BusinessName: t.BusinessName, OwnerName: t.OwnerName, Username: t.Username,
 		Email: t.Email, Phone: t.Phone, City: t.City, JoinedAt: t.JoinedAt.Format("2006-01-02"),

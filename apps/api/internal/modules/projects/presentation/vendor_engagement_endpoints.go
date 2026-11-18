@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -379,7 +380,7 @@ func (h *Handler) deleteVendorEngagement(w http.ResponseWriter, r *http.Request,
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	_, until, err := h.vendors.Delete(r.Context(), projectID, pvID, claims.staffID, time.Now())
+	_, until, err := h.vendors.Delete(r.Context(), projectID, pvID, claims.staffID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -397,7 +398,7 @@ func (h *Handler) restoreVendorEngagement(w http.ResponseWriter, r *http.Request
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	pv, err := h.vendors.Restore(r.Context(), projectID, pvID, claims.staffID, time.Now(), func(ctx context.Context, pv *domain.ProjectVendor) error {
+	pv, err := h.vendors.Restore(r.Context(), projectID, pvID, claims.staffID, clock.Now(), func(ctx context.Context, pv *domain.ProjectVendor) error {
 		fields := map[string][]string{}
 		if err := h.refs.Vendor(ctx, claims.tenantID, "vendorId", pv.VendorID); err != nil && !collectValidation(fields, err) {
 			return err
