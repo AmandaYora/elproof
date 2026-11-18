@@ -211,3 +211,19 @@ func TestSPAFileServerNotFoundShell(t *testing.T) {
 		t.Errorf("missing 404 shell: %d %q, want 404 with index.html", rec.Code, rec.Body.String())
 	}
 }
+
+// robots.txt names no private path (listing /platform/ would advertise the team's console); the server marks every app
+// page and the 404 shell noindex instead, while a public marketing page stays indexable.
+func TestSPAFileServerNoindexOutsidePublicPages(t *testing.T) {
+	h := spaFileServer(writeWebBuild(t, true))
+	for _, target := range []string{"/dashboard", "/halaman-tidak-ada", "/routes.json"} {
+		if got := spaGet(h, http.MethodGet, target).Header().Get("X-Robots-Tag"); got != "noindex, nofollow" {
+			t.Errorf("GET %s: X-Robots-Tag %q, want noindex, nofollow", target, got)
+		}
+	}
+	for _, target := range []string{"/", "/faq"} {
+		if got := spaGet(h, http.MethodGet, target).Header().Get("X-Robots-Tag"); got != "" {
+			t.Errorf("GET %s: public page carries X-Robots-Tag %q", target, got)
+		}
+	}
+}

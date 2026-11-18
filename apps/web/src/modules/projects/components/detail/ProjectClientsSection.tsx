@@ -347,7 +347,7 @@ function EditContactModal({
         <div data-field="accessRoleId">
           <PortalRoleSelect value={values.accessRoleId ?? 0} onChange={(id) => set("accessRoleId", id)} />
         </div>
-        <Field label="Username">
+        <Field label="Nama pengguna">
           <Input value={client.username} disabled />
         </Field>
       </form>
@@ -408,7 +408,7 @@ function ReplaceRepresentativeModal({
         <Field label="Email" name="email" error={errors.email} hint="Opsional">
           <Input type="email" value={values.email} onChange={(e) => set("email", e.target.value)} onBlur={() => blur("email")} />
         </Field>
-        <Field label="Username">
+        <Field label="Nama pengguna">
           <Input value={client.username} disabled />
         </Field>
       </form>

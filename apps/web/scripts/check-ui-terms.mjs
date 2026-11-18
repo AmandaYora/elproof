@@ -37,7 +37,16 @@ const TERMS = [
   [/\bSign ?(in|up)\b/i, "Masuk / Daftar"],
   [/\bDashboard\b/i, "Beranda (WO) / Ringkasan (Platform Console)"],
   [/\bProgress\b/i, "Progres"],
+  // The shared sign-in page reads the same for everyone (18 Nov 2026): Indonesian words only.
+  [/\bUsername\b/i, "Nama pengguna"],
+  [/(?<!(Google|Microsoft) )\bAuthenticator\b/i, "autentikator (nama produk seperti Google Authenticator boleh)"],
 ];
+// The platform team's own console is not part of the product people outside ElProof see (18 Nov 2026): no text outside
+// modules/platform-admin names it or its admins. Public pages speak of "personel ElProof yang berwenang" instead.
+const INTERNAL_TERMS = [
+  [/\badmin (platform|ElProof)\b|\bplatform admin\b|\bPlatform Console\b|\bsuper ?admin\b/i, "jangan sebut tim/konsol internal di luar modules/platform-admin"],
+];
+const INTERNAL_OK = /^modules\/platform-admin\//;
 const DISPLAY_ATTRS = new Set(["aria-label", "title", "placeholder", "alt", "label", "description", "subtitle", "hint", "error", "message", "header", "confirmLabel", "emptyText", "caption", "tooltip", "text", "heading"]);
 const DISPLAY_KEYS = new Set(["title", "label", "description", "subtitle", "message", "placeholder", "header", "hint", "text", "caption", "confirmLabel", "empty", "heading", "tooltip", "body", "detail", "fallback"]);
 const SKIP_FILES = [/shared\/lib\/labels\.ts$/, /\.d\.ts$/, /\.test\.tsx?$/, /constants\/cities/];
@@ -94,7 +103,7 @@ for (const file of walk(ROOT)) {
   const lines = src.split("\n");
   const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const report = (node, text) => {
-    for (const [re, use] of TERMS) {
+    for (const [re, use] of INTERNAL_OK.test(rel) ? TERMS : [...TERMS, ...INTERNAL_TERMS]) {
       const m = re.exec(text);
       if (!m) continue;
       const line = sf.getLineAndCharacterOfPosition(node.getStart()).line;

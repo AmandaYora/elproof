@@ -158,8 +158,8 @@ const GROUPS: { id: string; title: string; items: Faq[] }[] = [
         question: "Apakah data proyek saya aman?",
         answer: (
           <>
-            Data setiap usaha terpisah penuh dan tidak bisa diakses dari akun usaha lain. Akses juga dibatasi per peran
-            (tim, klien, admin ElProof), jadi setiap pihak hanya melihat data yang menjadi haknya. Rinciannya ada di{" "}
+            Data setiap usaha terpisah penuh dan tidak bisa diakses dari akun usaha lain. Di dalam usaha Anda, akses
+            dibatasi per peran, jadi anggota tim dan klien hanya melihat data yang menjadi haknya. Rinciannya ada di{" "}
             <Link to={ROUTE_PATHS.homepagePrivacy} className={linkClass}>
               Kebijakan privasi
             </Link>

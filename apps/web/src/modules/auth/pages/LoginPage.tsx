@@ -127,7 +127,7 @@ export default function LoginPage() {
         }
         finishLogin(data as AuthSession);
       } catch (err) {
-        loginForm.applyServerError(err, loginErrorMessage(err, "Username atau kata sandi salah."), LOGIN_FIELDS);
+        loginForm.applyServerError(err, loginErrorMessage(err, "Nama pengguna atau kata sandi salah."), LOGIN_FIELDS);
       }
     },
     { root: () => loginFormRef.current },
@@ -191,8 +191,8 @@ export default function LoginPage() {
           <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-foreground">Masuk ke ElProof</h1>
           <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
             {mfaToken
-              ? "Verifikasi dua langkah untuk admin platform."
-              : "Tim WO masuk dengan Google. Klien dan admin platform masuk dengan nama pengguna."}
+              ? "Masukkan kode verifikasi dari aplikasi autentikator Anda."
+              : "Tim WO masuk dengan Google. Klien masuk dengan akun yang dikirim wedding organizer Anda."}
           </p>
 
           <div className="mt-8 flex flex-col gap-5">
@@ -253,7 +253,7 @@ export default function LoginPage() {
             ) : mfaToken ? (
               <>
                 <form ref={mfaFormRef} noValidate onSubmit={(e) => void submitMfa(e)} className="flex flex-col gap-5">
-                  <Field label="Kode verifikasi" required name="code" error={mfaForm.errors.code} hint="Buka aplikasi authenticator Anda dan masukkan 6 digit kode untuk ElProof.">
+                  <Field label="Kode verifikasi" required name="code" error={mfaForm.errors.code} hint="Buka aplikasi autentikator Anda dan masukkan 6 digit kode untuk ElProof.">
                     <Input
                       value={mfaForm.values.code}
                       onChange={(e) => {

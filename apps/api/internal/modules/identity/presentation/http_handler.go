@@ -118,7 +118,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Username == "" || req.Password == "" {
-		response.Error(w, http.StatusUnprocessableEntity, "Username/email dan password wajib diisi", map[string][]string{
+		response.Error(w, http.StatusUnprocessableEntity, "Nama pengguna/email dan kata sandi wajib diisi", map[string][]string{
 			"username": {"Username atau email wajib diisi"},
 			"password": {"Password wajib diisi"},
 		})
@@ -126,7 +126,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(req.Username) > maxIdentifierLen || len(req.Password) > maxPasswordLen {
-		response.Error(w, http.StatusUnprocessableEntity, "Username/email atau password terlalu panjang", nil)
+		response.Error(w, http.StatusUnprocessableEntity, "Nama pengguna/email atau kata sandi terlalu panjang", nil)
 		return
 	}
 	if !h.loginIP.Allow(middleware.ClientIP(r)) {
@@ -140,7 +140,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.MFARequired {
-		response.OK(w, "Masukkan kode verifikasi dari aplikasi authenticator", mfaChallengeResponse{MFARequired: true, MFAToken: result.MFAToken})
+		response.OK(w, "Masukkan kode verifikasi dari aplikasi autentikator", mfaChallengeResponse{MFARequired: true, MFAToken: result.MFAToken})
 		return
 	}
 	h.writeSession(w, "Berhasil masuk", result.Session)
@@ -223,7 +223,7 @@ func (h *Handler) SetupMFA(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	response.OK(w, "Tambahkan kunci ini ke aplikasi authenticator Anda", mfaSetupResponse{Secret: setup.Secret, OTPAuthURL: setup.OTPAuthURL})
+	response.OK(w, "Tambahkan kunci ini ke aplikasi autentikator Anda", mfaSetupResponse{Secret: setup.Secret, OTPAuthURL: setup.OTPAuthURL})
 }
 
 type mfaEnableRequest struct {

@@ -590,7 +590,7 @@ func (h *TenantHandler) CancelPendingCharge(w http.ResponseWriter, r *http.Reque
 func requirePlatformAdmin(w http.ResponseWriter, r *http.Request) bool {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok || claims.PrincipalType != "platform_admin" {
-		response.Error(w, http.StatusForbidden, "Hanya admin platform yang dapat melakukan aksi ini", nil)
+		response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses untuk aksi ini", nil)
 		return false
 	}
 	return true

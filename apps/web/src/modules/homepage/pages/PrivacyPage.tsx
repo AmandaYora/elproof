@@ -54,7 +54,7 @@ const SECTIONS: LegalSection[] = [
     id: "keamanan-akses",
     title: "6. Keamanan",
     body: [
-      `Akses dipisahkan per workspace dan per peran. Koneksi dienkripsi dengan HTTPS. Admin ElProof wajib memakai verifikasi dua langkah dan setiap tindakan admin dicatat. Bila terjadi kegagalan pelindungan data yang berdampak pada Anda, kami memberi tahu Anda dan otoritas terkait sesuai ketentuan hukum.`,
+      `Akses dipisahkan per workspace dan per peran. Koneksi dienkripsi dengan HTTPS. Akses internal ElProof dibatasi pada personel yang berwenang, dilindungi verifikasi dua langkah, dan dicatat. Bila terjadi kegagalan pelindungan data yang berdampak pada Anda, kami memberi tahu Anda dan otoritas terkait sesuai ketentuan hukum.`,
     ],
   },
   {

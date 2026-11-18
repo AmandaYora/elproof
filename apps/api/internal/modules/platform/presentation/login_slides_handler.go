@@ -97,7 +97,7 @@ func (h *LoginSlidesHandler) Replace(w http.ResponseWriter, r *http.Request) {
 	// The role policy in cmd/server only judges platform admins; a workspace's
 	// own staff token reaches this handler too, so it is refused here.
 	if claims, ok := middleware.FromContext(r.Context()); !ok || claims.PrincipalType != "platform_admin" {
-		response.Error(w, http.StatusForbidden, "Hanya admin platform yang dapat mengganti foto halaman masuk", nil)
+		response.Error(w, http.StatusForbidden, "Anda tidak memiliki akses untuk aksi ini", nil)
 		return
 	}
 	segments := httpx.Segments(r.URL.Path, "/api/v1/console/login-slides/")

@@ -11,7 +11,7 @@ function homeFor(session: AuthSession | null): { to: string; label: string } {
   if (!session) return { to: ROUTE_PATHS.home, label: "Ke halaman utama" };
   if (session.principalType === "staff") return { to: ROUTE_PATHS.dashboard, label: "Kembali ke Beranda" };
   if (session.principalType === "client") return { to: ROUTE_PATHS.portal(), label: "Kembali ke Portal Klien" };
-  return { to: ROUTE_PATHS.platformDashboard, label: "Kembali ke Platform Console" };
+  return { to: ROUTE_PATHS.platformDashboard, label: "Kembali ke Ringkasan" };
 }
 
 /**

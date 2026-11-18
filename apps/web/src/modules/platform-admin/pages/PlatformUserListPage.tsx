@@ -342,7 +342,7 @@ export default function PlatformUserListPage() {
       >
         <p>
           Gunakan bila <span className="font-semibold text-text-primary">{mfaResetAdmin?.name}</span> kehilangan aplikasi
-          authenticator. Semua sesinya berakhir, dan saat masuk lagi ia harus menyiapkan verifikasi dua langkah dari awal.
+          autentikator. Semua sesinya berakhir, dan saat masuk lagi ia harus menyiapkan verifikasi dua langkah dari awal.
         </p>
       </ConfirmDialog>
 
@@ -375,7 +375,7 @@ export default function PlatformUserListPage() {
               Kredensial akun:
             </div>
             <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">
-              <span className="text-text-secondary">Username</span>
+              <span className="text-text-secondary">Nama pengguna</span>
               <span className="font-semibold text-text-primary">{credentialReveal.username}</span>
             </div>
             <div className="flex items-center justify-between rounded-md bg-surface-muted px-3.5 py-2.5">

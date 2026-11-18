@@ -90,6 +90,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// The build's own bookkeeping is never a page: a prerendered file is reached by its public path only.
 	if clean == "/routes.json" || clean == "/prerendered" || strings.HasPrefix(clean, "/prerendered/") {
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		h.serveHTML(w, r, h.notFound, http.StatusNotFound)
 		return
 	}
@@ -101,6 +102,9 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.files.ServeHTTP(w, r)
 		return
 	}
+	// The signed-in app is private. robots.txt does not list its paths (that would advertise them, the platform team's
+	// pages included), so every app page and the 404 shell tell crawlers themselves.
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	if !h.strict || h.isAppRoute(clean) {
 		h.serveHTML(w, r, "index.html", http.StatusOK)
 		return

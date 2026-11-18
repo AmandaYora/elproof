@@ -92,7 +92,7 @@ export default function MfaSetupPage() {
         </div>
         <h1 className="text-2xl font-bold text-text-primary">Aktifkan verifikasi dua langkah</h1>
         <p className="mt-2 text-[13.5px] leading-relaxed text-text-secondary">
-          Platform Console membuka data semua WO, jadi setiap admin wajib memakai kode dari aplikasi authenticator,
+          Platform Console membuka data semua WO, jadi setiap admin wajib memakai kode dari aplikasi autentikator,
           misalnya Google Authenticator, Microsoft Authenticator, atau 1Password.
         </p>
 
@@ -103,7 +103,7 @@ export default function MfaSetupPage() {
         {alreadyEnabled ? (
           <div className="mt-6 flex flex-col gap-4">
             <p className="text-[13.5px] leading-relaxed text-text-secondary">
-              Verifikasi dua langkah untuk akun ini sudah aktif. Masuk ulang dan masukkan kode dari aplikasi authenticator
+              Verifikasi dua langkah untuk akun ini sudah aktif. Masuk ulang dan masukkan kode dari aplikasi autentikator
               Anda.
             </p>
             <Button className="w-full justify-center" onClick={() => void logoutAndRedirect(navigate)}>
@@ -119,12 +119,12 @@ export default function MfaSetupPage() {
         ) : (
           <ol className="mt-8 flex flex-col gap-6">
             <li className="flex flex-col gap-3">
-              <span className="text-[13.5px] font-semibold text-text-primary">1. Tambahkan ElProof ke aplikasi authenticator</span>
+              <span className="text-[13.5px] font-semibold text-text-primary">1. Tambahkan ElProof ke aplikasi autentikator</span>
               <span className="text-[13px] leading-relaxed text-text-secondary">
-                Di aplikasi authenticator, pilih tambah akun lalu pindai kode QR ini. Jika tidak bisa memindai, masukkan
+                Di aplikasi autentikator, pilih tambah akun lalu pindai kode QR ini. Jika tidak bisa memindai, masukkan
                 kunci di bawahnya secara manual (jenis: berbasis waktu).
               </span>
-              <QrCode value={setup.otpauthUrl} label="Kode QR untuk menambahkan ElProof ke aplikasi authenticator" className="mx-auto" />
+              <QrCode value={setup.otpauthUrl} label="Kode QR untuk menambahkan ElProof ke aplikasi autentikator" className="mx-auto" />
               <code className="select-all rounded-md bg-surface-muted px-3 py-2.5 text-center font-mono text-[14px] font-semibold leading-relaxed tracking-wide text-text-primary [word-spacing:0.35em]">
                 {groupKey(setup.secret)}
               </code>
@@ -141,7 +141,7 @@ export default function MfaSetupPage() {
                   href={setup.otpauthUrl}
                   className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-[13px] font-semibold text-text-primary hover:bg-surface-muted"
                 >
-                  Buka di aplikasi authenticator (HP)
+                  Buka di aplikasi autentikator (HP)
                 </a>
               </div>
             </li>

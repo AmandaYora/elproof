@@ -113,7 +113,7 @@ func (s *ManagementService) CreateCredential(ctx context.Context, input CreateCr
 		}
 		hash, err = s.hasher.Hash(input.Password)
 		if err != nil {
-			return apperror.Internal("Gagal memproses password")
+			return apperror.Internal("Gagal memproses kata sandi")
 		}
 	}
 
@@ -143,7 +143,7 @@ func (s *ManagementService) ResetPassword(ctx context.Context, principalType dom
 
 	hash, err := s.hasher.Hash(newPassword)
 	if err != nil {
-		return apperror.Internal("Gagal memproses password")
+		return apperror.Internal("Gagal memproses kata sandi")
 	}
 	if err := s.credentials.UpdatePasswordHash(ctx, principalType, principalID, hash); err != nil {
 		return err
@@ -197,7 +197,7 @@ func (s *ManagementService) ResetPasswordByUsername(ctx context.Context, usernam
 	}
 	hash, err := s.hasher.Hash(newPassword)
 	if err != nil {
-		return apperror.Internal("Gagal memproses password")
+		return apperror.Internal("Gagal memproses kata sandi")
 	}
 	if err := s.credentials.UpdatePasswordHash(ctx, cred.PrincipalType, cred.PrincipalID, hash); err != nil {
 		return err
