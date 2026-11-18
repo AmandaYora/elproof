@@ -2,12 +2,13 @@ import { Link } from "react-router-dom";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Container } from "@/modules/homepage/components/Container";
 import { ctaClass } from "@/modules/homepage/components/cta";
+import { TYPE } from "@/modules/homepage/components/typography";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
 import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 
-const H2 = "text-[26px] leading-[1.15] font-extrabold tracking-[-0.03em] md:text-[32px]";
+const H2 = TYPE.sectionTitle;
 
 const PRINCIPLES = [
   {
@@ -32,7 +33,7 @@ export default function AboutPage() {
       <Container>
         <div className="max-w-[68ch]">
           <ProofSeal size={56} className="text-seal" />
-          <h1 className="mt-6 text-[38px] leading-[1.06] font-extrabold tracking-[-0.035em] md:text-[52px]">
+          <h1 className={`mt-6 ${TYPE.pageTitle}`}>
             Dibuat agar kerja wedding organizer bisa dibuktikan.
           </h1>
 

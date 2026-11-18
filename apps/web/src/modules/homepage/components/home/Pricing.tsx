@@ -38,7 +38,7 @@ function PlanCard({ plan, plans, best, featured }: { plan: PublicPlan; plans: Pu
           </span>
         )}
       </div>
-      <p className="mt-5 text-[40px] leading-none font-extrabold tracking-[-0.035em] tabular-nums">{formatCurrency(plan.price)}</p>
+      <p className="mt-5 text-[36px] leading-none font-bold tracking-[-0.025em] tabular-nums">{formatCurrency(plan.price)}</p>
       <p className={cn("mt-2 text-[14px]", featured ? "text-on-primary-muted" : "text-muted-foreground")}>
         {plan.durationMonths > 1 ? (
           <>

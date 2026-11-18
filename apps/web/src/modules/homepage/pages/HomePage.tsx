@@ -5,6 +5,7 @@ import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Container } from "@/modules/homepage/components/Container";
 import { ProofSeal } from "@/modules/homepage/components/ProofSeal";
 import { ctaClass } from "@/modules/homepage/components/cta";
+import { TYPE } from "@/modules/homepage/components/typography";
 import { HeroScreens } from "@/modules/homepage/components/home/HeroScreens";
 import { HomeFaq } from "@/modules/homepage/components/home/HomeFaq";
 import { Journey } from "@/modules/homepage/components/home/Journey";
@@ -17,7 +18,7 @@ import { PUBLIC_PAGES } from "@/app/routes/public-pages";
 // The try-it preview is interactive and below the fold: its own chunk; the fallback already carries the frame.
 const AppPreview = lazy(() => import("@/modules/homepage/components/home/AppPreview"));
 
-const H2 = "text-[30px] leading-[1.1] font-extrabold tracking-[-0.03em] md:text-[44px]";
+const H2 = TYPE.sectionTitle;
 const LEAD = "mt-4 text-[17px] text-muted-foreground md:text-[18px]";
 
 /**
@@ -63,11 +64,11 @@ export default function HomePage() {
       {/* Hero: the headline is the LCP element; the two screens below it are plain HTML. */}
       <section className="overflow-hidden pt-12 pb-12 md:pt-20 md:pb-16">
         <Container>
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-end lg:gap-12">
-            <h1 className="max-w-[15ch] text-[40px] leading-[1.02] font-extrabold tracking-[-0.04em] sm:text-[60px] lg:text-[72px]">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center lg:gap-16">
+            <h1 className={`max-w-[20ch] ${TYPE.display}`}>
               Kerja tim lebih ringan, klien makin percaya.
             </h1>
-            <div className="lg:pb-2">
+            <div>
               <p className="max-w-[46ch] text-[17px] text-muted-foreground md:text-[18px]">
                 Catat tahapan, vendor, dan pembayaran di satu tempat. Pasangan memantau persiapannya sendiri lewat tautan
                 WhatsApp, jadi tim Anda berhenti menjawab pertanyaan yang sama dan punya waktu untuk lebih banyak acara.
@@ -184,7 +185,7 @@ export default function HomePage() {
       <section className="border-t border-border bg-muted py-20 md:py-24">
         <Container className="reveal grid items-center gap-8 lg:grid-cols-[1fr_auto]">
           <div>
-            <h2 className="max-w-[22ch] text-[32px] leading-[1.08] font-extrabold tracking-[-0.035em] md:text-[48px]">
+            <h2 className={`max-w-[24ch] ${TYPE.sectionTitle}`}>
               Tangani lebih banyak pernikahan, tanpa menambah kerepotan.
             </h2>
             <p className="mt-4 text-[17px] text-muted-foreground">Gratis 14 hari, tanpa kartu kredit. Daftar dengan akun Google.</p>
