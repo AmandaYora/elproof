@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"strings"
 	"time"
 
@@ -599,7 +600,7 @@ func (s *ClientService) AccessLink(ctx context.Context, tenantID, id int64) (*Ac
 		return nil, err
 	}
 	if link.Purpose == "client_reset" {
-		now := time.Now()
+		now := clock.Now()
 		if err := s.repo.SetCredentialResetAt(ctx, tenantID, id, now); err != nil {
 			logger.Error("record reset link for client %d: %v", id, err)
 		}

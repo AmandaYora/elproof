@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"elproof/internal/shared/apperror"
+	"elproof/internal/shared/clock"
 	"sort"
 	"strings"
 	"time"
@@ -229,7 +230,7 @@ func (s *TransactionService) RecordTransaction(ctx context.Context, input Record
 		tx.OriginalAmount = tx.Amount + tx.DiscountAmount
 	}
 	if input.Status == domain.StatusPaid || input.Status == domain.StatusGranted {
-		now := time.Now()
+		now := clock.Now()
 		tx.PaidAt = &now
 	}
 	if err := s.repo.Create(ctx, tx); err != nil {
@@ -244,7 +245,7 @@ func (s *TransactionService) RecordTransaction(ctx context.Context, input Record
 func (s *TransactionService) UpdateStatus(ctx context.Context, paymentReference string, status domain.TransactionStatus) error {
 	var paidAt *time.Time
 	if status == domain.StatusPaid {
-		now := time.Now()
+		now := clock.Now()
 		paidAt = &now
 	}
 	if err := s.repo.UpdateStatusByReference(ctx, paymentReference, status, paidAt); err != nil {

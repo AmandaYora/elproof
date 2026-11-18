@@ -41,6 +41,27 @@ Lives in `internal/shared/middleware` (technical utility: JWT signature/expiry v
 inside `identity`. `identity` owns *issuing* tokens (business rules); `shared` owns *verifying* them
 on every other request. See ADR-0005.
 
+## Time: the business clock
+
+"Now" for a domain rule — what day it is for H-n, overdue installments, lagging preparation, trial
+and subscription days, undo windows, the purge of deleted rows, a record's own `createdAt` — comes from
+`clock.Now()` (`internal/shared/clock`), never `time.Now()`. The calendar day is the WIB day
+(ADR-0007): `nowWIB()` in a handler is `clock.Now().In(wib)`. A service that needs "now" takes it as an
+argument (`Get(ctx, tenantID, asOf, …)`) or as a `now func() time.Time` field defaulting to
+`clock.Now`, so unit tests pass a fixed instant.
+
+In every real environment `clock.Now()` is `time.Now()`. Only the end-to-end stack sets
+`APP_CLOCK_START` (RFC 3339, e.g. `2026-11-09T10:00:00+07:00`): the clock starts at that instant when
+the process starts and keeps ticking, so the server agrees with the test browser, which is frozen at
+the same instant, whatever day the suite runs. `cmd/server` refuses to start with it when
+`APP_ENV=production`.
+
+Security and wall-clock timing stay on `time.Now()` on purpose: JWT and refresh-token lifetimes, TOTP,
+sign-in links, Google ID tokens, rate limits, signed storage URLs, payment gateway calls and the
+subscription reconciler are checked against parties that only know real time. SQL keeps `NOW()` only
+where both sides of the comparison are database time (idempotency keys). A new `time.Now()` in a
+module's application/presentation code is a bug unless it is one of these.
+
 ## Local dev
 
 ```bash

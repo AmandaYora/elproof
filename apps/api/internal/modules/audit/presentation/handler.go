@@ -3,6 +3,7 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/csv"
 	"net/http"
 	"strconv"
@@ -139,7 +140,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="audit-log-`+time.Now().In(wib).Format("2006-01-02")+`.csv"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="audit-log-`+clock.Now().In(wib).Format("2006-01-02")+`.csv"`)
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"ID", "Waktu", "Jenis pelaku", "ID pelaku", "Peran", "Tenant", "Keterangan", "Aksi", "Metode", "Path", "Status", "Berhasil", "IP"})
 	for _, e := range entries {

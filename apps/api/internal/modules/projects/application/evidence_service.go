@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/base64"
 	"io"
 	"regexp"
@@ -312,7 +313,7 @@ func (s *EvidenceService) Upload(ctx context.Context, tenantID, projectID int64,
 
 	e := &domain.Evidence{
 		ProjectID: projectID, Name: input.Name, Type: input.Type, StoragePath: key, FileName: input.FileName,
-		DocumentDate: input.DocumentDate, UploadedAt: time.Now(), Description: input.Description,
+		DocumentDate: input.DocumentDate, UploadedAt: clock.Now(), Description: input.Description,
 		UploadedByStaffID: actorStaffID, RelatedKind: input.RelatedKind, RelatedID: input.RelatedID,
 		IsClientVisible: isClientVisible,
 	}

@@ -28,14 +28,14 @@ export const config = {
   s3Endpoint: env.E2E_S3_ENDPOINT ?? "",
   s3Access: env.E2E_S3_ACCESS_KEY ?? "x",
   s3Secret: env.E2E_S3_SECRET_KEY ?? "x",
-  /** Optional command prefix for the API, e.g. `faketime -f "@2026-11-09 03:00:00"`, to freeze the server clock. */
+  /** Optional command prefix for the API process (e.g. a profiler). Not needed for the clock: the stack sets APP_CLOCK_START. */
   apiWrapper: env.E2E_API_WRAPPER ?? "",
 };
 
 export const apiURL = () => `http://127.0.0.1:${config.apiPort}`;
 export const webURL = () => `http://127.0.0.1:${config.webPort}`;
 
-/** The day every seed date is anchored to, and the instant the browser clock is fixed at (10:00 WIB). */
+/** The day every seed date is anchored to, and the instant the browser clock is fixed at (10:00 WIB); the API's business clock starts there too. */
 export const BASE_DAY = "2026-11-09";
 export const FIXED_NOW = "2026-11-09T10:00:00+07:00";
 

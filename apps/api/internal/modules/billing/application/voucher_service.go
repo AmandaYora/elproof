@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -67,7 +68,7 @@ type VoucherService struct {
 }
 
 func NewVoucherService(repo VoucherRepository, plans VoucherPlans) *VoucherService {
-	return &VoucherService{repo: repo, plans: plans, now: time.Now}
+	return &VoucherService{repo: repo, plans: plans, now: clock.Now}
 }
 
 // SetTenants completes the two-phase wiring with `platform` (tenant names in

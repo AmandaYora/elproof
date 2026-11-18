@@ -28,6 +28,11 @@ npm run e2e                                                             # snapsh
 npm run e2e:perf && npm run budget:routes                               # per-screen calls and first-load JS
 ```
 
+The e2e stack pins time on both sides: the browser clock is frozen at `FIXED_NOW` (9 Nov 2026 10:00 WIB, `e2e/lib/config.ts`)
+and the API it starts gets `APP_CLOCK_START=FIXED_NOW`, so the server's "today" (H-n, overdue, lagging, trial days) is the
+same day whenever the suite runs, locally or in CI, without `faketime` (`BACKEND_GUIDE.md` "Time: the business clock").
+A snapshot that drifts by itself as the real date moves points at a `time.Now()` the business clock should own.
+
 **Words.** One term per concept, Indonesian (`DESIGN.md` §7): Proyek, Klien, Tagihan, Dokumen/bukti, Kendala, Jadwal, Tahapan, Tim. API enum values stay English; show them through
 `shared/lib/labels.ts` (`MILESTONE_STATUS_LABELS.staff[...]`, `evidenceTypeLabel`). An English word that really must stay in a string gets `// ui-terms-ok` and a reason.
 

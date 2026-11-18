@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"elproof/internal/shared/clock"
 	"strconv"
 	"time"
 )
@@ -13,4 +14,4 @@ func parseInt64(s string) (int64, error) {
 // Indonesian calendar day, whatever timezone the server itself runs in.
 var wib = time.FixedZone("WIB", 7*60*60)
 
-func nowWIB() time.Time { return time.Now().In(wib) }
+func nowWIB() time.Time { return clock.Now().In(wib) }

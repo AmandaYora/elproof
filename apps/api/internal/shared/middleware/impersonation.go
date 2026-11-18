@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"net/http"
 	"sync"
 	"time"
@@ -46,7 +47,7 @@ func (l *RequireLiveSupportSession) Middleware(next http.Handler) http.Handler {
 			response.Error(w, http.StatusUnauthorized, "Sesi dukungan sudah berakhir", map[string]string{"code": "support_session_ended"})
 			return
 		}
-		if err := v.CheckSupportSession(r.Context(), tenantID, claims.ImpersonationID, claims.Impersonator, time.Now()); err != nil {
+		if err := v.CheckSupportSession(r.Context(), tenantID, claims.ImpersonationID, claims.Impersonator, clock.Now()); err != nil {
 			response.Error(w, http.StatusUnauthorized, "Sesi dukungan sudah berakhir", map[string]string{"code": "support_session_ended"})
 			return
 		}

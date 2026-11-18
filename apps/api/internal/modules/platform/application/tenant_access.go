@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"sync"
 	"time"
 
@@ -72,11 +73,11 @@ func (c *accessCache) invalidate(id int64) {
 
 // Lifecycle returns a tenant's subscription state right now.
 func (s *TenantService) Lifecycle(t domain.Tenant) domain.Lifecycle {
-	return domain.ComputeLifecycle(t, time.Now(), domain.CurrentSubscriptionPolicy())
+	return domain.ComputeLifecycle(t, clock.Now(), domain.CurrentSubscriptionPolicy())
 }
 
 func (s *TenantService) cachedLifecycle(ctx context.Context, tenantID int64) (domain.Lifecycle, bool, error) {
-	now := time.Now()
+	now := clock.Now()
 	if e, ok := s.access.get(tenantID, now); ok {
 		return e.lifecycle, e.found, nil
 	}
@@ -134,7 +135,7 @@ func (s *TenantService) SweepSubscriptionStatuses(ctx context.Context) (changed 
 	if err != nil {
 		return 0, err
 	}
-	now := time.Now()
+	now := clock.Now()
 	for _, t := range tenants {
 		lc := domain.ComputeLifecycle(t, now, domain.CurrentSubscriptionPolicy())
 		if lc.Status == t.SubscriptionStatus {

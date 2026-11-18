@@ -2,9 +2,9 @@ package application
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"regexp"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	clientscontracts "elproof/internal/modules/clients/contracts"
@@ -124,7 +124,7 @@ func (s *TenantService) Onboarding(ctx context.Context, tenantID int64) (*Onboar
 }
 
 func (s *TenantService) DismissOnboarding(ctx context.Context, tenantID int64) error {
-	return s.repo.SetOnboardingDismissed(ctx, tenantID, time.Now())
+	return s.repo.SetOnboardingDismissed(ctx, tenantID, clock.Now())
 }
 
 // UpdateProfileInput is the Owner's own "Lengkapi Profil" form.

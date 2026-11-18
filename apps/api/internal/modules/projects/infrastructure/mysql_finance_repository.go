@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"elproof/internal/shared/clock"
 	"strings"
 	"time"
 
@@ -132,7 +133,7 @@ func scanReceivable(scan func(...interface{}) error) (domain.ReceivableRow, erro
 func (r *MySQLFinanceRepository) UnpaidReceivables(ctx context.Context, scope domain.FinanceScope) ([]domain.ReceivableRow, error) {
 	// The status is not read here (the caller derives it), so "today" only
 	// feeds the unused CASE: any date will do.
-	inner, args := receivableRowsSQL(scope, domain.ReceivableFilter{}, time.Now())
+	inner, args := receivableRowsSQL(scope, domain.ReceivableFilter{}, clock.Now())
 	q := `SELECT ` + receivableColumns + ` FROM (` + inner + `) z WHERE z.remaining > 0 ORDER BY z.due_date, z.id`
 	return r.queryReceivables(ctx, q, args)
 }
@@ -245,7 +246,7 @@ func (r *MySQLFinanceRepository) PayableSortSpec() (map[string]pagination.SortCo
 const payableColumns = `z.kind, z.item_id, z.project_id, z.project_name, z.bride_name, z.groom_name, z.pic_staff_id, z.vendor_id, z.category_id, z.venue_name, z.contract_value, z.paid, z.due_date`
 
 func (r *MySQLFinanceRepository) OpenPayables(ctx context.Context, scope domain.FinanceScope) ([]domain.PayableRow, error) {
-	inner, args := payableRowsSQL(scope, time.Now())
+	inner, args := payableRowsSQL(scope, clock.Now())
 	return r.queryPayables(ctx, `SELECT `+payableColumns+` FROM (`+inner+`) z WHERE z.remaining > 0 ORDER BY z.kind, z.item_id`, args)
 }
 

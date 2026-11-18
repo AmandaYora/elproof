@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"crypto/rand"
+	"elproof/internal/shared/clock"
 	"errors"
 	"fmt"
 	"math/big"
@@ -146,7 +147,7 @@ func (s *TenantService) CreateWorkspace(ctx context.Context, in CreateWorkspaceI
 			OwnerName:       truncateRunes(ownerName, 150),
 			BusinessName:    businessName,
 			TermsVersion:    domain.TermsVersion,
-			TermsAcceptedAt: time.Now(),
+			TermsAcceptedAt: clock.Now(),
 			MarketingOptIn:  in.MarketingOptIn,
 			IPAddress:       truncateRunes(in.IPAddress, 45),
 			UserAgent:       truncateRunes(in.UserAgent, 255),
@@ -173,7 +174,7 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 		if err != nil {
 			return err
 		}
-		now := time.Now()
+		now := clock.Now()
 		trialEndsAt := now.Truncate(time.Second).AddDate(0, 0, domain.CurrentSubscriptionPolicy().TrialDays)
 		tenant := &domain.Tenant{
 			BusinessName:       req.BusinessName,
@@ -270,7 +271,7 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 		}
 	}
 
-	now := time.Now()
+	now := clock.Now()
 	if err := s.signups.MarkCompleted(ctx, req.ID, now); err != nil {
 		return err
 	}

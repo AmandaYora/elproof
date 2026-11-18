@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"log"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 // lock, so a second instance simply finds the work taken and does nothing. It
 // logs what it removed; an error in one module does not stop the other.
 func purgeAll(ctx context.Context, projectsModule *projects.Module, clientsModule *clients.Module) {
-	now := time.Now()
+	now := clock.Now()
 	if s, err := projectsModule.PurgeExpired(ctx, now); err != nil {
 		log.Printf("purge: projects: %v", err)
 	} else if s.Ran && s.Rows > 0 {

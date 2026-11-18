@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, state, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
-import { apiURL, config } from "../lib/config";
+import { apiURL, config, FIXED_NOW } from "../lib/config";
 import { browserSession } from "../lib/session";
 import { sql } from "../lib/sql";
 
@@ -24,8 +24,9 @@ function uniqueCode(prefix: string) {
 }
 
 /** A calendar day in WIB, the zone the API counts voucher days in, `offset` days from today. */
+/** A WIB calendar day counted from FIXED_NOW, the "today" of both the browser and the API's business clock (never the real date). */
 function wibDay(offset: number) {
-  return new Date(Date.now() + 7 * 3_600_000 + offset * 86_400_000).toISOString().slice(0, 10);
+  return new Date(Date.parse(FIXED_NOW) + 7 * 3_600_000 + offset * 86_400_000).toISOString().slice(0, 10);
 }
 
 interface VoucherInput {

@@ -2,9 +2,9 @@ package presentation
 
 import (
 	"context"
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -171,7 +171,7 @@ func (h *Handler) updateIssue(w http.ResponseWriter, r *http.Request, claims sta
 			return
 		}
 	}
-	issue, err := h.issues.Patch(r.Context(), projectID, issueID, claims.staffID, patch, time.Now(), expected)
+	issue, err := h.issues.Patch(r.Context(), projectID, issueID, claims.staffID, patch, clock.Now(), expected)
 	if err != nil {
 		writePatchError(w, err, func(cur any) (any, error) {
 			return h.issueResponseFor(r.Context(), claims.tenantID, projectID, *cur.(*domain.VendorIssue)), nil

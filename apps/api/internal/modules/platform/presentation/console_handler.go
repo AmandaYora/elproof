@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"elproof/internal/shared/clock"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -170,7 +171,7 @@ func (h *ConsoleHandler) overview(w http.ResponseWriter, r *http.Request, s []st
 		response.Error(w, http.StatusBadRequest, "ID tenant tidak valid", nil)
 		return
 	}
-	o, err := h.console.Overview(r.Context(), id, time.Now())
+	o, err := h.console.Overview(r.Context(), id, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -278,7 +279,7 @@ type dataRequestResponse struct {
 }
 
 func toDataRequestResponses(list []domain.DataRequest) []dataRequestResponse {
-	now := time.Now()
+	now := clock.Now()
 	out := make([]dataRequestResponse, 0, len(list))
 	for _, d := range list {
 		out = append(out, dataRequestResponse{
@@ -328,7 +329,7 @@ func (h *ConsoleHandler) addDataRequest(w http.ResponseWriter, r *http.Request, 
 	if !decode(w, r, &body) {
 		return
 	}
-	d, err := h.console.AddDataRequest(r.Context(), id, domain.DataRequestKind(body.Kind), body.RequestedBy, body.Note, claims.PrincipalID, time.Now())
+	d, err := h.console.AddDataRequest(r.Context(), id, domain.DataRequestKind(body.Kind), body.RequestedBy, body.Note, claims.PrincipalID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -350,7 +351,7 @@ func (h *ConsoleHandler) completeDataRequest(w http.ResponseWriter, r *http.Requ
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := h.console.CompleteDataRequest(r.Context(), id, domain.DataRequestStatus(body.Status), claims.PrincipalID, body.Note, time.Now()); err != nil {
+	if err := h.console.CompleteDataRequest(r.Context(), id, domain.DataRequestStatus(body.Status), claims.PrincipalID, body.Note, clock.Now()); err != nil {
 		writeAppError(w, err)
 		return
 	}
@@ -372,7 +373,7 @@ type announcementResponse struct {
 }
 
 func toAnnouncementResponses(list []domain.Announcement) []announcementResponse {
-	now := time.Now()
+	now := clock.Now()
 	out := make([]announcementResponse, 0, len(list))
 	for _, a := range list {
 		out = append(out, announcementResponse{
@@ -473,7 +474,7 @@ func (h *ConsoleHandler) ActiveAnnouncements(w http.ResponseWriter, r *http.Requ
 		response.Error(w, http.StatusForbidden, "Hanya staf workspace yang dapat melihat pengumuman", nil)
 		return
 	}
-	list, err := h.console.ActiveAnnouncements(r.Context(), tenantID, time.Now())
+	list, err := h.console.ActiveAnnouncements(r.Context(), tenantID, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -552,7 +553,7 @@ func (h *ConsoleHandler) MySupportAccess(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	now := time.Now()
+	now := clock.Now()
 	switch r.Method {
 	case http.MethodPut:
 		claims, _ := middleware.FromContext(r.Context())
@@ -589,7 +590,7 @@ func (h *ConsoleHandler) adminSupportStatus(w http.ResponseWriter, r *http.Reque
 		response.Error(w, http.StatusBadRequest, "ID tenant tidak valid", nil)
 		return
 	}
-	st, err := h.console.SupportStatus(r.Context(), id, time.Now())
+	st, err := h.console.SupportStatus(r.Context(), id, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -618,7 +619,7 @@ func (h *ConsoleHandler) impersonate(w http.ResponseWriter, r *http.Request, s [
 	if !decode(w, r, &body) {
 		return
 	}
-	res, err := h.console.StartSupportSession(r.Context(), id, claims.PrincipalID, claims.Subject, body.Reason, time.Now())
+	res, err := h.console.StartSupportSession(r.Context(), id, claims.PrincipalID, claims.Subject, body.Reason, clock.Now())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -635,7 +636,7 @@ func (h *ConsoleHandler) endSession(w http.ResponseWriter, r *http.Request, s []
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
 		return
 	}
-	if err := h.console.EndSupportSession(r.Context(), id, claims.PrincipalID, time.Now()); err != nil {
+	if err := h.console.EndSupportSession(r.Context(), id, claims.PrincipalID, clock.Now()); err != nil {
 		writeAppError(w, err)
 		return
 	}
