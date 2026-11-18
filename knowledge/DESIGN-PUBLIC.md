@@ -56,9 +56,11 @@ putih, pita kabut, garis). Tabel kontras lengkap: `DESIGN.md` §4.1.
 | `--highlight-text` (mis. "H-180") | #8A5A12 | 5,91:1 di putih |
 | `--on-primary-muted` (teks redup di navy) | #C3CBE0 | 10,33:1 |
 
-Status (Lunas, Belum dibayar) tetap memakai token status konsol + ikon + teks. Huruf: Plus Jakarta Sans; hero
-`font-extrabold`, tracking −0,035em, line-height 1,04; h2 extrabold −0,03em; badan 16–18 px, baris ≤ 70 karakter; uang
-"Rp1.500.000" tabular. Sudut: kontrol & tombol pil, kartu 16 px, bingkai HP 32–40 px. Target sentuh ≥ 44 px (CTA 48 px).
+Status (Lunas, Belum dibayar) tetap memakai token status konsol + ikon + teks. Huruf: Plus Jakarta Sans; skala judul
+satu sumber di `homepage/components/typography.ts` (`TYPE`), semua **bold 700** (bukan extrabold) dengan tracking tipis:
+hero 52/44/34 px (desktop/tablet/HP, line-height 1,12, dua baris di desktop), h1 halaman lain 40/30 px, h2 bagian 34/26 px,
+subjudul 21/19 px. Judul hanya mengantar; yang "keras" adalah layar produk (18 Nov 2026: hero 72 px extrabold dinilai
+pemilik terlalu besar dan tidak profesional). Badan 16–18 px, baris ≤ 70 karakter; uang "Rp1.500.000" tabular. Sudut: kontrol & tombol pil, kartu 16 px, bingkai HP 32–40 px. Target sentuh ≥ 44 px (CTA 48 px).
 
 ## 4. Susunan halaman
 

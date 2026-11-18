@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Link2, MessageCircle, Plus } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Container } from "@/modules/homepage/components/Container";
+import { TYPE } from "@/modules/homepage/components/typography";
 import { ctaClass } from "@/modules/homepage/components/cta";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
@@ -322,7 +323,7 @@ export default function FaqPage() {
       <header className="border-b border-border bg-muted">
         <Container className="py-12 md:py-16">
           <div className="max-w-[60ch]">
-            <h1 className="text-[34px] font-extrabold leading-[1.04] tracking-[-0.035em] text-foreground md:text-[48px]">
+            <h1 className={TYPE.pageTitle}>
               Pertanyaan umum
             </h1>
             <p className="mt-4 text-[17px] leading-relaxed text-muted-foreground">
@@ -345,7 +346,7 @@ export default function FaqPage() {
             >
               <h2
                 id={`${group.id}-judul`}
-                className="mb-2 text-[22px] font-extrabold tracking-[-0.03em] text-foreground md:mb-0 md:pt-4"
+                className={`mb-2 md:mb-0 md:pt-4 ${TYPE.subTitle}`}
               >
                 {group.title}
               </h2>

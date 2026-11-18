@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Mail, MessageCircle, Phone } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Container } from "@/modules/homepage/components/Container";
+import { TYPE } from "@/modules/homepage/components/typography";
 import { ctaClass } from "@/modules/homepage/components/cta";
 import { CONTACT } from "@/modules/homepage/data/contact";
 import { usePageMeta } from "@/shared/hooks/usePageMeta";
@@ -34,7 +35,7 @@ export default function ContactPage() {
       <Container className="py-12 md:py-20">
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-20">
           <div className="max-w-[32rem]">
-            <h1 className="text-[40px] font-extrabold leading-[1.04] tracking-[-0.035em] text-foreground md:text-[56px]">
+            <h1 className={TYPE.pageTitle}>
               Hubungi kami
             </h1>
             <p className="mt-5 max-w-[34rem] text-[17px] leading-relaxed text-muted-foreground md:text-[18px]">
@@ -66,7 +67,7 @@ export default function ContactPage() {
           </div>
 
           <section aria-labelledby="kontak-judul" className="rounded-2xl bg-muted p-5 sm:p-7 lg:self-start">
-            <h2 id="kontak-judul" className="mb-5 text-[20px] font-extrabold tracking-[-0.03em] text-foreground">
+            <h2 id="kontak-judul" className="mb-5 text-[20px] font-bold tracking-[-0.015em] text-foreground">
               Kontak ElProof
             </h2>
             <dl>

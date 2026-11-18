@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Container } from "@/modules/homepage/components/Container";
+import { TYPE } from "@/modules/homepage/components/typography";
 import { COMPANY, CONTACT } from "@/modules/homepage/data/contact";
 import { cn } from "@/shared/lib/cn";
 
@@ -86,7 +87,7 @@ export function LegalDocument({ title, updated, intro, sections, closing }: Lega
       <header className="border-b border-border bg-muted">
         <Container className="py-12 md:py-16">
           <div className="max-w-[44rem]">
-            <h1 className="text-[34px] font-extrabold leading-[1.04] tracking-[-0.035em] text-foreground md:text-[48px]">
+            <h1 className={TYPE.pageTitle}>
               {title}
             </h1>
             <p className="mt-4 text-[15px] text-muted-foreground">Terakhir diperbarui: {updated}</p>
@@ -128,7 +129,7 @@ export function LegalDocument({ title, updated, intro, sections, closing }: Lega
                 <section key={section.id} id={section.id} aria-labelledby={`${section.id}-judul`} className="scroll-mt-24">
                   <h2
                     id={`${section.id}-judul`}
-                    className="text-[21px] font-extrabold leading-snug tracking-[-0.03em] text-foreground md:text-[23px]"
+                    className={TYPE.subTitle}
                   >
                     {section.title}
                   </h2>
