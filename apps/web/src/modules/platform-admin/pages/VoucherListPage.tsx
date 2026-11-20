@@ -8,7 +8,6 @@ import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { VOUCHER_STATE_LABELS } from "@/shared/lib/labels";
 import { toast } from "@/shared/stores/useToastStore";
@@ -36,7 +35,6 @@ export default function VoucherListPage() {
   const canWrite = usePlatformCan("plans");
 
   const list = useListState({ filters: LIST_FILTERS });
-  const { density, setDensity } = useListDensity();
   const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
 
@@ -191,7 +189,6 @@ export default function VoucherListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari kode voucher..." }}
-        density={{ value: density, onChange: setDensity }}
       >
         <Select className="w-60" aria-label="Saring voucher per aplikasi" value={list.filters.appId} onChange={(e) => list.setFilter("appId", e.target.value)}>
           <option value="">Semua aplikasi</option>
@@ -223,7 +220,6 @@ export default function VoucherListPage() {
             : "Voucher yang dibuat tim Billing akan tampil di sini.",
           action: canWrite ? <Button onClick={openCreate}>Tambah voucher</Button> : undefined,
         }}
-        density={density}
         actions={rowActions}
       />
 

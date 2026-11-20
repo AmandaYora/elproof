@@ -1,17 +1,18 @@
 import { useState, type ReactNode } from "react";
-import { Bookmark, Rows3, Trash2 } from "lucide-react";
+import { Bookmark, LayoutGrid, Table2, Trash2 } from "lucide-react";
 import { SearchInput } from "@/shared/components/ui/SearchInput";
 import { Button } from "@/shared/components/kit/button";
 import { Input } from "@/shared/components/kit/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/kit/popover";
-import type { ListDensity } from "@/shared/data-table/useListDensity";
+import type { ListView } from "@/shared/data-table/useListView";
 import type { SavedView } from "@/shared/data-table/useSavedViews";
 
 interface Props {
   search: { value: string; onChange: (value: string) => void; placeholder: string };
   /** The list's filters (selects, checkboxes). */
   children?: ReactNode;
-  density?: { value: ListDensity; onChange: (d: ListDensity) => void };
+  /** Tabel or Kartu, for a list whose records read well as cards (Proyek, Vendor). */
+  view?: { value: ListView; onChange: (v: ListView) => void };
   views?: {
     items: SavedView[];
     /** The query a view would save right now (search, filters, sort). */
@@ -24,8 +25,8 @@ interface Props {
   actions?: ReactNode;
 }
 
-/** Search, filters, density and saved views above a list; the page puts its main action on the right. */
-export function ListToolbar({ search, children, density, views, actions }: Props) {
+/** Search, filters, saved views and the table/cards switch above a list; the page puts its main action on the right. */
+export function ListToolbar({ search, children, view, views, actions }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       {/* On a phone the search shares its row with the "Saring" button (ListFilters). */}
@@ -33,18 +34,28 @@ export function ListToolbar({ search, children, density, views, actions }: Props
       {children}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {views && <SavedViewsMenu {...views} />}
-        {density && (
-          <Button
-            variant="outline"
-            size="sm"
-            aria-pressed={density.value === "padat"}
-            onClick={() => density.onChange(density.value === "padat" ? "normal" : "padat")}
-            title="Baris lebih rapat"
-            // A phone shows cards, which have no row height to choose.
-            className="max-md:hidden"
-          >
-            <Rows3 aria-hidden /> {density.value === "padat" ? "Padat" : "Normal"}
-          </Button>
+        {view && (
+          // A phone always shows cards, so the switch is a computer-sized tool.
+          <div role="group" aria-label="Bentuk daftar" className="flex rounded-md max-md:hidden">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={view.value === "table"}
+              onClick={() => view.onChange("table")}
+              className="rounded-r-none aria-pressed:bg-accent aria-[pressed=false]:text-muted-foreground"
+            >
+              <Table2 aria-hidden /> Tabel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={view.value === "cards"}
+              onClick={() => view.onChange("cards")}
+              className="-ml-px rounded-l-none aria-pressed:bg-accent aria-[pressed=false]:text-muted-foreground"
+            >
+              <LayoutGrid aria-hidden /> Kartu
+            </Button>
+          </div>
         )}
         {actions}
       </div>

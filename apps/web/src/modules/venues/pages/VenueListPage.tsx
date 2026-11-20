@@ -10,7 +10,6 @@ import { Modal } from "@/shared/components/ui/Modal";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { toast } from "@/shared/stores/useToastStore";
 import { PageHeader } from "@/shared/components/ui/PageHeader";
@@ -48,7 +47,6 @@ export default function VenueListPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState({ filters: { city: "", isActive: "" } });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("venues");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -320,7 +318,6 @@ export default function VenueListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama venue atau PIC..." }}
-        density={{ value: density, onChange: setDensity }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -365,7 +362,6 @@ export default function VenueListPage() {
           description: "Catat gedung dan lokasi acara yang sering dipakai agar bisa dipilih saat membuat proyek.",
           action: canManage ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah venue</Button> : undefined,
         }}
-        density={density}
         selection={!canManage ? undefined : { selected, onChange: setSelected }}
         bulkActions={(ids) => (
           <>

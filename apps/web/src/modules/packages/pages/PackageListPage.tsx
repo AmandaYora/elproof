@@ -11,7 +11,6 @@ import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { ListFilters, activeFilterCount } from "@/shared/data-table/ListFilters";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { toast } from "@/shared/stores/useToastStore";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -35,7 +34,6 @@ export default function PackageListPage() {
   const deletePackage = usePackageStore((s) => s.deletePackage);
 
   const list = useListState({ filters: FILTERS });
-  const { density, setDensity } = useListDensity();
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -168,7 +166,7 @@ export default function PackageListPage() {
         </p>
       )}
 
-      <ListToolbar search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama paket..." }} density={{ value: density, onChange: setDensity }}>
+      <ListToolbar search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama paket..." }}>
         <ListFilters count={activeFilterCount(list.filters)} onClear={list.clearFilters}>
           <Select className="w-36" aria-label="Status" value={list.filters.isActive || "Semua"} onChange={(e) => list.setFilter("isActive", e.target.value === "Semua" ? "" : e.target.value)}>
             <option value="Semua">Semua status</option>
@@ -192,7 +190,6 @@ export default function PackageListPage() {
         onSortChange={list.setSort}
         filtered={list.isFiltered}
         onResetFilters={list.reset}
-        density={density}
         empty={{
           title: "Belum ada paket",
           description: "Paket adalah produk yang Anda tawarkan ke klien: harga, acara yang dicakup, jumlah tamu, dan isinya.",

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Archive, ArchiveRestore, CalendarDays, ListFilter, Plus, Wallet } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarDays, ListFilter, MapPin, Plus, Wallet } from "lucide-react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { PROJECT_STATUS_LABELS } from "@/shared/lib/labels";
 import { Button } from "@/shared/components/ui/Button";
@@ -12,7 +12,8 @@ import { RowActions } from "@/shared/components/ui/RowActions";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useListView } from "@/shared/data-table/useListView";
+import { ProgressMeter } from "@/shared/components/ui/ProgressMeter";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
@@ -53,8 +54,8 @@ export default function ProjectListPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState<Filters>({ filters: { status: "", archived: "", picStaffId: "", eventFrom: "", eventTo: "" } });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("projects");
+  const { view, setView } = useListView("projects");
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -168,6 +169,58 @@ export default function ProjectListPage() {
     },
   ];
 
+  // A project card (Kartu): the countdown to the wedding is what a planner scans for, so it is the card's one large
+  // element; status, place, what is still owed and how far the work is follow in small type.
+  const cardBody = (p: ProjectListItem) => {
+    const open = p.status !== "Completed" && p.status !== "Cancelled";
+    const overdue = p.nextDueDate !== null && daysUntil(p.nextDueDate) < 0;
+    return (
+      <>
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[13px] tabular-nums text-foreground">{formatDate(p.eventDate)}</span>
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <ProjectStatusBadge status={p.status} />
+              {p.isArchived && <Badge tone="neutral">Diarsipkan</Badge>}
+            </span>
+          </div>
+          {open && <span className="shrink-0 text-[24px] leading-none font-semibold tabular-nums text-highlight-text">{formatDayCountdown(daysUntil(p.eventDate))}</span>}
+        </div>
+        {p.location && (
+          <p className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+            <MapPin aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate">{p.location}</span>
+          </p>
+        )}
+        <dl className="mt-auto flex flex-col gap-1.5 border-t border-border-light pt-3 text-[12.5px]">
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">Sisa tagihan</dt>
+            <dd className="font-medium whitespace-nowrap tabular-nums text-foreground">{p.remaining > 0 ? formatCurrency(p.remaining) : p.contractValue > 0 ? "Lunas" : "-"}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">Termin berikut</dt>
+            <dd className={cn("whitespace-nowrap tabular-nums", overdue ? "font-medium text-danger-text" : "text-foreground")}>
+              {p.nextDueDate ? `${formatDate(p.nextDueDate)}${overdue ? " · terlambat" : ""}` : "-"}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">PIC</dt>
+            <dd className="min-w-0 truncate text-foreground">{p.picName || "Belum ditugaskan"}</dd>
+          </div>
+          {p.progress && (
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Progres</dt>
+              <dd className="flex w-1/2 items-center gap-2">
+                <ProgressMeter className="flex-1" percent={p.progress.overallPercent} segments={[]} />
+                <span className="tabular-nums text-foreground">{p.progress.overallPercent}%</span>
+              </dd>
+            </div>
+          )}
+        </dl>
+      </>
+    );
+  };
+
   const pickers = (
     <>
       <Select className="w-full md:w-48" aria-label="PIC" value={list.filters.picStaffId || "Semua"} onChange={(e) => list.setFilter("picStaffId", e.target.value === "Semua" ? "" : e.target.value)}>
@@ -211,7 +264,7 @@ export default function ProjectListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama proyek, pasangan, atau venue..." }}
-        density={isWide ? { value: density, onChange: setDensity } : undefined}
+        view={{ value: view, onChange: setView }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -236,6 +289,8 @@ export default function ProjectListPage() {
         rowId={(p) => p.id}
         rowHref={(p) => ROUTE_PATHS.projectDetail(p.id)}
         rowLabel={(p) => p.name}
+        view={isWide ? view : "table"}
+        cardBody={cardBody}
         status={status}
         onRetry={() => setAttempt((n) => n + 1)}
         meta={meta}
@@ -253,7 +308,6 @@ export default function ProjectListPage() {
             </Button>
           ) : undefined,
         }}
-        density={density}
         actions={(p) => (
           <RowActions
             rowLabel={p.name}

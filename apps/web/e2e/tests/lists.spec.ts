@@ -125,6 +125,55 @@ test.describe("Vendor list", () => {
   });
 });
 
+test.describe("Kartu: Proyek and Vendor can be read as a grid of cards", () => {
+  test("Proyek: the switch shows cards, the sort menu sorts on the server, and the choice is remembered", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "owner");
+    await visit(page, "/proyek");
+    const group = page.getByRole("group", { name: "Bentuk daftar" });
+    await expect(group.getByRole("button", { name: "Tabel" })).toHaveAttribute("aria-pressed", "true");
+    await group.getByRole("button", { name: "Kartu" }).click();
+    await expect(group.getByRole("button", { name: "Kartu" })).toHaveAttribute("aria-pressed", "true");
+
+    const cards = page.getByRole("list", { name: "Daftar proyek" }).getByRole("listitem");
+    await expect(cards.first()).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
+    // A card leads with the project, linked to it, and says what is still owed.
+    await expect(cards.first().getByRole("link").first()).toHaveAttribute("href", /\/proyek\//);
+    await expect(cards.first().getByText("Sisa tagihan")).toBeVisible();
+
+    // Cards have no headers: the sort is a menu, and it is the same server-side sort the table uses.
+    const answer = page.waitForResponse((r) => r.request().method() === "GET" && /\/projects\?/.test(r.url()) && /sort=name(:|%3A)desc/.test(r.url()));
+    await page.getByRole("button", { name: /^Urutkan:/ }).click();
+    await page.getByRole("option", { name: "Proyek (turun)" }).click();
+    const names = ((await (await answer).json()).data as Array<{ name: string }>).map((p) => p.name.toLowerCase());
+    expect(names).toEqual([...names].sort((x, y) => compare(y, x)));
+    await expect(page).toHaveURL(/sort=name%3Adesc/);
+
+    // Remembered in this browser for this list only.
+    await page.reload();
+    await expect(page.getByRole("list", { name: "Daftar proyek" })).toBeVisible();
+    await visit(page, "/klien");
+    await expect(page.getByRole("table")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Bentuk daftar" })).toHaveCount(0);
+    await close();
+  });
+
+  test("Vendor: a card shows all three price packages and can be selected for a bulk action", async ({ browser }, info) => {
+    const { page, close } = await open(browser, info, "owner");
+    await visit(page, "/vendor");
+    await page.getByRole("group", { name: "Bentuk daftar" }).getByRole("button", { name: "Kartu" }).click();
+    const card = page.getByRole("list", { name: "Daftar vendor" }).getByRole("listitem").first();
+    for (const label of ["Harga Akad", "Harga Akad + Resepsi", "Harga Resepsi saja"]) await expect(card.getByText(label, { exact: true })).toBeVisible();
+    await card.getByRole("checkbox").check();
+    await expect(page.getByRole("region", { name: "Aksi untuk baris terpilih" })).toContainText("1 dipilih");
+    await page.getByRole("button", { name: "Batal pilih" }).click();
+    // Back to the table.
+    await page.getByRole("group", { name: "Bentuk daftar" }).getByRole("button", { name: "Tabel" }).click();
+    await expect(page.getByRole("table", { name: "Daftar vendor" })).toBeVisible();
+    await close();
+  });
+});
+
 test.describe("no list loads every row to filter in the browser", () => {
   for (const [name, route, endpoint] of [
     ["Proyek", "/proyek", /\/api\/v1\/projects(\?|$)/],

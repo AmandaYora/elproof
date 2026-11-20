@@ -8,7 +8,6 @@ import { Avatar } from "@/shared/components/ui/Avatar";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { PageHeader } from "@/shared/components/ui/PageHeader";
 import { RowActions } from "@/shared/components/ui/RowActions";
@@ -67,7 +66,6 @@ export default function UserListPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState({ filters: { roleId: "", isActive: "" } });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("staff");
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -271,7 +269,6 @@ export default function UserListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama atau email..." }}
-        density={{ value: density, onChange: setDensity }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -316,7 +313,6 @@ export default function UserListPage() {
           description: "Undang anggota tim agar bisa masuk dan membantu mengelola proyek. Peran menentukan apa yang boleh mereka lakukan.",
           action: !writeLocked ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Undang anggota tim</Button> : undefined,
         }}
-        density={density}
         actions={(user) => {
           const isOwner = user.role === "Owner";
           const isSelf = user.id === currentStaffId;

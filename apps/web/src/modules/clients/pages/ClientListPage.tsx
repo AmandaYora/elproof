@@ -13,7 +13,6 @@ import { useWriteLocked } from "@/shared/stores/usePermissionStore";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { ClientRoleBadge } from "@/modules/clients/components/ClientRoleBadge";
 import { ClientContactFormModal } from "@/modules/clients/components/ClientContactFormModal";
@@ -82,7 +81,6 @@ export default function ClientListPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState({ filters: { role: "", loginStatus: "", projectId: "" }, searchParam: "q" });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("clients");
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -243,7 +241,6 @@ export default function ClientListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama atau email klien..." }}
-        density={{ value: density, onChange: setDensity }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -305,7 +302,6 @@ export default function ClientListPage() {
             </Link>
           ),
         }}
-        density={density}
         actions={(c) => (
           <RowActions
             rowLabel={c.name}
