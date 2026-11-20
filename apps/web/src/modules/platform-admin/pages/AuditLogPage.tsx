@@ -7,7 +7,6 @@ import { Input, Select } from "@/shared/components/ui/Input";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { toast } from "@/shared/stores/useToastStore";
 import { formatDateTime } from "@/shared/lib/formatters";
@@ -73,7 +72,6 @@ export default function AuditLogPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back); ?tenantId= still narrows to one tenant.
   const list = useListState({ filters: LIST_FILTERS, searchParam: "q" });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("platform-audit-log");
   const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -163,7 +161,6 @@ export default function AuditLogPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari aksi atau alamat..." }}
-        density={{ value: density, onChange: setDensity }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -210,7 +207,6 @@ export default function AuditLogPage() {
           title: "Belum ada catatan",
           description: "Setiap perubahan oleh tim ElProof atau anggota tim WO akan tercatat di sini: siapa, kapan, dan hasilnya.",
         }}
-        density={density}
       />
     </div>
   );

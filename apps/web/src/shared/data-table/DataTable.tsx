@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Select } from "@/shared/components/ui/Input";
 import { cn } from "@/shared/lib/cn";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
@@ -9,7 +10,7 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import { Button } from "@/shared/components/kit/button";
 import type { PaginationMeta } from "@/shared/types/pagination";
 import type { SortState } from "@/shared/data-table/useListState";
-import type { ListDensity } from "@/shared/data-table/useListDensity";
+import type { ListView } from "@/shared/data-table/useListView";
 
 export interface Column<T> {
   id: string;
@@ -55,7 +56,13 @@ interface Props<T> {
   onResetFilters: () => void;
   /** Shown when the list is empty and nothing is filtered: teach what this list is and offer one action. */
   empty: { title: string; description?: string; action?: ReactNode };
-  density?: ListDensity;
+  /** "cards" lays the rows out as a grid of cards (needs `cardBody`); a phone always shows cards. */
+  view?: ListView;
+  /**
+   * What a card shows under its primary line, for a list that offers "Kartu": the few facts a person scans for (date,
+   * status, money), laid out for a card rather than as label/value rows.
+   */
+  cardBody?: (row: T) => ReactNode;
   /** Row actions: the last column on a computer, the card footer on a phone. */
   actions?: (row: T) => ReactNode;
   selection?: Selection;
@@ -83,13 +90,14 @@ function useAfter(on: boolean, delayMs: number): boolean {
 
 /**
  * The one list component of the app (PLAN.md Tahap 6): sortable headers (aria-sort, one button each), money right
- * aligned in tabular figures, two row heights, a sticky header that scrolls under itself so focus is never hidden,
+ * aligned in tabular figures, 44 px rows, a sticky header that scrolls under itself so focus is never hidden,
  * four states that always look the same (loading skeleton after 400 ms, error with retry, empty that teaches, empty
- * because of a filter with "Reset filter"), a total in the footer, row selection with a bulk bar, and cards on a phone.
+ * because of a filter with "Reset filter"), a total in the footer, row selection with a bulk bar, cards on a phone, and a
+ * grid of cards on a computer for a list that offers it (`view="cards"`, with a sort menu since cards have no headers).
  */
 export function DataTable<T>({
   label, columns, rows, rowId, status, onRetry, meta, onPageChange, sort, onSortChange, filtered, onResetFilters, empty,
-  density = "normal", actions, selection, bulkActions, rowHref, rowLabel,
+  view = "table", cardBody, actions, selection, bulkActions, rowHref, rowLabel,
 }: Props<T>) {
   const showSkeleton = useAfter(status === "loading" && rows.length === 0, 400);
   const ids = rows.map(rowId);
@@ -153,19 +161,92 @@ export function DataTable<T>({
     );
   }
 
-  // 44 px rows, 36 px when compact (DESIGN.md §4.5); text never makes a row taller than that unless a column asks to wrap.
-  const rowClass = density === "padat" ? "h-9 text-[13px]" : "h-11";
+  const bulkBar = selection && selectedIds.length > 0 && (
+    <div role="region" aria-label="Aksi untuk baris terpilih" className="flex flex-wrap items-center gap-3 border-b bg-accent px-4 py-2 text-[13px]">
+      <span className="font-semibold text-foreground">{selectedIds.length} dipilih</span>
+      {bulkActions?.(selectedIds)}
+      <Button variant="ghost" size="sm" onClick={() => selection.onChange(new Set())}>Batal pilih</Button>
+    </div>
+  );
+  const footer =
+    meta.totalPages > 1 ? (
+      <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={onPageChange} />
+    ) : (
+      <p className="border-t px-5 py-3 text-[12.5px] text-muted-foreground">
+        Menampilkan <span className="font-medium text-foreground">{rows.length}</span> dari <span className="font-medium text-foreground">{meta.total}</span>
+      </p>
+    );
+  const primaryLine = (row: T) => {
+    const href = rowHref?.(row);
+    return href ? <Link to={href} className="underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">{primary.cell(row)}</Link> : primary.cell(row);
+  };
+  const checkbox = (row: T, id: string, className: string) =>
+    selection && (
+      <input type="checkbox" checked={selection.selected.has(id)} onChange={() => toggleOne(id)} aria-label={`Pilih ${rowLabel?.(row) ?? "baris ini"}`} className={className} />
+    );
+
+  if (view === "cards" && cardBody) {
+    const sortable = columns.filter((c) => c.sortKey);
+    return (
+      <div className="flex flex-col gap-3" aria-busy={status === "loading" || undefined}>
+        {(selection || sortable.length > 0) && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {selection ? (
+              <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-4" />
+                Pilih semua di halaman ini
+              </label>
+            ) : (
+              <span />
+            )}
+            {sortable.length > 0 && (
+              <div className="flex items-center gap-2">
+              <span aria-hidden className="text-[13px] text-muted-foreground">Urutkan</span>
+              <Select
+                className="w-56"
+                aria-label="Urutkan"
+                value={sort ? `${sort.field}:${sort.dir}` : ""}
+                onChange={(e) => {
+                  const [field, dir] = e.target.value.split(":");
+                  onSortChange(field ? { field, dir: dir === "desc" ? "desc" : "asc" } : null);
+                }}
+              >
+                <option value="">Urutan bawaan</option>
+                {sortable.flatMap((c) => [
+                  <option key={`${c.id}-asc`} value={`${c.sortKey}:asc`}>{`${c.header} (naik)`}</option>,
+                  <option key={`${c.id}-desc`} value={`${c.sortKey}:desc`}>{`${c.header} (turun)`}</option>,
+                ])}
+              </Select>
+              </div>
+            )}
+          </div>
+        )}
+        {bulkBar && <div className="overflow-hidden rounded-lg border">{bulkBar}</div>}
+        <ul aria-label={label} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {rows.map((row) => {
+            const id = rowId(row);
+            return (
+              <li key={id} className={cn("flex flex-col gap-3 rounded-lg border border-border bg-card p-4", selection?.selected.has(id) && "border-primary/40 bg-accent/40")}>
+                <div className="flex items-start gap-3">
+                  {checkbox(row, id, "mt-0.5 size-4 shrink-0")}
+                  <div className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">{primaryLine(row)}</div>
+                  {actions && <div className="-mt-1 -mr-1.5 flex shrink-0 items-center gap-1">{actions(row)}</div>}
+                </div>
+                {cardBody(row)}
+              </li>
+            );
+          })}
+        </ul>
+        <div className="overflow-hidden rounded-lg border border-border bg-card [&>*]:border-t-0">{footer}</div>
+      </div>
+    );
+  }
+
   const cardColumns = columns.some((c) => c.card) ? columns.filter((c) => c.card && c !== primary) : columns.filter((c) => c !== primary && !c.hideOnCard);
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy={status === "loading" || undefined}>
-      {selection && selectedIds.length > 0 && (
-        <div role="region" aria-label="Aksi untuk baris terpilih" className="flex flex-wrap items-center gap-3 border-b bg-accent px-4 py-2 text-[13px]">
-          <span className="font-semibold text-foreground">{selectedIds.length} dipilih</span>
-          {bulkActions?.(selectedIds)}
-          <Button variant="ghost" size="sm" onClick={() => selection.onChange(new Set())}>Batal pilih</Button>
-        </div>
-      )}
+      {bulkBar}
 
       {/* Computer: a real table. */}
       <div className="hidden max-h-[75vh] scroll-pt-10 overflow-auto md:block">
@@ -218,7 +299,8 @@ export function DataTable<T>({
               const id = rowId(row);
               const href = rowHref?.(row);
               return (
-                <tr key={id} className={cn(rowClass, "scroll-mt-10 hover:bg-muted/60", selection?.selected.has(id) && "bg-accent/60")}>
+                // 44 px rows (DESIGN.md §4.5); text never makes a row taller unless a column asks to wrap.
+                <tr key={id} className={cn("h-11 scroll-mt-10 hover:bg-muted/60", selection?.selected.has(id) && "bg-accent/60")}>
                   {selection && (
                     <td className="w-10 px-3">
                       <input
@@ -273,18 +355,8 @@ export function DataTable<T>({
           return (
             <li key={id} className="flex flex-col gap-2 px-4 py-3.5">
               <div className="flex items-start gap-3">
-                {selection && (
-                  <input
-                    type="checkbox"
-                    checked={selection.selected.has(id)}
-                    onChange={() => toggleOne(id)}
-                    aria-label={`Pilih ${rowLabel?.(row) ?? "baris ini"}`}
-                    className="mt-1 size-5 shrink-0"
-                  />
-                )}
-                <div className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">
-                  {rowHref?.(row) ? <Link to={rowHref(row)!}>{primary.cell(row)}</Link> : primary.cell(row)}
-                </div>
+                {checkbox(row, id, "mt-1 size-5 shrink-0")}
+                <div className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">{primaryLine(row)}</div>
               </div>
               {cardColumns.map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-3 text-[12.5px]">
@@ -298,13 +370,7 @@ export function DataTable<T>({
         })}
       </ul>
 
-      {meta.totalPages > 1 ? (
-        <Pagination page={meta.page} totalPages={meta.totalPages} totalItems={meta.total} pageSize={meta.limit} onPageChange={onPageChange} />
-      ) : (
-        <p className="border-t px-5 py-3 text-[12.5px] text-muted-foreground">
-          Menampilkan <span className="font-medium text-foreground">{rows.length}</span> dari <span className="font-medium text-foreground">{meta.total}</span>
-        </p>
-      )}
+      {footer}
     </div>
   );
 }

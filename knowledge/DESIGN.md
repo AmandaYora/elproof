@@ -49,7 +49,7 @@
 | T3 | Navigasi tersembunyi dipakai jauh lebih jarang di HP; tab bar cocok untuk 4–5 pilihan [nng-hamburger][nng-mobilenav] | Portal: tab bawah 5 item berlabel; tidak ada fitur yang hanya bisa dicapai lewat hamburger | [R] |
 | T4 | WCAG 2.2 AA: target ≥ 24×24 px (2.5.8), fokus tidak tertutup elemen sticky (2.4.11), kontras komponen UI 3:1 (1.4.11); Android menyarankan 48dp [wcag-258][wcag-1411][wcag-2411][android-touch] | Target Portal ≥ 44 px berjarak 8 px; console kontrol 36 px, ikon aksi baris ≥ 24 px; indikator fokus 3:1; header sticky tidak menutup fokus | [R] |
 | T5 | Status tidak boleh hanya warna; warna + ikon + teks; batasi ±5–6 status terlihat [carbon-status] | Lencana status selalu berteks dan berikon; uji tampilan skala abu-abu | [R] |
-| T6 | Tabel operasional: angka rata kanan, tabular figures; baris Carbon 24/32/40 (default)/48/64 px; toolbar ≤ 5 aksi, bilah aksi massal menggantikan toolbar saat ada baris terpilih, paginasi di bawah; header sortable = `th` + `button` + `aria-sort` [carbon-table][primer-table][apg-sort] | Baris 40 px (default) / 32 px (padat), rupiah rata kanan `tabular-nums`, header sortable APG, selalu ada urutan default, bilah aksi massal | [R] |
+| T6 | Tabel operasional: angka rata kanan, tabular figures; baris Carbon 24/32/40 (default)/48/64 px; toolbar ≤ 5 aksi, bilah aksi massal menggantikan toolbar saat ada baris terpilih, paginasi di bawah; header sortable = `th` + `button` + `aria-sort` [carbon-table][primer-table][apg-sort] | Baris 44 px, satu tinggi (pilihan padat dihapus 20 Nov 2026: bedanya tidak terasa), rupiah rata kanan `tabular-nums`, header sortable APG, selalu ada urutan default, bilah aksi massal | [R] |
 | T7 | Empat keadaan daftar; jangan tulis "tidak ada data" saat masih memuat; kosong menjelaskan fitur + satu aksi [nng-empty][stripe-patterns] | Urutan render: memuat → galat → kosong → isi (§6) | [R] |
 | T8 | Validasi diperdebatkan: GOV.UK validasi saat kirim + ringkasan galat [govuk-validation]; NN/g dan Baymard inline setelah field selesai [nng-form-errors][baymard-inline]; jangan nonaktifkan tombol kirim [S] | **Hibrida:** validasi saat kirim, lalu per field saat blur; ringkasan galat bila ≥ 3; tombol kirim tidak dinonaktifkan karena validitas; input tidak dihapus; galat menyebut cara memperbaiki | [R], hipotesis |
 | T9 | Modal untuk konfirmasi dan formulir pendek; halaman penuh untuk alur banyak langkah [nng-modal]. Konfirmasi hanya untuk aksi serius/tak terpulihkan, spesifik, tombol bertuliskan aksinya, bukan Ya/Tidak; ketik kata untuk risiko tinggi yang jarang [nng-confirm][apg-alertdialog] | Wadah per FLOW-IDEAL §0 (modal 1–3 field, drawer untuk edit sambil melihat konteks, halaman penuh untuk bertahap). AlertDialog hanya untuk aksi tak terpulihkan | [R] |
@@ -189,7 +189,7 @@ berarti bukti (`ProofStamp`, garis segel di hero Portal), tidak pernah status, l
   memakai Plus Jakarta Sans tebal (`font-extrabold`) dan rapat (tracking −0,02 s.d. −0,035em), sama dengan judul situs publik.
 - **Skala:** 12 / 14 / 16 / 20 / 24 / 30 px; line-height 16 / 20 / 24 / 28 / 32 / 38; bobot 400/500/600 (700 hanya
   angka besar). Badan console 14 px, Portal 16 px. Panjang baris prosa ≤ 70 karakter. Label tidak huruf kapital semua.
-- **Kepadatan** per `data-density`: console `compact` (kontrol 36 px, baris 40/32 px, celah 16 px), Portal
+- **Kepadatan** per `data-density`: console `compact` (kontrol 36 px, baris tabel 44 px, celah 16 px), Portal
   `comfortable` (kontrol 44 px, celah 24 px). Grid 4 px.
 - **Gerak:** 110–150 ms hover/menu, 240 ms dialog/drawer, easing productive; satu momen expressive (`ProofStamp`).
   Semua dibungkus `motion-reduce:`. Tidak ada animasi masuk per bagian (pengecualian terlingkup untuk Beranda dan Tentang
@@ -203,14 +203,21 @@ berarti bukti (`ProofStamp`, garis segel di hero Portal), tidak pernah status, l
 
 Memperketat §4.4 setelah riset UI visual (pembanding: shadcn/ui dashboard-01 & tasks, Linear, Twenty, HoneyBook, Vercel).
 
-- **Skala console:** 12 (meta) · 13 (label, sel tabel padat) · 14 (isi) · 16 (judul seksi/kartu, 600) · 20 (judul modal) ·
+- **Skala console:** 12 (meta) · 13 (label, meta tabel) · 14 (isi) · 16 (judul seksi/kartu, 600) · 20 (judul modal) ·
   24 (judul halaman, 600, `PageHeader`) · 28–32 (angka KPI, 700, tabular). Jarak antar-level minimal satu langkah skala.
 - **Teks sekunder seperlunya:** kalimat penjelas di bawah judul kartu hanya bila menambah informasi; tidak di setiap kartu.
 - **Kotak seperlunya:** kartu untuk satu kesatuan yang bisa ditindak (KPI, satu daftar); seksi lain dipisah judul + ruang.
 - **Ruang:** isi halaman 24 px (≥ 1280 px: 32 px), antarseksi 24 px, dalam kartu 16–20 px.
-- **Tabel (`DataTable`):** baris 44 px (padat 36 px); angka, uang, tanggal, dan ID rata kanan/tabular dan **tidak pernah
+- **Tabel (`DataTable`):** baris 44 px; angka, uang, tanggal, dan ID rata kanan/tabular dan **tidak pernah
   dibungkus**; teks panjang `truncate` satu baris; status = ikon + teks; aksi baris = `RowActions` (satu ikon tersering + ⋯);
   kolom pertama = tautan ke record; kartu HP = 3–4 kolom `card`. Tab status di atas tabel bila status adalah saringan utama.
+- **Bentuk daftar Tabel/Kartu (20 Nov 2026):** hanya di Proyek dan Vendor, yang rekamannya dipindai per orang/per
+  pernikahan; daftar lain tetap tabel. Tabel tetap bawaan (membandingkan kolom), Kartu untuk memindai beberapa fakta per
+  rekaman [nng-cardlist][sidp-cards]. Saklar = dua tombol `aria-pressed` dalam grup "Bentuk daftar" [primer-segmented],
+  hanya di komputer (HP selalu kartu), diingat per daftar di peramban. Kartu datar 12 px berbingkai, grid 2–4 kolom;
+  karena kartu tak punya kepala kolom, ada menu "Urutkan" yang memakai urutan server yang sama. Satu elemen besar per
+  kartu: hitung mundur H-n di kartu proyek; kartu vendor menampilkan ketiga harga paket yang tak muat di tabel. Tanpa
+  foto sampul (berkas sampul sampai 2000 px; perlu gambar kecil dulu).
 - **KPI (`StatCard`):** label 13, angka 28, satu baris konteks; nada status hanya bila memang bermasalah (mis. terlambat > 0).
 - **Grafik:** satu warna data (navy) + pembanding abu; status hanya untuk ambang; data belum cukup → keadaan kosong dengan
   penjelasan dan langkah berikutnya, bukan barisan batang nol.
@@ -474,3 +481,8 @@ penulisan "Anda" (komunitasbelajar.id).
 **Tidak berhasil dibuka [?]:** pedoman tulisan GoTo/Tokopedia/Traveloka/Bukalapak, panduan pelacakan pesanan Baymard
 (berbayar), pola struk GoPay/DANA/Flip, angka desain Linear dan gerak Material 3, sumber bentuk timeline (rel vs Gantt),
 nada pesan tunggakan, fitur `tnum` Plus Jakarta Sans.
+
+**Bentuk daftar Tabel/Kartu (diakses 20 Nov 2026, [R]):** [nng-cardlist] https://www.nngroup.com/videos/card-view-vs-list-view/
+· [sidp-cards] https://smart-interface-design-patterns.com/articles/cards-vs-lists-vs-tables-vs-data-grids/ ·
+[primer-segmented] https://primer.style/product/components/segmented-control/accessibility · Drupal, `aria-pressed` pada
+tombol daftar/grid https://www.drupal.org/node/3446591

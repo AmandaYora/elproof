@@ -7,7 +7,6 @@ import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { TenantStatusBadge } from "@/modules/platform-admin/components/TenantStatusBadge";
 import { TenantFormModal } from "@/modules/platform-admin/components/TenantFormModal";
@@ -39,7 +38,6 @@ export default function TenantListPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState({ filters: LIST_FILTERS });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("platform-tenants");
   const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -211,7 +209,6 @@ export default function TenantListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama WO, pemilik, atau email..." }}
-        density={{ value: density, onChange: setDensity }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -266,7 +263,6 @@ export default function TenantListPage() {
             </Button>
           ) : undefined,
         }}
-        density={density}
         actions={renderRowActions}
       />
 

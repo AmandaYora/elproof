@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Link } from "react-router-dom";
-import { Plus, Pencil, CheckCircle2, Ban, FolderKanban, Upload, Download, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Ban, FolderKanban, Upload, Download, Trash2, AlertTriangle, MapPin, Paperclip } from "lucide-react";
 import { PageHeader } from "@/shared/components/ui/PageHeader";
 import { RowActions } from "@/shared/components/ui/RowActions";
 import { ActionMenu } from "@/shared/components/ui/ActionMenu";
@@ -16,7 +16,8 @@ import { ImportBulkModal } from "@/shared/components/ui/ImportBulkModal";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
+import { useListView } from "@/shared/data-table/useListView";
+import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { toast } from "@/shared/stores/useToastStore";
 import { VendorFormModal } from "@/modules/vendors/components/VendorFormModal";
@@ -54,8 +55,9 @@ export default function VendorListPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState({ filters: { categoryId: "", city: "", isActive: "" } });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("vendors");
+  const { view, setView } = useListView("vendors");
+  const isWide = useMediaQuery("(min-width: 768px)");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -270,6 +272,45 @@ export default function VendorListPage() {
     { id: "status", header: "Status", sortKey: "isActive", card: true, className: "whitespace-nowrap", cell: (v) => <VendorStatusBadge isActive={v.isActive} /> },
   ];
 
+  // A vendor card (Kartu): what it is and where, whether it can be used, and its three price packages side by side,
+  // which the table has no room for (it shows Harga Akad only).
+  const cardBody = (v: Vendor) => (
+    <>
+      <div className="flex items-center justify-between gap-3 text-[12.5px]">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="truncate font-medium text-foreground">{v.categoryName || categories.find((c) => c.id === v.categoryId)?.name || "-"}</span>
+          {v.city && (
+            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <MapPin aria-hidden className="size-3.5 shrink-0" />
+              <span className="truncate">{v.city}</span>
+            </span>
+          )}
+        </div>
+        <VendorStatusBadge isActive={v.isActive} />
+      </div>
+      <dl className="mt-auto flex flex-col gap-1.5 border-t border-border-light pt-3 text-[12.5px]">
+        {(
+          [
+            ["Harga Akad", v.priceAkad],
+            ["Harga Akad + Resepsi", v.priceAkadResepsi],
+            ["Harga Resepsi saja", v.priceResepsi],
+          ] as const
+        ).map(([label, price]) => (
+          <div key={label} className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="font-medium whitespace-nowrap tabular-nums text-foreground">{price ? formatCurrency(price) : "-"}</dd>
+          </div>
+        ))}
+      </dl>
+      {v.hasAttachment && (
+        <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <Paperclip aria-hidden className="size-3.5 shrink-0" />
+          Ada lampiran
+        </p>
+      )}
+    </>
+  );
+
   async function handleExportVendors() {
     setActionError(null);
     setIsExporting(true);
@@ -330,7 +371,7 @@ export default function VendorListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama vendor atau PIC..." }}
-        density={{ value: density, onChange: setDensity }}
+        view={{ value: view, onChange: setView }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -370,6 +411,8 @@ export default function VendorListPage() {
         rows={vendors}
         rowId={(v) => v.id}
         rowLabel={(v) => v.name}
+        view={isWide ? view : "table"}
+        cardBody={cardBody}
         status={status}
         onRetry={() => setAttempt((n) => n + 1)}
         meta={meta}
@@ -383,7 +426,6 @@ export default function VendorListPage() {
           description: "Daftarkan vendor katering, dekorasi, foto, dan lainnya agar bisa dipasang ke proyek.",
           action: canManage ? <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateModal}>Tambah vendor</Button> : undefined,
         }}
-        density={density}
         selection={!canManage ? undefined : { selected, onChange: setSelected }}
         bulkActions={(ids) => (
           <>

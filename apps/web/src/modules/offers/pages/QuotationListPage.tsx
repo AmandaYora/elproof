@@ -10,7 +10,6 @@ import { RowActions } from "@/shared/components/ui/RowActions";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { cn } from "@/shared/lib/cn";
@@ -54,7 +53,6 @@ export default function QuotationListPage() {
   const [search, setSearch] = useSearchParams();
 
   const list = useListState<Filters>({ filters: FILTERS });
-  const { density, setDensity } = useListDensity();
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -229,7 +227,6 @@ export default function QuotationListPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nomor, pasangan, atau WhatsApp..." }}
-        density={isWide ? { value: density, onChange: setDensity } : undefined}
       >
         {isWide ? (
           pickers
@@ -255,7 +252,6 @@ export default function QuotationListPage() {
         onSortChange={list.setSort}
         filtered={list.isFiltered}
         onResetFilters={list.reset}
-        density={density}
         empty={{
           title: "Belum ada penawaran",
           description: "Susun penawaran untuk calon klien dan bagikan sebagai PDF.",

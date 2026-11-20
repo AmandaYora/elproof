@@ -5,7 +5,6 @@ import { Input, Select } from "@/shared/components/ui/Input";
 import { DataTable, type Column } from "@/shared/data-table/DataTable";
 import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { useListState } from "@/shared/data-table/useListState";
-import { useListDensity } from "@/shared/data-table/useListDensity";
 import { useSavedViews, viewQuery } from "@/shared/data-table/useSavedViews";
 import { usePlatformAdminStore } from "@/modules/platform-admin/stores/usePlatformAdminStore";
 import type { SubscriptionTransaction, SubscriptionTransactionStatus } from "@/modules/platform-admin/data";
@@ -25,7 +24,6 @@ export default function PlatformTransactionsPage() {
 
   // Search, filters, sort and page live in the URL (shareable, survives reload and Back).
   const list = useListState({ filters: LIST_FILTERS });
-  const { density, setDensity } = useListDensity();
   const savedViews = useSavedViews("platform-transactions");
   const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -95,7 +93,6 @@ export default function PlatformTransactionsPage() {
 
       <ListToolbar
         search={{ value: list.q, onChange: list.setQ, placeholder: "Cari nama tenant atau referensi..." }}
-        density={{ value: density, onChange: setDensity }}
         views={{
           items: savedViews.views,
           current: viewQuery(list.queryString),
@@ -133,7 +130,6 @@ export default function PlatformTransactionsPage() {
           title: "Belum ada tagihan",
           description: "Tagihan muncul di sini saat tenant membayar langganan atau tim ElProof mengaktifkannya.",
         }}
-        density={density}
       />
     </div>
   );
