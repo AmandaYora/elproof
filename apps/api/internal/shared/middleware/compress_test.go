@@ -96,6 +96,22 @@ func TestGzipCompressesLargeJSON(t *testing.T) {
 	}
 }
 
+// The ETag is the record's version for If-Match (ADR-0036): compressing never rewrites it.
+func TestGzipKeepsETag(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ETag", `"2026-11-20T07:53:06.046340Z"`)
+		_, _ = io.WriteString(w, `{"data":"`+strings.Repeat("x", 2000)+`"}`)
+	})
+	rec := serveGzip(h, http.MethodGet, "gzip", nil)
+	if rec.Header().Get("Content-Encoding") != "gzip" {
+		t.Fatalf("not compressed: %v", rec.Header())
+	}
+	if got := rec.Header().Get("ETag"); got != `"2026-11-20T07:53:06.046340Z"` {
+		t.Fatalf("ETag %q, want it unchanged", got)
+	}
+}
+
 func TestGzipLeavesOthersAlone(t *testing.T) {
 	big := strings.Repeat("a", 4000)
 	cases := []struct {

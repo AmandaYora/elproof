@@ -46,8 +46,8 @@ JavaScript, XML) for a client that accepts gzip. It does nothing for:
 * answers that already set `Content-Encoding` (the precompressed web files);
 * images, PDFs and spreadsheets.
 
-It removes `Content-Length`, turns a strong `ETag` weak, adds `Vary`, supports `Flush`, and reuses its gzip writers from a
-pool.
+It removes `Content-Length`, adds `Vary`, supports `Flush`, and reuses its gzip writers from a pool. It leaves `ETag`
+untouched: the API's ETag names the record's version (`updatedAt`), and clients send it back in `If-Match` (ADR-0036).
 
 ### A page names what it needs next
 Each prerendered page's `<head>` (`scripts/prerender.mjs`) gains:

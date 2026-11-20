@@ -169,10 +169,8 @@ func (g *gzipResponseWriter) decide(compress bool) {
 		h.Set("Content-Encoding", "gzip")
 		h.Del("Content-Length")
 		h.Del("Accept-Ranges")
-		// A strong validator names the plain bytes; the compressed ones differ.
-		if etag := h.Get("ETag"); strings.HasPrefix(etag, `"`) {
-			h.Set("ETag", "W/"+etag)
-		}
+		// ETag is left as it is: the API's ETag names the record's version (updatedAt), which a client sends back in
+		// If-Match (ADR-0036), not the bytes on the wire.
 		g.gz = gzipWriters.Get().(*gzip.Writer)
 		g.gz.Reset(g.ResponseWriter)
 	}
