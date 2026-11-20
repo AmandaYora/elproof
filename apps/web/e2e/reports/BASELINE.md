@@ -8,178 +8,210 @@ pengumuman), bukan hanya data halaman.
 
 | Layar | Panggilan API | JSON API (KB) | Chunk JS | JS gzip (KB) | LCP (ms) | CLS | TBT-like (ms) | INP-like (ms) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Beranda pemasaran | 0 | 0.0 | 12 | 156.8 | 1968 | 0.424 | 35 | - |
-| Ringkasan Platform | 3 | 1.4 | 22 | 169.8 | 2720 | 0.083 | 25 | 16 |
-| Tagihan Platform | 2 | 0.5 | 37 | 217.2 | 2808 | 0 | 31 | - |
-| Daftar Tenant | 3 | 2.3 | 64 | 257.1 | 3552 | 0 | 28 | - |
-| Detail Tenant | 4 | 1.9 | 54 | 231.6 | 3452 | 0.081 | 26 | - |
-| Beranda Portal | 4 | 3.0 | 24 | 173.6 | 2488 | 0 | 29 | 384 |
-| Portal, Jadwal | 4 | 3.0 | 22 | 172.7 | 2340 | 0 | 28 | - |
-| Portal, Kendala | 4 | 2.4 | 25 | 174.4 | 2396 | 0 | 34 | - |
-| Portal, Pembayaran | 5 | 2.6 | 24 | 174.6 | 2436 | 0 | 34 | - |
-| Portal, Vendor | 6 | 3.5 | 29 | 177.9 | 2492 | 0 | 28 | - |
-| Beranda WO | 6 | 6.8 | 36 | 219.3 | 3076 | 0.442 | 102 | 32 |
-| Daftar Client | 6 | 4.6 | 49 | 250.3 | 3132 | 0.054 | 39 | - |
-| Daftar Project | 6 | 4.1 | 38 | 231.9 | 2828 | 0.098 | 29 | - |
-| Detail Proyek, tab Kendala | 7 | 5.4 | 55 | 258.5 | 1568 | 0.069 | 33 | - |
-| Detail Proyek, tab Keuangan | 9 | 5.9 | 70 | 276.8 | 1552 | 0.113 | 34 | - |
-| Detail Proyek (Ringkasan) | 5 | 3.7 | 52 | 255.1 | 1568 | 0.113 | 39 | - |
-| Detail Proyek, tab Vendor | 7 | 5.4 | 65 | 278.9 | 1556 | 0.113 | 33 | - |
-| Daftar Vendor | 6 | 3.3 | 50 | 248.6 | 1576 | 0.098 | 40 | - |
+| Beranda pemasaran | 1 | 0.4 | 18 | 184.9 | 2284 | 0.32 | 37 | - |
+| Ringkasan Platform | 3 | 1.3 | 27 | 176.5 | 3276 | 0.082 | 85 | 64 |
+| Tagihan Platform | 2 | 0.6 | 48 | 225.4 | 3284 | 0 | 30 | - |
+| Daftar Tenant | 3 | 2.3 | 75 | 265.0 | 4072 | 0 | 35 | - |
+| Detail Tenant | 4 | 1.9 | 61 | 238.8 | 3876 | 0.081 | 44 | - |
+| Beranda Portal | 3 | 2.1 | 32 | 186.1 | 2840 | 0 | 25 | 0 |
+| Portal, Jadwal | 5 | 4.5 | 54 | 269.9 | 3588 | 0 | 26 | - |
+| Portal, Kendala | 4 | 2.6 | 53 | 267.6 | 3800 | 0 | 38 | - |
+| Portal, Layanan | 6 | 6.2 | 58 | 271.9 | 3664 | 0.085 | 30 | - |
+| Portal, Pembayaran | 6 | 3.1 | 58 | 274.9 | 3724 | 0.156 | 26 | - |
+| Beranda WO | 6 | 7.2 | 54 | 278.6 | 4048 | 0.5 | 63 | 32 |
+| Daftar Client | 6 | 5.0 | 70 | 285.2 | 3880 | 0.038 | 25 | - |
+| Daftar Project | 6 | 4.5 | 61 | 275.7 | 1912 | 0.038 | 33 | - |
+| Detail Proyek, tab Acara & rincian | 9 | 10.4 | 71 | 293.4 | 1892 | 0.286 | 29 | - |
+| Detail Proyek, tab Kendala | 7 | 6.8 | 67 | 288.4 | 4332 | 0.164 | 25 | - |
+| Detail Proyek, tab Keuangan | 8 | 5.4 | 78 | 298.2 | 1888 | 0.158 | 24 | - |
+| Detail Proyek (Ringkasan) | 6 | 5.5 | 71 | 294.5 | 1892 | 0.158 | 28 | - |
+| Detail Proyek, tab Vendor & venue | 6 | 6.2 | 74 | 294.5 | 1912 | 0.158 | 37 | - |
+| Daftar Vendor | 6 | 3.3 | 64 | 268.7 | 3752 | 0.038 | 25 | - |
 
-**Total JS seluruh aplikasi:** 1800.9 KB mentah, **630.0 KB gzip** (196 chunk).
+**Total JS seluruh aplikasi:** 2363.7 KB mentah, **845.1 KB gzip** (293 chunk).
 
 Chunk terbesar (gzip):
 
-- `index-C-ZRCQCr.js`: 147.2 KB gzip (444.3 KB mentah)
-- `ProjectMilestoneGanttView-B6ViGvbI.js`: 83.6 KB gzip (252.3 KB mentah)
-- `ProjectDetailLayout-D_Lz7MrI.js`: 20.5 KB gzip (59.9 KB mentah)
-- `CommandPaletteDialog-DQlWl5Ja.js`: 19.5 KB gzip (57.5 KB mentah)
-- `usePositioner-d15Y5Rty.js`: 14.2 KB gzip (38.0 KB mentah)
-- `store-CqBI3dAP.js`: 12.6 KB gzip (35.5 KB mentah)
-- `types-B4jcjfVQ.js`: 12.2 KB gzip (52.9 KB mentah)
-- `MfaSetupPage-D4n_1bnL.js`: 11.9 KB gzip (30.4 KB mentah)
-- `index-DbvA_HQC.js`: 9.6 KB gzip (34.3 KB mentah)
-- `ProjectVendorTabPage-DngONKl-.js`: 9.6 KB gzip (36.0 KB mentah)
+- `index-gqPtvkZ3.js`: 151.6 KB gzip (460.7 KB mentah)
+- `ProjectMilestoneGanttView-BI2DnLcl.js`: 83.6 KB gzip (252.3 KB mentah)
+- `CommandPaletteDialog-BtjDnLud.js`: 19.8 KB gzip (58.2 KB mentah)
+- `dropdown-menu-VFGYkNce.js`: 14.3 KB gzip (40.8 KB mentah)
+- `usePositioner-D_OeMBp2.js`: 14.2 KB gzip (38.0 KB mentah)
+- `store-bL_hFTvb.js`: 12.6 KB gzip (35.5 KB mentah)
+- `types-B149ZHCL.js`: 12.2 KB gzip (52.9 KB mentah)
+- `QuotationPage-gFNz-fW5.js`: 12.1 KB gzip (39.5 KB mentah)
+- `MfaSetupPage-BwPNe9lz.js`: 11.9 KB gzip (30.4 KB mentah)
+- `direct-upload-B3ZZP-nx.js`: 10.8 KB gzip (33.4 KB mentah)
 
 ## Panggilan API per layar
 
-**Beranda pemasaran** (0):
+**Beranda pemasaran** (1):
 
+- GET /api/v1/public/plans (361 B)
 
 **Ringkasan Platform** (3):
 
+- POST /api/v1/auth/refresh (490 B)
 - GET /api/v1/platform-admins/1 (211 B)
-- GET /api/v1/platform/trends?… (795 B)
 - GET /api/v1/platform/metrics (422 B)
+- GET /api/v1/platform/trends?… (721 B)
 
 **Tagihan Platform** (2):
 
+- POST /api/v1/auth/refresh (490 B)
 - GET /api/v1/platform-admins/1 (211 B)
-- GET /api/v1/subscription-transactions?… (352 B)
+- GET /api/v1/subscription-transactions?… (409 B)
 
 **Daftar Tenant** (3):
 
+- POST /api/v1/auth/refresh (490 B)
 - GET /api/v1/platform-admins/1 (211 B)
-- GET /api/v1/plans?… (392 B)
-- GET /api/v1/tenants?… (1783 B)
+- GET /api/v1/plans?… (404 B)
+- GET /api/v1/tenants?… (1705 B)
 
 **Detail Tenant** (4):
 
+- POST /api/v1/auth/refresh (490 B)
 - GET /api/v1/platform-admins/1 (211 B)
-- GET /api/v1/plans?… (392 B)
+- GET /api/v1/plans?… (404 B)
 - GET /api/v1/subscription-transactions?… (122 B)
-- GET /api/v1/console/tenants/1/overview (1201 B)
+- GET /api/v1/console/tenants/1/overview (1251 B)
 
-**Beranda Portal** (4):
+**Beranda Portal** (3):
 
-- GET /api/v1/access/me (239 B)
-- GET /api/v1/tenants/me/branding (110 B)
-- GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/milestones (1193 B)
+- POST /api/v1/auth/refresh (477 B)
+- GET /api/v1/access/me (287 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/projects/me/home (1730 B)
 
-**Portal, Jadwal** (4):
+**Portal, Jadwal** (5):
 
-- GET /api/v1/access/me (239 B)
-- GET /api/v1/tenants/me/branding (110 B)
-- GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/milestones (1193 B)
+- POST /api/v1/auth/refresh (477 B)
+- GET /api/v1/access/me (287 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/projects/me/home (1730 B)
+- GET /api/v1/projects/1/milestones (1580 B)
+- GET /api/v1/projects/1/events (899 B)
 
 **Portal, Kendala** (4):
 
-- GET /api/v1/access/me (239 B)
-- GET /api/v1/tenants/me/branding (110 B)
-- GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/issues (577 B)
+- POST /api/v1/auth/refresh (477 B)
+- GET /api/v1/access/me (287 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/projects/me/home (1730 B)
+- GET /api/v1/projects/1/issues (581 B)
 
-**Portal, Pembayaran** (5):
+**Portal, Layanan** (6):
 
-- GET /api/v1/access/me (239 B)
-- GET /api/v1/tenants/me/branding (110 B)
-- GET /api/v1/projects/me/home (1525 B)
+- POST /api/v1/auth/refresh (477 B)
+- GET /api/v1/access/me (287 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/projects/me/home (1730 B)
+- GET /api/v1/projects/1/issues (581 B)
+- GET /api/v1/projects/1/lines (1736 B)
+- GET /api/v1/projects/1/suppliers (1901 B)
+
+**Portal, Pembayaran** (6):
+
+- POST /api/v1/auth/refresh (477 B)
+- GET /api/v1/access/me (287 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/projects/me/home (1730 B)
 - GET /api/v1/projects/1/payment-terms (392 B)
-- GET /api/v1/projects/1/client-payments (442 B)
-
-**Portal, Vendor** (6):
-
-- GET /api/v1/access/me (239 B)
-- GET /api/v1/tenants/me/branding (110 B)
-- GET /api/v1/projects/me/home (1525 B)
-- GET /api/v1/projects/1/venue (44 B)
-- GET /api/v1/projects/1/vendors (1134 B)
-- GET /api/v1/projects/1/issues (577 B)
+- GET /api/v1/projects/1/client-payments (459 B)
+- GET /api/v1/projects/1/supplier-bills (181 B)
 
 **Beranda WO** (6):
 
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/branding (110 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/access/me (571 B)
+- GET /api/v1/tenants/me/branding (84 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/dashboard (5606 B)
+- GET /api/v1/dashboard (5938 B)
 - GET /api/v1/tenants/me/onboarding (237 B)
 
 **Daftar Client** (6):
 
-- GET /api/v1/access/me (518 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/access/me (571 B)
 - GET /api/v1/tenants/me/subscription (200 B)
-- GET /api/v1/tenants/me/branding (110 B)
 - GET /api/v1/announcements/active (306 B)
 - GET /api/v1/clients?… (756 B)
-- GET /api/v1/projects?… (2869 B)
+- GET /api/v1/projects?… (3187 B)
 
 **Daftar Project** (6):
 
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/branding (110 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/access/me (571 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
 - GET /api/v1/staff/summary (210 B)
-- GET /api/v1/projects?… (2874 B)
+- GET /api/v1/projects?… (3192 B)
+
+**Detail Proyek, tab Acara & rincian** (9):
+
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/access/me (571 B)
+- GET /api/v1/tenants/me/subscription (200 B)
+- GET /api/v1/announcements/active (306 B)
+- GET /api/v1/projects/1/overview (3061 B)
+- GET /api/v1/vendor-categories?… (972 B)
+- GET /api/v1/projects/1/events (1041 B)
+- GET /api/v1/projects/1/suppliers (2175 B)
+- GET /api/v1/projects/1/lines (2289 B)
 
 **Detail Proyek, tab Kendala** (7):
 
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/subscription (200 B)
-- GET /api/v1/tenants/me/branding (110 B)
-- GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2616 B)
-- GET /api/v1/projects/1/issues (589 B)
-- GET /api/v1/projects/1/vendors (1228 B)
-
-**Detail Proyek, tab Keuangan** (9):
-
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/branding (110 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/access/me (571 B)
+- GET /api/v1/tenants/me/branding (84 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2616 B)
+- GET /api/v1/projects/1/overview (3061 B)
+- GET /api/v1/projects/1/issues (593 B)
+- GET /api/v1/projects/1/suppliers (2175 B)
+
+**Detail Proyek, tab Keuangan** (8):
+
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/access/me (571 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/tenants/me/subscription (200 B)
+- GET /api/v1/announcements/active (306 B)
+- GET /api/v1/projects/1/overview (3061 B)
 - GET /api/v1/projects/1/payment-terms (392 B)
-- GET /api/v1/projects/1/client-payments (473 B)
-- GET /api/v1/projects/1/evidence (1039 B)
+- GET /api/v1/projects/1/client-payments (490 B)
 - GET /api/v1/projects/1/payment-terms (392 B)
 
-**Detail Proyek (Ringkasan)** (5):
+**Detail Proyek (Ringkasan)** (6):
 
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/branding (110 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/access/me (571 B)
+- GET /api/v1/tenants/me/branding (84 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2616 B)
+- GET /api/v1/projects/1/overview (3061 B)
+- GET /api/v1/projects/1/activity?… (1423 B)
 
-**Detail Proyek, tab Vendor** (7):
+**Detail Proyek, tab Vendor & venue** (6):
 
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/branding (110 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/access/me (571 B)
+- GET /api/v1/tenants/me/branding (84 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
-- GET /api/v1/projects/1/overview (2616 B)
-- GET /api/v1/projects/1/issues (589 B)
-- GET /api/v1/projects/1/vendors (1228 B)
+- GET /api/v1/projects/1/overview (3061 B)
+- GET /api/v1/projects/1/suppliers (2175 B)
 
 **Daftar Vendor** (6):
 
-- GET /api/v1/access/me (518 B)
-- GET /api/v1/tenants/me/branding (110 B)
+- POST /api/v1/auth/refresh (464 B)
+- GET /api/v1/tenants/me/branding (84 B)
+- GET /api/v1/access/me (571 B)
 - GET /api/v1/tenants/me/subscription (200 B)
 - GET /api/v1/announcements/active (306 B)
 - GET /api/v1/vendor-categories?… (972 B)

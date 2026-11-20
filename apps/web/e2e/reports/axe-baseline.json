@@ -3,18 +3,11 @@
   "pagesScanned": 88,
   "violationsByImpact": {
     "critical": 0,
-    "serious": 2,
+    "serious": 0,
     "moderate": 0,
     "minor": 0
   },
-  "byRule": {
-    "definition-list": {
-      "impact": "serious",
-      "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
-      "pages": 2,
-      "nodes": 2
-    }
-  },
+  "byRule": {},
   "pages": [
     {
       "page": "marketing/beranda",
@@ -299,28 +292,12 @@
     {
       "page": "wo/proyek-acara",
       "viewport": "desktop",
-      "violations": [
-        {
-          "rule": "definition-list",
-          "impact": "serious",
-          "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
-          "nodes": 1,
-          "sample": "dl:nth-child(4)"
-        }
-      ]
+      "violations": []
     },
     {
       "page": "wo/proyek-acara",
       "viewport": "mobile",
-      "violations": [
-        {
-          "rule": "definition-list",
-          "impact": "serious",
-          "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
-          "nodes": 1,
-          "sample": "dl:nth-child(4)"
-        }
-      ]
+      "violations": []
     },
     {
       "page": "wo/proyek-dokumen",

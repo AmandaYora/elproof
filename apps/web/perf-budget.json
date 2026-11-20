@@ -28,16 +28,19 @@
       "apiCalls": 4
     },
     "portal-jadwal": {
-      "apiCalls": 4
+      "apiCalls": 5,
+      "_reason": "20 Nov 2026 (paket WO Tahap 2, ADR-0048): Jadwal also shows the wedding's events (GET /projects/{id}/events)"
     },
     "portal-kendala": {
       "apiCalls": 4
     },
-    "portal-pembayaran": {
-      "apiCalls": 5
+    "portal-layanan": {
+      "apiCalls": 6,
+      "_reason": "20 Nov 2026 (paket WO Tahap 2–3): Layanan replaces the Vendor page; it reads the rincian lines and the suppliers instead of the venue and vendor lists, same count"
     },
-    "portal-vendor": {
-      "apiCalls": 6
+    "portal-pembayaran": {
+      "apiCalls": 6,
+      "_reason": "20 Nov 2026 (paket WO Tahap 4): Pembayaran also lists the vendor bills the client pays directly (GET /projects/{id}/supplier-bills)"
     },
     "wo-beranda": {
       "apiCalls": 6
@@ -47,6 +50,10 @@
     },
     "wo-proyek": {
       "apiCalls": 6
+    },
+    "wo-proyek-acara": {
+      "apiCalls": 9,
+      "_reason": "20 Nov 2026 (paket WO Tahap 2–3): the Acara & rincian tab reads the suppliers, vendor categories, events and rincian lines it edits on one screen"
     },
     "wo-proyek-kendala": {
       "apiCalls": 7

@@ -64,11 +64,14 @@ export function CostSummaryPanel({ rincian, computing = false, stale = false, mi
             {stale && !computing && <p className="mt-1 text-[12.5px] text-warning-text">Belum diperbarui. Periksa isian yang ditandai.</p>}
           </div>
           {margin && (
-            <dl className="mt-3 flex flex-col gap-1.5 border-t border-border-light pt-3 text-[13.5px]">
-              <Row label="Biaya rekanan" value={formatCurrency(margin.supplierCost)} />
-              <Row label="Margin" value={formatCurrency(margin.margin)} strong />
+            <div className="mt-3 border-t border-border-light pt-3">
+              <dl className="flex flex-col gap-1.5 text-[13.5px]">
+                <Row label="Biaya rekanan" value={formatCurrency(margin.supplierCost)} />
+                <Row label="Margin" value={formatCurrency(margin.margin)} strong />
+              </dl>
+              {/* Outside the <dl>: a definition list may only hold term/definition groups. */}
               {margin.incomplete && (
-                <div className="mt-1 flex items-start gap-1.5 text-[13px] text-warning-text">
+                <div className="mt-2.5 flex items-start gap-1.5 text-[13px] text-warning-text">
                   <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                   {missingCostHref ? (
                     <Link to={missingCostHref} className="font-medium underline underline-offset-2 hover:no-underline">
@@ -79,7 +82,7 @@ export function CostSummaryPanel({ rincian, computing = false, stale = false, mi
                   )}
                 </div>
               )}
-            </dl>
+            </div>
           )}
         </>
       )}

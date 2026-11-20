@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, ListPlus, Pencil, Plus, RefreshCw } from "lucide-react";
 import { FinanceSection } from "@/modules/projects/components/detail/finance-ui";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
-import { Drawer } from "@/shared/components/ui/Drawer";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { LoadError } from "@/shared/components/feedback/LoadError";
@@ -12,14 +11,16 @@ import { SkeletonRows } from "@/shared/components/ui/Skeleton";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { toast } from "@/shared/stores/useToastStore";
 import { TERM_STATUS_LABELS } from "@/shared/lib/labels";
-import { getApiErrorMessage, getApiFieldErrors } from "@/shared/lib/api-error";
+import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
-import { defaultTermTemplate, termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
-import { PaymentTermsEditor, validateTermRows } from "@/modules/projects/components/PaymentTermsEditor";
-import type { PaymentTerm, PaymentTermInput } from "@/modules/projects/types";
+import { termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
+import type { PaymentTerm } from "@/modules/projects/types";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+
+// "Atur jadwal" opens on a click: the drawer and its editor load then.
+const PaymentTermsDrawer = lazy(() => import("@/modules/projects/components/detail/PaymentTermsDrawer").then((m) => ({ default: m.PaymentTermsDrawer })));
 
 // Overdue first, then what is coming up by date, paid last (FLOW-IDEAL 2.4).
 const GROUP_ORDER: Record<PaymentTerm["status"], number> = { overdue: 0, partial: 1, due_soon: 1, upcoming: 1, paid: 2 };
@@ -182,104 +183,17 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
       </ConfirmDialog>
 
       {editing && loaded && project && (
-        <PaymentTermsDrawer
-          projectId={projectId}
-          contractValue={contractValue}
-          bookingDate={project.prepStartDate}
-          eventDate={project.eventDate}
-          initial={terms.map((t) => ({ label: t.label, amount: t.amount, dueDate: t.dueDate }))}
-          onClose={() => setEditing(false)}
-        />
+        <Suspense fallback={null}>
+          <PaymentTermsDrawer
+            projectId={projectId}
+            contractValue={contractValue}
+            bookingDate={project.prepStartDate}
+            eventDate={project.eventDate}
+            initial={terms.map((t) => ({ label: t.label, amount: t.amount, dueDate: t.dueDate }))}
+            onClose={() => setEditing(false)}
+          />
+        </Suspense>
       )}
     </>
-  );
-}
-
-function PaymentTermsDrawer({
-  projectId,
-  contractValue,
-  bookingDate,
-  eventDate,
-  initial,
-  onClose,
-}: {
-  projectId: string;
-  contractValue: number;
-  bookingDate: string;
-  eventDate: string;
-  initial: PaymentTermInput[];
-  onClose: () => void;
-}) {
-  const save = useProjectStore((s) => s.savePaymentTerms);
-  const [rows, setRows] = useState<PaymentTermInput[]>(() =>
-    initial.length > 0 ? initial : defaultTermTemplate(contractValue, bookingDate, eventDate),
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
-
-  const total = rows.reduce((sum, r) => sum + r.amount, 0);
-  const over = contractValue > 0 && total > contractValue;
-
-  async function handleSave() {
-    const problems = validateTermRows(rows);
-    setRowErrors(problems);
-    if (Object.keys(problems).length > 0 || over) {
-      setError(over ? `Jumlah termin melebihi nilai kontrak ${formatCurrency(contractValue)}.` : "Lengkapi dulu bagian yang ditandai.");
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    try {
-      await save(projectId, rows);
-      toast.success("Jadwal termin disimpan");
-      onClose();
-    } catch (err) {
-      // The server reports every bad row at once ("terms[2].amount"): mark each row, keep what was typed.
-      const fields = getApiFieldErrors(err);
-      const marked: Record<number, string> = {};
-      for (const [key, message] of Object.entries(fields)) {
-        const row = /^terms\[(\d+)\]/.exec(key);
-        if (row) marked[Number(row[1])] ??= message;
-      }
-      setRowErrors(marked);
-      setError(Object.keys(marked).length > 0 ? "Lengkapi dulu bagian yang ditandai." : getApiErrorMessage(err, "Jadwal belum tersimpan. Periksa koneksi lalu coba lagi."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      busy={saving}
-      size="lg"
-      title="Atur jadwal termin"
-      description="Jumlah semua termin tidak boleh melebihi nilai kontrak."
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose} disabled={saving}>Batal</Button>
-          <Button onClick={() => void handleSave()} disabled={saving}>{saving ? "Menyimpan..." : "Simpan jadwal"}</Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        <PaymentTermsEditor
-          rows={rows}
-          setRows={setRows}
-          rowErrors={rowErrors}
-          contractValue={contractValue}
-          bookingDate={bookingDate}
-          eventDate={eventDate}
-        />
-
-        {error && (
-          <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
-            {error}
-          </p>
-        )}
-      </div>
-    </Drawer>
   );
 }
