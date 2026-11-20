@@ -138,46 +138,42 @@ func TestFirstVisibleProof(t *testing.T) {
 		{ID: 5, RelatedKind: RelatedClientPayment, RelatedID: 5, Type: EvidenceTransferProof, FileName: "bukti.pdf", UploadedAt: up(0)},
 	}
 	all := func(string) bool { return true }
-	p := FirstVisibleProof(list, RelatedProjectMilestone, 5, all)
+	p := FirstVisibleProof(list, RelatedProjectMilestone, 5, NewPortalPolicy(all))
 	if p == nil || p.EvidenceID != 2 || p.FileName != "asli.jpg" || p.Type != EvidencePhoto {
 		t.Fatalf("want the earliest client-visible file of milestone 5, got %+v", p)
 	}
-	if FirstVisibleProof(list, RelatedProjectMilestone, 7, all) != nil {
+	if FirstVisibleProof(list, RelatedProjectMilestone, 7, NewPortalPolicy(all)) != nil {
 		t.Error("no files, no proof")
 	}
 	noTimeline := func(perm string) bool { return perm != "portal.timeline.view" }
-	if FirstVisibleProof(list, RelatedProjectMilestone, 5, noTimeline) != nil {
+	if FirstVisibleProof(list, RelatedProjectMilestone, 5, NewPortalPolicy(noTimeline)) != nil {
 		t.Error("without portal.timeline.view no milestone proof")
 	}
 	noFinance := func(perm string) bool { return perm != "portal.finance.view" }
-	if FirstVisibleProof(list, RelatedClientPayment, 5, noFinance) != nil {
+	if FirstVisibleProof(list, RelatedClientPayment, 5, NewPortalPolicy(noFinance)) != nil {
 		t.Error("without portal.finance.view no payment proof")
 	}
-	if p := FirstVisibleProof(list, RelatedClientPayment, 5, all); p == nil || p.EvidenceID != 5 {
+	if p := FirstVisibleProof(list, RelatedClientPayment, 5, NewPortalPolicy(all)); p == nil || p.EvidenceID != 5 {
 		t.Errorf("payment proof expected, got %+v", p)
 	}
 }
 
-func TestClientCanSeeEvidenceMilestoneNeedsFlagAndPermission(t *testing.T) {
-	all := func(string) bool { return true }
-	noTimeline := func(p string) bool { return p != "portal.timeline.view" }
+func TestTimelineAttachmentNeedsFlagAndPermission(t *testing.T) {
+	all := NewPortalPolicy(func(string) bool { return true })
+	noTimeline := NewPortalPolicy(func(p string) bool { return p != "portal.timeline.view" })
 	flagged := Evidence{RelatedKind: RelatedProjectMilestone, IsClientVisible: true}
 	unflagged := Evidence{RelatedKind: RelatedProjectMilestone}
-	if !ClientCanSeeEvidence(flagged, all) {
+	if !all.Evidence(flagged, EvidenceOwner{}) {
 		t.Error("a flagged timeline attachment is visible with portal.timeline.view")
 	}
-	if ClientCanSeeEvidence(unflagged, all) {
+	if all.Evidence(unflagged, EvidenceOwner{}) {
 		t.Error("an unflagged timeline attachment stays internal")
 	}
-	if ClientCanSeeEvidence(flagged, noTimeline) {
+	if noTimeline.Evidence(flagged, EvidenceOwner{}) {
 		t.Error("a flagged attachment is still hidden without portal.timeline.view")
 	}
-	for _, k := range []EvidenceRelatedKind{RelatedPayment, RelatedVenuePayment, RelatedProjectVendor} {
-		if ClientCanSeeEvidence(Evidence{RelatedKind: k, IsClientVisible: true}, all) {
-			t.Errorf("%s must never be visible to a client, flag or not", k)
-		}
-	}
-	if !RelatedGeneral.SupportsClientVisibility() || !RelatedProjectMilestone.SupportsClientVisibility() || RelatedClientPayment.SupportsClientVisibility() {
-		t.Error("only general documents and timeline attachments carry the flag")
+	if !RelatedGeneral.SupportsClientVisibility() || !RelatedProjectMilestone.SupportsClientVisibility() ||
+		!RelatedVendorMilestone.SupportsClientVisibility() || RelatedClientPayment.SupportsClientVisibility() {
+		t.Error("only documents, timeline attachments and supplier steps carry the flag")
 	}
 }

@@ -3,6 +3,7 @@ import { expect, prepareContext, test, visit } from "../lib/fixtures";
 import { call, must } from "../lib/api";
 import { apiURL, config, webURL, type Session } from "../lib/config";
 import { sessionOf, storageStateFor } from "../lib/session";
+import { resepsiOn, withContract } from "../lib/project";
 
 // T-20261110-12: what a role's screen offers matches what the API lets it do (ADR-0026). Each test signs up its own
 // workspace (no golden data is touched) and signs in as staff of the role under test, so it WRITES data: "mutating".
@@ -72,7 +73,7 @@ test.describe("role screens follow the API", () => {
     const ws = await workspace();
     must("vendor", await call(apiURL(), ws.owner.accessToken, "POST", "/api/v1/venues", {
       name: "Gedung Uji Akses", picName: "Pak Uji", phonePic: "081300000000", phoneVenue: "", email: "", address: "Jl. Uji", city: "Kota Bandung",
-      rentalPrice: 1, charge: 0, capacity: 100, facilities: "", socialMedia: "", notes: "",
+      priceAkadResepsi: 1, charge: 0, capacityStanding: 100, facilities: "", socialMedia: "", notes: "",
     }));
     const cats = must("categories", await call(apiURL(), ws.owner.accessToken, "GET", "/api/v1/vendor-categories?all=true")).json.data as { id: number }[];
     must("vendor", await call(apiURL(), ws.owner.accessToken, "POST", "/api/v1/vendors", {
@@ -98,9 +99,10 @@ test.describe("role screens follow the API", () => {
   test("Keuangan may add a document but not show it on the Client Portal (the API refuses that too)", async ({ browser }, info) => {
     const ws = await workspace();
     const project = must("project", await call(apiURL(), ws.owner.accessToken, "POST", "/api/v1/projects", {
-      name: "Uji Dokumen", brideName: "Lina", groomName: "Reza", eventDate: "2027-07-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
-      packageName: "Paket Uji", contractValue: 10_000_000, status: "Draft", picStaffId: Number(ws.owner.principalId), picSalesStaffId: 0, description: "",
+      name: "Uji Dokumen", brideName: "Lina", groomName: "Reza", events: await resepsiOn(ws.owner.accessToken, "2027-07-01"), prepStartDate: "2026-11-09",
+      status: "Draft", picStaffId: Number(ws.owner.principalId), picSalesStaffId: 0, description: "",
     })).json.data.id as number;
+    await withContract(ws.owner.accessToken, project, 10_000_000);
     const finance = await staff(ws, "Uji Dokumen Keuangan", roleId(ws, "Keuangan"));
     const refused = await call(apiURL(), finance.accessToken, "POST", `/api/v1/projects/${project}/evidence`, {
       name: "Kontrak", type: "Contract", fileName: "k.pdf", mimeType: "application/pdf", base64Data: "JVBERi0xLjQK", documentDate: "2026-11-09",
@@ -111,9 +113,9 @@ test.describe("role screens follow the API", () => {
     await visit(page, `/proyek/${project}/dokumen`);
     await page.getByRole("button", { name: "Tambah dokumen" }).click();
     const dialog = page.getByRole("dialog", { name: "Tambah dokumen" });
-    await dialog.getByLabel("Konteks").click();
-    await page.getByRole("option", { name: "Umum (tidak terkait spesifik)" }).click();
-    await expect(dialog.getByLabel("Konteks")).toContainText("Umum");
+    await dialog.getByRole("button", { name: "Terkait dengan" }).click();
+    await page.getByRole("listbox").getByRole("option", { name: "Umum (tidak terkait apa pun)" }).click();
+    await expect(dialog.getByRole("button", { name: "Terkait dengan" })).toContainText("Umum");
     await expect(dialog.getByText("Tampilkan dokumen ini ke portal klien")).toHaveCount(0);
     await close();
   });

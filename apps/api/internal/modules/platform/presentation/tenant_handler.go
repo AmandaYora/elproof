@@ -231,6 +231,10 @@ func (h *TenantHandler) Item(w http.ResponseWriter, r *http.Request) {
 			h.myBusinessDetails(w, r)
 		case len(segments) == 2 && segments[1] == "business-details" && r.Method == http.MethodPut:
 			h.updateMyBusinessDetails(w, r)
+		case len(segments) == 2 && segments[1] == "quote-settings" && r.Method == http.MethodGet:
+			h.myQuoteSettings(w, r)
+		case len(segments) == 2 && segments[1] == "quote-settings" && r.Method == http.MethodPut:
+			h.updateMyQuoteSettings(w, r)
 		case len(segments) == 2 && segments[1] == "contact" && r.Method == http.MethodGet:
 			h.myContact(w, r)
 		case len(segments) == 2 && segments[1] == "logo" && r.Method == http.MethodPut:

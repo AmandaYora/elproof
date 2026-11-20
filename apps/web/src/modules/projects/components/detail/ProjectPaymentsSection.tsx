@@ -1,299 +1,222 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import { useCan } from "@/shared/stores/usePermissionStore";
-import { Plus, Pencil, Trash2, Eye } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { Button } from "@/shared/components/ui/Button";
-import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
-import { deleteWithUndo } from "@/shared/lib/undo-delete";
-import { Modal } from "@/shared/components/ui/Modal";
-import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
-import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
-import { RowActions } from "@/shared/components/ui/RowActions";
 import type { Column } from "@/shared/data-table/DataTable";
-import { EvidenceBadge, FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { formatCurrency } from "@/shared/lib/formatters";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { FinanceSection, FinanceSummary, LedgerTable, type SummaryItem } from "@/modules/projects/components/detail/finance-ui";
+import type { RecordPaymentValues, SupplierOption } from "@/modules/projects/components/detail/RecordPaymentDrawer";
+import { EngagementStatusBadge } from "@/modules/projects/components/StatusBadges";
+import { SupplierPaymentLedger, useSupplierPaymentPerms } from "@/modules/projects/components/suppliers/SupplierPaymentLedger";
+import { isMissingCost, supplierKindLabel } from "@/modules/rincian";
+import { sortSuppliers, SUPPLIER_OPEN_PARAM } from "@/modules/projects/components/suppliers/supplier-helpers";
+import { appliedToContract } from "@/modules/projects/lib/payments";
 import { useProjectStore, type SaveOptions } from "@/modules/projects/stores/useProjectStore";
-import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import {
-  paymentUpdateSchema,
-  PAYMENT_TYPE_OPTIONS,
-  PAYMENT_METHOD_OPTIONS,
-  type PaymentFormValues,
-  type PaymentUpdateFormValues,
-} from "@/modules/projects/schemas/payment.schema";
-import type { VendorPayment } from "@/modules/projects/types";
-import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { overpaymentMessage } from "@/modules/projects/lib/payments";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import type { ProjectSupplier, SupplierPayer, SupplierPayment } from "@/modules/projects/types";
 
-// The proof viewer is only needed once someone opens a payment's proof.
-const EvidenceListModal = lazy(() => import("@/shared/components/ui/EvidenceListModal").then((m) => ({ default: m.EvidenceListModal })));
+// "Catat pembayaran" opens on a click: the drawer and its form load then.
+const RecordPaymentDrawer = lazy(() => import("@/modules/projects/components/detail/RecordPaymentDrawer").then((m) => ({ default: m.RecordPaymentDrawer })));
 
+interface Row {
+  supplier: ProjectSupplier;
+  payments: SupplierPayment[];
+  paid: number;
+}
+
+const COPY = {
+  title: "Vendor & venue dibayar WO",
+  ledger: "Pembayaran ke rekanan",
+  emptySuppliers: {
+    title: "Belum ada vendor atau venue yang dibayar WO",
+    description: "Vendor dan venue dengan Dibayar oleh WO muncul di sini bersama biaya rekanannya.",
+  },
+  emptyPayments: { title: "Belum ada pembayaran ke rekanan", description: "Catat setiap pembayaran WO ke vendor atau venue beserta tagihan dan bukti transfernya." },
+};
+
+/**
+ * The book of payments the WO makes to vendors and venues (DESAIN §5.3): what it pays against each "Biaya rekanan"
+ * (needs finance.margin.view). A table per vendor or venue, then every payment, with "Catat pembayaran". What the
+ * client pays vendors directly is its own book (ClientPaidBook, "Tagihan vendor").
+ */
 export function ProjectPaymentsSection({ projectId }: { projectId: string }) {
-  const payments = useProjectStore((s) => s.payments);
-  const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
-  const fetchPayments = useProjectStore((s) => s.fetchPayments);
-  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const createPayment = useProjectStore((s) => s.createPayment);
-  const updatePayment = useProjectStore((s) => s.updatePayment);
-  const deletePayment = useProjectStore((s) => s.deletePayment);
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  // What the workspace role allows (ADR-0026): hard delete needs
-  // finance.payment.delete; adding and editing payments finance.record.
-  const canDelete = useCan("finance.payment.delete");
-  const canRecord = useCan("finance.record");
+  const payer: SupplierPayer = "WO";
+  const suppliers = useProjectStore((s) => s.suppliers);
+  const supplierPayments = useProjectStore((s) => s.supplierPayments);
+  const fetchSuppliers = useProjectStore((s) => s.fetchSuppliers);
+  const fetchSupplierPayments = useProjectStore((s) => s.fetchSupplierPayments);
+  const createSupplierPayment = useProjectStore((s) => s.createSupplierPayment);
+  const perms = useSupplierPaymentPerms();
+  const canRecord = perms.canRecord(payer);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const copy = COPY;
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<VendorPayment | null>(null);
-  const [viewingEvidencePayment, setViewingEvidencePayment] = useState<VendorPayment | null>(null);
+  // A money screen never shows Rp0 for a book it could not read: the totals wait for both lists, and a failure says so.
+  const load = useCallback(() => {
+    setStatus("loading");
+    Promise.all([fetchSuppliers(projectId), fetchSupplierPayments(projectId)]).then(
+      () => setStatus("ready"),
+      () => setStatus("error"),
+    );
+  }, [projectId, fetchSuppliers, fetchSupplierPayments]);
+  useEffect(load, [load]);
+  const ready = status === "ready";
 
-  useEffect(() => {
-    void fetchPayments(projectId);
-    void fetchVendorSection(projectId);
-    void fetchVendors();
-  }, [projectId, fetchPayments, fetchVendorSection, fetchVendors]);
+  const payments = useMemo(() => supplierPayments.filter((p) => p.payer === payer), [supplierPayments, payer]);
+  const rows: Row[] = useMemo(
+    () =>
+      sortSuppliers(suppliers.filter((s) => s.paidBy === payer)).map((supplier) => {
+        const own = payments.filter((p) => p.projectSupplierId === supplier.id);
+        return { supplier, payments: own, paid: appliedToContract(own) };
+      }),
+    [suppliers, payments, payer],
+  );
+  // A cancelled vendor or venue is not owed anything any more; what was paid to it stays in the ledger below.
+  const active = rows.filter((r) => r.supplier.engagementStatus !== "Cancelled");
+  const pagination = usePagination(rows);
 
-  // Excludes Cancelled engagements, same as Margin/Keuntungan's own
-  // vendorCost already does — a cancelled engagement's contract value isn't
-  // still owed to anyone. Individual payment history rows below are NOT
-  // filtered by this: a payment that already happened stays a historical
-  // fact regardless of the engagement's current status. See PLAN.md
-  // "Financial Calculation Correctness".
-  const activeEngagements = vendorEngagements.filter((pv) => pv.engagementStatus !== "Cancelled");
-  const totalContractValue = activeEngagements.reduce((sum, pv) => sum + pv.contractValue, 0);
-  const totalPaid = activeEngagements.reduce((sum, pv) => sum + pv.paidAmount, 0);
-  const totalRemaining = totalContractValue - totalPaid;
-  const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(payments);
+  const totalCost = active.reduce((sum, r) => sum + (r.supplier.agreedCost ?? 0), 0);
+  const totalPaid = active.reduce((sum, r) => sum + r.paid, 0);
+  const missing = active.filter((r) => isMissingCost(r.supplier)).length;
 
-  // Payment and proof are one request: if it fails nothing was saved and the drawer stays open (errors show inside it).
-  async function handleAddPayment(values: PaymentFormValues, options: SaveOptions) {
-    await createPayment(projectId, values, options);
-    setModalOpen(false);
-  }
-
-  async function handleEditPayment(values: PaymentUpdateFormValues) {
-    if (!editingPayment) return;
-    await updatePayment(projectId, editingPayment.id, values, editingPayment.updatedAt);
-    setEditingPayment(null);
-  }
-
-  // No "Yakin?" step: it disappears at once and the toast offers "Urungkan" (the server keeps it 24 hours).
-  function handleDeletePayment(payment: { id: string }) {
-    void deleteWithUndo("Pembayaran vendor", () => deletePayment(projectId, payment.id));
-  }
-
-  function vendorNameOf(payment: VendorPayment): string {
-    const pv = vendorEngagements.find((v) => v.id === payment.projectVendorId);
-    const vendor = pv ? vendors.find((v) => v.id === pv.vendorId) : null;
-    return vendor?.name ?? (pv?.vendorName || "Vendor tidak diketahui");
-  }
-
-  const columns: Column<VendorPayment>[] = [
-    { id: "vendor", header: "Vendor", primary: true, truncate: true, className: "w-[28%] min-w-40", cell: (p) => <span className="font-medium" title={vendorNameOf(p)}>{vendorNameOf(p)}</span> },
-    { id: "type", header: "Jenis", card: true, className: "whitespace-nowrap", cell: (p) => p.type },
-    { id: "date", header: "Tanggal", card: true, className: "w-32 whitespace-nowrap", cell: (p) => formatDate(p.paymentDate) },
-    { id: "amount", header: "Nominal", align: "right", card: true, cell: (p) => formatCurrency(p.amount) },
-    { id: "method", header: "Metode", className: "whitespace-nowrap", cell: (p) => p.method || "-" },
-    { id: "ref", header: "No. referensi", truncate: true, className: "w-36 tabular-nums", cell: (p) => <span title={p.referenceNumber || undefined}>{p.referenceNumber || "-"}</span> },
-    { id: "proof", header: "Bukti", className: "whitespace-nowrap", cell: (p) => <EvidenceBadge complete={p.evidenceComplete} /> },
+  const summary: SummaryItem[] = [
+    {
+      label: "Biaya rekanan",
+      value: formatCurrency(totalCost),
+      note: missing > 0 ? `${missing} vendor atau venue belum diisi` : undefined,
+    },
+    { label: "Sudah dibayar", value: formatCurrency(totalPaid) },
+    {
+      label: "Sisa",
+      value: formatCurrency(Math.max(totalCost - totalPaid, 0)),
+      note: totalPaid > totalCost && totalCost > 0 ? `Lebih bayar ${formatCurrency(totalPaid - totalCost)}` : undefined,
+      tone: totalPaid > totalCost && totalCost > 0 ? "warning" : "neutral",
+    },
   ];
 
+  const supplierOptions: SupplierOption[] = rows.map(({ supplier: s }) => ({ value: s.id, label: `${s.name} (${supplierKindLabel(s)})` }));
+  const openHref = (s: ProjectSupplier) => `${ROUTE_PATHS.projectDetail(projectId, "vendor")}?${SUPPLIER_OPEN_PARAM}=${encodeURIComponent(s.id)}`;
+
+  const columns: Column<Row>[] = [
+    {
+      id: "name",
+      header: "Nama",
+      primary: true,
+      truncate: true,
+      className: "w-[30%] min-w-44",
+      cell: ({ supplier: s }) => (
+        <span className="flex min-w-0 flex-col">
+          <Link to={openHref(s)} className="truncate font-medium text-foreground hover:text-primary hover:underline" title={s.name}>
+            {s.name}
+          </Link>
+          <span className="truncate text-[12.5px] text-muted-foreground">{supplierKindLabel(s)}</span>
+        </span>
+      ),
+    },
+    { id: "status", header: "Status", card: true, className: "whitespace-nowrap", cell: ({ supplier: s }) => <EngagementStatusBadge status={s.engagementStatus} /> },
+    {
+      id: "cost",
+      header: "Biaya rekanan",
+      align: "right",
+      card: true,
+      cell: ({ supplier: s }) =>
+        s.agreedCost === null ? <span className="text-warning-text">Belum diisi</span> : <span className="tabular-nums">{formatCurrency(s.agreedCost)}</span>,
+    },
+    { id: "paid", header: "Dibayar", align: "right", card: true, cell: (r) => <span className="tabular-nums">{formatCurrency(r.paid)}</span> },
+    {
+      id: "left",
+      header: "Sisa",
+      align: "right",
+      card: true,
+      cell: ({ supplier: s, paid }) =>
+        s.agreedCost === null ? (
+          <span className="text-muted-foreground">-</span>
+        ) : (
+          <span className={paid > s.agreedCost ? "tabular-nums text-warning-text" : "tabular-nums"}>
+            {paid > s.agreedCost ? `Lebih ${formatCurrency(paid - s.agreedCost)}` : formatCurrency(s.agreedCost - paid)}
+          </span>
+        ),
+    },
+    { id: "count", header: "Pembayaran", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular-nums">{r.payments.length}</span> },
+  ];
+
+  // Payment and proof are one request: if it fails nothing was saved and the drawer stays open (errors show inside it).
+  async function handleRecord(values: RecordPaymentValues, options: SaveOptions) {
+    await createSupplierPayment(projectId, values, options);
+    setRecordOpen(false);
+  }
+
   return (
-    <div id="pembayaran">
+    <div id="pembayaran" className="flex flex-col gap-8">
       <FinanceSection
-        title="Pembayaran ke vendor"
+        title={copy.title}
         action={
-          canRecord && (
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
-              Tambah pembayaran
+          canRecord &&
+          ready &&
+          supplierOptions.length > 0 && (
+            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setRecordOpen(true)}>
+              Catat pembayaran
             </Button>
           )
         }
       >
-        <FinanceSummary
-          items={[
-            { label: "Total nilai kerja sama", value: formatCurrency(totalContractValue) },
-            { label: "Sudah dibayar", value: formatCurrency(totalPaid) },
-            { label: "Sisa pembayaran", value: formatCurrency(totalRemaining) },
-          ]}
-        />
+        {ready && <FinanceSummary items={summary} />}
         <LedgerTable
-          label="Pembayaran ke vendor"
+          label={copy.title}
           columns={columns}
-          rows={pageItems}
-          rowId={(p) => p.id}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          onPageChange={setPage}
-          empty={{ title: "Belum ada pembayaran ke vendor", description: "Catat setiap pembayaran ke vendor beserta tagihan dan bukti transfernya." }}
-          actions={(p) => (
-            <RowActions
-              rowLabel={`${vendorNameOf(p)} ${p.type} ${formatCurrency(p.amount)}`}
-              primary={{ label: "Ubah pembayaran", icon: <Pencil />, onClick: () => setEditingPayment(p), hidden: !canRecord }}
-              items={[
-                { label: "Lihat bukti", icon: <Eye className="h-4 w-4" />, onSelect: () => setViewingEvidencePayment(p) },
-                { label: "Hapus pembayaran", icon: <Trash2 className="h-4 w-4" />, tone: "danger", onSelect: () => handleDeletePayment(p), hidden: !canDelete },
-              ]}
-            />
-          )}
+          rows={pagination.pageItems}
+          rowId={(r) => r.supplier.id}
+          page={pagination.page}
+          pageSize={pagination.pageSize}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.totalItems}
+          onPageChange={pagination.setPage}
+          status={status}
+          onRetry={load}
+          empty={{
+            ...copy.emptySuppliers,
+            action: (
+              <Link to={ROUTE_PATHS.projectDetail(projectId, "vendor")} className="text-[13px] font-semibold text-primary hover:underline">
+                Buka Vendor & venue
+              </Link>
+            ),
+          }}
         />
       </FinanceSection>
 
-      <RecordPaymentDrawer
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Catat pembayaran vendor"
-        description="Catat pembayaran baru ke vendor untuk proyek ini, beserta tagihan dan bukti transfernya."
-        slots={{ invoice: true }}
-        vendorOptions={vendorEngagements.map((pv) => {
-          const vendor = vendors.find((v) => v.id === pv.vendorId);
-          return { value: pv.id, label: vendor ? (vendor.city ? `${vendor.name} — ${vendor.city}` : vendor.name) : pv.vendorName || "Vendor" };
-        })}
-        owed={(projectVendorId) => ({
-          contractValue: vendorEngagements.find((e) => e.id === projectVendorId)?.contractValue ?? 0,
-          existing: payments.filter((p) => p.projectVendorId === projectVendorId),
-          owedLabel: "sisa pembayaran vendor",
-        })}
-        onSubmit={handleAddPayment}
-      />
-
-      {editingPayment && (
-        <EditPaymentModal
-          open={Boolean(editingPayment)}
-          payment={editingPayment}
-          onClose={() => setEditingPayment(null)}
-          onSubmit={handleEditPayment}
-          contractValue={vendorEngagements.find((e) => e.id === editingPayment.projectVendorId)?.contractValue ?? 0}
-          others={payments.filter((p) => p.projectVendorId === editingPayment.projectVendorId && p.id !== editingPayment.id)}
+      <FinanceSection title={copy.ledger}>
+        <SupplierPaymentLedger
+          projectId={projectId}
+          label={copy.ledger}
+          payments={payments}
+          suppliers={suppliers}
+          showSupplier
+          empty={copy.emptyPayments}
+          status={status}
+          onRetry={load}
         />
-      )}
+      </FinanceSection>
 
-      {viewingEvidencePayment && (
+      {recordOpen && (
         <Suspense fallback={null}>
-          <EvidenceListModal
+          <RecordPaymentDrawer
             open
-            projectId={projectId}
-            title={`Bukti — ${viewingEvidencePayment.type}`}
-            items={viewingEvidencePayment.evidence}
-            onClose={() => setViewingEvidencePayment(null)}
+            onClose={() => setRecordOpen(false)}
+            title="Catat pembayaran ke rekanan"
+            description="Pembayaran WO ke vendor atau venue, beserta tagihan dan bukti transfernya."
+            supplierOptions={supplierOptions}
+            slots={{ invoice: true }}
+            owed={(sid) => ({
+              contractValue: suppliers.find((s) => s.id === sid)?.agreedCost ?? 0,
+              existing: payments.filter((p) => p.projectSupplierId === sid),
+              owedLabel: "sisa biaya rekanan",
+            })}
+            onSubmit={handleRecord}
           />
         </Suspense>
       )}
     </div>
-  );
-}
-
-// Edit scope is the ledger fields only -- no vendor picker (re-parenting a
-// payment isn't supported, PLAN.md §2.5) and no file inputs (already
-// covered by the existing generic evidence tab).
-function EditPaymentModal({
-  open,
-  payment,
-  onClose,
-  onSubmit,
-  contractValue,
-  others,
-}: {
-  open: boolean;
-  payment: VendorPayment;
-  onClose: () => void;
-  onSubmit: (values: PaymentUpdateFormValues) => Promise<void>;
-  contractValue: number;
-  /** This engagement's other payments (the one being edited left out). */
-  others: VendorPayment[];
-}) {
-  const [values, setValues] = useState<PaymentUpdateFormValues>({
-    type: payment.type,
-    amount: payment.amount,
-    paymentDate: payment.paymentDate,
-    method: payment.method as PaymentUpdateFormValues["method"],
-    referenceNumber: payment.referenceNumber,
-    notes: payment.notes,
-  });
-  const [errors, setErrors] = useState<Partial<Record<keyof PaymentUpdateFormValues, string>>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  function set<K extends keyof PaymentUpdateFormValues>(key: K, value: PaymentUpdateFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleSubmit() {
-    const result = paymentUpdateSchema.safeParse(values);
-    const fieldErrors: Partial<Record<keyof PaymentUpdateFormValues, string>> = {};
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        fieldErrors[issue.path[0] as keyof PaymentUpdateFormValues] ??= issue.message;
-      }
-    } else {
-      const over = overpaymentMessage(contractValue, others, result.data, formatCurrency, "sisa pembayaran vendor", payment);
-      if (over) fieldErrors.amount = over;
-    }
-    if (!result.success || fieldErrors.amount) {
-      setErrors(fieldErrors);
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await onSubmit(result.data);
-    } catch (err) {
-      setError(getApiErrorMessage(err, "Gagal memperbarui pembayaran"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Ubah pembayaran"
-      description="Perbarui detail pembayaran ini. Bukti yang sudah terlampir tidak berubah."
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? "Menyimpan..." : "Simpan Perubahan"}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && (
-          <p className="sm:col-span-2 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{error}</p>
-        )}
-        <Field label="Jenis pembayaran" required>
-          <Select value={values.type} onChange={(e) => set("type", e.target.value as PaymentUpdateFormValues["type"])}>
-            {PAYMENT_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Nominal (Rp)" required error={errors.amount}>
-          <CurrencyInput value={values.amount} onChange={(n) => set("amount", n)} />
-        </Field>
-        <Field label="Tanggal" required hint={errors.paymentDate}>
-          <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />
-        </Field>
-        <Field label="Metode" required hint={errors.method}>
-          <Select value={values.method} onChange={(e) => set("method", e.target.value as PaymentUpdateFormValues["method"])}>
-            {PAYMENT_METHOD_OPTIONS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="No. referensi" hint={errors.referenceNumber}>
-          <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Catatan">
-            <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
-          </Field>
-        </div>
-      </div>
-    </Modal>
   );
 }

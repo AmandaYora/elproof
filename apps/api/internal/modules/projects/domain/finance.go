@@ -81,14 +81,6 @@ func DaysLate(dueDate, today time.Time, remaining int64) int {
 	return 0
 }
 
-// PayableKind is who the money goes to.
-type PayableKind string
-
-const (
-	PayableVendor PayableKind = "vendor"
-	PayableVenue  PayableKind = "venue"
-)
-
 // PayableStatus is where an amount owed by the WO stands.
 type PayableStatus string
 
@@ -96,46 +88,58 @@ const (
 	PayablePaid    PayableStatus = "paid"
 	PayableUnpaid  PayableStatus = "unpaid"
 	PayableOverdue PayableStatus = "overdue" // a due date that has passed with something left
+	// PayableIncomplete: the WO pays this supplier but no agreed cost is
+	// recorded yet, so what is owed is unknown ("Biaya belum diisi").
+	PayableIncomplete PayableStatus = "incomplete"
 )
 
 // PayableFilter is everything /finance/payables narrows by besides the scope.
-// Status "open" means anything left to pay (unpaid or overdue).
+// Status "open" means anything left to pay (unpaid or overdue) or not known
+// yet (incomplete).
 type PayableFilter struct {
-	Kind       PayableKind
+	Kind       SupplierKind // "" = vendors and venues
 	Status     string
 	Search     string
 	PICStaffID *int64
 }
 
 // PayableStatusFilters lists the accepted values of ?status= on /finance/payables.
-var PayableStatusFilters = []string{"open", string(PayableUnpaid), string(PayableOverdue), string(PayablePaid)}
+var PayableStatusFilters = []string{"open", string(PayableUnpaid), string(PayableOverdue), string(PayablePaid), string(PayableIncomplete)}
 
-// PayableRow is one amount the WO owes: a vendor engagement (its contract value)
-// or a project's venue (rental price + charge), with what has been paid against
-// it (DP + Termin + Pelunasan - Refund over its live payments, never negative).
+// PayableRow is one amount the WO owes: a vendor or venue of a project the WO
+// pays, with its agreed cost ("Biaya rekanan"), and what the WO has paid
+// against it (DP + Termin + Pelunasan - Refund over its live WO payments, never
+// negative). A supplier the client pays directly is never a payable. One the WO
+// pays without an agreed cost is listed as Incomplete (AgreedCost 0), not
+// dropped: the WO still owes it, the amount is just not known yet.
 type PayableRow struct {
-	Kind          PayableKind
-	ID            int64 // the engagement's id; the project's id for a venue
-	ProjectID     int64
-	ProjectName   string
-	BrideName     string
-	GroomName     string
-	PICStaffID    int64
-	VendorID      int64  // vendors only
-	CategoryID    int64  // vendors only
-	VenueName     string // venues only: the project's venue text
-	ContractValue int64
-	Paid          int64
-	DueDate       *time.Time // vendors only, when agreed
+	Kind         SupplierKind
+	ID           int64 // the project supplier's id
+	ProjectID    int64
+	ProjectName  string
+	BrideName    string
+	GroomName    string
+	PICStaffID   int64
+	SupplierID   int64 // the directory vendor or venue
+	SupplierName string
+	CategoryID   int64 // vendors only
+	AgreedCost   int64
+	Paid         int64
+	DueDate      *time.Time
+	Incomplete   bool // no agreed cost recorded yet
 }
 
 // Remaining is what is still owed (never negative), the rule of ComputeLedger.
 func (r PayableRow) Remaining() int64 {
-	return ComputeLedger([]PaymentLine{{Type: PaymentDP, Amount: max64(r.Paid, 0)}}, r.ContractValue).Remaining
+	return ComputeLedger([]PaymentLine{{Type: PaymentDP, Amount: max64(r.Paid, 0)}}, r.AgreedCost).Remaining
 }
 
-// Status is the row's standing as of today.
+// Status is the row's standing as of today; a row without an agreed cost is
+// incomplete whatever has been paid.
 func (r PayableRow) Status(today time.Time) PayableStatus {
+	if r.Incomplete {
+		return PayableIncomplete
+	}
 	return PayableStatusOf(r.Remaining(), r.DueDate, today)
 }
 
@@ -160,20 +164,26 @@ type MoneyCount struct {
 }
 
 // PayablesSummary is what the WO still owes vendors and venues.
+// IncompleteCount is how many WO-paid suppliers have no agreed cost yet: what
+// they are owed is not in Amount.
 type PayablesSummary struct {
-	Amount        int64
-	Count         int
-	OverdueAmount int64
-	OverdueCount  int
+	Amount          int64
+	Count           int
+	OverdueAmount   int64
+	OverdueCount    int
+	IncompleteCount int
 }
 
 // FinanceSummary is the Keuangan page's headline figures.
 type FinanceSummary struct {
-	Overdue             MoneyCount // installments past due: what is left on them
-	DueSoon             MoneyCount // installments due from today to today+30, not yet paid
-	Received            MoneyCount // client money received in the last 30 days (Count = payments)
-	Payables            PayablesSummary
-	PendingVerification MoneyCount // client payments with proof, not verified yet
+	Overdue  MoneyCount // installments past due: what is left on them
+	DueSoon  MoneyCount // installments due from today to today+30, not yet paid
+	Received MoneyCount // client money received in the last 30 days (Count = payments)
+	Payables PayablesSummary
+	// PendingVerification: payments with proof, not verified yet. Count and
+	// Projects include the client's proofs to vendors they pay directly (Paket
+	// WO Tahap 4); Amount is only money to the WO (client payments).
+	PendingVerification MoneyCount
 	CashFlow            []CashFlowWeek
 }
 
@@ -205,10 +215,14 @@ func SummarizeReceivables(rows []ReceivableRow, today time.Time) (overdue, dueSo
 }
 
 // SummarizePayables adds up what is still owed to vendors and venues, and
-// returns the vendor balances with a due date as due amounts for the cash flow
-// (the dashboard's "keluar": a venue has no due date, so it is not in it).
+// returns the balances with a due date as due amounts for the cash flow (the
+// dashboard's "keluar"). A row without an agreed cost is only counted.
 func SummarizePayables(rows []PayableRow, today time.Time) (sum PayablesSummary, due []DueAmount) {
 	for _, r := range rows {
+		if r.Incomplete {
+			sum.IncompleteCount++
+			continue
+		}
 		left := r.Remaining()
 		if left <= 0 {
 			continue
@@ -219,7 +233,7 @@ func SummarizePayables(rows []PayableRow, today time.Time) (sum PayablesSummary,
 			sum.OverdueAmount += left
 			sum.OverdueCount++
 		}
-		if r.Kind == PayableVendor && r.DueDate != nil {
+		if r.DueDate != nil {
 			due = append(due, DueAmount{DueDate: *r.DueDate, Remaining: left})
 		}
 	}
@@ -240,8 +254,20 @@ func ReceivedAmount(lines []PaymentLine) int64 {
 	return total
 }
 
-// VerificationRow is one client payment that has proof but no verification yet.
+// Kinds of row of the verification queue.
+const (
+	// VerificationClientPayment: money the client paid the WO (client_payments).
+	VerificationClientPayment = "clientPayment"
+	// VerificationSupplierPayment: the client's proof of a payment to a vendor
+	// they pay directly (supplier_payments, payer Client; Paket WO Tahap 4).
+	// Never the WO's money: checked here, counted nowhere in the WO's figures.
+	VerificationSupplierPayment = "supplierPayment"
+)
+
+// VerificationRow is one payment that has proof but no verification yet: a
+// client payment, or a client's proof to a vendor they pay (Kind).
 type VerificationRow struct {
+	Kind            string
 	PaymentID       int64
 	ProjectID       int64
 	ProjectName     string
@@ -255,4 +281,10 @@ type VerificationRow struct {
 	RecordedByID    int64
 	// SubmittedByClientID: the couple sent it from the portal (0 = staff recorded it).
 	SubmittedByClientID int64
+	// For a supplierPayment: the vendor or venue it pays and the bill it is for
+	// (0 / "" when none).
+	ProjectSupplierID int64
+	SupplierName      string
+	BillTermID        int64
+	BillTermLabel     string
 }

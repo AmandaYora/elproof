@@ -182,3 +182,20 @@ with no vendors (the venue card alone).
 `/portal/venue` redirects to `/portal/vendor` (same precedent as the earlier "ringkasan" tab
 retirement, absorbed into `ClientProjectHeaderCard.tsx`); `ClientPortalLayout.tsx`'s tab list and
 `route-paths.ts`'s `ClientPortalTab` both lost the `"venue"` entry.
+
+## Note (2026-11-19): ADR-0048 (paket WO Tahap 1 and Tahap 2)
+
+**Tahap 1 — capacity and price fields.** The single `capacity` and `rental_price` columns described above are gone. Migration
+`000084_venue_capacity_prices` gives a venue a capacity per layout (`capacity_standing`,
+`capacity_seated` — at least one required, ≥ 1) and a price per kind of event (`price_akad`,
+`price_resepsi`, `price_akad_resepsi`); `charge` stays as the optional extra charge. The old capacity
+became `capacity_standing` and the old rental price `price_akad_resepsi`. The import template, the
+export and the public-safe `VenueSummary` (now `capacityStanding`/`capacitySeated`, still no prices)
+follow suit. See ADR-0048 and `DB_SCHEMA.md`'s `venues` table.
+
+**Tahap 2 — sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): a venue enters a project only through an
+event.** `projects.venue`, `venue_id`, `venue_rental_price`, `venue_charge` and `venue_payments` are gone, and so is
+`/projects/{id}/venue`. Choosing a venue for an event (`project_events.venue_supplier_id`) adds it to the project's
+Vendor & venue (`project_suppliers`, kind `venue`) with a copy of its name and capacities, its own Dibayar oleh,
+biaya rekanan and payments (`supplier_payments`), so one project can use several venues. The Client Portal reads the
+events (`GET /projects/{id}/events`, each with its venue) instead of one project venue.

@@ -374,56 +374,80 @@ func validatePaymentFields(fe *fieldErrors, t domain.PaymentType, amount int64) 
 // the proof it was recorded with. Every field problem (type, amount, each
 // evidence item) is reported together.
 func (s *ClientPaymentService) CreateWithProof(ctx context.Context, tenantID, projectID, actorStaffID int64, input ClientPaymentInput, items []ProofItem, today time.Time) (*ClientPaymentCreated, error) {
-	proof := s.proof
-	if proof == nil {
-		proof = NewProofSupport(nil, nil, s.evidence)
+	proof := s.proofSupport()
+	resolved, err := s.prepareWithProof(ctx, tenantID, projectID, input, items)
+	if err != nil {
+		return nil, err
 	}
+	var out *ClientPaymentCreated
+	err = proof.tx.InTx(ctx, func(ctx context.Context) error {
+		var err error
+		out, err = s.recordWithProof(ctx, tenantID, projectID, actorStaffID, input, resolved, today)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *ClientPaymentService) proofSupport() *ProofSupport {
+	if s.proof == nil {
+		return NewProofSupport(nil, nil, s.evidence)
+	}
+	return s.proof
+}
+
+// prepareWithProof checks a payment's fields and the uploads it claims (signed
+// for uploadProjectID), before anything is written. Every problem is one
+// validation error.
+func (s *ClientPaymentService) prepareWithProof(ctx context.Context, tenantID, uploadProjectID int64, input ClientPaymentInput, items []ProofItem) ([]ResolvedProof, error) {
 	fe := newFieldErrors()
 	validatePaymentFields(fe, input.Type, input.Amount)
-	resolved, err := proof.resolve(ctx, tenantID, projectID, items, clientProofTypes)
+	resolved, err := s.proofSupport().resolve(ctx, tenantID, uploadProjectID, items, clientProofTypes)
 	if err != nil && !fe.mergeErr(err) {
 		return nil, err
 	}
 	if !fe.empty() {
 		return nil, fe.err()
 	}
+	return resolved, nil
+}
 
-	var out ClientPaymentCreated
-	err = proof.tx.InTx(ctx, func(ctx context.Context) error {
-		if err := proof.tx.LockProject(ctx, projectID); err != nil {
-			return err
-		}
-		if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
-			return err
-		}
-		p := &domain.ClientPayment{
-			ProjectID: projectID, Type: input.Type, Amount: input.Amount,
-			PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
-			RecordedByStaffID: actorStaffID,
-		}
-		if err := s.repo.Create(ctx, p); err != nil {
-			return err
-		}
-		evidence, err := proof.attach(ctx, proofTarget{
-			ProjectID: projectID, ActorStaffID: actorStaffID, Kind: domain.RelatedClientPayment, RelatedID: p.ID,
-			Date: input.PaymentDate, Reference: input.ReferenceNumber,
-		}, resolved)
-		if err != nil {
-			return err
-		}
-		s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
-			"Pembayaran klien dicatat")
-		ledger, terms, err := s.ledgerAndTerms(ctx, tenantID, projectID, today)
-		if err != nil {
-			return err
-		}
-		out = ClientPaymentCreated{Payment: p, Evidence: evidence, Ledger: ledger, Terms: terms}
-		return nil
-	})
+// recordWithProof writes a checked payment and its proof on the transaction
+// ctx carries (the caller opened it): it takes the project's money lock,
+// refuses a payment beyond the contract, and answers where the contract and
+// the schedule stand afterwards.
+func (s *ClientPaymentService) recordWithProof(ctx context.Context, tenantID, projectID, actorStaffID int64, input ClientPaymentInput, resolved []ResolvedProof, today time.Time) (*ClientPaymentCreated, error) {
+	proof := s.proofSupport()
+	if err := proof.tx.LockProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	if err := s.checkChange(ctx, tenantID, projectID, 0, &domain.PaymentLine{Type: input.Type, Amount: input.Amount}); err != nil {
+		return nil, err
+	}
+	p := &domain.ClientPayment{
+		ProjectID: projectID, Type: input.Type, Amount: input.Amount,
+		PaymentDate: input.PaymentDate, Method: input.Method, ReferenceNumber: input.ReferenceNumber, Notes: input.Notes,
+		RecordedByStaffID: actorStaffID,
+	}
+	if err := s.repo.Create(ctx, p); err != nil {
+		return nil, err
+	}
+	evidence, err := proof.attach(ctx, proofTarget{
+		ProjectID: projectID, ActorStaffID: actorStaffID, Kind: domain.RelatedClientPayment, RelatedID: p.ID,
+		Date: input.PaymentDate, Reference: input.ReferenceNumber,
+	}, resolved)
 	if err != nil {
 		return nil, err
 	}
-	return &out, nil
+	s.activity.Record(ctx, &projectID, domain.ActivityPaymentRecorded, actorStaffID, "client_payment", formatID(p.ID), string(p.Type),
+		"Pembayaran klien dicatat")
+	ledger, terms, err := s.ledgerAndTerms(ctx, tenantID, projectID, today)
+	if err != nil {
+		return nil, err
+	}
+	return &ClientPaymentCreated{Payment: p, Evidence: evidence, Ledger: ledger, Terms: terms}, nil
 }
 
 // ledgerAndTerms is where the client's contract stands, and each installment of

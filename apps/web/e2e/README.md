@@ -76,8 +76,9 @@ dinormalkan ke 10:00 WIB + id detik, dan tunggu jaringan idle + font siap + teks
 **Batas yang jujur:**
 1. **Hanya jam bisnis server yang digeser.** Token (JWT, refresh), TOTP, tautan masuk, rate limit, URL bertanda tangan
    penyimpanan, dan `NOW()` MySQL tetap memakai jam nyata, karena dicek terhadap pihak yang hanya tahu jam nyata (TOTP
-   dihitung Node dengan jam nyata). Teks yang tetap bisa bergeser **ditutup magenta** (`volatile()` di `lib/fixtures.ts`).
-   Bila potret berubah sendiri seiring tanggal nyata, cari `time.Now()` di kode modul yang seharusnya `clock.Now()`.
+   dihitung Node dengan jam nyata). Potret **tidak menutup apa pun**: yang tampil sama persis dengan yang dilihat
+   pengguna (akhir masa coba juga dikunci di seed). Bila potret berubah sendiri seiring tanggal nyata, cari `time.Now()`
+   di kode modul yang seharusnya `clock.Now()`; jangan menambah penutup.
    Tanggal yang dikirim tes ke API (mis. `validUntil` voucher) dihitung dari `FIXED_NOW`, **bukan** `Date.now()` di Node.
 2. **Potret berbeda per platform.** Baseline ini diambil di macOS (Chromium 156 dari Playwright 1.64). Rendering teks di Linux
    berbeda sedikit; CI harus memakai satu lingkungan saja dan membuat ulang potret di sana (`npm run e2e:update`) sebelum

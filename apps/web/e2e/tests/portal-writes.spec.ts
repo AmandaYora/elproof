@@ -6,6 +6,7 @@ import { open } from "../lib/suite";
 import { apiURL, BASE_DAY, E2E_ROOT } from "../lib/config";
 import { browserSession } from "../lib/session";
 import { call, must } from "../lib/api";
+import { resepsiOn, withContract } from "../lib/project";
 
 // ADR-0047: the Client Portal gains a cover photo (uploaded by the WO) and two write paths for the couple: a transfer
 // proof that waits in Keuangan "Verifikasi bukti", and marking a task done. The portal screens for the couple are built
@@ -30,12 +31,14 @@ async function newProject(req: APIRequestContext, staff: Staff, name: string): P
   const made = await req.post(API("/projects"), {
     headers: staff.auth,
     data: {
-      name, brideName: "Laras Ayu", groomName: "Dimas Putra", eventDate: "2027-07-10", venue: "Gedung Uji", prepStartDate: "2026-11-09",
-      packageName: "Paket Uji", contractValue: 20_000_000, status: "Preparation", picStaffId: staff.principalId, picSalesStaffId: 0, description: "",
+      name, brideName: "Laras Ayu", groomName: "Dimas Putra", events: await resepsiOn(staff.auth.Authorization.slice(7), "2027-07-10"), prepStartDate: "2026-11-09",
+      status: "Preparation", picStaffId: staff.principalId, picSalesStaffId: 0, description: "",
     },
   });
   expect(made.status()).toBe(201);
-  return ((await made.json()).data as { id: number }).id;
+  const id = ((await made.json()).data as { id: number }).id;
+  await withContract(staff.auth.Authorization.slice(7), id, 20_000_000);
+  return id;
 }
 
 /** Adds the bride with the workspace's "Pengantin" portal role and returns her access token. */

@@ -10,7 +10,7 @@ import { askMessage, type PortalContact } from "@/modules/client-portal/lib/useP
 /**
  * One kendala, always answering the same three questions (FLOW-IDEAL 3.2): what
  * happened, what we are doing, when to expect news. Calm colors, never red.
- * Names come with the issue (E6), so the card needs no vendor lists.
+ * Names come with the issue (E6): a vendor the client may not know by name arrives as its service.
  */
 export function IssueCard({
   issue,
@@ -25,7 +25,7 @@ export function IssueCard({
   contact?: PortalContact;
 }) {
   const resolved = issue.status === "Resolved" || issue.status === "Closed";
-  const where = [showVendorName ? issue.vendorName : "", issue.vendorMilestoneName || "Kendala umum"].filter(Boolean).join(" · ");
+  const where = [showVendorName ? issue.supplierName : "", issue.vendorMilestoneName || "Kendala umum"].filter(Boolean).join(" · ");
 
   return (
     <article className="rounded-2xl border border-border bg-card p-5">

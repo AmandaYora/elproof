@@ -36,8 +36,10 @@ func TestClosingChecklist(t *testing.T) {
 	paid := []PaymentLine{{PaymentDP, 50}, {PaymentPelunasan, 50}}
 	all := BuildClosingChecklist(ClosingInput{
 		ContractValue: 100, ClientPayments: paid,
-		Vendors:   []VendorBalance{{ContractValue: 40, Payments: []PaymentLine{{PaymentPelunasan, 40}}}},
-		VenueCost: 30, VenuePayments: []PaymentLine{{PaymentPelunasan, 30}},
+		Suppliers: []SupplierBalance{
+			{AgreedCost: 40, Payments: []PaymentLine{{PaymentPelunasan, 40}}},
+			{AgreedCost: 30, Payments: []PaymentLine{{PaymentPelunasan, 30}}},
+		},
 	})
 	for _, it := range all {
 		if !it.Done {
@@ -47,8 +49,7 @@ func TestClosingChecklist(t *testing.T) {
 
 	open := BuildClosingChecklist(ClosingInput{
 		ContractValue: 100, ClientPayments: []PaymentLine{{PaymentDP, 30}, {PaymentTambahan, 500}},
-		Vendors:    []VendorBalance{{ContractValue: 40}, {ContractValue: 10, Payments: []PaymentLine{{PaymentPelunasan, 10}}}},
-		VenueCost:  0,
+		Suppliers:  []SupplierBalance{{AgreedCost: 40}, {AgreedCost: 10, Payments: []PaymentLine{{PaymentPelunasan, 10}}}},
 		OpenIssues: 2,
 	})
 	byKey := map[string]ChecklistItem{}
@@ -58,11 +59,8 @@ func TestClosingChecklist(t *testing.T) {
 	if byKey["client_paid"].Done || byKey["client_paid"].Detail != "Masih ada sisa Rp70" {
 		t.Errorf("client: %+v (Tambahan must not count towards the contract)", byKey["client_paid"])
 	}
-	if byKey["vendors_paid"].Done || byKey["vendors_paid"].Detail != "1 vendor belum lunas, total sisa Rp40" {
-		t.Errorf("vendors: %+v", byKey["vendors_paid"])
-	}
-	if _, has := byKey["venue_paid"]; has {
-		t.Errorf("no venue cost: the venue line must not appear")
+	if byKey["suppliers_paid"].Done || byKey["suppliers_paid"].Detail != "1 vendor & venue belum lunas, total sisa Rp40" {
+		t.Errorf("suppliers: %+v", byKey["suppliers_paid"])
 	}
 	if byKey["issues_closed"].Done || byKey["issues_closed"].Detail != "2 kendala masih terbuka" {
 		t.Errorf("issues: %+v", byKey["issues_closed"])

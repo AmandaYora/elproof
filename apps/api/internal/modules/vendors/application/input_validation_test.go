@@ -78,37 +78,61 @@ func TestValidateVendorInput(t *testing.T) {
 
 func TestValidateVenueInput(t *testing.T) {
 	valid := func() VenueInput {
-		return VenueInput{Name: "Gedung Serbaguna", PhonePIC: "081234567", RentalPrice: i64(10_000_000), Charge: i64(0), Capacity: iptr(500)}
+		return VenueInput{Name: "Gedung Serbaguna", PhonePIC: "081234567", PriceAkadResepsi: i64(10_000_000), Charge: i64(0), CapacityStanding: iptr(500)}
 	}
 	in := valid()
 	if err := validateVenueInput(&in); err != nil {
 		t.Fatalf("valid input refused: %v", err)
 	}
+	in = valid()
+	in.CapacityStanding, in.CapacitySeated = nil, iptr(300)
+	if err := validateVenueInput(&in); err != nil {
+		t.Fatalf("seated-only venue refused: %v", err)
+	}
 
 	cases := []struct {
 		name   string
 		mutate func(*VenueInput)
-		field  string
+		fields []string
 	}{
-		{"empty name", func(v *VenueInput) { v.Name = "  " }, "name"},
-		{"negative rental", func(v *VenueInput) { v.RentalPrice = i64(-1) }, "rentalPrice"},
-		{"negative charge", func(v *VenueInput) { v.Charge = i64(-1) }, "charge"},
-		{"negative capacity", func(v *VenueInput) { v.Capacity = iptr(-10) }, "capacity"},
-		{"capacity past INT UNSIGNED", func(v *VenueInput) { v.Capacity = iptr(maxVenueCapacity + 1) }, "capacity"},
-		{"no PIC phone (FQ-06)", func(v *VenueInput) { v.PhonePIC = "" }, "phonePic"},
-		{"blank PIC phone", func(v *VenueInput) { v.PhonePIC = "      " }, "phonePic"},
-		{"PIC phone too short", func(v *VenueInput) { v.PhonePIC = "12345" }, "phonePic"},
-		{"PIC phone too long", func(v *VenueInput) { v.PhonePIC = strings.Repeat("1", 31) }, "phonePic"},
+		{"empty name", func(v *VenueInput) { v.Name = "  " }, []string{"name"}},
+		{"negative akad", func(v *VenueInput) { v.PriceAkad = i64(-1) }, []string{"priceAkad"}},
+		{"negative resepsi", func(v *VenueInput) { v.PriceResepsi = i64(-1) }, []string{"priceResepsi"}},
+		{"negative akad resepsi", func(v *VenueInput) { v.PriceAkadResepsi = i64(-1) }, []string{"priceAkadResepsi"}},
+		{"negative charge", func(v *VenueInput) { v.Charge = i64(-1) }, []string{"charge"}},
+		{"negative standing", func(v *VenueInput) { v.CapacityStanding = iptr(-10) }, []string{"capacityStanding"}},
+		{"zero seated", func(v *VenueInput) { v.CapacitySeated = iptr(0) }, []string{"capacitySeated"}},
+		{"standing past INT UNSIGNED", func(v *VenueInput) { v.CapacityStanding = iptr(maxVenueCapacity + 1) }, []string{"capacityStanding"}},
+		{"no capacity at all", func(v *VenueInput) { v.CapacityStanding = nil }, []string{"capacityStanding", "capacitySeated"}},
+		{"no PIC phone (FQ-06)", func(v *VenueInput) { v.PhonePIC = "" }, []string{"phonePic"}},
+		{"blank PIC phone", func(v *VenueInput) { v.PhonePIC = "      " }, []string{"phonePic"}},
+		{"PIC phone too short", func(v *VenueInput) { v.PhonePIC = "12345" }, []string{"phonePic"}},
+		{"PIC phone too long", func(v *VenueInput) { v.PhonePIC = strings.Repeat("1", 31) }, []string{"phonePic"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			in := valid()
 			tc.mutate(&in)
 			fields := fieldsOf(t, validateVenueInput(&in))
-			if len(fields[tc.field]) == 0 || len(fields) != 1 {
-				t.Fatalf("fields = %v, want only %q", fields, tc.field)
+			if len(fields) != len(tc.fields) {
+				t.Fatalf("fields = %v, want only %v", fields, tc.fields)
+			}
+			for _, k := range tc.fields {
+				if len(fields[k]) == 0 {
+					t.Fatalf("no message for %q in %v", k, fields)
+				}
 			}
 		})
+	}
+
+	// Neither capacity: both fields carry the same message, and it leads.
+	in = valid()
+	in.Name = "Gedung"
+	in.CapacityStanding = nil
+	err := validateVenueInput(&in)
+	fields := fieldsOf(t, err)
+	if fields["capacityStanding"][0] != MsgVenueCapacityRequired || fields["capacitySeated"][0] != MsgVenueCapacityRequired || err.Error() != MsgVenueCapacityRequired {
+		t.Fatalf("no-capacity refusal = %q %v", err.Error(), fields)
 	}
 }
 
@@ -129,14 +153,19 @@ func TestServicesValidateBeforeStoring(t *testing.T) {
 	}
 
 	venues := &VenueService{}
-	if _, err := venues.Create(ctx, 1, VenueInput{Name: "", PhonePIC: "081234567", RentalPrice: i64(-1)}); err == nil {
+	if _, err := venues.Create(ctx, 1, VenueInput{Name: "", PhonePIC: "081234567", CapacitySeated: iptr(100), PriceAkad: i64(-1)}); err == nil {
 		t.Fatal("venue create accepted a nameless venue")
-	} else if f := fieldsOf(t, err); len(f["name"]) == 0 || len(f["rentalPrice"]) == 0 {
+	} else if f := fieldsOf(t, err); len(f["name"]) == 0 || len(f["priceAkad"]) == 0 {
 		t.Fatalf("venue create fields = %v", f)
 	}
-	if _, err := venues.Update(ctx, 1, 2, VenueInput{Name: "Gedung", PhonePIC: "081234567", Capacity: iptr(-1)}); err == nil {
+	if _, err := venues.Update(ctx, 1, 2, VenueInput{Name: "Gedung", PhonePIC: "081234567", CapacityStanding: iptr(-1)}); err == nil {
 		t.Fatal("venue update accepted a negative capacity")
-	} else if f := fieldsOf(t, err); len(f["capacity"]) == 0 {
+	} else if f := fieldsOf(t, err); len(f["capacityStanding"]) == 0 {
+		t.Fatalf("venue update fields = %v", f)
+	}
+	if _, err := venues.Create(ctx, 1, VenueInput{Name: "Gedung", PhonePIC: "081234567"}); err == nil {
+		t.Fatal("venue create accepted a venue without any capacity")
+	} else if f := fieldsOf(t, err); len(f["capacityStanding"]) == 0 || len(f["capacitySeated"]) == 0 {
 		t.Fatalf("venue update fields = %v", f)
 	}
 }

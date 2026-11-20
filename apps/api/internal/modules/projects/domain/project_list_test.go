@@ -62,7 +62,7 @@ func TestComputeListMoneyAgreesWithTheOverview(t *testing.T) {
 	lines := []PaymentLine{{Type: PaymentDP, Amount: 12}, {Type: PaymentRefund, Amount: 2}, {Type: PaymentTambahan, Amount: 99}}
 	terms := []PaymentTerm{{ID: 1, Amount: 10, DueDate: day("2027-01-01")}, {ID: 2, Amount: 20, DueDate: day("2027-02-01")}}
 	list := ComputeListMoney(30, lines, terms)
-	overview := ComputeFinanceOverview(30, lines, AllocateTerms(terms, AppliedToContract(lines), day("2026-12-01")), nil, nil, nil)
+	overview := ComputeFinanceOverview(Project{ContractSubtotal: 30, ContractTotal: 30}, lines, AllocateTerms(terms, AppliedToContract(lines), day("2026-12-01")), nil)
 	if list.Remaining != overview.Remaining {
 		t.Errorf("list %d vs overview %d", list.Remaining, overview.Remaining)
 	}

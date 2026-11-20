@@ -281,7 +281,7 @@ func TestUploadHonoursVisibilityFlagOnlyForKindsThatCarryIt(t *testing.T) {
 	if !up(domain.RelatedGeneral) || !up(domain.RelatedProjectMilestone) {
 		t.Error("general documents and timeline attachments may be uploaded as client-visible")
 	}
-	if up(domain.RelatedClientPayment) || up(domain.RelatedIssue) || up(domain.RelatedPayment) {
+	if up(domain.RelatedClientPayment) || up(domain.RelatedIssue) || up(domain.RelatedSupplierPayment) {
 		t.Error("the flag must be dropped for every other kind")
 	}
 }

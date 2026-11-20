@@ -22,10 +22,11 @@ func NewMySQLDashboardRepository(db *sql.DB) *MySQLDashboardRepository {
 
 func (r *MySQLDashboardRepository) CountActiveVendors(ctx context.Context, tenantID int64) (int, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT pv.vendor_id)
-		FROM project_vendors pv
-		JOIN projects p ON p.id = pv.project_id
-		WHERE p.tenant_id = ? AND p.status NOT IN ('Completed','Cancelled') AND pv.engagement_status != 'Cancelled' AND pv.deleted_at IS NULL`,
+		SELECT COUNT(DISTINCT s.supplier_id)
+		FROM project_suppliers s
+		JOIN projects p ON p.id = s.project_id
+		WHERE p.tenant_id = ? AND s.supplier_kind = 'vendor' AND p.status NOT IN ('Completed','Cancelled')
+		  AND s.engagement_status != 'Cancelled' AND s.deleted_at IS NULL`,
 		tenantID,
 	)
 	var count int
@@ -37,13 +38,13 @@ func (r *MySQLDashboardRepository) CountActiveVendors(ctx context.Context, tenan
 
 func (r *MySQLDashboardRepository) ListOpenIssues(ctx context.Context, tenantID int64) ([]domain.DashboardIssueRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT vi.id, vi.project_id, IFNULL(vi.project_vendor_id, 0), vi.title, vi.description, vi.impact, vi.found_date, vi.status,
+		SELECT vi.id, vi.project_id, IFNULL(vi.project_supplier_id, 0), vi.title, vi.description, vi.impact, vi.found_date, vi.status,
 		       vi.resolution_plan, vi.pic_staff_id, vi.target_resolution_date, vi.resolved_date, vi.resolution_notes,
-		       p.name, IFNULL(pv.vendor_id, 0)
+		       p.name, IFNULL(s.supplier_name, '')
 		FROM vendor_issues vi
 		JOIN projects p ON p.id = vi.project_id
-		LEFT JOIN project_vendors pv ON pv.id = vi.project_vendor_id
-		WHERE p.tenant_id = ? AND vi.status NOT IN ('Resolved','Closed') AND pv.deleted_at IS NULL
+		LEFT JOIN project_suppliers s ON s.id = vi.project_supplier_id
+		WHERE p.tenant_id = ? AND vi.status NOT IN ('Resolved','Closed') AND s.deleted_at IS NULL
 		ORDER BY vi.found_date DESC, vi.id DESC`,
 		tenantID,
 	)
@@ -58,9 +59,9 @@ func (r *MySQLDashboardRepository) ListOpenIssues(ctx context.Context, tenantID 
 		var impact, status string
 		var resolutionPlan, resolutionNotes sql.NullString
 		var targetResolutionDate, resolvedDate sql.NullTime
-		if err := rows.Scan(&row.Issue.ID, &row.Issue.ProjectID, &row.Issue.ProjectVendorID, &row.Issue.Title, &row.Issue.Description,
+		if err := rows.Scan(&row.Issue.ID, &row.Issue.ProjectID, &row.Issue.ProjectSupplierID, &row.Issue.Title, &row.Issue.Description,
 			&impact, &row.Issue.FoundDate, &status, &resolutionPlan, &row.Issue.PICStaffID, &targetResolutionDate, &resolvedDate,
-			&resolutionNotes, &row.ProjectName, &row.VendorID); err != nil {
+			&resolutionNotes, &row.ProjectName, &row.SupplierName); err != nil {
 			return nil, err
 		}
 		row.Issue.Impact = domain.IssueImpact(impact)
@@ -81,12 +82,12 @@ func (r *MySQLDashboardRepository) ListOpenIssues(ctx context.Context, tenantID 
 
 func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Context, tenantID int64, asOf time.Time) ([]domain.DashboardMilestoneRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT vm.id, vm.project_vendor_id, vm.sort_order, vm.name, vm.description, vm.status, vm.target_date, vm.completed_date,
-		       vm.pic_staff_id, vm.notes, pv.project_id, p.name, pv.vendor_id
+		SELECT vm.id, vm.project_supplier_id, vm.sort_order, vm.name, vm.description, vm.status, vm.target_date, vm.completed_date,
+		       vm.pic_staff_id, vm.notes, s.project_id, p.name, s.supplier_name
 		FROM vendor_milestones vm
-		JOIN project_vendors pv ON pv.id = vm.project_vendor_id
-		JOIN projects p ON p.id = pv.project_id
-		WHERE p.tenant_id = ? AND vm.target_date < ? AND vm.status NOT IN ('Completed','Cancelled') AND pv.deleted_at IS NULL
+		JOIN project_suppliers s ON s.id = vm.project_supplier_id
+		JOIN projects p ON p.id = s.project_id
+		WHERE p.tenant_id = ? AND vm.target_date < ? AND vm.status NOT IN ('Completed','Cancelled') AND s.deleted_at IS NULL
 		ORDER BY vm.target_date ASC`,
 		// Late = strictly after the target day, compared as WIB dates (a DATE column
 		// against a timestamp counted every step due today as late).
@@ -103,9 +104,9 @@ func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Conte
 		var status string
 		var description, notes sql.NullString
 		var completedDate sql.NullTime
-		if err := rows.Scan(&row.Milestone.ID, &row.Milestone.ProjectVendorID, &row.Milestone.SortOrder, &row.Milestone.Name,
+		if err := rows.Scan(&row.Milestone.ID, &row.Milestone.ProjectSupplierID, &row.Milestone.SortOrder, &row.Milestone.Name,
 			&description, &status, &row.Milestone.TargetDate, &completedDate, &row.Milestone.PICStaffID, &notes,
-			&row.ProjectID, &row.ProjectName, &row.VendorID); err != nil {
+			&row.ProjectID, &row.ProjectName, &row.SupplierName); err != nil {
 			return nil, err
 		}
 		row.Milestone.Status = domain.MilestoneStatus(status)
@@ -125,13 +126,13 @@ func (r *MySQLDashboardRepository) ListOverdueVendorMilestones(ctx context.Conte
 // caller's cross-reference pass.
 func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardPaymentRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT vp.id, vp.project_id, vp.project_vendor_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number,
-		       vp.notes, p.name, pv.vendor_id
-		FROM vendor_payments vp
-		JOIN projects p ON p.id = vp.project_id
-		JOIN project_vendors pv ON pv.id = vp.project_vendor_id
-		WHERE p.tenant_id = ? AND p.status != 'Cancelled' AND vp.deleted_at IS NULL AND pv.deleted_at IS NULL
-		ORDER BY vp.payment_date DESC, vp.id DESC`,
+		SELECT sp.id, sp.project_id, sp.project_supplier_id, sp.payer, sp.type, sp.amount, sp.payment_date, sp.method, sp.reference_number,
+		       sp.notes, p.name, s.supplier_kind, s.supplier_name
+		FROM supplier_payments sp
+		JOIN projects p ON p.id = sp.project_id
+		JOIN project_suppliers s ON s.id = sp.project_supplier_id
+		WHERE p.tenant_id = ? AND p.status != 'Cancelled' AND sp.payer = 'WO' AND sp.deleted_at IS NULL AND s.deleted_at IS NULL
+		ORDER BY sp.payment_date DESC, sp.id DESC`,
 		tenantID,
 	)
 	if err != nil {
@@ -142,46 +143,15 @@ func (r *MySQLDashboardRepository) ListPaymentCandidates(ctx context.Context, te
 	var list []domain.DashboardPaymentRow
 	for rows.Next() {
 		var row domain.DashboardPaymentRow
-		var paymentType string
+		var payer, paymentType, kind string
 		var notes sql.NullString
-		if err := rows.Scan(&row.Payment.ID, &row.Payment.ProjectID, &row.Payment.ProjectVendorID, &paymentType, &row.Payment.Amount,
+		if err := rows.Scan(&row.Payment.ID, &row.Payment.ProjectID, &row.Payment.ProjectSupplierID, &payer, &paymentType, &row.Payment.Amount,
 			&row.Payment.PaymentDate, &row.Payment.Method, &row.Payment.ReferenceNumber,
-			&notes, &row.ProjectName, &row.VendorID); err != nil {
+			&notes, &row.ProjectName, &kind, &row.SupplierName); err != nil {
 			return nil, err
 		}
-		row.Payment.Type = domain.PaymentType(paymentType)
-		row.Payment.Notes = notes.String
-		list = append(list, row)
-	}
-	return list, rows.Err()
-}
-
-// ListVenuePaymentCandidates excludes Cancelled projects for the same reason
-// ListPaymentCandidates does — see its doc comment.
-func (r *MySQLDashboardRepository) ListVenuePaymentCandidates(ctx context.Context, tenantID int64) ([]domain.DashboardVenuePaymentRow, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT vp.id, vp.project_id, vp.type, vp.amount, vp.payment_date, vp.method, vp.reference_number, vp.notes, p.name
-		FROM venue_payments vp
-		JOIN projects p ON p.id = vp.project_id
-		WHERE p.tenant_id = ? AND p.status != 'Cancelled' AND vp.deleted_at IS NULL
-		ORDER BY vp.payment_date DESC, vp.id DESC`,
-		tenantID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var list []domain.DashboardVenuePaymentRow
-	for rows.Next() {
-		var row domain.DashboardVenuePaymentRow
-		var paymentType string
-		var notes sql.NullString
-		if err := rows.Scan(&row.Payment.ID, &row.Payment.ProjectID, &paymentType, &row.Payment.Amount,
-			&row.Payment.PaymentDate, &row.Payment.Method, &row.Payment.ReferenceNumber,
-			&notes, &row.ProjectName); err != nil {
-			return nil, err
-		}
+		row.Payment.Payer = domain.Payer(payer)
+		row.SupplierKind = domain.SupplierKind(kind)
 		row.Payment.Type = domain.PaymentType(paymentType)
 		row.Payment.Notes = notes.String
 		list = append(list, row)

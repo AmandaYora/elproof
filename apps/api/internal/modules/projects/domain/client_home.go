@@ -60,6 +60,9 @@ type HomeActionKind string
 const (
 	HomeActionPayTerm    HomeActionKind = "pay_term"
 	HomeActionOpenIssues HomeActionKind = "open_issues"
+	// HomeActionPaySupplier: a bill of a vendor the client pays directly is
+	// overdue or due within 7 days (Paket WO Tahap 4).
+	HomeActionPaySupplier HomeActionKind = "pay_supplier"
 )
 
 // Targets are the portal tabs an action points at.
@@ -90,13 +93,18 @@ type HomeActionInput struct {
 	OpenIssues int
 	ShowTerms  bool
 	ShowIssues bool
+	// SupplierBills are the open bills of the vendors the client pays directly
+	// (OpenSupplierBills); read only when ShowTerms.
+	SupplierBills []SupplierBillDue
 }
 
 // SelectHomeActions picks up to MaxHomeActions things, most urgent first:
 // installments past their due date (oldest first), then installments due within
 // the next 7 days (soonest first, also when partly paid), then the count of
 // open issues. Same semantics the portal computed in the browser before E5: red
-// only for what is overdue, amber for what is coming up.
+// only for what is overdue, amber for what is coming up. Bills of vendors the
+// client pays directly (Paket WO Tahap 4) join the installments by due date,
+// unless the proofs already sent cover them.
 func SelectHomeActions(in HomeActionInput) []HomeAction {
 	var overdue, soon []TermProgress
 	if in.ShowTerms {
@@ -122,12 +130,43 @@ func SelectHomeActions(in HomeActionInput) []HomeAction {
 	byDue(overdue)
 	byDue(soon)
 
-	var out []HomeAction
+	// A vendor's bill is placed among the installments by its due date.
+	type dated struct {
+		due    time.Time
+		action HomeAction
+	}
+	var lateList, soonList []dated
 	for _, t := range overdue {
-		out = append(out, termAction(t, true))
+		lateList = append(lateList, dated{t.Term.DueDate, termAction(t, true)})
 	}
 	for _, t := range soon {
-		out = append(out, termAction(t, false))
+		soonList = append(soonList, dated{t.Term.DueDate, termAction(t, false)})
+	}
+	if in.ShowTerms {
+		for _, b := range in.SupplierBills {
+			if !b.NeedsClientAction() {
+				continue
+			}
+			switch d := daysBetween(in.Today, b.Bill.Term.DueDate); {
+			case d < 0:
+				lateList = append(lateList, dated{b.Bill.Term.DueDate, supplierBillAction(b, true)})
+			case d <= dueSoonDays:
+				soonList = append(soonList, dated{b.Bill.Term.DueDate, supplierBillAction(b, false)})
+			}
+		}
+	}
+	byDate := func(l []dated) {
+		sort.SliceStable(l, func(i, j int) bool { return l[i].due.Before(l[j].due) })
+	}
+	byDate(lateList)
+	byDate(soonList)
+
+	var out []HomeAction
+	for _, d := range lateList {
+		out = append(out, d.action)
+	}
+	for _, d := range soonList {
+		out = append(out, d.action)
 	}
 	if in.ShowIssues && in.OpenIssues > 0 {
 		out = append(out, HomeAction{
@@ -153,6 +192,22 @@ func termAction(t TermProgress, overdue bool) HomeAction {
 	} else {
 		a.Title = "Pembayaran " + t.Term.Label + " jatuh tempo " + FormatDateID(due)
 		a.Detail = FormatRupiah(t.Remaining)
+	}
+	return a
+}
+
+// supplierBillAction is "Bayar fotografer Rp5.000.000 sebelum 1 Des" (DESAIN
+// A7): what is left of the bill, less what the client already sent.
+func supplierBillAction(b SupplierBillDue, overdue bool) HomeAction {
+	due := b.Bill.Term.DueDate
+	amount := b.Bill.Remaining - b.Bill.Pending
+	a := HomeAction{Kind: HomeActionPaySupplier, DueDate: &due, Amount: &amount, Target: HomeTargetPayments}
+	if overdue {
+		a.Title = "Tagihan " + b.SupplierName + " sudah lewat jatuh tempo"
+		a.Detail = b.Bill.Term.Label + " " + FormatRupiah(amount) + ", jatuh tempo " + FormatDateID(due) + ". Kirim bukti bayar setelah membayar."
+	} else {
+		a.Title = "Bayar " + b.SupplierName + " " + FormatRupiah(amount) + " sebelum " + FormatDateID(due)
+		a.Detail = b.Bill.Term.Label + ". Kirim bukti bayar setelah membayar."
 	}
 	return a
 }
@@ -247,14 +302,15 @@ func PaymentVerifiedTitle(t PaymentType) string {
 	return "Pembayaran diterima"
 }
 
-// FirstVisibleProof picks the proof for one related item: among the
-// evidence rows of (kind, relatedID) that the client may see, the earliest
-// uploaded (the original proof rather than a later extra). nil when none.
-func FirstVisibleProof(evidences []Evidence, kind EvidenceRelatedKind, relatedID int64, can func(string) bool) *UpdateProof {
+// FirstVisibleProof picks the proof for one related item of the project
+// itself (a client payment, a timeline item, a kendala): among the evidence
+// rows of (kind, relatedID) the client may see, the earliest uploaded (the
+// original proof rather than a later extra). nil when none.
+func FirstVisibleProof(evidences []Evidence, kind EvidenceRelatedKind, relatedID int64, policy PortalPolicy) *UpdateProof {
 	var best *Evidence
 	for i := range evidences {
 		e := &evidences[i]
-		if e.RelatedKind != kind || e.RelatedID != relatedID || !ClientCanSeeEvidence(*e, can) {
+		if e.RelatedKind != kind || e.RelatedID != relatedID || !policy.Evidence(*e, EvidenceOwner{}) {
 			continue
 		}
 		if best == nil || e.UploadedAt.Before(best.UploadedAt) || (e.UploadedAt.Equal(best.UploadedAt) && e.ID < best.ID) {

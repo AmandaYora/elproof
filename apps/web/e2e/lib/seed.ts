@@ -83,21 +83,87 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
   for (const [i, name] of ["Gedung Graha Sabuga", "Hotel Savoy Homann"].entries()) {
     const r = must(`venue ${name}`, await call(s.api, t, "POST", "/api/v1/venues", {
       name, picName: "Pak Hendra", phonePic: `08133330000${i}`, phoneVenue: "0221234567", email: "", address: "Jl. Gedung No. " + (i + 1), city: "Kota Bandung",
-      rentalPrice: 25_000_000 + i * 10_000_000, charge: 1_500_000, capacity: 300 + i * 100, facilities: "AC, parkir luas", socialMedia: "@" + name.split(" ")[1].toLowerCase(), notes: "",
+      priceAkadResepsi: 25_000_000 + i * 10_000_000, charge: 1_500_000, capacityStanding: 300 + i * 100, capacitySeated: 200 + i * 50, facilities: "AC, parkir luas", socialMedia: "@" + name.split(" ")[1].toLowerCase(), notes: "",
     }));
     venueIds.push(r.json.data.id);
   }
+  // The catalog (paket WO Tahap 1): the six built-in event kinds came with the sign-up; one package uses them.
+  const kinds = must("event kinds", await call(s.api, t, "GET", "/api/v1/event-kinds")).json.data as { id: number; name: string }[];
+  const kind = (name: string) => kinds.find((k) => k.name === name)!.id;
+  const packageId = must("package", await call(s.api, t, "POST", "/api/v1/packages", {
+    name: "Paket Resepsi 300 tamu", price: 120_000_000, eventKindIds: [kind("Akad"), kind("Resepsi")],
+    includedGuests: 300, extraGuestStep: 50, extraGuestStepPrice: 4_000_000, defaultVenueId: venueIds[0],
+    components: [
+      { description: "Katering buffet 300 porsi", vendorId: vendorIds[0], estimatedCost: 45_000_000 },
+      // Only the vendor a project already uses: the others stay free to delete in the list tests.
+      { description: "Dekorasi pelaminan dan gerbang", categoryId: cat(1), estimatedCost: 25_000_000 },
+      { description: "Dokumentasi foto dan video", categoryId: cat(2), estimatedCost: 12_000_000 },
+      { description: "Koordinator acara 6 orang", estimatedCost: 8_000_000 },
+    ],
+  })).json.data.id as number;
 
-  async function project(name: string, bride: string, groom: string, event: string, contract: number, status: string, pic = owner.staffId) {
+  /** One event without a venue: the dashboard and list projects only need a date. */
+  const resepsi = (date: string) => ({ eventKindId: kind("Resepsi"), eventDate: date, startTime: "11:00", endTime: "14:00", venueId: null, layout: "Standing", sessions: [{ label: "Sesi 1", startTime: "11:00", endTime: "14:00", guests: 300 }] });
+  /** A project and its Rincian: the contract value is the Rincian's total (the workspace is not PKP, so no PPN). */
+  async function project(name: string, bride: string, groom: string, events: object[], lines: object[], status: string, pic = owner.staffId) {
     const r = await call(s.api, t, "POST", "/api/v1/projects", {
-      name, brideName: bride, groomName: groom, eventDate: event, venue: "Gedung Graha Sabuga", prepStartDate: day(-30), packageName: "Paket Premium",
-      contractValue: contract, status, picStaffId: pic, description: "Resepsi adat Sunda",
+      name, brideName: bride, groomName: groom, prepStartDate: day(-30), status, picStaffId: pic, description: "Resepsi adat Sunda", events,
     });
-    return must(`project ${name}`, r).json.data.id as number;
+    const created = must(`project ${name}`, r).json.data as { id: number; events: { id: number; kindName: string }[] };
+    const current = must(`lines ${name}`, await call(s.api, t, "GET", `/api/v1/projects/${created.id}/lines`)).json.data as { linesVersion: string };
+    must(`rincian ${name}`, await call(s.api, t, "PUT", `/api/v1/projects/${created.id}/lines`, { lines }, { "If-Match": `"${current.linesVersion}"` }));
+    return created;
   }
-  const p1 = await project("Citra & Bima", "Citra Lestari", "Bima Pratama", "2027-03-14", 150_000_000, "Preparation");
-  const p2 = await project("Dewi & Arga", "Dewi Anggraini", "Arga Wijaya", "2026-09-20", 90_000_000, "Draft");
-  const p3 = await project("Sari & Doni", "Sari Puspita", "Doni Saputra", "2027-06-20", 120_000_000, "Draft");
+  const paketPremium = (amount: number) => [{ kind: "Item", description: "Paket Premium", quantity: 1, unit: "paket", unitPrice: amount }];
+  // P1 has two events: Akad in the morning before, Resepsi on Hari H (made the main event below).
+  const p1Created = await project("Citra & Bima", "Citra Lestari", "Bima Pratama", [
+    { eventKindId: kind("Akad"), eventDate: "2027-03-13", startTime: "08:00", endTime: "10:00", venueId: venueIds[0], layout: "Seated",
+      sessions: [{ label: "Sesi 1", startTime: "08:00", endTime: "10:00", guests: 120 }] },
+    { eventKindId: kind("Resepsi"), eventDate: "2027-03-14", startTime: "11:00", endTime: "15:00", venueId: venueIds[1], layout: "Standing",
+      sessions: [{ label: "Sesi 1", startTime: "11:00", endTime: "13:00", guests: 350 }, { label: "Sesi 2", startTime: "13:00", endTime: "15:00", guests: 350 }] },
+  ], [
+    // The catalog package (Rp120.000.000, 300 guests included) with its components copied in; the Resepsi's 700
+    // guests add 8 steps of 50 (Rp32.000.000), and a discount brings the contract to Rp150.000.000 as before.
+    { kind: "Package", packageId },
+    { kind: "Discount", description: "Potongan harga", amount: 2_000_000 },
+  ], "Preparation");
+  const p1 = p1Created.id;
+  const resepsiP1 = p1Created.events.find((e) => e.kindName === "Resepsi")!.id;
+  must("main event", await call(s.api, t, "POST", `/api/v1/projects/${p1}/events/${resepsiP1}/set-main`));
+  const p2 = (await project("Dewi & Arga", "Dewi Anggraini", "Arga Wijaya", [resepsi("2026-09-20")], paketPremium(90_000_000), "Draft")).id;
+  const p3 = (await project("Sari & Doni", "Sari Puspita", "Doni Saputra", [resepsi("2027-06-20")], paketPremium(120_000_000), "Draft")).id;
+
+  // Penawaran (paket WO Tahap 5): a draft without a revision, one shared as Revisi 1 that runs out within a week, and
+  // one accepted. The business clock is pinned to 9 Nov 2026, so their numbers and "segera kedaluwarsa" never drift.
+  async function quotation(couple: string, whatsapp: string, validUntil: string, eventDate: string, price: number) {
+    const id = must(`quotation ${couple}`, await call(s.api, t, "POST", "/api/v1/quotations", {
+      coupleNames: couple, contactWhatsapp: whatsapp, picStaffId: 0, validUntil, notes: "",
+    })).json.data.quotation.id as number;
+    const detail = async () => must(`quotation ${couple}`, await call(s.api, t, "GET", `/api/v1/quotations/${id}`)).json.data.quotation as { updatedAt: string; linesUpdatedAt: string; termsUpdatedAt: string };
+    // A new quotation takes its validity from Profil usaha (14 days); the header's own date is set by an update.
+    must(`quotation validity ${couple}`, await call(s.api, t, "PUT", `/api/v1/quotations/${id}`, {
+      coupleNames: couple, contactWhatsapp: whatsapp, picStaffId: owner.staffId, validUntil, notes: "",
+    }, { "If-Match": `"${(await detail()).updatedAt}"` }));
+    must(`quotation event ${couple}`, await call(s.api, t, "POST", `/api/v1/quotations/${id}/events`, resepsi(eventDate)));
+    must(`quotation lines ${couple}`, await call(s.api, t, "PUT", `/api/v1/quotations/${id}/lines`, {
+      lines: [{ kind: "Item", description: "Paket Pernikahan Lengkap", quantity: 1, unit: "paket", unitPrice: price }],
+    }, { "If-Match": `"${(await detail()).linesUpdatedAt}"` }));
+    must(`quotation terms ${couple}`, await call(s.api, t, "PUT", `/api/v1/quotations/${id}/terms`, {
+      terms: [
+        { label: "DP", percent: 30, amount: null, dueBasis: "Accepted", dueOffsetDays: 0, dueEventId: null },
+        { label: "Pelunasan", percent: 70, amount: null, dueBasis: "Event", dueOffsetDays: -14, dueEventId: null },
+      ],
+    }, { "If-Match": `"${(await detail()).termsUpdatedAt}"` }));
+    return id;
+  }
+  await quotation("Nadia & Reza", "081277700001", "2026-11-23", "2027-08-15", 85_000_000);
+  const sent = await quotation("Putri & Fajar", "081277700002", "2026-11-13", "2027-05-02", 110_000_000);
+  must("revision Putri & Fajar", await call(s.api, t, "POST", `/api/v1/quotations/${sent}/revisions`));
+  const accepted = await quotation("Ayu & Rizky", "081277700003", "2026-11-30", "2027-07-11", 95_000_000);
+  must("revision Ayu & Rizky", await call(s.api, t, "POST", `/api/v1/quotations/${accepted}/revisions`));
+  must("accept Ayu & Rizky", await call(s.api, t, "POST", `/api/v1/quotations/${accepted}/status`, {
+    status: "Accepted", revisionN: 1, acceptedOn: "2026-11-08", channel: "WhatsApp",
+  }));
 
   // Projects are created as Draft whatever the body says; the lifecycle moves through explicit actions.
   const step = async (id: number, action: string) => must(`${action} ${id}`, await call(s.api, t, "POST", `/api/v1/projects/${id}/transition`, { action }));
@@ -109,15 +175,16 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
   for (const m of ms.slice(0, 2)) {
     must("milestone done", await call(s.api, t, "PATCH", `/api/v1/projects/${p1}/milestones/${m.id}`, { status: "Completed", targetDate: m.targetDate, completedDate: day(-20) }, { "If-Match": `"${m.updatedAt}"` }));
   }
-  const engagement = must("engagement catering", await call(s.api, t, "POST", `/api/v1/projects/${p1}/vendors`, {
-    vendorId: vendorIds[0], categoryId: cat(0), scope: "Katering 500 pax", contractValue: 45_000_000, pricingTier: "Akad & Resepsi", engagementStatus: "Booked",
-    eventDate: "2027-03-14", dpAmount: 15_000_000, dueDate: day(40), picStaffId: owner.staffId, notes: "",
+  // Vendor & venue: the catering is paid by the WO (with its agreed cost), the decoration by the couple directly.
+  const supplier = must("supplier catering", await call(s.api, t, "POST", `/api/v1/projects/${p1}/suppliers`, {
+    vendorId: vendorIds[0], paidBy: "WO", showName: true, agreedCost: 45_000_000, engagementStatus: "Booked",
+    bookingDate: day(-40), dueDate: day(40), picStaffId: owner.staffId, scope: "Katering 500 pax", notes: "",
   })).json.data.id as number;
-  must("engagement decor", await call(s.api, t, "POST", `/api/v1/projects/${p1}/vendors`, {
-    vendorId: vendorIds[1], categoryId: cat(1), scope: "Dekorasi pelaminan", contractValue: 30_000_000, pricingTier: "Resepsi", engagementStatus: "Negotiation",
-    eventDate: "2027-03-14", dpAmount: 0, dueDate: day(60), picStaffId: owner.staffId, notes: "",
+  must("supplier decor", await call(s.api, t, "POST", `/api/v1/projects/${p1}/suppliers`, {
+    vendorId: vendorIds[1], paidBy: "Client", showName: true, agreedCost: null, engagementStatus: "Negotiation",
+    bookingDate: "", dueDate: day(60), picStaffId: owner.staffId, scope: "Dekorasi pelaminan", notes: "",
   }));
-  must("vendor milestone", await call(s.api, t, "POST", `/api/v1/projects/${p1}/vendors/${engagement}/milestones`, {
+  must("vendor milestone", await call(s.api, t, "POST", `/api/v1/projects/${p1}/suppliers/${supplier}/milestones`, {
     name: "Tasting menu", description: "Cicip menu bersama klien", targetDate: day(20), picStaffId: owner.staffId,
   }));
   must("payment terms", await call(s.api, t, "PUT", `/api/v1/projects/${p1}/payment-terms`, {
@@ -130,11 +197,11 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
   const dp = must("client payment", await call(s.api, t, "POST", `/api/v1/projects/${p1}/client-payments`, {
     type: "DP", amount: 45_000_000, paymentDate: day(-38), method: "Transfer", referenceNumber: "TRF-0001", notes: "Transfer BCA",
   })).json.data.id as number;
-  must("vendor payment", await call(s.api, t, "POST", `/api/v1/projects/${p1}/payments`, {
-    projectVendorId: engagement, type: "DP", amount: 15_000_000, paymentDate: day(-35), method: "Transfer", referenceNumber: "VND-0001", notes: "",
+  must("supplier payment", await call(s.api, t, "POST", `/api/v1/projects/${p1}/supplier-payments`, {
+    projectSupplierId: supplier, type: "DP", amount: 15_000_000, paymentDate: day(-35), method: "Transfer", referenceNumber: "VND-0001", notes: "",
   }));
   must("issue", await call(s.api, t, "POST", `/api/v1/projects/${p1}/issues`, {
-    projectVendorId: engagement, title: "Menu vegetarian belum dikonfirmasi", description: "Katering belum memastikan 30 porsi vegetarian.", impact: "Medium",
+    projectSupplierId: supplier, title: "Menu vegetarian belum dikonfirmasi", description: "Katering belum memastikan 30 porsi vegetarian.", impact: "Medium",
     foundDate: day(-3), resolutionPlan: "Telepon katering dan minta konfirmasi tertulis.", picStaffId: owner.staffId, targetResolutionDate: day(4),
   }));
   if (s.s3) {
@@ -197,14 +264,14 @@ export async function seed(s: Seeder, webURL: string): Promise<State["ids"]> {
 
   return {
     project: p1, projectDone: p2, projectDraft: p3, tenantContoh: owner.tenantId, tenantBerbayar: paying.tenantId, tenantKosong: empty.tenantId,
-    vendor: vendorIds[0], engagement, transaction: txId,
+    vendor: vendorIds[0], supplier, transaction: txId,
   };
 }
 
 /**
  * Real timestamps (created_at, paid_at, audit times) differ on every run. Pin them to the fixed instant
  * 2026-11-09 10:00 WIB plus the row id in seconds, so ordering is kept and text on screen never drifts.
- * Server-computed relative text (trial days left, days overdue) still follows the real clock: see README.
+ * The trial end is pinned too, so "Masa coba: 14 hari lagi" counts against the business clock (FIXED_NOW) on every run.
  */
 function normalizeTimes(db: string, ...tenants: number[]) {
   const cols = sql(

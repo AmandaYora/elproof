@@ -4,8 +4,8 @@ export const ISSUE_IMPACT_OPTIONS = ["Low", "Medium", "High", "Critical"] as con
 export const ISSUE_STATUS_OPTIONS = ["Open", "In Review", "In Resolution", "Resolved", "Closed"] as const;
 
 export const issueSchema = z.object({
-  // Empty = a kendala about the event in general, not tied to one vendor.
-  projectVendorId: z.string().optional().default(""),
+  // Empty = a kendala about the event in general, not tied to a vendor or venue.
+  projectSupplierId: z.string().optional().default(""),
   // Empty string = "Umum" (general to the vendor, not tied to one milestone).
   vendorMilestoneId: z.string().optional().default(""),
   title: z.string().min(3, "Isi judul kendala, minimal 3 karakter"),

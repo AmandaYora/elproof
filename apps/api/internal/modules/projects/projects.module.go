@@ -1,6 +1,7 @@
 // Package projects wires the largest module in the system: the project
-// lifecycle and its 7 sub-entities (milestones, vendor engagements, vendor
-// milestones, payments, issues, evidence, activity log) — see MODULE_MAP.md.
+// lifecycle and its sub-entities (events, vendors & venues with their steps
+// and payments, client payments, milestones, issues, evidence, activity log)
+// — see MODULE_MAP.md.
 package projects
 
 import (
@@ -25,6 +26,8 @@ type Module struct {
 	clientHome               *application.ClientHomeService
 	overview                 *application.OverviewService
 	purge                    *application.PurgeService
+	events                   *application.EventService
+	lines                    *application.LineService
 }
 
 // PurgeSummary is what one purge run removed, in plain numbers (the composition
@@ -32,7 +35,7 @@ type Module struct {
 type PurgeSummary struct {
 	// Ran is false when another instance held the purge lock.
 	Ran bool
-	// Rows counts the rows removed (payments, vendor engagements and what hung
+	// Rows counts the rows removed (payments, vendors & venues and what hung
 	// off them); Evidence the proof rows among them; Objects the stored files
 	// deleted from object storage.
 	Rows, Evidence, Objects int
@@ -45,12 +48,12 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 	projectRepo := infrastructure.NewMySQLProjectRepository(db)
 	milestoneRepo := infrastructure.NewMySQLMilestoneRepository(db)
 	milestoneTemplateRepo := infrastructure.NewMySQLMilestoneTemplateRepository(db)
-	vendorEngagementRepo := infrastructure.NewMySQLVendorEngagementRepository(db)
+	supplierRepo := infrastructure.NewMySQLSupplierRepository(db)
 	vendorMilestoneRepo := infrastructure.NewMySQLVendorMilestoneRepository(db)
-	paymentRepo := infrastructure.NewMySQLPaymentRepository(db)
+	supplierPaymentRepo := infrastructure.NewMySQLSupplierPaymentRepository(db)
+	eventRepo := infrastructure.NewMySQLEventRepository(db)
 	clientPaymentRepo := infrastructure.NewMySQLClientPaymentRepository(db)
 	paymentTermRepo := infrastructure.NewMySQLPaymentTermRepository(db)
-	venuePaymentRepo := infrastructure.NewMySQLVenuePaymentRepository(db)
 	issueRepo := infrastructure.NewMySQLIssueRepository(db)
 	evidenceRepo := infrastructure.NewMySQLEvidenceRepository(db)
 	activityRepo := infrastructure.NewMySQLActivityRepository(db)
@@ -60,40 +63,58 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 
 	activityService := application.NewActivityService(activityRepo)
 	evidenceService := application.NewEvidenceService(evidenceRepo, storageClient, storage.BuildKey, activityService)
-	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, vendorEngagementRepo, vendorMilestoneRepo, issueRepo, paymentRepo, venuePaymentRepo, evidenceService, activityService, staff)
+	projectService := application.NewProjectService(projectRepo, milestoneRepo, milestoneTemplateRepo, supplierRepo, vendorMilestoneRepo, issueRepo, supplierPaymentRepo, eventRepo, evidenceService, activityService, staff)
 	milestoneTemplateService := application.NewMilestoneTemplateService(milestoneTemplateRepo)
-	vendorEngagementService := application.NewVendorEngagementService(vendorEngagementRepo, vendorMilestoneRepo, activityService, paymentRepo)
-	contractReader := application.NewContractReader(projectService, vendorEngagementRepo)
-	paymentService := application.NewPaymentService(paymentRepo, evidenceService, activityService, contractReader)
+	supplierService := application.NewSupplierService(supplierRepo, vendorMilestoneRepo, eventRepo, supplierPaymentRepo, activityService)
+	eventService := application.NewEventService(eventRepo, supplierService, projectService, txManager, activityService)
+	projectService.SetEvents(eventService)
+	supplierService.SetCapacity(eventService)
+	contractReader := application.NewContractReader(projectService, supplierRepo)
+	supplierPaymentService := application.NewSupplierPaymentService(supplierPaymentRepo, evidenceService, activityService, contractReader)
 	clientPaymentService := application.NewClientPaymentService(clientPaymentRepo, evidenceService, activityService, contractReader)
-	venuePaymentService := application.NewVenuePaymentService(venuePaymentRepo, evidenceService, activityService, contractReader)
-	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, vendorEngagementRepo, activityService)
+	issueService := application.NewIssueService(issueRepo, vendorMilestoneRepo, supplierRepo, activityService)
 	dashboardService := application.NewDashboardService(projectService, dashboardRepo, evidenceService)
 	paymentTermService := application.NewPaymentTermService(paymentTermRepo, clientPaymentRepo, projectService, activityService)
 	myProjectsService := application.NewMyProjectsService(projectService, paymentTermService)
-	closingService := application.NewClosingChecklistService(projectService, clientPaymentRepo, paymentRepo, venuePaymentRepo, vendorEngagementRepo, issueRepo)
+	closingService := application.NewClosingChecklistService(projectService, clientPaymentRepo, supplierPaymentRepo, supplierRepo, issueRepo)
 
 	clientHomeService := application.NewClientHomeService(projectService, clientPaymentRepo, paymentTermService, evidenceService, issueRepo)
 
 	// Signed uploads, atomic payment + proof, atomic project creation (Tahap 4).
 	uploadService := application.NewUploadService(application.NewUploadSigner(signingSecret), storageClient, evidenceRepo, storage.BuildKey)
 	proofSupport := application.NewProofSupport(txManager, uploadService, evidenceService)
-	paymentService.SetProofSupport(proofSupport)
-	venuePaymentService.SetProofSupport(proofSupport)
+	supplierPaymentService.SetProofSupport(proofSupport)
 	clientPaymentService.SetAtomicSupport(proofSupport, paymentTermRepo)
+	// Paket WO Tahap 4: bills of the vendors the client pays directly and the
+	// proofs the couple sends for them (payer = Client, never the WO's money).
+	supplierBillService := application.NewSupplierBillService(infrastructure.NewMySQLSupplierBillRepository(db), supplierPaymentRepo,
+		supplierPaymentRepo, supplierRepo, evidenceService, activityService)
+	supplierBillService.SetProofSupport(proofSupport)
+	clientHomeService.SetSupplierBills(supplierBillService)
 	projectService.SetAtomicSupport(txManager, paymentTermRepo)
 	projectService.SetListMoney(infrastructure.NewMySQLListMoneyRepository(db))
 
 	references := application.NewReferences(staff)
-	handler := presentation.NewHandler(projectService, vendorEngagementService, paymentService, clientPaymentService, venuePaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
+
+	// The Rincian (Tahap 3): lines, the contract cache and the extra-guest
+	// charges kept in step with the events' guests in the same transaction.
+	lineService := application.NewLineService(infrastructure.NewMySQLLineRepository(db), projectService, eventService, eventRepo,
+		supplierRepo, paymentTermRepo, references, txManager, activityService)
+	eventService.SetLines(lineService)
+	projectService.SetLines(lineService)
+	clientHomeService.SetLines(lineService)
+	handler := presentation.NewHandler(projectService, supplierService, supplierPaymentService, eventService, clientPaymentService, issueService, evidenceService, activityService, dashboardService, closingService, paymentTermService, myProjectsService)
 
 	// The project overview (E1), the dashboard's names and the scheduled purge of
 	// what stayed deleted for longer than the retention (E13, ADR-0034).
-	overviewService := application.NewOverviewService(projectService, clientPaymentRepo, paymentTermService, references)
-	dashboardService.SetReferences(references)
+	overviewService := application.NewOverviewService(projectService, clientPaymentRepo, paymentTermService)
 	purgeService := application.NewPurgeService(infrastructure.NewMySQLPurgeRepository(db), evidenceService)
 
 	handler.SetReferences(references)
+	handler.SetLines(lineService)
+	handler.SetSupplierBills(supplierBillService)
+	// "Jadikan proyek" (Paket WO Tahap 5): `offers` is wired later (SetQuotations).
+	handler.SetConversion(application.NewConversionService(projectService, lineService, clientPaymentService, projectRepo))
 	handler.SetOverview(overviewService)
 	handler.SetClientHome(clientHomeService)
 	handler.SetUploads(uploadService)
@@ -107,16 +128,18 @@ func NewModule(db *sql.DB, storageClient *storage.Client, staff application.Staf
 		references:               references,
 		handler:                  handler,
 		milestoneTemplateHandler: presentation.NewMilestoneTemplateHandler(milestoneTemplateService),
-		contracts:                contracts.New(projectService, vendorEngagementService, milestoneTemplateService),
+		contracts:                contracts.New(projectService, supplierService, milestoneTemplateService),
 		projectService:           projectService,
 		clientHome:               clientHomeService,
 		overview:                 overviewService,
 		purge:                    purgeService,
+		events:                   eventService,
+		lines:                    lineService,
 	}
 }
 
 // PurgeExpired permanently removes what has been deleted for longer than the
-// retention: payments and vendor engagements, their evidence rows and stored
+// retention: payments and vendors & venues, their evidence rows and stored
 // files. Idempotent and safe with several instances (a database lock lets one
 // work at a time). It is what `api purge` and the server's ticker run.
 func (m *Module) PurgeExpired(ctx context.Context, now time.Time) (PurgeSummary, error) {
@@ -151,9 +174,6 @@ func (m *Module) SetClientCleaner(cleaner application.ClientCleaner) {
 	m.projectService.SetClientCleaner(cleaner)
 }
 
-// SetVenueResolver completes the same two-phase wiring, for resolving a
-// project's attached venue_id into display data (ADR-0016) — see
-// application.VenueResolver's doc comment.
 // SetTrialQuota plugs in the platform module's trial caps (main.go).
 func (m *Module) SetTrialQuota(q application.TrialQuota) {
 	m.projectService.SetTrialQuota(q)
@@ -172,8 +192,35 @@ func (m *Module) SetTenantContact(c application.TenantContactReader) {
 	m.clientHome.SetTenantContact(c)
 }
 
-func (m *Module) SetVenueResolver(resolver application.VenueResolver) {
-	m.projectService.SetVenueResolver(resolver)
+// SetEventCatalog completes the two-phase wiring with `offers`: the event kinds
+// a project event copies and the one capacity rule (PLAN §4.1).
+func (m *Module) SetEventCatalog(c application.EventCatalog) {
+	m.events.SetCatalog(c)
+}
+
+// SetOffers completes the two-phase wiring with `offers` for the Rincian: a
+// package as a line copies it and the pricing rules (ADR-0049).
+func (m *Module) SetOffers(o application.OffersPort) {
+	m.lines.SetOffers(o)
+}
+
+// SetQuotations completes the two-phase wiring with `offers` for "Jadikan
+// proyek" (PLAN §5.4): the accepted revision a project is made from, and the
+// marks MarkConverted / MarkProjectDeleted.
+func (m *Module) SetQuotations(q application.QuotationSource) {
+	m.projectService.SetQuotations(q)
+}
+
+// SetWorkspaceProfile completes the two-phase wiring with `platform`: whether
+// the workspace is PKP, copied onto a project when it is created.
+func (m *Module) SetWorkspaceProfile(w application.WorkspaceProfileSource) {
+	m.projectService.SetWorkspaceProfile(w)
+}
+
+// SetEventVenues completes the two-phase wiring with `vendors`: the directory
+// venue an event takes place at, with its capacities.
+func (m *Module) SetEventVenues(v application.EventVenues) {
+	m.events.SetVenues(v)
 }
 
 func (m *Module) RegisterRoutes(mux *http.ServeMux, authed func(http.Handler) http.Handler) {

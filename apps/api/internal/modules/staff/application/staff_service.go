@@ -36,7 +36,7 @@ type StaffRepository interface {
 // `projects` to check whether a staff member is still a live PIC assignment
 // anywhere -- deliberately a narrow local interface (not the whole
 // projects.Contracts), same idiom as ProjectService's own ClientCleaner/
-// VenueResolver. Bridged from main.go via SetProjectReferenceLookup --
+// EventVenues. Bridged from main.go via SetProjectReferenceLookup --
 // needed because `staff` is built before `projects` in main.go, so `staff`
 // can't take this as a constructor argument.
 type ProjectReferenceLookup interface {

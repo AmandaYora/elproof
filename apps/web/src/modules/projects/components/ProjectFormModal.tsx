@@ -3,7 +3,6 @@ import { useCan, useAllProjects } from "@/shared/stores/usePermissionStore";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
-import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { projectSchema, type ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { Project } from "@/modules/projects/types";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
@@ -12,9 +11,15 @@ import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import { todayISO } from "@/shared/lib/formatters";
 
+// The schema leaves the date optional: only a duplicate asks for it, and a duplicate cannot land nowhere.
+const editSchema = projectSchema.superRefine(() => undefined);
+const duplicateSchema = projectSchema.superRefine((v, ctx) => {
+  if (!v.eventDate) ctx.addIssue({ code: "custom", path: ["eventDate"], message: "Pilih tanggal acara utama salinan" });
+});
+
 const FIELD_LABELS: Record<string, string> = {
-  name: "Nama proyek", brideName: "Nama mempelai wanita", groomName: "Nama mempelai pria", eventDate: "Tanggal acara",
-  prepStartDate: "Tanggal booking", venue: "Lokasi / venue", packageName: "Paket / layanan", contractValue: "Nilai kontrak",
+  name: "Nama proyek", brideName: "Nama mempelai wanita", groomName: "Nama mempelai pria", eventDate: "Tanggal acara utama",
+  prepStartDate: "Tanggal booking",
   picStaffId: "Penanggung jawab WO", picSalesStaffId: "PIC Sales",
 };
 
@@ -31,6 +36,9 @@ interface ProjectFormModalProps {
   // meant to create a brand-new project — see ADR-0014. Name gets a "(Salinan)"
   // suffix and status resets to Draft as safer defaults; everything else
   // (including dates) is copied verbatim for the user to adjust as needed.
+  // Only a duplicate asks for the event date: the copy's main event lands on
+  // it and its other events keep their distance. A project's own date is its
+  // main event's, changed on the Acara & rincian tab.
   mode?: "edit" | "duplicate";
 }
 
@@ -41,10 +49,7 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
       brideName: "",
       groomName: "",
       eventDate: "",
-      venue: "",
       prepStartDate: "",
-      packageName: "",
-      contractValue: 0,
       status: "Draft",
       picStaffId: defaultStaffId,
       picSalesStaffId: "",
@@ -56,10 +61,7 @@ function toFormValues(project?: Project, defaultStaffId = "", mode?: "edit" | "d
     brideName: project.brideName,
     groomName: project.groomName,
     eventDate: project.eventDate,
-    venue: project.venue,
     prepStartDate: project.prepStartDate,
-    packageName: project.packageName,
-    contractValue: project.contractValue,
     status: mode === "duplicate" ? "Draft" : project.status,
     picStaffId: project.picStaffId,
     picSalesStaffId: project.picSalesStaffId,
@@ -84,7 +86,7 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
   const canAssignPIC = useCan("project.assign_pic");
   const assignedOnly = !useAllProjects();
   const currentStaffId = useAuthStore((s) => s.currentStaffId);
-  const form = useZodForm({ schema: projectSchema, initial: toFormValues(initialProject, "", mode) });
+  const form = useZodForm({ schema: mode === "duplicate" ? duplicateSchema : editSchema, initial: toFormValues(initialProject, "", mode) });
   const { values, errors, set, blur } = form;
 
   // Wedding Planner never reassigns a project's PIC, even their own project's
@@ -100,9 +102,7 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
   // A role limited to its own projects becomes PIC Sales of what it creates
   // (the API enforces it), so the field is shown locked to self.
   const picSalesLocked = assignedOnly && !initialProject;
-  // One place for the venue: while one is attached from the directory its name
-  // is the location, so this text is not edited here (a duplicate starts free).
-  const venueFromDirectory = Boolean(initialProject?.venueId) && mode !== "duplicate";
+  const isDuplicate = mode === "duplicate";
   // A past event date is allowed (a project already held), but a changed one is pointed out (EP-10).
   const eventMovedToPast = values.eventDate !== "" && values.eventDate !== initialProject?.eventDate && values.eventDate < todayISO();
 
@@ -134,8 +134,8 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
       title={mode === "duplicate" ? "Duplikat proyek" : initialProject ? "Ubah proyek" : "Tambah proyek baru"}
       description={
         mode === "duplicate"
-          ? "Proyek baru berdasarkan proyek ini — jadwal dan daftar vendor ikut disalin sebagai templat. Sesuaikan bagian yang berbeda sebelum menyimpan."
-          : "Informasi dasar proyek pernikahan yang dikelola WO."
+          ? "Proyek baru berdasarkan proyek ini: acara, jadwal, serta vendor & venue ikut disalin. Sesuaikan bagian yang berbeda sebelum menyimpan."
+          : "Informasi dasar proyek. Tanggal, venue, dan tamu diatur per acara di tab Acara & rincian."
       }
       size="lg"
       busy={form.submitting}
@@ -174,47 +174,23 @@ function ProjectFormModalBody({ open, onClose, onSubmit, initialProject, mode }:
         <Field label="Nama mempelai pria" required name="groomName" error={errors.groomName}>
           <Input value={values.groomName} onChange={(e) => set("groomName", e.target.value)} onBlur={() => blur("groomName")} />
         </Field>
-        <Field
-          label="Tanggal acara"
-          required
-          name="eventDate"
-          error={errors.eventDate}
-          hint={eventMovedToPast ? "Tanggal ini sudah lewat. Pastikan memang benar sebelum menyimpan." : undefined}
-        >
-          <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} onBlur={() => blur("eventDate")} />
-        </Field>
+        {isDuplicate && (
+          <Field
+            label="Tanggal acara utama salinan"
+            required
+            name="eventDate"
+            error={errors.eventDate}
+            hint={
+              eventMovedToPast
+                ? "Tanggal ini sudah lewat. Pastikan memang benar sebelum menyimpan."
+                : "Acara lain di salinan bergeser dengan jarak yang sama."
+            }
+          >
+            <Input type="date" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} onBlur={() => blur("eventDate")} />
+          </Field>
+        )}
         <Field label="Tanggal booking" required name="prepStartDate" error={errors.prepStartDate}>
           <Input type="date" value={values.prepStartDate} onChange={(e) => set("prepStartDate", e.target.value)} onBlur={() => blur("prepStartDate")} />
-        </Field>
-        <Field
-          label="Lokasi / venue"
-          required
-          name="venue"
-          error={errors.venue}
-          hint={venueFromDirectory ? "Venue dipilih dari direktori. Ubah di tab Vendor & venue proyek ini." : undefined}
-        >
-          <Input
-            value={values.venue}
-            onChange={(e) => set("venue", e.target.value)}
-            onBlur={() => blur("venue")}
-            disabled={venueFromDirectory}
-          />
-        </Field>
-        <Field label="Paket / layanan" required name="packageName" error={errors.packageName}>
-          <Input value={values.packageName} onChange={(e) => set("packageName", e.target.value)} onBlur={() => blur("packageName")} />
-        </Field>
-        <Field label="Nilai kontrak (Rp)" required name="contractValue" error={errors.contractValue}>
-          <CurrencyInput
-            signed
-            value={values.contractValue}
-            onChange={(n) => {
-              set("contractValue", n);
-              // A minus sign is answered at once (EP-10), not dropped.
-              if (n < 0) blur("contractValue");
-            }}
-            onBlur={() => blur("contractValue")}
-            aria-invalid={errors.contractValue ? true : undefined}
-          />
         </Field>
         <Field label="Penanggung jawab WO (PIC wedding planner)" name="picStaffId" error={errors.picStaffId}>
           {picLocked ? (

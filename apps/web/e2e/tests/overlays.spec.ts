@@ -108,7 +108,7 @@ test.describe("drawer", () => {
       return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ success: false, message: "Server sedang bermasalah", errors: null }) });
     });
     await visit(page, "/profil-usaha");
-    const opener = page.getByRole("button", { name: "Ubah" }).last();
+    const opener = page.locator("#alamat-rekening").getByRole("button", { name: "Ubah" });
     await opener.click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();

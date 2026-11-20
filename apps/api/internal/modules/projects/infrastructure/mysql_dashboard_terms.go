@@ -84,61 +84,68 @@ func (r *MySQLDashboardRepository) ListProjectMilestonesDue(ctx context.Context,
 	return list, rows.Err()
 }
 
-// ListOpenEngagementBalances returns, per vendor engagement of the workspace's
-// open projects (not completed, cancelled or archived) that is not cancelled or
-// deleted and has a due date, what is agreed and what has been paid against it
-// (DP + Termin + Pelunasan - Refund over its live payments). It backs the
-// dashboard's cash flow and "pembayaran vendor jatuh tempo".
-func (r *MySQLDashboardRepository) ListOpenEngagementBalances(ctx context.Context, tenantID int64) ([]domain.EngagementBalanceRow, error) {
+// ListOpenSupplierBalances returns, per supplier the WO pays in the
+// workspace's open projects (not completed, cancelled or archived) that is not
+// cancelled or deleted and has an agreed cost and a due date, what is agreed
+// and what the WO has paid against it (DP + Termin + Pelunasan - Refund over
+// its live WO payments). It backs the dashboard's cash flow and "pembayaran
+// vendor & venue jatuh tempo".
+func (r *MySQLDashboardRepository) ListOpenSupplierBalances(ctx context.Context, tenantID int64) ([]domain.SupplierBalanceRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT pv.id, pv.project_id, p.name, pv.vendor_id, pv.contract_value, pv.due_date,
-		       COALESCE((SELECT SUM(CASE WHEN vp.type IN ('DP','Termin','Pelunasan') THEN vp.amount
-		                                 WHEN vp.type = 'Refund' THEN -CAST(vp.amount AS SIGNED) ELSE 0 END)
-		                 FROM vendor_payments vp WHERE vp.project_vendor_id = pv.id AND vp.deleted_at IS NULL), 0)
-		FROM project_vendors pv
-		JOIN projects p ON p.id = pv.project_id
+		SELECT s.id, s.project_id, p.name, s.supplier_kind, s.supplier_name, s.agreed_cost, s.due_date,
+		       COALESCE((SELECT SUM(CASE WHEN sp.type IN ('DP','Termin','Pelunasan') THEN sp.amount
+		                                 WHEN sp.type = 'Refund' THEN -CAST(sp.amount AS SIGNED) ELSE 0 END)
+		                 FROM supplier_payments sp
+		                 WHERE sp.project_supplier_id = s.id AND sp.payer = 'WO' AND sp.deleted_at IS NULL), 0)
+		FROM project_suppliers s
+		JOIN projects p ON p.id = s.project_id
 		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled')
-		  AND pv.deleted_at IS NULL AND pv.engagement_status <> 'Cancelled' AND pv.due_date IS NOT NULL
-		ORDER BY pv.due_date, pv.id`, tenantID)
+		  AND s.deleted_at IS NULL AND s.engagement_status <> 'Cancelled' AND s.paid_by = 'WO'
+		  AND s.agreed_cost IS NOT NULL AND s.due_date IS NOT NULL
+		ORDER BY s.due_date, s.id`, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var list []domain.EngagementBalanceRow
+	var list []domain.SupplierBalanceRow
 	for rows.Next() {
-		var row domain.EngagementBalanceRow
-		if err := rows.Scan(&row.EngagementID, &row.ProjectID, &row.ProjectName, &row.VendorID, &row.ContractValue, &row.DueDate, &row.Applied); err != nil {
+		var row domain.SupplierBalanceRow
+		var kind string
+		if err := rows.Scan(&row.ProjectSupplierID, &row.ProjectID, &row.ProjectName, &kind, &row.SupplierName, &row.AgreedCost,
+			&row.DueDate, &row.Applied); err != nil {
 			return nil, err
 		}
+		row.SupplierKind = domain.SupplierKind(kind)
 		list = append(list, row)
 	}
 	return list, rows.Err()
 }
 
-// ListUnconfirmedVendors returns the vendors of open projects whose event falls
-// from `from` to `to` (inclusive) and that are still Planned or in Negotiation,
-// soonest event first, at most `limit`.
-func (r *MySQLDashboardRepository) ListUnconfirmedVendors(ctx context.Context, tenantID int64, from, to time.Time, limit int) ([]domain.UnconfirmedVendorRow, error) {
+// ListUnconfirmedSuppliers returns the vendors and venues of open projects whose
+// main event falls from `from` to `to` (inclusive) and that are still Planned
+// or in Negotiation, soonest event first, at most `limit`.
+func (r *MySQLDashboardRepository) ListUnconfirmedSuppliers(ctx context.Context, tenantID int64, from, to time.Time, limit int) ([]domain.UnconfirmedSupplierRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT pv.id, pv.project_id, p.name, pv.vendor_id, pv.engagement_status, p.event_date
-		FROM project_vendors pv
-		JOIN projects p ON p.id = pv.project_id
+		SELECT s.id, s.project_id, p.name, s.supplier_kind, s.supplier_name, s.engagement_status, p.event_date
+		FROM project_suppliers s
+		JOIN projects p ON p.id = s.project_id
 		WHERE p.tenant_id = ? AND p.is_archived = 0 AND p.status NOT IN ('Completed','Cancelled')
-		  AND pv.deleted_at IS NULL AND pv.engagement_status IN ('Planned','Negotiation')
+		  AND s.deleted_at IS NULL AND s.engagement_status IN ('Planned','Negotiation')
 		  AND p.event_date BETWEEN ? AND ?
-		ORDER BY p.event_date, pv.id
+		ORDER BY p.event_date, s.id
 		LIMIT ?`, tenantID, from.Format("2006-01-02"), to.Format("2006-01-02"), limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var list []domain.UnconfirmedVendorRow
+	var list []domain.UnconfirmedSupplierRow
 	for rows.Next() {
-		var row domain.UnconfirmedVendorRow
-		var status string
-		if err := rows.Scan(&row.EngagementID, &row.ProjectID, &row.ProjectName, &row.VendorID, &status, &row.EventDate); err != nil {
+		var row domain.UnconfirmedSupplierRow
+		var kind, status string
+		if err := rows.Scan(&row.ProjectSupplierID, &row.ProjectID, &row.ProjectName, &kind, &row.SupplierName, &status, &row.EventDate); err != nil {
 			return nil, err
 		}
+		row.SupplierKind = domain.SupplierKind(kind)
 		row.EngagementStatus = domain.EngagementStatus(status)
 		list = append(list, row)
 	}

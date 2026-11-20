@@ -31,12 +31,11 @@ type OverviewService struct {
 	projects       *ProjectService
 	clientPayments ClientPaymentRepository
 	terms          *PaymentTermService
-	refs           *References
 	clients        ClientDirectory
 }
 
-func NewOverviewService(projects *ProjectService, clientPayments ClientPaymentRepository, terms *PaymentTermService, refs *References) *OverviewService {
-	return &OverviewService{projects: projects, clientPayments: clientPayments, terms: terms, refs: refs}
+func NewOverviewService(projects *ProjectService, clientPayments ClientPaymentRepository, terms *PaymentTermService) *OverviewService {
+	return &OverviewService{projects: projects, clientPayments: clientPayments, terms: terms}
 }
 
 // SetClients completes the two-phase wiring with `clients`; without it the
@@ -62,10 +61,11 @@ func (s *OverviewService) ClientNames(ctx context.Context, tenantID, projectID i
 	return names
 }
 
-// UnconfirmedVendor is an engagement still Planned or in Negotiation.
-type UnconfirmedVendor struct {
+// UnconfirmedSupplier is a vendor or venue still Planned or in Negotiation.
+type UnconfirmedSupplier struct {
 	ID               int64
-	VendorName       string
+	Kind             domain.SupplierKind
+	Name             string
 	EngagementStatus domain.EngagementStatus
 }
 
@@ -79,15 +79,20 @@ type OverviewTeam struct {
 
 // ProjectOverview is the whole answer.
 type ProjectOverview struct {
-	Project        domain.Project
-	Progress       domain.ProjectProgress
+	Project  domain.Project
+	Progress domain.ProjectProgress
+	// Events are the project's events in screen order; Location is where they
+	// happen (domain.LocationLine) and EventsLine the second header line.
+	Events         []domain.ProjectEvent
+	Location       string
+	EventsLine     string
 	PICName        string
 	Finance        domain.FinanceOverview
 	NextTerm       *domain.TermProgress
 	Terms          []domain.TermProgress
 	Actions        []domain.ProjectAction
 	NextMilestones []domain.ProjectMilestone
-	Unconfirmed    []UnconfirmedVendor
+	Unconfirmed    []UnconfirmedSupplier
 	OpenIssueCount int
 	Team           OverviewTeam
 	Clients        []ProjectClientInfo
@@ -95,11 +100,11 @@ type ProjectOverview struct {
 
 // Get builds the overview of a project of the tenant. `now` carries the Jakarta
 // zone ("today" is the Indonesian calendar day, ADR-0007). Every source is read
-// once, whatever the number of vendors or terms: the project, seven progress
-// sources (milestones, engagements, vendor milestones, kendala, vendor payments,
-// venue payments, evidence), the client's payments, the schedule, the vendors'
-// names, the two PICs' names and the clients (plus one login lookup per client,
-// a project has at most a handful).
+// once, whatever the number of suppliers or terms: the project, six progress
+// sources (milestones, suppliers, their steps, kendala, supplier payments,
+// evidence), the events, the client's payments, the schedule, the two PICs'
+// names and the clients (plus one login lookup per client, a project has at
+// most a handful).
 func (s *OverviewService) Get(ctx context.Context, tenantID, projectID int64, now time.Time) (*ProjectOverview, error) {
 	p, err := s.projects.Get(ctx, tenantID, projectID)
 	if err != nil {
@@ -118,29 +123,34 @@ func (s *OverviewService) Get(ctx context.Context, tenantID, projectID int64, no
 		return nil, err
 	}
 
-	engagements, issues, milestones := data.engagements[projectID], data.issues[projectID], data.milestones[projectID]
-	vendorIDs := make([]int64, 0, len(engagements))
-	for _, e := range engagements {
-		vendorIDs = append(vendorIDs, e.VendorID)
+	events, err := s.projects.events.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
 	}
-	vendorNames := s.refs.VendorNames(ctx, tenantID, vendorIDs)
-	nameOf := make(map[int64]string, len(engagements))
-	for _, e := range engagements {
-		nameOf[e.ID] = vendorNames[e.VendorID]
+	domain.SortEvents(events)
+	suppliers, issues, milestones := data.suppliers[projectID], data.issues[projectID], data.milestones[projectID]
+	venueNames := make(map[int64]string, len(suppliers))
+	for _, sup := range suppliers {
+		if sup.Kind == domain.SupplierVenue {
+			venueNames[sup.ID] = sup.Name
+		}
 	}
 	staff := s.projects.StaffNames(ctx, tenantID, []int64{p.PICStaffID, p.PICSalesStaffID})
 
 	lines := domain.ContractLines(payments)
 	out := &ProjectOverview{
-		Project:  *p,
-		Progress: data.progressFor(projectID, now, false),
-		PICName:  staff[p.PICStaffID],
-		Finance:  domain.ComputeFinanceOverview(p.ContractValue, lines, terms, engagements, p.VenueRentalPrice, p.VenueCharge),
-		NextTerm: domain.NextOpenTerm(terms),
-		Terms:    terms,
+		Project:    *p,
+		Progress:   data.progressFor(projectID, now, false),
+		Events:     events,
+		Location:   domain.LocationLine(events, venueNames),
+		EventsLine: domain.EventsLine(events),
+		PICName:    staff[p.PICStaffID],
+		Finance:    domain.ComputeFinanceOverview(*p, lines, terms, suppliers),
+		NextTerm:   domain.NextOpenTerm(terms),
+		Terms:      terms,
 		Actions: domain.BuildProjectActions(domain.ActionInput{
 			Today: now, EventDate: p.EventDate, Terms: terms, Issues: issues,
-			Engagement: engagements, VendorName: nameOf, Milestones: milestones,
+			Suppliers: suppliers, Milestones: milestones,
 		}),
 		NextMilestones: domain.NextMilestones(milestones),
 		OpenIssueCount: domain.OpenIssueCount(issues),
@@ -150,8 +160,8 @@ func (s *OverviewService) Get(ctx context.Context, tenantID, projectID int64, no
 		},
 		Clients: []ProjectClientInfo{},
 	}
-	for _, e := range domain.UnconfirmedEngagements(engagements) {
-		out.Unconfirmed = append(out.Unconfirmed, UnconfirmedVendor{ID: e.ID, VendorName: nameOf[e.ID], EngagementStatus: e.EngagementStatus})
+	for _, sup := range domain.UnconfirmedSuppliers(suppliers) {
+		out.Unconfirmed = append(out.Unconfirmed, UnconfirmedSupplier{ID: sup.ID, Kind: sup.Kind, Name: sup.Name, EngagementStatus: sup.EngagementStatus})
 	}
 	if s.clients != nil {
 		list, err := s.clients.ListProjectClients(ctx, tenantID, projectID)

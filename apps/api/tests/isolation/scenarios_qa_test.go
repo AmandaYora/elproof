@@ -23,41 +23,38 @@ func TestQAFindings(t *testing.T) {
 	tn := s.signUp("qa")
 	proj := s.projectsPath
 
-	// FQ-01: a project that ever had vendor and venue payments (live and
-	// soft-deleted, with files), a deleted engagement and a client payment is
-	// hard-deleted with everything it owns.
+	// FQ-01: a project that ever had payments to its vendor and its venue (live
+	// and soft-deleted, with files), a deleted supplier and a client payment is
+	// hard-deleted with everything it owns: events and sessions, suppliers and
+	// their steps, supplier and client payments, kendala, files.
 	t.Run("FQ-01 hard delete removes every payment and file", func(t *testing.T) {
 		needStorage(t)
-		P := s.projectAt(tn, "Proyek Hapus Total "+tn.marker, 50_000_000, 90, 10_000_000, 500_000)
-		vendorID, category := s.newVendor(tn, "Vendor Hapus "+tn.marker)
-		E := s.engage(tn, P, vendorID, category, "Dekor", 20_000_000, "Booked", nil)
-		E2 := s.engage(tn, P, vendorID, category, "Tenda", 5_000_000, "Booked", nil)
-		M := s.mustOK("vendor milestone", s.do(tn.token, "POST", proj(P, fmt.Sprintf("/vendors/%d/milestones", E)), map[string]any{
+		venueID := s.mustOK("venue", s.do(tn.token, "POST", "/api/v1/venues", venueBody(tn, "Gedung Hapus "+tn.marker))).id("data", "id")
+		P := s.projectAt(tn, "Proyek Hapus Total "+tn.marker, 50_000_000, 90, venueID)
+		VS := s.venueSupplier(tn, P, venueID)
+		vendorID, _ := s.newVendor(tn, "Vendor Hapus "+tn.marker)
+		E := s.engage(tn, P, vendorID, "Dekor", 20_000_000, "Booked", nil)
+		E2 := s.engage(tn, P, vendorID, "Tenda", 5_000_000, "Booked", nil)
+		M := s.mustOK("vendor milestone", s.do(tn.token, "POST", proj(P, fmt.Sprintf("/suppliers/%d/milestones", E)), map[string]any{
 			"name": "Pasang", "description": "d", "targetDate": day(30), "picStaffId": tn.staffID,
 		})).id("data", "id")
 		s.mustOK("issue", s.do(tn.token, "POST", proj(P, "/issues"), map[string]any{
-			"projectVendorId": E, "vendorMilestoneId": M, "title": "Kendala", "description": "d", "impact": "Medium", "foundDate": day(-1), "picStaffId": tn.staffID,
+			"projectSupplierId": E, "vendorMilestoneId": M, "title": "Kendala", "description": "d", "impact": "Medium", "foundDate": day(-1), "picStaffId": tn.staffID,
 		}))
-		vendorPay := func(engagement int64, ref string) int64 {
-			return s.mustOK("vendor payment", s.do(tn.token, "POST", proj(P, "/payments"), map[string]any{
-				"projectVendorId": engagement, "type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": ref,
-			})).id("data", "id")
-		}
-		venuePay := func(ref string) int64 {
-			return s.mustOK("venue payment", s.do(tn.token, "POST", proj(P, "/venue-payments"), map[string]any{
-				"type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": ref,
-			})).id("data", "id")
-		}
-		vpLive, vpGone, vpOfE2 := vendorPay(E, "VP-1"), vendorPay(E, "VP-2"), vendorPay(E2, "VP-3")
-		vnLive, vnGone := venuePay("VN-1"), venuePay("VN-2")
+		vpLive, vpGone, vpOfE2 := s.supplierPay(tn, P, E, "DP", 1_000_000, "VP-1"), s.supplierPay(tn, P, E, "DP", 1_000_000, "VP-2"), s.supplierPay(tn, P, E2, "DP", 1_000_000, "VP-3")
+		vnLive, vnGone := s.supplierPay(tn, P, VS, "DP", 1_000_000, "VN-1"), s.supplierPay(tn, P, VS, "DP", 1_000_000, "VN-2")
 		cp := s.clientPay(tn, P, "DP", 2_000_000, "CP-1")
+		eventID := int64(s.count("SELECT IFNULL(MAX(id), 0) FROM project_events WHERE project_id = ?", P))
+		if eventID == 0 || VS == 0 {
+			t.Fatalf("project without event (%d) or venue supplier (%d)", eventID, VS)
+		}
 		var files []int64
 		files = append(files,
-			s.attach(tn, P, "payment", vpLive, "Invoice", "inv-live", false),
-			s.attach(tn, P, "payment", vpGone, "Transfer Proof", "bukti-gone", false),
-			s.attach(tn, P, "payment", vpOfE2, "Transfer Proof", "bukti-e2", false),
-			s.attach(tn, P, "venuePayment", vnLive, "Transfer Proof", "bukti-venue", false),
-			s.attach(tn, P, "venuePayment", vnGone, "Transfer Proof", "bukti-venue-gone", false),
+			s.attach(tn, P, "supplierPayment", vpLive, "Invoice", "inv-live", false),
+			s.attach(tn, P, "supplierPayment", vpGone, "Transfer Proof", "bukti-gone", false),
+			s.attach(tn, P, "supplierPayment", vpOfE2, "Transfer Proof", "bukti-e2", false),
+			s.attach(tn, P, "supplierPayment", vnLive, "Transfer Proof", "bukti-venue", false),
+			s.attach(tn, P, "supplierPayment", vnGone, "Transfer Proof", "bukti-venue-gone", false),
 			s.attach(tn, P, "clientPayment", cp, "Transfer Proof", "bukti-klien", true),
 			s.upload(tn, P, "Dokumen umum", true),
 		)
@@ -65,9 +62,9 @@ func TestQAFindings(t *testing.T) {
 		for _, f := range files {
 			keys = append(keys, s.storageKey(f))
 		}
-		s.mustOK("delete vendor payment", s.do(tn.token, "DELETE", proj(P, fmt.Sprintf("/payments/%d", vpGone)), nil))
-		s.mustOK("delete venue payment", s.do(tn.token, "DELETE", proj(P, fmt.Sprintf("/venue-payments/%d", vnGone)), nil))
-		s.mustOK("delete engagement", s.do(tn.token, "DELETE", proj(P, fmt.Sprintf("/vendors/%d", E2)), nil))
+		s.mustOK("delete vendor payment", s.do(tn.token, "DELETE", proj(P, fmt.Sprintf("/supplier-payments/%d", vpGone)), nil))
+		s.mustOK("delete venue payment", s.do(tn.token, "DELETE", proj(P, fmt.Sprintf("/supplier-payments/%d", vnGone)), nil))
+		s.mustOK("delete supplier", s.do(tn.token, "DELETE", proj(P, fmt.Sprintf("/suppliers/%d", E2)), nil))
 		s.setTerms(tn, P, term("DP", 10_000_000, 10))
 
 		// Not cancelled or archived yet: a clear 422, not a 500.
@@ -84,15 +81,18 @@ func TestQAFindings(t *testing.T) {
 		if got := str(r, "message"); got != "Proyek berhasil dihapus permanen" {
 			t.Errorf("hard delete message: %q", got)
 		}
-		for _, table := range []string{"projects WHERE id = ?", "project_vendors WHERE project_id = ?", "vendor_payments WHERE project_id = ?",
-			"venue_payments WHERE project_id = ?", "client_payments WHERE project_id = ?", "client_payment_terms WHERE project_id = ?",
+		for _, table := range []string{"projects WHERE id = ?", "project_suppliers WHERE project_id = ?", "supplier_payments WHERE project_id = ?",
+			"project_events WHERE project_id = ?", "client_payments WHERE project_id = ?", "client_payment_terms WHERE project_id = ?",
 			"vendor_issues WHERE project_id = ?", "evidence WHERE project_id = ?", "project_milestones WHERE project_id = ?", "activity_log WHERE project_id = ?"} {
 			if n := s.count("SELECT COUNT(*) FROM "+table, P); n != 0 {
 				t.Errorf("%s: %d rows left", table, n)
 			}
 		}
-		if n := s.count("SELECT COUNT(*) FROM vendor_milestones WHERE project_vendor_id IN (?, ?)", E, E2); n != 0 {
+		if n := s.count("SELECT COUNT(*) FROM vendor_milestones WHERE project_supplier_id IN (?, ?)", E, E2); n != 0 {
 			t.Errorf("vendor_milestones: %d rows left", n)
+		}
+		if n := s.count("SELECT COUNT(*) FROM project_event_sessions WHERE event_id = ?", eventID); n != 0 {
+			t.Errorf("project_event_sessions: %d rows left", n)
 		}
 		for _, k := range keys {
 			if objectExists(t, k) {
@@ -105,13 +105,14 @@ func TestQAFindings(t *testing.T) {
 	})
 
 	// FQ-02: a vendor or venue a project still uses cannot be deleted; once the
-	// project is gone (or the engagement deleted) it can.
+	// project is gone (or the supplier removed from it) it can.
 	t.Run("FQ-02 directory delete refused while in use", func(t *testing.T) {
-		vendorID, category := s.newVendor(tn, "Vendor Dipakai "+tn.marker)
-		PA := s.projectAt(tn, "Proyek Alfa "+tn.marker, 10_000_000, 60, 5_000_000, 0)
-		PB := s.projectAt(tn, "Proyek Beta "+tn.marker, 10_000_000, 90, 0, 0)
-		ea := s.engage(tn, PA, vendorID, category, "Dekor", 1_000_000, "Booked", nil)
-		s.engage(tn, PB, vendorID, category, "Dekor", 1_000_000, "Planned", nil)
+		vendorID, _ := s.newVendor(tn, "Vendor Dipakai "+tn.marker)
+		venueID := s.mustOK("venue", s.do(tn.token, "POST", "/api/v1/venues", venueBody(tn, "Gedung Dipakai "+tn.marker))).id("data", "id")
+		PA := s.projectAt(tn, "Proyek Alfa "+tn.marker, 10_000_000, 60, venueID)
+		PB := s.projectAt(tn, "Proyek Beta "+tn.marker, 10_000_000, 90, 0)
+		ea := s.engage(tn, PA, vendorID, "Dekor", 1_000_000, "Booked", nil)
+		s.engage(tn, PB, vendorID, "Dekor", 1_000_000, "Planned", nil)
 		s.mustOK("cancel B", s.do(tn.token, "POST", proj(PB, "/cancel"), map[string]any{}))
 		s.mustOK("archive B", s.do(tn.token, "PATCH", proj(PB, ""), map[string]any{"isArchived": true}))
 
@@ -126,14 +127,13 @@ func TestQAFindings(t *testing.T) {
 		if n := s.count("SELECT COUNT(*) FROM vendors WHERE id = ?", vendorID); n != 1 {
 			t.Fatal("the refused vendor was deleted")
 		}
-		// The engagement still shows the vendor's name.
-		for _, row := range rows(s.mustOK("engagements", s.do(tn.token, "GET", proj(PA, "/vendors"), nil)), "data") {
-			if int64(row["id"].(float64)) == ea && row["vendorName"] != "Vendor Dipakai "+tn.marker {
-				t.Errorf("engagement lost its vendor name: %v", row)
+		// The project's supplier row still shows the vendor's name.
+		for _, row := range rows(s.mustOK("suppliers", s.do(tn.token, "GET", proj(PA, "/suppliers"), nil)), "data") {
+			if int64(row["id"].(float64)) == ea && row["name"] != "Vendor Dipakai "+tn.marker {
+				t.Errorf("supplier lost its vendor name: %v", row)
 			}
 		}
 
-		venueID := int64(s.count("SELECT IFNULL(venue_id, 0) FROM projects WHERE id = ?", PA))
 		r = s.do(tn.token, "DELETE", fmt.Sprintf("/api/v1/venues/%d", venueID), nil)
 		if r.status != http.StatusConflict || str(r, "errors", "code") != "venue_in_use" ||
 			str(r, "message") != "Venue ini masih dipakai di 1 proyek: Proyek Alfa "+tn.marker+". Nonaktifkan saja bila tidak dipakai lagi." {
@@ -143,8 +143,8 @@ func TestQAFindings(t *testing.T) {
 			t.Errorf("refused venue must still be readable: %s", r)
 		}
 
-		// Remove the uses: delete the live engagement of A, hard-delete B, detach A's venue.
-		s.mustOK("delete engagement", s.do(tn.token, "DELETE", proj(PA, fmt.Sprintf("/vendors/%d", ea)), nil))
+		// Remove the uses: delete the live supplier of A, hard-delete B, then A.
+		s.mustOK("delete supplier", s.do(tn.token, "DELETE", proj(PA, fmt.Sprintf("/suppliers/%d", ea)), nil))
 		s.mustOK("delete B", s.do(tn.token, "DELETE", proj(PB, ""), nil))
 		if r := s.do(tn.token, "DELETE", fmt.Sprintf("/api/v1/vendors/%d", vendorID), nil); r.status != http.StatusOK {
 			t.Errorf("vendor no longer used: want 200, got %s", r)
@@ -247,8 +247,8 @@ func TestQAFindings(t *testing.T) {
 		}
 
 		venues := importWorkbook(t, [][]any{
-			{"Nama Venue", "Nama PIC", "No Tlp PIC", "No Tlp Venue", "Email", "Alamat", "Kota", "Harga Sewa", "Charge", "Kapasitas", "Fasilitas", "Sosial Media", "Catatan"},
-			{"Gedung QA " + tn.marker, "Budi", "123", "", "", "", "Kota Bandung", "sepuluh", -1, 300, "", "", ""},
+			{"Nama Venue", "Nama PIC", "No Tlp PIC", "No Tlp Venue", "Email", "Alamat", "Kota", "Kapasitas Berdiri", "Kapasitas Duduk", "Harga Akad", "Harga Resepsi", "Harga Akad+Resepsi", "Charge", "Fasilitas", "Sosial Media", "Catatan"},
+			{"Gedung QA " + tn.marker, "Budi", "123", "", "", "", "Kota Bandung", 300, "", "", "", "sepuluh", -1, "", "", ""},
 		})
 		v := s.mustOK("venue import", s.do(tn.token, "POST", "/api/v1/venues/import", map[string]any{"base64Data": venues}))
 		if verrs := rows(v, "data", "errors"); len(verrs) != 1 || len(verrs[0]["errors"].([]any)) != 3 {

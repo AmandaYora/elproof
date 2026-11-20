@@ -1,5 +1,5 @@
 import { SupportAccessCard } from "@/modules/business-profile/components/SupportAccessCard";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
 import { Button } from "@/shared/components/ui/Button";
 import { PageHeader } from "@/shared/components/ui/PageHeader";
@@ -12,6 +12,7 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { LoadError } from "@/shared/components/feedback/LoadError";
 import { CompleteProfileModal } from "@/modules/onboarding/components/CompleteProfileModal";
 import { BusinessDetailsDrawer, type BusinessDetails } from "@/modules/business-profile/components/BusinessDetailsDrawer";
+import { exampleQuoteNumber, type QuoteSettings } from "@/modules/business-profile/components/quote-settings";
 import { cn } from "@/shared/lib/cn";
 
 interface Tenant {
@@ -26,8 +27,12 @@ interface Tenant {
 const SECTIONS = [
   { id: "data-usaha", label: "Data usaha" },
   { id: "alamat-rekening", label: "Alamat dan rekening" },
+  { id: "penawaran", label: "Penawaran" },
   { id: "akses-dukungan", label: "Akses dukungan" },
 ];
+
+// Only needed after "Ubah" is pressed: fetched then, not with the page.
+const QuoteSettingsDrawer = lazy(() => import("@/modules/business-profile/components/QuoteSettingsDrawer").then((m) => ({ default: m.QuoteSettingsDrawer })));
 
 /** 62812… shown the way people write it: 0812… */
 function displayPhone(stored: string) {
@@ -66,10 +71,22 @@ export default function BusinessProfilePage() {
       .catch(() => setDetailsFailed(true));
   }, []);
 
+  const [quote, setQuote] = useState<QuoteSettings | null>(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
+  const [editingQuote, setEditingQuote] = useState(false);
+  const loadQuote = useCallback(() => {
+    setQuoteFailed(false);
+    httpClient
+      .get(API.platform.tenantMeQuoteSettings)
+      .then((res) => setQuote(res.data.data as QuoteSettings))
+      .catch(() => setQuoteFailed(true));
+  }, []);
+
   useEffect(() => {
     void load();
     loadDetails();
-  }, [load, loadDetails]);
+    loadQuote();
+  }, [load, loadDetails, loadQuote]);
 
   if (loadError) {
     return <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{loadError}</p>;
@@ -162,6 +179,33 @@ export default function BusinessProfilePage() {
             </CardContent>
           </Card>
 
+          <Card id="penawaran" className="scroll-mt-24">
+            <CardHeader
+              title="Penawaran"
+              subtitle="Dipakai setiap kali tim menyusun penawaran baru."
+              action={!writeLocked && quote && <Button size="sm" variant="secondary" onClick={() => setEditingQuote(true)}>Ubah</Button>}
+            />
+            <CardContent>
+              {quoteFailed && !quote && <LoadError message="Pengaturan penawaran belum bisa dimuat. Periksa koneksi, lalu coba lagi." onRetry={loadQuote} />}
+              {!quote && !quoteFailed && <p role="status" className="text-[13px] text-muted-foreground">Memuat...</p>}
+              {quote && (
+                <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-3">
+                  <div className="min-w-0">
+                    <dt className="text-[12.5px] text-muted-foreground">Kode usaha</dt>
+                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">{quote.documentCode}</dd>
+                    <dd className="text-[12.5px] text-muted-foreground tabular-nums">Contoh nomor: {exampleQuoteNumber(quote.documentCode)}</dd>
+                  </div>
+                  <Item label="Status pajak" value={quote.isPkp ? "PKP: PPN ditambahkan otomatis" : "Bukan PKP: tanpa PPN"} />
+                  <Item label="Masa berlaku bawaan" value={`${quote.defaultValidityDays} hari`} />
+                  <div className="min-w-0 sm:col-span-3">
+                    <dt className="text-[12.5px] text-muted-foreground">Syarat & ketentuan</dt>
+                    <dd className="mt-1 line-clamp-4 whitespace-pre-line break-words text-[13.5px] text-foreground">{quote.defaultTermsText || "—"}</dd>
+                  </div>
+                </dl>
+              )}
+            </CardContent>
+          </Card>
+
           <section id="akses-dukungan" aria-label="Akses dukungan ElProof" className="scroll-mt-24">
             <SupportAccessCard />
           </section>
@@ -178,6 +222,20 @@ export default function BusinessProfilePage() {
             toast.success("Alamat dan rekening disimpan");
           }}
         />
+      )}
+
+      {editingQuote && quote && (
+        <Suspense fallback={null}>
+          <QuoteSettingsDrawer
+            initial={quote}
+            onClose={() => setEditingQuote(false)}
+            onSaved={(saved) => {
+              setQuote(saved);
+              setEditingQuote(false);
+              toast.success("Pengaturan penawaran disimpan");
+            }}
+          />
+        </Suspense>
       )}
 
       <CompleteProfileModal

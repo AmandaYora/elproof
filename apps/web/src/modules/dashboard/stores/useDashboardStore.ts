@@ -6,7 +6,6 @@ import type {
   DashboardIssueRow,
   DashboardPaymentRow,
   DashboardStats,
-  DashboardVenuePaymentRow,
   LaggingProjectRow,
   DashboardTermRow,
   DashboardTaskRow,
@@ -14,16 +13,17 @@ import type {
   ProjectTrendPoint,
   RevenueTrendPoint,
   CashFlowWeek,
-  VendorDueRow,
-  UnconfirmedVendorRow,
+  SupplierDueRow,
+  UnconfirmedSupplierRow,
+  ClientBillDueRow,
+  SupplierProofPendingRow,
 } from "@/modules/dashboard/types";
 
 interface RawDashboardIssue {
   id: number;
   projectId: number;
   projectName: string;
-  vendorId: number;
-  vendorName?: string;
+  supplierName?: string;
   title: string;
   impact: DashboardIssueRow["impact"];
   foundDate: string;
@@ -34,8 +34,7 @@ interface RawDashboardMilestone {
   id: number;
   projectId: number;
   projectName: string;
-  vendorId: number;
-  vendorName?: string;
+  supplierName?: string;
   name: string;
   targetDate: string;
 }
@@ -44,18 +43,10 @@ interface RawDashboardPayment {
   id: number;
   projectId: number;
   projectName: string;
-  vendorId: number;
-  vendorName?: string;
+  supplierKind: DashboardPaymentRow["supplierKind"];
+  supplierName?: string;
+  payer: DashboardPaymentRow["payer"];
   type: DashboardPaymentRow["type"];
-  amount: number;
-  paymentDate: string;
-}
-
-interface RawDashboardVenuePayment {
-  id: number;
-  projectId: number;
-  projectName: string;
-  type: DashboardVenuePaymentRow["type"];
   amount: number;
   paymentDate: string;
 }
@@ -72,7 +63,6 @@ interface RawDashboard {
   openIssues: RawDashboardIssue[];
   overdueVendorMilestones: RawDashboardMilestone[];
   incompletePayments: RawDashboardPayment[];
-  incompleteVenuePayments: RawDashboardVenuePayment[];
   nearDDayProjects: RawProject[];
   laggingProjects: RawLaggingProject[];
   upcomingProjects: RawProject[];
@@ -86,8 +76,21 @@ interface RawDashboard {
   projectTrend: ProjectTrendPoint[];
   revenueTrend: RevenueTrendPoint[];
   cashFlow?: CashFlowWeek[] | null;
-  vendorPaymentsDue?: Array<Omit<VendorDueRow, "projectId"> & { projectId: number }> | null;
-  unconfirmedVendors?: Array<Omit<UnconfirmedVendorRow, "projectId"> & { projectId: number }> | null;
+  supplierPaymentsDue?: Array<Omit<SupplierDueRow, "projectId"> & { projectId: number }> | null;
+  unconfirmedSuppliers?: Array<Omit<UnconfirmedSupplierRow, "projectId"> & { projectId: number }> | null;
+  clientBillsDue?: Array<
+    Omit<ClientBillDueRow, "billTermId" | "projectSupplierId" | "projectId"> & { billTermId: number; projectSupplierId: number; projectId: number }
+  > | null;
+  supplierProofsPending?: Array<
+    Omit<SupplierProofPendingRow, "supplierPaymentId" | "projectId" | "projectSupplierId" | "billTermId" | "billTermLabel"> & {
+      supplierPaymentId: number;
+      projectId: number;
+      projectSupplierId: number;
+      billTermId: number | null;
+      billTermLabel?: string | null;
+    }
+  > | null;
+  supplierProofsPendingCount?: number;
 }
 
 function toDashboardStats(raw: RawDashboard): DashboardStats {
@@ -96,20 +99,16 @@ function toDashboardStats(raw: RawDashboard): DashboardStats {
     activeProjects: raw.activeProjects,
     activeVendorCount: raw.activeVendorCount,
     openIssues: raw.openIssues.map((i) => ({
-      id: String(i.id), projectId: String(i.projectId), projectName: i.projectName, vendorId: String(i.vendorId), vendorName: i.vendorName ?? "",
+      id: String(i.id), projectId: String(i.projectId), projectName: i.projectName, supplierName: i.supplierName ?? "",
       title: i.title, impact: i.impact, foundDate: i.foundDate, status: i.status,
     })),
     overdueVendorMilestones: raw.overdueVendorMilestones.map((m) => ({
-      id: String(m.id), projectId: String(m.projectId), projectName: m.projectName, vendorId: String(m.vendorId), vendorName: m.vendorName ?? "",
+      id: String(m.id), projectId: String(m.projectId), projectName: m.projectName, supplierName: m.supplierName ?? "",
       name: m.name, targetDate: m.targetDate,
     })),
-    incompletePayments: raw.incompletePayments.map((p) => ({
-      id: String(p.id), projectId: String(p.projectId), projectName: p.projectName, vendorId: String(p.vendorId), vendorName: p.vendorName ?? "",
-      type: p.type, amount: p.amount, paymentDate: p.paymentDate,
-    })),
-    incompleteVenuePayments: raw.incompleteVenuePayments.map((p) => ({
-      id: String(p.id), projectId: String(p.projectId), projectName: p.projectName,
-      type: p.type, amount: p.amount, paymentDate: p.paymentDate,
+    incompletePayments: (raw.incompletePayments ?? []).map((p) => ({
+      id: String(p.id), projectId: String(p.projectId), projectName: p.projectName, supplierKind: p.supplierKind, supplierName: p.supplierName ?? "",
+      payer: p.payer, type: p.type, amount: p.amount, paymentDate: p.paymentDate,
     })),
     nearDDayProjects: raw.nearDDayProjects.map(toProject),
     laggingProjects: raw.laggingProjects.map((row): LaggingProjectRow => ({ project: toProject(row.project), overallPercent: row.overallPercent })),
@@ -124,8 +123,24 @@ function toDashboardStats(raw: RawDashboard): DashboardStats {
     projectTrend: raw.projectTrend,
     revenueTrend: raw.revenueTrend,
     cashFlow: raw.cashFlow ?? undefined,
-    vendorPaymentsDue: raw.vendorPaymentsDue?.map((v) => ({ ...v, projectId: String(v.projectId) })),
-    unconfirmedVendors: (raw.unconfirmedVendors ?? []).map((v) => ({ ...v, projectId: String(v.projectId) })),
+    supplierPaymentsDue: raw.supplierPaymentsDue?.map((v) => ({ ...v, projectId: String(v.projectId) })),
+    unconfirmedSuppliers: (raw.unconfirmedSuppliers ?? []).map((v) => ({ ...v, projectId: String(v.projectId) })),
+    // Absent (not empty) for a role without finance.record: the attention list then has no such items at all.
+    clientBillsDue: raw.clientBillsDue?.map((b) => ({
+      ...b,
+      billTermId: String(b.billTermId),
+      projectSupplierId: String(b.projectSupplierId),
+      projectId: String(b.projectId),
+    })),
+    supplierProofsPending: raw.supplierProofsPending?.map((p) => ({
+      ...p,
+      supplierPaymentId: String(p.supplierPaymentId),
+      projectId: String(p.projectId),
+      projectSupplierId: String(p.projectSupplierId),
+      billTermId: p.billTermId === null ? null : String(p.billTermId),
+      billTermLabel: p.billTermLabel ?? "",
+    })),
+    supplierProofsPendingCount: raw.supplierProofsPendingCount,
   };
 }
 

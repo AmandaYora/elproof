@@ -32,6 +32,7 @@ export interface VendorProjectHistoryItem {
   projectId: string;
   projectName: string;
   eventDate: string;
+  /** Where the project's events happen (its location line); "" before a venue is chosen. */
   venue: string;
   engagementStatus: string;
 }

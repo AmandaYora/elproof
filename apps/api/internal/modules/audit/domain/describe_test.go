@@ -26,6 +26,12 @@ func TestDescribe(t *testing.T) {
 		{"POST", "/api/v1/vendors", "Menambah vendor"},
 		{"POST", "/api/v1/projects/7/evidence/9/toggle-client-visible", "Mengubah tampilan untuk klien pada bukti #9 di proyek #7"},
 		{"POST", "/api/v1/vendors/4/toggle-active", "Menonaktifkan atau mengaktifkan vendor #4"}, // a route since replaced; old rows still read well
+		{"POST", "/api/v1/projects/12/events", "Menambah acara di proyek #12"},
+		{"PUT", "/api/v1/projects/12/events/3", "Mengubah acara #3 di proyek #12"},
+		{"POST", "/api/v1/projects/12/events/3/set-main", "Menandai sebagai utama acara #3 di proyek #12"},
+		{"DELETE", "/api/v1/projects/12/suppliers/4", "Menghapus vendor & venue #4 di proyek #12"},
+		{"POST", "/api/v1/projects/12/suppliers/4/refresh-capacity", "Memperbarui kapasitas vendor & venue #4 di proyek #12"},
+		{"POST", "/api/v1/projects/12/supplier-payments", "Menambah pembayaran vendor & venue di proyek #12"},
 		// Unknown: fall back to the raw label.
 		{"POST", "/api/v1/projects/12/something-new", ""},
 		{"POST", "/api/v1/unknown", ""},

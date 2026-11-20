@@ -127,15 +127,14 @@ func (r *MySQLPurgeRepository) PurgeBatch(ctx context.Context, cutoff time.Time,
 	}
 	defer tx.Rollback()
 
-	// The three payment kinds: evidence first, then the row.
+	// The two payment kinds: evidence first, then the row.
 	simple := []struct {
 		table string
 		kind  domain.EvidenceRelatedKind
 		count *int
 	}{
 		{"client_payments", domain.RelatedClientPayment, &report.ClientPayments},
-		{"venue_payments", domain.RelatedVenuePayment, &report.VenuePayments},
-		{"vendor_payments", domain.RelatedPayment, &report.VendorPayments},
+		{"supplier_payments", domain.RelatedSupplierPayment, &report.SupplierPayments},
 	}
 	for _, t := range simple {
 		ids, err := selectIDs(ctx, tx, `SELECT id FROM `+t.table+` WHERE deleted_at IS NOT NULL AND deleted_at <= ? ORDER BY id LIMIT ?`, cutoff, batch)
@@ -152,24 +151,35 @@ func (r *MySQLPurgeRepository) PurgeBatch(ctx context.Context, cutoff time.Time,
 		}
 	}
 
-	// Engagements take their milestones, kendala and payments (all of them, live
-	// or not) and the files of each with them. Order: issues reference milestones.
-	engagements, err := selectIDs(ctx, tx, `SELECT id FROM project_vendors WHERE deleted_at IS NOT NULL AND deleted_at <= ? ORDER BY id LIMIT ?`, cutoff, batch)
+	// Bills of client-paid suppliers deleted longer ago than the retention (a
+	// proof sent for one keeps its payment; the foreign key clears its link).
+	billIDs, err := selectIDs(ctx, tx, `SELECT id FROM supplier_bill_terms WHERE deleted_at IS NOT NULL AND deleted_at <= ? ORDER BY id LIMIT ?`, cutoff, batch)
 	if err != nil {
 		return report, nil, err
 	}
-	if len(engagements) > 0 {
-		in := inList(engagements)
-		args := utils.Int64Args(engagements)
-		milestones, err := selectIDs(ctx, tx, `SELECT id FROM vendor_milestones WHERE project_vendor_id IN `+in, args...)
+	if report.BillTerms, err = deleteByIDs(ctx, tx, "supplier_bill_terms", "id", billIDs); err != nil {
+		return report, nil, err
+	}
+
+	// Suppliers take their steps, kendala, payments and bills (all of them, live
+	// or not) and the files of each with them. Order: issues reference steps,
+	// payments reference bills.
+	suppliers, err := selectIDs(ctx, tx, `SELECT id FROM project_suppliers WHERE deleted_at IS NOT NULL AND deleted_at <= ? ORDER BY id LIMIT ?`, cutoff, batch)
+	if err != nil {
+		return report, nil, err
+	}
+	if len(suppliers) > 0 {
+		in := inList(suppliers)
+		args := utils.Int64Args(suppliers)
+		milestones, err := selectIDs(ctx, tx, `SELECT id FROM vendor_milestones WHERE project_supplier_id IN `+in, args...)
 		if err != nil {
 			return report, nil, err
 		}
-		issues, err := selectIDs(ctx, tx, `SELECT id FROM vendor_issues WHERE project_vendor_id IN `+in, args...)
+		issues, err := selectIDs(ctx, tx, `SELECT id FROM vendor_issues WHERE project_supplier_id IN `+in, args...)
 		if err != nil {
 			return report, nil, err
 		}
-		payments, err := selectIDs(ctx, tx, `SELECT id FROM vendor_payments WHERE project_vendor_id IN `+in, args...)
+		payments, err := selectIDs(ctx, tx, `SELECT id FROM supplier_payments WHERE project_supplier_id IN `+in, args...)
 		if err != nil {
 			return report, nil, err
 		}
@@ -178,7 +188,7 @@ func (r *MySQLPurgeRepository) PurgeBatch(ctx context.Context, cutoff time.Time,
 			ids  []int64
 		}{
 			{domain.RelatedVendorMilestone, milestones}, {domain.RelatedIssue, issues},
-			{domain.RelatedPayment, payments}, {domain.RelatedProjectVendor, engagements},
+			{domain.RelatedSupplierPayment, payments}, {domain.RelatedProjectSupplier, suppliers},
 		} {
 			k, n, err := deleteEvidenceOf(ctx, tx, e.kind, e.ids)
 			if err != nil {
@@ -186,18 +196,43 @@ func (r *MySQLPurgeRepository) PurgeBatch(ctx context.Context, cutoff time.Time,
 			}
 			keys, report.Evidence = append(keys, k...), report.Evidence+n
 		}
-		if report.EngagementIssues, err = deleteByIDs(ctx, tx, "vendor_issues", "id", issues); err != nil {
+		if report.SupplierIssues, err = deleteByIDs(ctx, tx, "vendor_issues", "id", issues); err != nil {
 			return report, nil, err
 		}
-		if report.EngagementPayments, err = deleteByIDs(ctx, tx, "vendor_payments", "id", payments); err != nil {
+		if report.SupplierOwnedPayments, err = deleteByIDs(ctx, tx, "supplier_payments", "id", payments); err != nil {
 			return report, nil, err
 		}
-		if report.EngagementMilestones, err = deleteByIDs(ctx, tx, "vendor_milestones", "id", milestones); err != nil {
+		if report.SupplierMilestones, err = deleteByIDs(ctx, tx, "vendor_milestones", "id", milestones); err != nil {
 			return report, nil, err
 		}
-		if report.Engagements, err = deleteByIDs(ctx, tx, "project_vendors", "id", engagements); err != nil {
+		bills, err := deleteByIDs(ctx, tx, "supplier_bill_terms", "project_supplier_id", suppliers)
+		if err != nil {
 			return report, nil, err
 		}
+		report.BillTerms += bills
+		if report.Suppliers, err = deleteByIDs(ctx, tx, "project_suppliers", "id", suppliers); err != nil {
+			return report, nil, err
+		}
+	}
+	// Rincian lines: a package takes its children with it (they share its
+	// deleted_at; the foreign key cascades the rest). The contract cache never
+	// counted them, so it does not move.
+	lines, err := selectIDs(ctx, tx, `SELECT id FROM project_lines WHERE deleted_at IS NOT NULL AND deleted_at <= ? ORDER BY id LIMIT ?`, cutoff, batch)
+	if err != nil {
+		return report, nil, err
+	}
+	if len(lines) > 0 {
+		args := utils.Int64Args(lines)
+		res, err := tx.ExecContext(ctx, `DELETE FROM project_lines WHERE parent_line_id IN `+inList(lines), args...)
+		if err != nil {
+			return report, nil, err
+		}
+		children, _ := res.RowsAffected()
+		n, err := deleteByIDs(ctx, tx, "project_lines", "id", lines)
+		if err != nil {
+			return report, nil, err
+		}
+		report.Lines = n + int(children)
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.PurgeReport{}, nil, err

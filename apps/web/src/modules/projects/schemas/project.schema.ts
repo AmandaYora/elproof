@@ -6,13 +6,13 @@ export const projectSchema = z.object({
   name: z.string().min(3, "Isi nama proyek, minimal 3 karakter"),
   brideName: z.string().min(2, "Isi nama mempelai wanita"),
   groomName: z.string().min(2, "Isi nama mempelai pria"),
-  eventDate: z.string().min(1, "Pilih tanggal acara"),
-  venue: z.string().min(2, "Isi lokasi atau venue"),
+  // Read by duplicate only (where the copy's main event lands). A project's
+  // date is its main event's, changed in Acara & rincian.
+  eventDate: z.string().optional().default(""),
   // Field name stays prepStartDate (display-text-only rename to "Tanggal
   // Booking" — see DOMAIN_GLOSSARY.md and PLAN.md).
   prepStartDate: z.string().min(1, "Pilih tanggal booking"),
-  packageName: z.string().min(2, "Isi paket atau layanan"),
-  contractValue: z.coerce.number().min(0, "Nilai kontrak tidak boleh negatif"),
+  // No package or contract value here: both come from the rincian (Acara & rincian, PLAN §2.2).
   status: z.enum(PROJECT_STATUS_OPTIONS),
   // Optional now (PLAN.md revisi-timeline-vendor-role-sales) — a project
   // created by Sales may have no Wedding Planner assigned yet, until

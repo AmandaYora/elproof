@@ -50,34 +50,6 @@ func (s *stack) staffWith(t tenant, roleName string, perms ...string) string {
 	return tok
 }
 
-// projectAt creates a project whose event is `eventIn` days away. venueRental
-// and venueCharge, when non-zero, attach a venue with those prices.
-func (s *stack) projectAt(t tenant, name string, contract int64, eventIn int, venueRental, venueCharge int64) int64 {
-	s.t.Helper()
-	body := map[string]any{
-		"name": name, "brideName": "Bride " + t.marker, "groomName": "Groom " + t.marker,
-		"eventDate": day(eventIn), "venue": "Gedung " + t.marker, "prepStartDate": day(-30),
-		"packageName": "Paket", "contractValue": contract, "status": "Preparation", "picStaffId": t.staffID,
-	}
-	if venueRental > 0 || venueCharge > 0 {
-		venue := s.mustOK("venue", s.do(t.token, "POST", "/api/v1/venues", venueBody(t, "Venue "+name))).id("data", "id")
-		body["venueId"], body["venueRentalPrice"], body["venueCharge"] = venue, venueRental, venueCharge
-	}
-	return s.mustOK("project "+name, s.do(t.token, "POST", "/api/v1/projects", body)).id("data", "id")
-}
-
-func (s *stack) engage(t tenant, projectID, vendorID, categoryID int64, scope string, contract int64, status string, dueIn *int) int64 {
-	s.t.Helper()
-	body := map[string]any{
-		"vendorId": vendorID, "categoryId": categoryID, "scope": scope, "contractValue": contract, "pricingTier": "Akad",
-		"engagementStatus": status, "picStaffId": t.staffID,
-	}
-	if dueIn != nil {
-		body["dueDate"] = day(*dueIn)
-	}
-	return s.mustOK("engage "+scope, s.do(t.token, "POST", s.projectsPath(projectID, "/vendors"), body)).id("data", "id")
-}
-
 func (s *stack) newVendor(t tenant, name string) (id, category int64) {
 	s.t.Helper()
 	v := s.mustOK("vendor "+name, s.do(t.token, "POST", "/api/v1/vendors", vendorBody(s, t, name, 0)))
@@ -198,7 +170,8 @@ func TestTahap5(t *testing.T) {
 	s := startStack(t)
 	needStorage(t)
 	tn, other := s.signUp("t5a"), s.signUp("t5b")
-	vendorID, category := s.newVendor(tn, "Vendor T5 "+tn.marker)
+	vendorID, _ := s.newVendor(tn, "Vendor T5 "+tn.marker)
+	venueID := s.t5Venue(tn, "Gedung T5 "+tn.marker)
 	proj := func(id int64, rest string) string { return s.projectsPath(id, rest) }
 	ownerName := "Owner " + tn.marker
 
@@ -207,16 +180,19 @@ func TestTahap5(t *testing.T) {
 	noDelete := s.staffWith(tn, "tanpa hapus", "project.edit", "finance.record", "finance.margin.view")
 
 	t.Run("(a) overview: shape, numbers, margin gated, a client is refused, another workspace gets 404", func(t *testing.T) {
-		P := s.projectAt(tn, "Proyek T5 overview", 100_000_000, 20, 3_000_000, 1_000_000)
+		P := s.projectAt(tn, "Proyek T5 overview", 100_000_000, 20, venueID)
 		s.setTerms(tn, P, term("DP", 30_000_000, -5), term("Pelunasan", 70_000_000, 40))
 		s.clientPay(tn, P, "DP", 10_000_000, "OV-1")
-		planned := s.engage(tn, P, vendorID, category, "Dekor planned", 20_000_000, "Planned", nil)
-		s.engage(tn, P, vendorID, category, "Foto booked", 5_000_000, "Booked", nil)
-		cancelled := s.engage(tn, P, vendorID, category, "Batal", 7_000_000, "Booked", nil)
-		s.mustOK("cancel", s.do(tn.token, "POST", proj(P, fmt.Sprintf("/vendors/%d/cancel", cancelled)), map[string]any{}))
+		planned := s.engage(tn, P, vendorID, "Dekor planned", 20_000_000, "Planned", nil)
+		s.engage(tn, P, vendorID, "Foto booked", 5_000_000, "Booked", nil)
+		cancelled := s.engage(tn, P, vendorID, "Batal", 7_000_000, "Booked", nil)
+		s.mustOK("cancel", s.t5Supplier(tn.token, P, cancelled, map[string]any{"engagementStatus": "Cancelled"}))
+		// The venue's money is its supplier's agreed cost (it came in with the event, booked here).
+		venue := s.venueSupplier(tn, P, venueID)
+		s.mustOK("venue cost", s.t5Supplier(tn.token, P, venue, map[string]any{"agreedCost": 4_000_000, "engagementStatus": "Booked"}))
 		late := s.mustOK("late milestone", s.do(tn.token, "POST", proj(P, "/milestones"), map[string]any{"name": "Fitting lewat", "targetDate": day(-3)})).id("data", "id")
 		highIssue := s.mustOK("issue", s.do(tn.token, "POST", proj(P, "/issues"), map[string]any{
-			"projectVendorId": planned, "title": "Tenda bocor", "description": "d", "impact": "High", "foundDate": day(-1), "picStaffId": tn.staffID,
+			"projectSupplierId": planned, "title": "Tenda bocor", "description": "d", "impact": "High", "foundDate": day(-1), "picStaffId": tn.staffID,
 		})).id("data", "id")
 		s.mustOK("general hidden issue", s.do(tn.token, "POST", proj(P, "/issues"), map[string]any{
 			"title": "Parkir sempit", "description": "d", "impact": "Low", "foundDate": day(-1), "picStaffId": tn.staffID, "isClientVisible": false,
@@ -244,11 +220,11 @@ func TestTahap5(t *testing.T) {
 		r := s.mustOK("overview", s.do(tn.token, "GET", proj(P, "/overview"), nil))
 		used := selects() - o0 - baseline
 		t.Logf("overview: %d SELECT statements beyond the authentication baseline (%d)", used, baseline)
-		if used > 14+2+1 { // 14 fixed + one login lookup per client (2) + slack for a background query
+		if used > 15+2+1 { // 15 fixed (the package names of the header included) + one login lookup per client (2) + slack for a background query
 			t.Errorf("the overview used %d statements; it must not grow with the size of the project", used)
 		}
 		routesCovered++
-		for _, k := range []string{"project", "finance", "actions", "nextMilestones", "unconfirmedVendors", "openIssueCount", "team", "clients"} {
+		for _, k := range []string{"project", "finance", "actions", "nextMilestones", "unconfirmedSuppliers", "openIssueCount", "team", "clients"} {
 			if r.dig("data", k) == nil {
 				t.Errorf("overview has no %q: %s", k, r)
 			}
@@ -263,10 +239,10 @@ func TestTahap5(t *testing.T) {
 		if !reflect.DeepEqual(fin["terms"], terms.dig("data")) {
 			t.Errorf("finance.terms must be what GET /payment-terms returns:\n%v\n%v", fin["terms"], terms.dig("data"))
 		}
-		want := map[string]float64{"contractValue": 100_000_000, "paid": 10_000_000, "remaining": 90_000_000, "overdueTotal": 20_000_000, "vendorCost": 25_000_000, "venueCost": 4_000_000, "margin": 71_000_000}
+		want := map[string]float64{"contractValue": 100_000_000, "paid": 10_000_000, "remaining": 90_000_000, "overdueTotal": 20_000_000, "supplierCost": 29_000_000, "missingCost": 0, "margin": 71_000_000}
 		for k, v := range want {
 			if fin[k] != v {
-				t.Errorf("finance.%s = %v, want %v (a cancelled engagement costs nothing)", k, fin[k], v)
+				t.Errorf("finance.%s = %v, want %v (vendors 20M + 5M and the venue 4M; a cancelled supplier costs nothing)", k, fin[k], v)
 			}
 		}
 		next, _ := fin["nextTerm"].(map[string]any)
@@ -323,8 +299,8 @@ func TestTahap5(t *testing.T) {
 				t.Errorf("nextMilestones not in date order: %v", nm)
 			}
 		}
-		if um := rows(r, "data", "unconfirmedVendors"); len(um) != 1 || um[0]["vendorName"] != "Vendor T5 "+tn.marker || um[0]["engagementStatus"] != "Planned" {
-			t.Errorf("unconfirmedVendors: %v", um)
+		if um := rows(r, "data", "unconfirmedSuppliers"); len(um) != 1 || um[0]["name"] != "Vendor T5 "+tn.marker || um[0]["engagementStatus"] != "Planned" || um[0]["kind"] != "vendor" {
+			t.Errorf("unconfirmedSuppliers (the booked venue is confirmed): %v", um)
 		}
 		if n := num(r, "data", "openIssueCount"); n != 2 {
 			t.Errorf("staff see every open kendala (2), got %d", n)
@@ -347,14 +323,19 @@ func TestTahap5(t *testing.T) {
 			t.Errorf("hasLogin: a bride who set a password can sign in, an invited representative cannot yet: %v", logins)
 		}
 
-		// finance.margin.view gates `margin`; the rest of the overview is unchanged.
+		// finance.margin.view gates the supplier cost and the margin; the rest of the overview is unchanged.
 		nm2 := s.mustOK("overview without margin", s.do(noMargin, "GET", proj(P, "/overview"), nil))
 		fin2 := nm2.dig("data", "finance").(map[string]any)
-		if _, present := fin2["margin"]; present {
-			t.Errorf("margin must be absent without finance.margin.view: %v", fin2)
+		for _, k := range []string{"margin", "supplierCost", "missingCost"} {
+			if _, present := fin2[k]; present {
+				t.Errorf("%s must be absent without finance.margin.view: %v", k, fin2)
+			}
 		}
-		if fin2["vendorCost"] != float64(25_000_000) {
+		if fin2["contractValue"] != float64(100_000_000) || fin2["paid"] != float64(10_000_000) || fin2["overdueTotal"] != float64(20_000_000) {
 			t.Errorf("the rest of finance is unchanged: %v", fin2)
+		}
+		if strings.Contains(string(nm2.body), "29000000") || strings.Contains(string(nm2.body), "71000000") {
+			t.Errorf("the overview without margin leaks the supplier cost or the margin: %s", nm2)
 		}
 		// A client principal and another workspace.
 		if r := s.do(brideToken, "GET", proj(P, "/overview"), nil); r.status != http.StatusForbidden {
@@ -380,7 +361,7 @@ func TestTahap5(t *testing.T) {
 		bride          string
 	)
 	t.Run("(b) soft delete and restore: payments, engagements; totals follow", func(t *testing.T) {
-		Pb = s.projectAt(tn, "Proyek T5 hapus", 50_000_000, 100, 0, 0)
+		Pb = s.projectAt(tn, "Proyek T5 hapus", 50_000_000, 100, venueID)
 		s.setTerms(tn, Pb, term("DP", 20_000_000, -2), term("Pelunasan", 30_000_000, 60))
 		bride = s.addClient(tn, Pb, "Bride", "Pengantin", fmt.Sprintf("hapus.bride.%d", time.Now().UnixNano()%1_000_000_000))
 		X = s.clientPay(tn, Pb, "DP", 20_000_000, "HAPUS-X")
@@ -516,128 +497,136 @@ func TestTahap5(t *testing.T) {
 		s.mustOK("make room", s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/client-payments/%d", Y)), nil))
 		s.mustOK("restore now fits", s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/client-payments/%d/restore", X)), nil))
 
-		// ---- vendor payment, venue payment ----
-		E = s.engage(tn, Pb, vendorID, category, "Dekor hapus", 20_000_000, "Booked", nil)
-		M = s.mustOK("vendor milestone", s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/vendors/%d/milestones", E)), map[string]any{
+		// ---- supplier payment (vendor), supplier payment (venue) ----
+		E = s.engage(tn, Pb, vendorID, "Dekor hapus", 20_000_000, "Booked", nil)
+		M = s.mustOK("vendor milestone", s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/suppliers/%d/milestones", E)), map[string]any{
 			"name": "Pasang tenda", "description": "d", "targetDate": day(30), "picStaffId": tn.staffID,
 		})).id("data", "id")
-		I = s.mustOK("issue of the engagement", s.do(tn.token, "POST", proj(Pb, "/issues"), map[string]any{
-			"projectVendorId": E, "vendorMilestoneId": M, "title": "Tenda kecil", "description": "d", "impact": "Medium", "foundDate": day(-1), "picStaffId": tn.staffID,
+		I = s.mustOK("issue of the supplier", s.do(tn.token, "POST", proj(Pb, "/issues"), map[string]any{
+			"projectSupplierId": E, "vendorMilestoneId": M, "title": "Tenda kecil", "description": "d", "impact": "Medium", "foundDate": day(-1), "picStaffId": tn.staffID,
 		})).id("data", "id")
-		vp := s.mustOK("vendor payment", s.do(tn.token, "POST", proj(Pb, "/payments"), map[string]any{
-			"projectVendorId": E, "type": "DP", "amount": 5_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "VP-HAPUS",
-		})).id("data", "id")
-		vProof := s.attach(tn, Pb, "payment", vp, "Transfer Proof", "bukti-vp", false)
+		vp := s.supplierPay(tn, Pb, E, "DP", 5_000_000, "VP-HAPUS")
+		vProof := s.attach(tn, Pb, "supplierPayment", vp, "Transfer Proof", "bukti-vp", false)
+		suppliers := func() []map[string]any {
+			return rows(s.mustOK("suppliers", s.do(tn.token, "GET", proj(Pb, "/suppliers"), nil)), "data")
+		}
 		paid := func() float64 {
-			for _, row := range rows(s.mustOK("vendors", s.do(tn.token, "GET", proj(Pb, "/vendors"), nil)), "data") {
-				if int64(row["id"].(float64)) == E {
-					return row["paidAmount"].(float64)
+			if row := rowByID(suppliers(), E); row != nil {
+				if v, ok := row["paidWo"].(float64); ok {
+					return v
 				}
 			}
 			return -1
 		}
 		if paid() != 5_000_000 {
-			t.Fatalf("setup: vendor paid = %v", paid())
+			t.Fatalf("setup: supplier paid = %v", paid())
 		}
-		dv := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/payments/%d", vp)), nil)
-		s.mustOK("delete vendor payment", dv)
+		dv := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/supplier-payments/%d", vp)), nil)
+		s.mustOK("delete supplier payment", dv)
 		routesCovered++
 		if num(dv, "data", "ledgerSummary", "paid") != 0 || num(dv, "data", "ledgerSummary", "contractValue") != 20_000_000 || str(dv, "data", "restorableUntil") == "" {
-			t.Errorf("vendor payment delete: %s", dv)
+			t.Errorf("supplier payment delete: %s", dv)
 		}
-		s.progressMatches(t, tn, Pb, "vendor payment delete", dv)
+		s.progressMatches(t, tn, Pb, "supplier payment delete", dv)
 		if paid() != 0 {
-			t.Error("the vendor's paid amount must follow the deletion")
+			t.Error("the supplier's paid amount must follow the deletion")
 		}
 		if r := s.do(tn.token, "GET", proj(Pb, fmt.Sprintf("/evidence/%d/file", vProof)), nil); r.status != http.StatusNotFound {
-			t.Errorf("vendor payment proof while deleted: want 404, got %s", r)
+			t.Errorf("supplier payment proof while deleted: want 404, got %s", r)
 		}
-		rv := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/payments/%d/restore", vp)), nil)
-		s.mustOK("restore vendor payment", rv)
+		rv := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/supplier-payments/%d/restore", vp)), nil)
+		s.mustOK("restore supplier payment", rv)
 		routesCovered++
 		if num(rv, "data", "ledgerSummary", "paid") != 5_000_000 || len(rows(rv, "data", "evidence")) != 1 || paid() != 5_000_000 {
-			t.Errorf("vendor payment restore: %s", rv)
+			t.Errorf("supplier payment restore: %s", rv)
 		}
-		s.progressMatches(t, tn, Pb, "vendor payment restore", rv)
+		s.progressMatches(t, tn, Pb, "supplier payment restore", rv)
 
-		venuePay := s.mustOK("venue payment", s.do(tn.token, "POST", proj(Pb, "/venue-payments"), map[string]any{
-			"type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "VN-HAPUS",
-		})).id("data", "id")
-		dn := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/venue-payments/%d", venuePay)), nil)
+		// The venue is a supplier too (it came in with the event); paying it works the same way.
+		venue := s.venueSupplier(tn, Pb, venueID)
+		if venue == 0 {
+			t.Fatalf("setup: the event's venue is a supplier of the project: %v", suppliers())
+		}
+		venuePay := s.supplierPay(tn, Pb, venue, "DP", 1_000_000, "VN-HAPUS")
+		dn := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/supplier-payments/%d", venuePay)), nil)
 		s.mustOK("delete venue payment", dn)
 		routesCovered++
-		if dn.dig("data", "ledgerSummary") == nil || contains(ids(rows(s.mustOK("venue list", s.do(tn.token, "GET", proj(Pb, "/venue-payments"), nil)), "data")), venuePay) {
+		if dn.dig("data", "ledgerSummary") == nil || contains(ids(rows(s.mustOK("payment list", s.do(tn.token, "GET", proj(Pb, "/supplier-payments"), nil)), "data")), venuePay) {
 			t.Errorf("venue payment delete: %s", dn)
 		}
 		s.progressMatches(t, tn, Pb, "venue payment delete", dn)
-		rn := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/venue-payments/%d/restore", venuePay)), nil)
+		rn := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/supplier-payments/%d/restore", venuePay)), nil)
 		s.mustOK("restore venue payment", rn)
 		routesCovered++
 		if num(rn, "data", "id") != venuePay || rn.dig("data", "ledgerSummary") == nil {
 			t.Errorf("venue payment restore: %s", rn)
 		}
 		s.progressMatches(t, tn, Pb, "venue payment restore", rn)
+		// A venue an event still takes place at cannot be deleted.
+		if r := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/suppliers/%d", venue)), nil); r.status != http.StatusUnprocessableEntity || r.dig("errors", "code") != "venue_in_use" {
+			t.Errorf("deleting a venue in use: want 422 venue_in_use, got %s", r)
+		}
 
-		// ---- delete a vendor engagement: milestones, payments, kendala go with it ----
+		// ---- delete a vendor supplier: milestones, payments, kendala go with it ----
 		before := s.projectProgress(tn, Pb).(map[string]any)
 		if before["vendorMilestoneStats"].(map[string]any)["total"] != float64(1) || before["openIssueCount"] != float64(1) {
 			t.Fatalf("setup progress: %v", before)
 		}
-		if oc := ownerOverview(); num(oc, "data", "finance", "vendorCost") != 20_000_000 {
-			t.Fatalf("setup vendorCost: %s", oc)
+		if oc := ownerOverview(); num(oc, "data", "finance", "supplierCost") != 20_000_000 {
+			t.Fatalf("setup supplierCost: %s", oc)
 		}
-		de := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/vendors/%d", E)), nil)
-		s.mustOK("delete engagement", de)
+		de := s.do(tn.token, "DELETE", proj(Pb, fmt.Sprintf("/suppliers/%d", E)), nil)
+		s.mustOK("delete supplier", de)
 		routesCovered++
 		if num(de, "data", "id") != E || str(de, "data", "restorableUntil") == "" {
-			t.Errorf("engagement delete: %s", de)
+			t.Errorf("supplier delete: %s", de)
 		}
 		after := de.dig("data", "projectProgress").(map[string]any)
 		if after["vendorMilestoneStats"].(map[string]any)["total"] != float64(0) || after["openIssueCount"] != float64(0) {
-			t.Errorf("a deleted engagement's milestones and kendala no longer count: %v", after)
+			t.Errorf("a deleted supplier's milestones and kendala no longer count: %v", after)
 		}
-		s.progressMatches(t, tn, Pb, "engagement delete", de)
-		if contains(ids(rows(s.mustOK("vendors", s.do(tn.token, "GET", proj(Pb, "/vendors"), nil)), "data")), E) {
-			t.Error("a deleted engagement leaves the vendor list")
+		s.progressMatches(t, tn, Pb, "supplier delete", de)
+		if contains(ids(suppliers()), E) {
+			t.Error("a deleted supplier leaves the supplier list")
 		}
-		if contains(ids(rows(s.mustOK("payments", s.do(tn.token, "GET", proj(Pb, "/payments"), nil)), "data")), vp) {
+		if contains(ids(rows(s.mustOK("payments", s.do(tn.token, "GET", proj(Pb, "/supplier-payments"), nil)), "data")), vp) {
 			t.Error("its payments leave the payment list")
 		}
 		if contains(ids(rows(s.mustOK("issues", s.do(tn.token, "GET", proj(Pb, "/issues"), nil)), "data")), I) {
 			t.Error("its kendala leave the issue list")
 		}
-		if num(ownerOverview(), "data", "finance", "vendorCost") != 0 {
-			t.Error("overview: a deleted engagement costs nothing")
+		if num(ownerOverview(), "data", "finance", "supplierCost") != 0 {
+			t.Error("overview: a deleted supplier costs nothing")
 		}
-		if r := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/payments/%d/restore", vp)), nil); r.status != http.StatusNotFound {
-			t.Errorf("a payment hidden only because its engagement is deleted is not itself deleted: want 404, got %s", r)
+		if r := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/supplier-payments/%d/restore", vp)), nil); r.status != http.StatusNotFound {
+			t.Errorf("a payment hidden only because its supplier is deleted is not itself deleted: want 404, got %s", r)
 		}
-		if r := s.do(tn.token, "POST", proj(Pb, "/payments"), map[string]any{"projectVendorId": E, "type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}); r.status < 400 {
-			t.Errorf("paying a deleted engagement must fail: %s", r)
+		if r := s.do(tn.token, "POST", proj(Pb, "/supplier-payments"), map[string]any{"projectSupplierId": E, "type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}); r.status < 400 {
+			t.Errorf("paying a deleted supplier must fail: %s", r)
 		}
-		re := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/vendors/%d/restore", E)), nil)
-		s.mustOK("restore engagement", re)
+		re := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/suppliers/%d/restore", E)), nil)
+		s.mustOK("restore supplier", re)
 		routesCovered++
-		for _, k := range []string{"vendorName", "categoryName", "picName", "evidenceCount", "milestones", "paidAmount"} {
+		for _, k := range []string{"name", "categoryName", "picName", "evidenceCount", "milestones", "paidWo"} {
 			if re.dig("data", k) == nil {
-				t.Errorf("a restored engagement is the list item (%s missing): %s", k, re)
+				t.Errorf("a restored supplier is the list item (%s missing): %s", k, re)
 			}
 		}
-		if str(re, "data", "vendorName") != "Vendor T5 "+tn.marker || len(rows(re, "data", "milestones")) != 1 || num(re, "data", "paidAmount") != 5_000_000 || num(re, "data", "evidenceCount") != 1 {
-			t.Errorf("restored engagement content: %s", re)
+		if str(re, "data", "name") != "Vendor T5 "+tn.marker || len(rows(re, "data", "milestones")) != 1 || num(re, "data", "paidWo") != 5_000_000 || num(re, "data", "evidenceCount") != 1 {
+			t.Errorf("restored supplier content: %s", re)
 		}
-		s.progressMatches(t, tn, Pb, "engagement restore", re)
+		s.progressMatches(t, tn, Pb, "supplier restore", re)
 		back := s.projectProgress(tn, Pb).(map[string]any)
 		if back["vendorMilestoneStats"].(map[string]any)["total"] != float64(1) || back["openIssueCount"] != float64(1) {
-			t.Errorf("everything that hung off the engagement counts again: %v", back)
+			t.Errorf("everything that hung off the supplier counts again: %v", back)
 		}
-		if r := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/vendors/%d/restore", E)), nil); r.status != http.StatusNotFound {
-			t.Errorf("restoring a live engagement: want 404, got %s", r)
+		if r := s.do(tn.token, "POST", proj(Pb, fmt.Sprintf("/suppliers/%d/restore", E)), nil); r.status != http.StatusNotFound {
+			t.Errorf("restoring a live supplier: want 404, got %s", r)
 		}
 	})
 
 	t.Run("(c) purge: restore after purge is 404, rows, proof rows and stored files are removed", func(t *testing.T) {
-		Pc := s.projectAt(tn, "Proyek T5 purge", 80_000_000, 100, 0, 0)
+		Pc := s.projectAt(tn, "Proyek T5 purge", 80_000_000, 100, 0)
 		s.setTerms(tn, Pc, term("DP", 10_000_000, 10))
 		Z := s.clientPay(tn, Pc, "DP", 10_000_000, "PURGE-Z")
 		proofZ := s.attach(tn, Pc, "clientPayment", Z, "Transfer Proof", "bukti-z", false)
@@ -645,12 +634,12 @@ func TestTahap5(t *testing.T) {
 		W := s.clientPay(tn, Pc, "Termin", 1_000_000, "PURGE-W") // deleted but NOT aged: must survive the purge
 		proofW := s.attach(tn, Pc, "clientPayment", W, "Transfer Proof", "bukti-w", false)
 
-		EV := s.engage(tn, Pc, vendorID, category, "Dekor purge", 9_000_000, "Booked", nil)
-		MS := s.mustOK("ms", s.do(tn.token, "POST", proj(Pc, fmt.Sprintf("/vendors/%d/milestones", EV)), map[string]any{"name": "m", "description": "d", "targetDate": day(30), "picStaffId": tn.staffID})).id("data", "id")
+		EV := s.engage(tn, Pc, vendorID, "Dekor purge", 9_000_000, "Booked", nil)
+		MS := s.mustOK("ms", s.do(tn.token, "POST", proj(Pc, fmt.Sprintf("/suppliers/%d/milestones", EV)), map[string]any{"name": "m", "description": "d", "targetDate": day(30), "picStaffId": tn.staffID})).id("data", "id")
 		msProof := s.attach(tn, Pc, "vendorMilestone", MS, "Photo", "foto-ms", false)
-		IS := s.mustOK("issue", s.do(tn.token, "POST", proj(Pc, "/issues"), map[string]any{"projectVendorId": EV, "title": "k", "description": "d", "impact": "Low", "foundDate": day(-1), "picStaffId": tn.staffID})).id("data", "id")
-		VP := s.mustOK("vp", s.do(tn.token, "POST", proj(Pc, "/payments"), map[string]any{"projectVendorId": EV, "type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "PURGE-VP"})).id("data", "id")
-		vpProof := s.attach(tn, Pc, "payment", VP, "Transfer Proof", "bukti-vp-purge", false)
+		IS := s.mustOK("issue", s.do(tn.token, "POST", proj(Pc, "/issues"), map[string]any{"projectSupplierId": EV, "title": "k", "description": "d", "impact": "Low", "foundDate": day(-1), "picStaffId": tn.staffID})).id("data", "id")
+		VP := s.supplierPay(tn, Pc, EV, "DP", 1_000_000, "PURGE-VP")
+		vpProof := s.attach(tn, Pc, "supplierPayment", VP, "Transfer Proof", "bukti-vp-purge", false)
 		keys := map[string]string{"ms": s.storageKey(msProof), "vp": s.storageKey(vpProof)}
 		for name, k := range map[string]string{"Z": keyZ, "ms": keys["ms"], "vp": keys["vp"]} {
 			if !objectExists(t, k) {
@@ -717,15 +706,15 @@ func TestTahap5(t *testing.T) {
 		// Delete everything, then let the first batch grow old (past the 24 h window).
 		s.mustOK("delete Z", s.do(tn.token, "DELETE", proj(Pc, fmt.Sprintf("/client-payments/%d", Z)), nil))
 		s.mustOK("delete W", s.do(tn.token, "DELETE", proj(Pc, fmt.Sprintf("/client-payments/%d", W)), nil))
-		s.mustOK("delete engagement", s.do(tn.token, "DELETE", proj(Pc, fmt.Sprintf("/vendors/%d", EV)), nil))
+		s.mustOK("delete supplier", s.do(tn.token, "DELETE", proj(Pc, fmt.Sprintf("/suppliers/%d", EV)), nil))
 		s.ageDeleted("client_payments", Z, 49*time.Hour)
-		s.ageDeleted("project_vendors", EV, 25*time.Hour)
+		s.ageDeleted("project_suppliers", EV, 25*time.Hour)
 		s.ageDeleted("clients", clientID, 30*time.Hour)
 
 		// Past the window but not purged yet: already counts as purged.
 		for name, path := range map[string]string{
 			"client payment": proj(Pc, fmt.Sprintf("/client-payments/%d/restore", Z)),
-			"engagement":     proj(Pc, fmt.Sprintf("/vendors/%d/restore", EV)),
+			"supplier":       proj(Pc, fmt.Sprintf("/suppliers/%d/restore", EV)),
 			"client":         fmt.Sprintf("/api/v1/clients/%d/restore", clientID),
 		} {
 			if r := s.do(tn.token, "POST", path, nil); r.status != http.StatusNotFound {
@@ -743,11 +732,11 @@ func TestTahap5(t *testing.T) {
 		gone := map[string]int{
 			"client payment":      s.count("SELECT COUNT(*) FROM client_payments WHERE id = ?", Z),
 			"its proof row":       s.count("SELECT COUNT(*) FROM evidence WHERE id = ?", proofZ),
-			"engagement":          s.count("SELECT COUNT(*) FROM project_vendors WHERE id = ?", EV),
+			"supplier":            s.count("SELECT COUNT(*) FROM project_suppliers WHERE id = ?", EV),
 			"its milestone":       s.count("SELECT COUNT(*) FROM vendor_milestones WHERE id = ?", MS),
 			"its milestone proof": s.count("SELECT COUNT(*) FROM evidence WHERE id = ?", msProof),
 			"its kendala":         s.count("SELECT COUNT(*) FROM vendor_issues WHERE id = ?", IS),
-			"its payment":         s.count("SELECT COUNT(*) FROM vendor_payments WHERE id = ?", VP),
+			"its payment":         s.count("SELECT COUNT(*) FROM supplier_payments WHERE id = ?", VP),
 			"its payment proof":   s.count("SELECT COUNT(*) FROM evidence WHERE id = ?", vpProof),
 			"client":              s.count("SELECT COUNT(*) FROM clients WHERE id = ?", clientID),
 			"client login":        s.count("SELECT COUNT(*) FROM credentials WHERE principal_type = 'client' AND principal_id = ?", fmt.Sprint(clientID)),
@@ -768,10 +757,10 @@ func TestTahap5(t *testing.T) {
 		}
 		// Restore after the purge: 404, never a half-restored ghost.
 		for name, path := range map[string]string{
-			"client payment": proj(Pc, fmt.Sprintf("/client-payments/%d/restore", Z)),
-			"engagement":     proj(Pc, fmt.Sprintf("/vendors/%d/restore", EV)),
-			"client":         fmt.Sprintf("/api/v1/clients/%d/restore", clientID),
-			"vendor payment": proj(Pc, fmt.Sprintf("/payments/%d/restore", VP)),
+			"client payment":   proj(Pc, fmt.Sprintf("/client-payments/%d/restore", Z)),
+			"supplier":         proj(Pc, fmt.Sprintf("/suppliers/%d/restore", EV)),
+			"client":           fmt.Sprintf("/api/v1/clients/%d/restore", clientID),
+			"supplier payment": proj(Pc, fmt.Sprintf("/supplier-payments/%d/restore", VP)),
 		} {
 			if r := s.do(tn.token, "POST", path, nil); r.status != http.StatusNotFound {
 				t.Errorf("restore %s after the purge: want 404, got %s", name, r)
@@ -792,14 +781,14 @@ func TestTahap5(t *testing.T) {
 	})
 
 	t.Run("(d) kendala: no vendor, client visibility, and nothing hidden leaks to the portal", func(t *testing.T) {
-		Pd := s.projectAt(tn, "Proyek T5 kendala", 40_000_000, 100, 0, 0)
+		Pd := s.projectAt(tn, "Proyek T5 kendala", 40_000_000, 100, 0)
 		s.setTerms(tn, Pd, term("DP", 1_000_000, 30))
-		EV := s.engage(tn, Pd, vendorID, category, "Dekor kendala", 3_000_000, "Booked", nil)
+		EV := s.engage(tn, Pd, vendorID, "Dekor kendala", 3_000_000, "Booked", nil)
 		clientTok := s.addClient(tn, Pd, "Bride", "Pengantin", fmt.Sprintf("kendala.klien.%d", time.Now().UnixNano()%1_000_000_000))
 		mk := func(title, impact string, vendor int64, visible *bool) reply {
 			body := map[string]any{"title": title, "description": "d", "impact": impact, "foundDate": day(-1), "picStaffId": tn.staffID}
 			if vendor != 0 {
-				body["projectVendorId"] = vendor
+				body["projectSupplierId"] = vendor
 			}
 			if visible != nil {
 				body["isClientVisible"] = *visible
@@ -820,10 +809,10 @@ func TestTahap5(t *testing.T) {
 		if shared.dig("data", "isClientVisible") != true || hidden.dig("data", "isClientVisible") != false {
 			t.Errorf("isClientVisible: default true, false honoured: %s %s", shared, hidden)
 		}
-		if v, present := generalShared.json()["data"].(map[string]any)["projectVendorId"]; !present || v != nil {
-			t.Errorf("an issue without a vendor has projectVendorId null: %s", generalShared)
+		if v, present := generalShared.json()["data"].(map[string]any)["projectSupplierId"]; !present || v != nil {
+			t.Errorf("an issue without a vendor has projectSupplierId null: %s", generalShared)
 		}
-		if generalShared.dig("data", "vendorName") != "" || generalShared.dig("data", "picName") != ownerName || shared.dig("data", "vendorName") != "Vendor T5 "+tn.marker {
+		if generalShared.dig("data", "supplierName") != "" || generalShared.dig("data", "picName") != ownerName || shared.dig("data", "supplierName") != "Vendor T5 "+tn.marker {
 			t.Errorf("names on create: %s / %s", generalShared, shared)
 		}
 		hiddenProof := s.attach(tn, Pd, "issue", hiddenID, "Photo", "foto-rahasia", false)
@@ -834,7 +823,7 @@ func TestTahap5(t *testing.T) {
 		if len(staffIssues) != 4 {
 			t.Fatalf("staff see every kendala: %v", staffIssues)
 		}
-		if row := rowByID(staffIssues, genSharedID); row == nil || row["vendorName"] != "" || row["vendorMilestoneName"] != "" || row["projectVendorId"] != nil || row["picName"] != ownerName {
+		if row := rowByID(staffIssues, genSharedID); row == nil || row["supplierName"] != "" || row["vendorMilestoneName"] != "" || row["projectSupplierId"] != nil || row["picName"] != ownerName {
 			t.Errorf("general kendala row: %v", row)
 		}
 		// The client: only the two shared ones, however it asks.
@@ -845,6 +834,8 @@ func TestTahap5(t *testing.T) {
 		cl := rows(s.mustOK("client issues", s.do(clientTok, "GET", proj(Pd, "/issues"), nil)), "data")
 		if row := rowByID(cl, sharedID); row == nil || row["picName"] != "" {
 			t.Errorf("a client never gets the staff PIC's name: %v", row)
+		} else if row["supplierName"] == "Vendor T5 "+tn.marker || row["supplierName"] == "" {
+			t.Errorf("a client gets the service, not the name of a vendor the WO keeps hidden: %v", row["supplierName"])
 		}
 		// Proof of a hidden kendala never reaches the client; proof of a shared one does.
 		evClient := ids(rows(s.mustOK("client evidence", s.do(clientTok, "GET", proj(Pd, "/evidence"), nil)), "data"))
@@ -892,7 +883,7 @@ func TestTahap5(t *testing.T) {
 		}
 		// Resolving a hidden kendala is not news for the client.
 		upd := func(id int64, body map[string]any) reply {
-			b := map[string]any{"title": "Rahasia", "description": "d", "impact": "Critical", "foundDate": day(-1), "status": "Open", "picStaffId": tn.staffID, "projectVendorId": EV}
+			b := map[string]any{"title": "Rahasia", "description": "d", "impact": "Critical", "foundDate": day(-1), "status": "Open", "picStaffId": tn.staffID, "projectSupplierId": EV}
 			for k, v := range body {
 				b[k] = v
 			}
@@ -911,10 +902,10 @@ func TestTahap5(t *testing.T) {
 			}
 		}
 		// Edit: general -> vendor -> general again; sharing it later.
-		if r := upd(genHiddenID, map[string]any{"title": "Umum rahasia", "impact": "Low", "projectVendorId": EV, "isClientVisible": true}); r.status != http.StatusOK || num(r, "data", "projectVendorId") != EV || r.dig("data", "isClientVisible") != true {
+		if r := upd(genHiddenID, map[string]any{"title": "Umum rahasia", "impact": "Low", "projectSupplierId": EV, "isClientVisible": true}); r.status != http.StatusOK || num(r, "data", "projectSupplierId") != EV || r.dig("data", "isClientVisible") != true {
 			t.Errorf("attach a vendor and share: %s", r)
 		}
-		if r := upd(genHiddenID, map[string]any{"title": "Umum rahasia", "impact": "Low", "projectVendorId": 0}); r.status != http.StatusOK || r.json()["data"].(map[string]any)["projectVendorId"] != nil || r.dig("data", "isClientVisible") != true {
+		if r := upd(genHiddenID, map[string]any{"title": "Umum rahasia", "impact": "Low", "projectSupplierId": 0}); r.status != http.StatusOK || r.json()["data"].(map[string]any)["projectSupplierId"] != nil || r.dig("data", "isClientVisible") != true {
 			t.Errorf("detach the vendor: %s", r)
 		}
 		if got := ids(rows(s.mustOK("client issues", s.do(clientTok, "GET", proj(Pd, "/issues"), nil)), "data")); !contains(got, genHiddenID) {
@@ -936,7 +927,7 @@ func TestTahap5(t *testing.T) {
 				general = row
 			}
 		}
-		if general == nil || general["vendorId"] != float64(0) || general["vendorName"] != "" || general["projectName"] != "Proyek T5 kendala" {
+		if general == nil || general["supplierName"] != "" || general["projectName"] != "Proyek T5 kendala" {
 			t.Errorf("dashboard row of a kendala without a vendor: %v", general)
 		}
 	})
@@ -990,8 +981,14 @@ func TestTahap5(t *testing.T) {
 		if types["payment_deleted"] < 2 || types["item_restored"] < 2 || types["payment_recorded"] != 1 {
 			t.Errorf("the log records delete and restore: %v", types)
 		}
-		if vf := rows(s.mustOK("vendor filter", s.do(tn.token, "GET", proj(Pb, "/activity?entityType=project_vendor&limit=50"), nil)), "data"); len(vf) < 3 {
-			t.Errorf("project_vendor entries: %d", len(vf))
+		if vf := rows(s.mustOK("supplier filter", s.do(tn.token, "GET", proj(Pb, "/activity?entityType=project_supplier&limit=50"), nil)), "data"); len(vf) < 3 {
+			t.Errorf("project_supplier entries: %d", len(vf))
+		} else {
+			for _, e := range vf {
+				if e["entityType"] != "project_supplier" {
+					t.Errorf("the filter let another entity through: %v", e)
+				}
+			}
 		}
 		// An actor that no longer resolves has an empty name; nothing is invented.
 		if _, err := s.db.Exec(`INSERT INTO activity_log (project_id, type, actor_staff_id, entity_type, entity_id, entity_label, description) VALUES (?, 'project_updated', 987654321, 'project', ?, 'x', 'oleh staf yang sudah tidak ada')`, Pb, fmt.Sprint(Pb)); err != nil {
@@ -1019,24 +1016,29 @@ func TestTahap5(t *testing.T) {
 	})
 
 	t.Run("(e2) the vendor tab: picName and evidenceCount, per caller", func(t *testing.T) {
-		Pv := s.projectAt(tn, "Proyek T5 vendor", 30_000_000, 100, 0, 0)
-		EV := s.engage(tn, Pv, vendorID, category, "Dekor tab", 5_000_000, "Booked", nil)
-		MS := s.mustOK("ms", s.do(tn.token, "POST", proj(Pv, fmt.Sprintf("/vendors/%d/milestones", EV)), map[string]any{"name": "m", "description": "d", "targetDate": day(30), "picStaffId": tn.staffID})).id("data", "id")
-		s.attach(tn, Pv, "vendorMilestone", MS, "Photo", "foto-ms-tab", false)
-		s.attach(tn, Pv, "projectVendor", EV, "Booking Proof", "booking", false)
-		VP := s.mustOK("vp", s.do(tn.token, "POST", proj(Pv, "/payments"), map[string]any{"projectVendorId": EV, "type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "TAB"})).id("data", "id")
-		s.attach(tn, Pv, "payment", VP, "Transfer Proof", "bukti-tab", false)
+		Pv := s.projectAt(tn, "Proyek T5 vendor", 30_000_000, 100, 0)
+		EV := s.engage(tn, Pv, vendorID, "Dekor tab", 5_000_000, "Booked", nil)
+		MS := s.mustOK("ms", s.do(tn.token, "POST", proj(Pv, fmt.Sprintf("/suppliers/%d/milestones", EV)), map[string]any{"name": "m", "description": "d", "targetDate": day(30), "picStaffId": tn.staffID})).id("data", "id")
+		// A step's photo of a vendor the WO pays reaches the client only when staff show it.
+		s.attach(tn, Pv, "vendorMilestone", MS, "Photo", "foto-ms-tab", true)
+		s.attach(tn, Pv, "vendorMilestone", MS, "Photo", "foto-ms-tab-internal", false)
+		s.attach(tn, Pv, "projectSupplier", EV, "Booking Proof", "booking", false)
+		VP := s.supplierPay(tn, Pv, EV, "DP", 1_000_000, "TAB")
+		s.attach(tn, Pv, "supplierPayment", VP, "Transfer Proof", "bukti-tab", false)
 		clientTok := s.addClient(tn, Pv, "Bride", "Pengantin", fmt.Sprintf("tab.klien.%d", time.Now().UnixNano()%1_000_000_000))
-		staffRow := rowByID(rows(s.mustOK("vendors", s.do(tn.token, "GET", proj(Pv, "/vendors"), nil)), "data"), EV)
-		if staffRow["picName"] != ownerName || staffRow["evidenceCount"] != float64(3) || staffRow["vendorName"] != "Vendor T5 "+tn.marker {
-			t.Errorf("staff row: picName/evidenceCount/vendorName = %v/%v/%v", staffRow["picName"], staffRow["evidenceCount"], staffRow["vendorName"])
+		staffRow := rowByID(rows(s.mustOK("suppliers", s.do(tn.token, "GET", proj(Pv, "/suppliers"), nil)), "data"), EV)
+		if staffRow == nil || staffRow["picName"] != ownerName || staffRow["evidenceCount"] != float64(4) || staffRow["name"] != "Vendor T5 "+tn.marker {
+			t.Fatalf("staff row: picName/evidenceCount/name = %v/%v/%v", staffRow["picName"], staffRow["evidenceCount"], staffRow["name"])
 		}
-		clientRow := rowByID(rows(s.mustOK("client vendors", s.do(clientTok, "GET", proj(Pv, "/vendors"), nil)), "data"), EV)
-		if clientRow["picName"] != "" || clientRow["evidenceCount"] != float64(1) {
-			t.Errorf("a client counts only what ClientCanSeeEvidence allows (a deliverable's photo with portal.vendor.view; booking and payment proofs are internal) and never sees the PIC's name: %v/%v", clientRow["picName"], clientRow["evidenceCount"])
+		cr := rows(s.mustOK("client suppliers", s.do(clientTok, "GET", proj(Pv, "/suppliers"), nil)), "data")
+		clientRow := rowByID(cr, EV)
+		if clientRow == nil || clientRow["picName"] != "" || clientRow["evidenceCount"] != float64(1) {
+			t.Errorf("a client counts only what the portal policy allows (a step photo staff showed, with portal.vendor.view; booking and payment proofs are internal) and never sees the PIC's name: %v", clientRow)
+		} else if clientRow["name"] != staffRow["categoryName"] || clientRow["agreedCost"] != nil || clientRow["paidWo"] != nil {
+			t.Errorf("a client sees the service of a hidden vendor, never its name or money: %v", clientRow)
 		}
-		if cr := rows(s.mustOK("client vendors", s.do(clientTok, "GET", proj(Pv, "/vendors"), nil)), "data"); len(cr) != 1 {
-			t.Errorf("client vendor rows: %v", cr)
+		if len(cr) != 1 {
+			t.Errorf("client supplier rows: %v", cr)
 		}
 		routesCovered++
 	})
@@ -1044,12 +1046,13 @@ func TestTahap5(t *testing.T) {
 	t.Run("(f) every mutation answers with a fresh projectProgress", func(t *testing.T) {
 		tf := s.signUp("t5f") // a workspace of its own (the trial allows 5 active projects)
 		tn := tf
-		vendorID, category := s.newVendor(tn, "Vendor T5 "+tn.marker)
+		vendorID, _ := s.newVendor(tn, "Vendor T5 "+tn.marker)
+		venueID := s.t5Venue(tn, "Gedung T5 "+tn.marker)
 		noDelete := s.staffWith(tn, "tanpa hapus f", "project.edit", "finance.record")
 		ownerName := "Owner " + tn.marker
-		Pf := s.projectAt(tn, "Proyek T5 progres", 60_000_000, 100, 2_000_000, 0)
+		Pf := s.projectAt(tn, "Proyek T5 progres", 60_000_000, 100, venueID)
 		bride := s.addClient(tn, Pf, "Bride", "Pengantin", fmt.Sprintf("f.klien.%d", time.Now().UnixNano()%1_000_000_000))
-		EV := s.engage(tn, Pf, vendorID, category, "Dekor progres", 9_000_000, "Booked", nil)
+		EV := s.engage(tn, Pf, vendorID, "Dekor progres", 9_000_000, "Booked", nil)
 		// project milestones
 		cm := s.do(tn.token, "POST", proj(Pf, "/milestones"), map[string]any{"name": "Baru", "targetDate": day(-9)})
 		s.progressMatches(t, tn, Pf, "milestone create", cm)
@@ -1065,31 +1068,35 @@ func TestTahap5(t *testing.T) {
 			order = append(order, int64(list[i]["id"].(float64)))
 		}
 		s.progressMatches(t, tn, Pf, "milestone reorder", s.do(tn.token, "PATCH", proj(Pf, "/milestones"), map[string]any{"orderedIds": order}))
-		// vendor milestones
-		cvm := s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/vendors/%d/milestones", EV)), map[string]any{"name": "vm", "description": "d", "targetDate": day(-5), "picStaffId": tn.staffID})
-		s.progressMatches(t, tn, Pf, "vendor milestone create", cvm)
-		s.progressMatches(t, tn, Pf, "vendor milestone update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/vendors/%d/milestones/%d", EV, cvm.id("data", "id"))), map[string]any{"status": "Blocked", "targetDate": day(-5), "picStaffId": tn.staffID, "description": "d"}))
+		// supplier milestones
+		cvm := s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/suppliers/%d/milestones", EV)), map[string]any{"name": "vm", "description": "d", "targetDate": day(-5), "picStaffId": tn.staffID})
+		s.progressMatches(t, tn, Pf, "supplier milestone create", cvm)
+		s.progressMatches(t, tn, Pf, "supplier milestone update", s.t5Step(tn.token, Pf, EV, cvm.id("data", "id"), map[string]any{"status": "Blocked", "targetDate": day(-5), "picStaffId": tn.staffID, "description": "d"}))
 		// issues
-		ci := s.do(tn.token, "POST", proj(Pf, "/issues"), map[string]any{"projectVendorId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "picStaffId": tn.staffID})
+		ci := s.do(tn.token, "POST", proj(Pf, "/issues"), map[string]any{"projectSupplierId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "picStaffId": tn.staffID})
 		s.progressMatches(t, tn, Pf, "issue create", ci)
-		s.progressMatches(t, tn, Pf, "issue update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/issues/%d", ci.id("data", "id"))), map[string]any{"projectVendorId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "status": "Resolved", "picStaffId": tn.staffID}))
-		// engagements
-		ce := s.do(tn.token, "POST", proj(Pf, "/vendors"), map[string]any{"vendorId": vendorID, "scope": "Foto progres", "contractValue": 1_000_000, "pricingTier": "Akad", "engagementStatus": "Planned", "picStaffId": tn.staffID})
-		s.progressMatches(t, tn, Pf, "engagement create", ce)
+		s.progressMatches(t, tn, Pf, "issue update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/issues/%d", ci.id("data", "id"))), map[string]any{"projectSupplierId": EV, "title": "k", "description": "d", "impact": "Critical", "foundDate": day(-1), "status": "Resolved", "picStaffId": tn.staffID}))
+		// suppliers: add, edit, cancel (a status), delete, restore
+		ce := s.do(tn.token, "POST", proj(Pf, "/suppliers"), map[string]any{"vendorId": vendorID, "paidBy": "WO", "scope": "Foto progres", "agreedCost": 1_000_000, "engagementStatus": "Planned", "picStaffId": tn.staffID})
+		s.progressMatches(t, tn, Pf, "supplier create", ce)
 		eid := ce.id("data", "id")
-		s.progressMatches(t, tn, Pf, "engagement update", s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/vendors/%d", eid)), map[string]any{"vendorId": vendorID, "categoryId": category, "scope": "Foto progres", "contractValue": 1_000_000, "pricingTier": "Akad", "engagementStatus": "Booked", "eventDate": day(100), "picStaffId": tn.staffID}))
-		s.progressMatches(t, tn, Pf, "engagement cancel", s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/vendors/%d/cancel", eid)), map[string]any{}))
-		s.progressMatches(t, tn, Pf, "engagement delete", s.do(tn.token, "DELETE", proj(Pf, fmt.Sprintf("/vendors/%d", eid)), nil))
-		s.progressMatches(t, tn, Pf, "engagement restore", s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/vendors/%d/restore", eid)), nil))
-		// the three payment kinds: create / update / delete / restore, each with ledgerSummary where it applies
-		pay := func(kind, path string, create map[string]any, update map[string]any) {
+		s.progressMatches(t, tn, Pf, "supplier update", s.t5Supplier(tn.token, Pf, eid, map[string]any{"scope": "Foto progres 2", "engagementStatus": "Booked", "dueDate": day(50)}))
+		s.progressMatches(t, tn, Pf, "supplier cancel", s.t5Supplier(tn.token, Pf, eid, map[string]any{"engagementStatus": "Cancelled"}))
+		s.progressMatches(t, tn, Pf, "supplier delete", s.do(tn.token, "DELETE", proj(Pf, fmt.Sprintf("/suppliers/%d", eid)), nil))
+		s.progressMatches(t, tn, Pf, "supplier restore", s.do(tn.token, "POST", proj(Pf, fmt.Sprintf("/suppliers/%d/restore", eid)), nil))
+		// the three payment kinds (client, vendor, venue): create / update / delete / restore, each with ledgerSummary
+		patchClient := func(id int64, body map[string]any) reply {
+			return s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("/client-payments/%d", id)), body)
+		}
+		patchSupplier := func(id int64, body map[string]any) reply { return s.t5SupplierPayment(tn.token, Pf, id, body) }
+		pay := func(kind, path string, patch func(int64, map[string]any) reply, create map[string]any, update map[string]any) {
 			c := s.do(tn.token, "POST", proj(Pf, path), create)
 			s.progressMatches(t, tn, Pf, kind+" create", c)
 			if c.dig("data", "ledgerSummary") == nil {
 				t.Errorf("%s create keeps its ledgerSummary: %s", kind, c)
 			}
 			id := c.id("data", "id")
-			u := s.doFresh(tn.token, "PATCH", proj(Pf, fmt.Sprintf("%s/%d", path, id)), update)
+			u := patch(id, update)
 			s.progressMatches(t, tn, Pf, kind+" update", u)
 			if u.dig("data", "ledgerSummary") == nil || num(u, "data", "id") != id {
 				t.Errorf("%s update carries ledgerSummary next to its own fields: %s", kind, u)
@@ -1105,19 +1112,23 @@ func TestTahap5(t *testing.T) {
 				t.Errorf("%s restore carries ledgerSummary: %s", kind, r)
 			}
 		}
-		pay("client payment", "/client-payments",
+		pay("client payment", "/client-payments", patchClient,
 			map[string]any{"type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-C"},
 			map[string]any{"type": "DP", "amount": 2_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-C"})
-		pay("vendor payment", "/payments",
-			map[string]any{"projectVendorId": EV, "type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-V"},
+		pay("vendor payment", "/supplier-payments", patchSupplier,
+			map[string]any{"projectSupplierId": EV, "type": "DP", "amount": 1_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-V"},
 			map[string]any{"type": "DP", "amount": 2_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-V"})
-		pay("venue payment", "/venue-payments",
-			map[string]any{"type": "DP", "amount": 500_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-N"},
+		venue := s.venueSupplier(tn, Pf, venueID)
+		if venue == 0 {
+			t.Fatal("setup: the event's venue is a supplier of the project")
+		}
+		pay("venue payment", "/supplier-payments", patchSupplier,
+			map[string]any{"projectSupplierId": venue, "type": "DP", "amount": 500_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-N"},
 			map[string]any{"type": "DP", "amount": 600_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-N"})
-		// evidence: upload, set visibility, delete (incomplete proof changes the progress of a vendor payment)
-		vpay := s.mustOK("vp", s.do(tn.token, "POST", proj(Pf, "/payments"), map[string]any{"projectVendorId": EV, "type": "DP", "amount": 100_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "F-V2"})).id("data", "id")
+		// evidence: upload, set visibility, delete (incomplete proof changes the progress of a supplier payment)
+		vpay := s.supplierPay(tn, Pf, EV, "DP", 100_000, "F-V2")
 		up := s.do(tn.token, "POST", proj(Pf, "/evidence"), map[string]any{
-			"name": "bukti", "type": "Transfer Proof", "fileName": "b.pdf", "mimeType": "application/pdf", "base64Data": pdf, "relatedKind": "payment", "relatedId": vpay,
+			"name": "bukti", "type": "Transfer Proof", "fileName": "b.pdf", "mimeType": "application/pdf", "base64Data": pdf, "relatedKind": "supplierPayment", "relatedId": vpay,
 		})
 		s.progressMatches(t, tn, Pf, "evidence upload", up)
 		if up.dig("data", "uploadedByName") != ownerName || up.id("data", "id") == 0 {
@@ -1137,7 +1148,7 @@ func TestTahap5(t *testing.T) {
 		if num(ed, "data", "id") != up.id("data", "id") || s.count("SELECT COUNT(*) FROM evidence WHERE id = ?", up.id("data", "id")) != 0 {
 			t.Errorf("evidence delete: %s", ed)
 		}
-		if r := s.do(noDelete, "DELETE", proj(Pf, fmt.Sprintf("/evidence/%d", s.attach(tn, Pf, "payment", vpay, "Invoice", "inv", false))), nil); r.status != http.StatusForbidden {
+		if r := s.do(noDelete, "DELETE", proj(Pf, fmt.Sprintf("/evidence/%d", s.attach(tn, Pf, "supplierPayment", vpay, "Invoice", "inv", false))), nil); r.status != http.StatusForbidden {
 			t.Errorf("deleting a payment's proof needs finance.payment.delete: want 403, got %s", r)
 		}
 		if r := s.do(bride, "DELETE", proj(Pf, "/evidence/1"), nil); r.status != http.StatusForbidden {
@@ -1145,20 +1156,20 @@ func TestTahap5(t *testing.T) {
 		}
 	})
 
-	t.Run("(g) dashboard: cashFlow, vendorPaymentsDue, unconfirmedVendors, gated by revenue permission", func(t *testing.T) {
+	t.Run("(g) dashboard: cashFlow, supplierPaymentsDue, unconfirmedSuppliers, gated by revenue permission", func(t *testing.T) {
 		tg := s.signUp("t5g") // a workspace of its own, so every number is exact
-		vid, cat := s.newVendor(tg, "Vendor T5G "+tg.marker)
-		P1 := s.projectAt(tg, "Proyek T5G satu", 60_000_000, 10, 0, 0)
-		P2 := s.projectAt(tg, "Proyek T5G jauh", 60_000_000, 90, 0, 0)
+		vid, _ := s.newVendor(tg, "Vendor T5G "+tg.marker)
+		P1 := s.projectAt(tg, "Proyek T5G satu", 60_000_000, 10, 0)
+		P2 := s.projectAt(tg, "Proyek T5G jauh", 60_000_000, 90, 0)
 		s.setTerms(tg, P1, term("DP", 20_000_000, -1), term("Pelunasan", 40_000_000, 9))
 		s.clientPay(tg, P1, "DP", 5_000_000, "G-1")
 		five, twenty := 5, 20
-		planned := s.engage(tg, P1, vid, cat, "Dekor planned", 10_000_000, "Planned", &five)
-		booked := s.engage(tg, P1, vid, cat, "Foto booked", 8_000_000, "Booked", &twenty)
-		s.mustOK("vp", s.do(tg.token, "POST", proj(P1, "/payments"), map[string]any{"projectVendorId": booked, "type": "DP", "amount": 3_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "G-V"}))
-		gone := s.engage(tg, P1, vid, cat, "Batal", 99_000_000, "Booked", &five)
-		s.mustOK("cancel", s.do(tg.token, "POST", proj(P1, fmt.Sprintf("/vendors/%d/cancel", gone)), map[string]any{}))
-		s.engage(tg, P2, vid, cat, "Jauh planned", 4_000_000, "Planned", &twenty)
+		planned := s.engage(tg, P1, vid, "Dekor planned", 10_000_000, "Planned", &five)
+		booked := s.engage(tg, P1, vid, "Foto booked", 8_000_000, "Booked", &twenty)
+		s.supplierPay(tg, P1, booked, "DP", 3_000_000, "G-V")
+		gone := s.engage(tg, P1, vid, "Batal", 99_000_000, "Booked", &five)
+		s.mustOK("cancel", s.t5Supplier(tg.token, P1, gone, map[string]any{"engagementStatus": "Cancelled"}))
+		s.engage(tg, P2, vid, "Jauh planned", 4_000_000, "Planned", &twenty)
 
 		r := s.mustOK("dashboard", s.do(tg.token, "GET", "/api/v1/dashboard", nil))
 		routesCovered++
@@ -1186,25 +1197,25 @@ func TestTahap5(t *testing.T) {
 		if weeks[0]["expectedIn"].(float64) < 15_000_000 {
 			t.Errorf("an overdue installment counts in week 1: %v", weeks[0])
 		}
-		due := rows(r, "data", "vendorPaymentsDue")
-		if len(due) != 3 || due[0]["vendorName"] != "Vendor T5G "+tg.marker || due[0]["remaining"] != float64(10_000_000) || due[0]["dueDate"] != day(5) ||
+		due := rows(r, "data", "supplierPaymentsDue")
+		if len(due) != 3 || due[0]["supplierName"] != "Vendor T5G "+tg.marker || due[0]["supplierKind"] != "vendor" || due[0]["remaining"] != float64(10_000_000) || due[0]["dueDate"] != day(5) ||
 			due[1]["remaining"] != float64(5_000_000) || due[1]["dueDate"] != day(20) || due[2]["remaining"] != float64(4_000_000) || due[0]["projectName"] != "Proyek T5G satu" {
-			t.Errorf("vendorPaymentsDue (nearest first, remaining = contract - paid): %v", due)
+			t.Errorf("supplierPaymentsDue (nearest first, remaining = agreed cost - paid): %v", due)
 		}
-		for _, k := range []string{"projectId", "projectName", "vendorName", "dueDate", "remaining"} {
-			if due[0][k] == nil {
-				t.Errorf("vendorPaymentsDue.%s missing", k)
+		for _, k := range []string{"projectId", "projectName", "supplierKind", "supplierName", "dueDate", "remaining"} {
+			if len(due) > 0 && due[0][k] == nil {
+				t.Errorf("supplierPaymentsDue.%s missing", k)
 			}
 		}
-		un := rows(r, "data", "unconfirmedVendors")
-		if len(un) != 1 || un[0]["engagementStatus"] != "Planned" || int64(un[0]["projectId"].(float64)) != P1 || un[0]["eventDate"] != day(10) || un[0]["vendorName"] != "Vendor T5G "+tg.marker || un[0]["projectName"] != "Proyek T5G satu" {
-			t.Errorf("unconfirmedVendors (event within 30 days, still Planned/Negotiation; the far project is out): %v", un)
+		un := rows(r, "data", "unconfirmedSuppliers")
+		if len(un) != 1 || un[0]["engagementStatus"] != "Planned" || int64(un[0]["projectId"].(float64)) != P1 || un[0]["eventDate"] != day(10) || un[0]["supplierName"] != "Vendor T5G "+tg.marker || un[0]["supplierKind"] != "vendor" || un[0]["projectName"] != "Proyek T5G satu" {
+			t.Errorf("unconfirmedSuppliers (event within 30 days, still Planned/Negotiation; the far project is out): %v", un)
 		}
-		// A deleted engagement leaves all three.
-		s.mustOK("delete planned", s.do(tg.token, "DELETE", proj(P1, fmt.Sprintf("/vendors/%d", planned)), nil))
+		// A deleted supplier leaves all three.
+		s.mustOK("delete planned", s.do(tg.token, "DELETE", proj(P1, fmt.Sprintf("/suppliers/%d", planned)), nil))
 		r2 := s.mustOK("dashboard", s.do(tg.token, "GET", "/api/v1/dashboard", nil))
-		if len(rows(r2, "data", "unconfirmedVendors")) != 0 || len(rows(r2, "data", "vendorPaymentsDue")) != 2 {
-			t.Errorf("a deleted engagement is not owed, not unconfirmed: %s", r2)
+		if len(rows(r2, "data", "unconfirmedSuppliers")) != 0 || len(rows(r2, "data", "supplierPaymentsDue")) != 2 {
+			t.Errorf("a deleted supplier is not owed, not unconfirmed: %s", r2)
 		}
 		var out2 float64
 		for _, w := range rows(r2, "data", "cashFlow") {
@@ -1213,24 +1224,35 @@ func TestTahap5(t *testing.T) {
 		if out2 != 9_000_000 {
 			t.Errorf("cash flow out after the deletion: %v", out2)
 		}
-		// Permission: money sections need dashboard.revenue.view; unconfirmed vendors do not.
+		// Permission: money sections need dashboard.revenue.view; unconfirmed suppliers do not.
 		tgNoRev := s.staffWith(tg, "tanpa omzet g", "dashboard.view")
 		tgRev := s.staffWith(tg, "dengan omzet g", "dashboard.view", "dashboard.revenue.view")
 		nr := s.mustOK("dashboard without revenue", s.do(tgNoRev, "GET", "/api/v1/dashboard", nil))
 		data, _ := nr.json()["data"].(map[string]any)
-		for _, k := range []string{"cashFlow", "vendorPaymentsDue"} {
+		for _, k := range []string{"cashFlow", "supplierPaymentsDue"} {
 			if _, present := data[k]; present {
 				t.Errorf("%s must be absent without dashboard.revenue.view", k)
 			}
 		}
-		if _, present := data["unconfirmedVendors"]; !present || data["revenue"].(map[string]any)["total"] != float64(0) {
-			t.Errorf("unconfirmedVendors stays, revenue is zeroed: %v", data)
+		if _, present := data["unconfirmedSuppliers"]; !present || data["revenue"].(map[string]any)["total"] != float64(0) {
+			t.Errorf("unconfirmedSuppliers stays, revenue is zeroed: %v", data)
 		}
+		// Money out (payments the WO owes its suppliers) is also finance.margin.view: a Wedding Planner has the cash
+		// flow in, not what is paid to the suppliers (PLAN §8 Tahap 2).
 		wr := s.mustOK("dashboard with revenue", s.do(tgRev, "GET", "/api/v1/dashboard", nil))
-		if len(rows(wr, "data", "cashFlow")) != 8 || wr.dig("data", "vendorPaymentsDue") == nil {
-			t.Errorf("with dashboard.revenue.view both money sections are there: %s", wr)
+		var outNoMargin float64
+		for _, w := range rows(wr, "data", "cashFlow") {
+			outNoMargin += w["expectedOut"].(float64)
 		}
-		routesCovered += 2
+		if len(rows(wr, "data", "cashFlow")) != 8 || len(rows(wr, "data", "supplierPaymentsDue")) != 0 || outNoMargin != 0 {
+			t.Errorf("with dashboard.revenue.view but no finance.margin.view: cash flow in only, no supplier payments due: %s", wr)
+		}
+		tgMargin := s.staffWith(tg, "dengan margin g", "dashboard.view", "dashboard.revenue.view", "finance.margin.view")
+		wm := s.mustOK("dashboard with margin", s.do(tgMargin, "GET", "/api/v1/dashboard", nil))
+		if len(rows(wm, "data", "cashFlow")) != 8 || len(rows(wm, "data", "supplierPaymentsDue")) != 2 {
+			t.Errorf("with dashboard.revenue.view and finance.margin.view both money sections are there: %s", wm)
+		}
+		routesCovered += 3
 	})
 }
 
@@ -1241,4 +1263,59 @@ func contains2(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// t5Venue adds a directory venue to the workspace and returns its id.
+func (s *stack) t5Venue(t tenant, name string) int64 {
+	s.t.Helper()
+	return s.mustOK("venue "+name, s.do(t.token, "POST", "/api/v1/venues", venueBody(t, name))).id("data", "id")
+}
+
+// t5Version is the current updatedAt of item `id` in the list at listPath, as
+// the caller sees it; with step != 0, of that step inside supplier `id`'s
+// milestones (GET .../suppliers).
+func (s *stack) t5Version(token, listPath string, id, step int64) string {
+	s.t.Helper()
+	for _, it := range rows(s.mustOK("version of "+listPath, s.do(token, "GET", listPath, nil)), "data") {
+		if int64(it["id"].(float64)) != id {
+			continue
+		}
+		if step == 0 {
+			v, _ := it["updatedAt"].(string)
+			return v
+		}
+		ms, _ := it["milestones"].([]any)
+		for _, raw := range ms {
+			if m, ok := raw.(map[string]any); ok && int64(m["id"].(float64)) == step {
+				v, _ := m["updatedAt"].(string)
+				return v
+			}
+		}
+	}
+	s.t.Fatalf("t5Version: item %d (step %d) not in %s", id, step, listPath)
+	return ""
+}
+
+// t5Supplier is PATCH /projects/{p}/suppliers/{sid} with the supplier's current
+// version as If-Match.
+func (s *stack) t5Supplier(token string, projectID, sid int64, body map[string]any) reply {
+	s.t.Helper()
+	v := s.t5Version(token, s.projectsPath(projectID, "/suppliers"), sid, 0)
+	return s.doWith(token, "PATCH", s.projectsPath(projectID, fmt.Sprintf("/suppliers/%d", sid)), body, map[string]string{"If-Match": quoted(v)})
+}
+
+// t5Step is PATCH .../suppliers/{sid}/milestones/{mid} with the step's current
+// version as If-Match.
+func (s *stack) t5Step(token string, projectID, sid, mid int64, body map[string]any) reply {
+	s.t.Helper()
+	v := s.t5Version(token, s.projectsPath(projectID, "/suppliers"), sid, mid)
+	return s.doWith(token, "PATCH", s.projectsPath(projectID, fmt.Sprintf("/suppliers/%d/milestones/%d", sid, mid)), body, map[string]string{"If-Match": quoted(v)})
+}
+
+// t5SupplierPayment is PATCH .../supplier-payments/{pid} with the payment's
+// current version as If-Match.
+func (s *stack) t5SupplierPayment(token string, projectID, pid int64, body map[string]any) reply {
+	s.t.Helper()
+	v := s.t5Version(token, s.projectsPath(projectID, "/supplier-payments"), pid, 0)
+	return s.doWith(token, "PATCH", s.projectsPath(projectID, fmt.Sprintf("/supplier-payments/%d", pid)), body, map[string]string{"If-Match": quoted(v)})
 }

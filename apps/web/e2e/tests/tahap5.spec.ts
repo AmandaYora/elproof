@@ -2,6 +2,7 @@ import { expect, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { apiURL } from "../lib/config";
 import { browserSession } from "../lib/session";
+import { resepsiOn, withContract } from "../lib/project";
 
 // PLAN Tahap 5: the Ringkasan progress and the ledger totals never go stale after a change, and a routine delete can be undone.
 // These tests WRITE data, so they run in the "mutating" project (after every screenshot project).
@@ -14,12 +15,14 @@ async function newProject(page: import("@playwright/test").Page, name: string) {
   const made = await page.request.post(API("/projects"), {
     headers: auth,
     data: {
-      name, brideName: "Lina Kusuma", groomName: "Reza Mahendra", eventDate: "2027-07-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
-      packageName: "Paket Uji", contractValue: 10_000_000, status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
+      name, brideName: "Lina Kusuma", groomName: "Reza Mahendra", events: await resepsiOn(session.accessToken, "2027-07-01"), prepStartDate: "2026-11-09",
+      status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
     },
   });
   expect(made.status()).toBe(201);
-  return { id: ((await made.json()).data as { id: number }).id, auth };
+  const id = ((await made.json()).data as { id: number }).id;
+  await withContract(session.accessToken, id, 10_000_000);
+  return { id, auth };
 }
 
 test("finishing a step updates the Ringkasan progress without a reload", async ({ browser }, info) => {

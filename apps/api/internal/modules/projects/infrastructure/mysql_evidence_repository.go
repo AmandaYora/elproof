@@ -219,12 +219,11 @@ func (r *MySQLEvidenceRepository) DeleteByID(ctx context.Context, projectID, id 
 // relatedOwnershipQueries: per kind, one query that is true only when the
 // thing the document attaches to is a row of this very project.
 var relatedOwnershipQueries = map[domain.EvidenceRelatedKind]string{
-	domain.RelatedVendorMilestone:  `SELECT 1 FROM vendor_milestones vm JOIN project_vendors pv ON pv.id = vm.project_vendor_id WHERE vm.id = ? AND pv.project_id = ? AND pv.deleted_at IS NULL`,
-	domain.RelatedPayment:          `SELECT 1 FROM vendor_payments WHERE id = ? AND project_id = ? AND ` + liveVendorPaymentWhere,
-	domain.RelatedProjectVendor:    `SELECT 1 FROM project_vendors WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+	domain.RelatedVendorMilestone:  `SELECT 1 FROM vendor_milestones vm JOIN project_suppliers s ON s.id = vm.project_supplier_id WHERE vm.id = ? AND s.project_id = ? AND s.deleted_at IS NULL`,
+	domain.RelatedSupplierPayment:  `SELECT 1 FROM supplier_payments WHERE id = ? AND project_id = ? AND ` + liveSupplierPaymentWhere,
+	domain.RelatedProjectSupplier:  `SELECT 1 FROM project_suppliers WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
 	domain.RelatedIssue:            `SELECT 1 FROM vendor_issues WHERE id = ? AND project_id = ? AND ` + liveIssueWhere,
 	domain.RelatedClientPayment:    `SELECT 1 FROM client_payments WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
-	domain.RelatedVenuePayment:     `SELECT 1 FROM venue_payments WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
 	domain.RelatedProjectMilestone: `SELECT 1 FROM project_milestones WHERE id = ? AND project_id = ?`,
 }
 

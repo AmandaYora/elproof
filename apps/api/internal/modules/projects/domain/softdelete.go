@@ -27,34 +27,40 @@ func IsPurgeDue(deletedAt, now time.Time) bool { return !CanRestore(deletedAt, n
 
 // PurgeReport is what one purge run removed.
 type PurgeReport struct {
-	ClientPayments int
-	VendorPayments int
-	VenuePayments  int
-	Engagements    int
-	// Milestones, Issues and Payments of purged engagements.
-	EngagementMilestones int
-	EngagementIssues     int
-	EngagementPayments   int
-	Evidence             int
+	ClientPayments   int
+	SupplierPayments int
+	Suppliers        int
+	// Steps, kendala and payments of purged suppliers.
+	SupplierMilestones    int
+	SupplierIssues        int
+	SupplierOwnedPayments int
+	Evidence              int
+	// Lines is the Rincian lines (a package with its children) deleted longer
+	// ago than the retention.
+	Lines int
+	// BillTerms is the bills of client-paid suppliers (Paket WO Tahap 4):
+	// deleted longer ago than the retention, or of a purged supplier.
+	BillTerms int
 	// Objects is how many stored files were deleted from object storage.
 	Objects int
 }
 
 // Total is how many rows (not counting stored files) the run removed.
 func (r PurgeReport) Total() int {
-	return r.ClientPayments + r.VendorPayments + r.VenuePayments + r.Engagements +
-		r.EngagementMilestones + r.EngagementIssues + r.EngagementPayments + r.Evidence
+	return r.ClientPayments + r.SupplierPayments + r.Suppliers +
+		r.SupplierMilestones + r.SupplierIssues + r.SupplierOwnedPayments + r.Evidence + r.Lines + r.BillTerms
 }
 
 // Add folds another report into this one.
 func (r *PurgeReport) Add(o PurgeReport) {
 	r.ClientPayments += o.ClientPayments
-	r.VendorPayments += o.VendorPayments
-	r.VenuePayments += o.VenuePayments
-	r.Engagements += o.Engagements
-	r.EngagementMilestones += o.EngagementMilestones
-	r.EngagementIssues += o.EngagementIssues
-	r.EngagementPayments += o.EngagementPayments
+	r.SupplierPayments += o.SupplierPayments
+	r.Suppliers += o.Suppliers
+	r.SupplierMilestones += o.SupplierMilestones
+	r.SupplierIssues += o.SupplierIssues
+	r.SupplierOwnedPayments += o.SupplierOwnedPayments
 	r.Evidence += o.Evidence
+	r.Lines += o.Lines
+	r.BillTerms += o.BillTerms
 	r.Objects += o.Objects
 }

@@ -104,13 +104,14 @@ func TestPayables(t *testing.T) {
 	today := fd("2026-11-09")
 	past, future := fd("2026-11-01"), fd("2026-11-20")
 	rows := []PayableRow{
-		{Kind: PayableVendor, ContractValue: 100, Paid: 30, DueDate: &past}, // 70 overdue
-		{Kind: PayableVendor, ContractValue: 50, Paid: 0, DueDate: &future}, // 50 unpaid
-		{Kind: PayableVendor, ContractValue: 40, Paid: 0},                   // 40 unpaid, no due date
-		{Kind: PayableVenue, ContractValue: 200, Paid: 50},                  // 150 unpaid, venue
-		{Kind: PayableVendor, ContractValue: 20, Paid: 25, DueDate: &past},  // overpaid: nothing left
+		{Kind: SupplierVendor, AgreedCost: 100, Paid: 30, DueDate: &past},  // 70 overdue
+		{Kind: SupplierVendor, AgreedCost: 50, Paid: 0, DueDate: &future},  // 50 unpaid
+		{Kind: SupplierVendor, AgreedCost: 40, Paid: 0},                    // 40 unpaid, no due date
+		{Kind: SupplierVenue, AgreedCost: 200, Paid: 50},                   // 150 unpaid, venue
+		{Kind: SupplierVendor, AgreedCost: 20, Paid: 25, DueDate: &past},   // overpaid: nothing left
+		{Kind: SupplierVendor, Paid: 10, DueDate: &past, Incomplete: true}, // no agreed cost: listed, counted, no amount
 	}
-	wantStatus := []PayableStatus{PayableOverdue, PayableUnpaid, PayableUnpaid, PayableUnpaid, PayablePaid}
+	wantStatus := []PayableStatus{PayableOverdue, PayableUnpaid, PayableUnpaid, PayableUnpaid, PayablePaid, PayableIncomplete}
 	for i, r := range rows {
 		if got := r.Status(today); got != wantStatus[i] {
 			t.Errorf("row %d: status %s, want %s", i, got, wantStatus[i])
@@ -120,10 +121,13 @@ func TestPayables(t *testing.T) {
 		t.Errorf("overpaid remaining = %d, want 0", rows[4].Remaining())
 	}
 	sum, due := SummarizePayables(rows, today)
-	if sum != (PayablesSummary{Amount: 310, Count: 4, OverdueAmount: 70, OverdueCount: 1}) {
+	if rows[5].Remaining() != 0 {
+		t.Errorf("an incomplete row owes no known amount: %d", rows[5].Remaining())
+	}
+	if sum != (PayablesSummary{Amount: 310, Count: 4, OverdueAmount: 70, OverdueCount: 1, IncompleteCount: 1}) {
 		t.Errorf("summary = %+v", sum)
 	}
-	// Only vendor balances with a due date go into the cash flow (as /dashboard).
+	// Only balances with a due date go into the cash flow (as /dashboard).
 	if len(due) != 2 || due[0].Remaining != 70 || due[1].Remaining != 50 {
 		t.Errorf("due = %+v", due)
 	}

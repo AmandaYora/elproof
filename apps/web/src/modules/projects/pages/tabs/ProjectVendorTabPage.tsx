@@ -1,15 +1,9 @@
 import { useOutletContext } from "react-router-dom";
 import { ProjectVendorsSection } from "@/modules/projects/components/detail/ProjectVendorsSection";
-import { ProjectVenueSection } from "@/modules/projects/components/detail/ProjectVenueSection";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 
-/** "Vendor & venue": the venue of the event (one, pinned on top) and every vendor engaged for it. */
+/** "Vendor & venue": every vendor and venue of the project in one table; a row opens its drawer. */
 export default function ProjectVendorTabPage() {
   const { projectId } = useOutletContext<ProjectDetailContext>();
-  return (
-    <div className="flex flex-col gap-5">
-      <ProjectVenueSection projectId={projectId} />
-      <ProjectVendorsSection projectId={projectId} />
-    </div>
-  );
+  return <ProjectVendorsSection projectId={projectId} />;
 }

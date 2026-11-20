@@ -62,10 +62,11 @@ export function HomeHero({ project, daysToEvent }: { project: PortalHome["projec
         <SealMotif />
       )}
 
+      {/* The main event: its kind, its date (Hari H) and where it happens; the other events in a small line under it. */}
       <p className="text-[13px] font-medium text-on-primary-muted">
-        {formatDate(project.eventDate)}
-        {project.venue ? ` · ${project.venue}` : ""}
+        {[project.mainEventKind, formatDate(project.eventDate), project.location].filter(Boolean).join(" · ")}
       </p>
+      {project.eventsLine && <p className="mt-0.5 text-[12px] text-on-primary-muted">{project.eventsLine}</p>}
       <h1 id="hero-names" className="mt-2 text-[28px] leading-[1.08] font-extrabold tracking-[-0.03em] text-balance sm:text-[40px]">
         {project.brideName} &amp; {project.groomName}
       </h1>

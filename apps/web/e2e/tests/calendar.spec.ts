@@ -2,7 +2,8 @@ import { AUTH } from "../lib/config";
 import { expect, prepareContext, settle, test, visit } from "../lib/fixtures";
 import { open } from "../lib/suite";
 
-// Kalender (RISET WO Console §3 #2, §7.7). Seed: "Citra & Bima" has its wedding on 14 Mar 2027 and an installment
+// Kalender (RISET WO Console §3 #2, §7.7). Seed: "Citra & Bima" has its Akad on 13 Mar 2027 and its Resepsi (the main
+// event) on 14 Mar 2027, each at a venue, and an installment
 // "Termin 2" due on 25 Oct 2026 (day -15 from the seed's base day), still unpaid, so overdue. The browser clock is
 // fixed at 9 Nov 2026, so "this month" is November 2026.
 
@@ -16,12 +17,12 @@ test.describe("Kalender", () => {
     await expect(grid).toBeVisible();
     await expect(grid.locator('[aria-current="date"]')).toHaveAttribute("data-day", "2026-11-09");
 
-    // The wedding day sits on 14 March 2027 and opens the project.
+    // Every event of the project is on its own day, named by its kind and venue, and opens the project.
     await visit(page, "/kalender?bulan=2027-03");
     const wedding = page.locator('[data-day="2027-03-14"] a[data-kind="event"]');
-    await expect(wedding).toHaveAccessibleName(/^Citra & Bima ?, hari acara, Persiapan$/);
+    await expect(wedding).toHaveAccessibleName(/^Citra & Bima ?, Resepsi di .+, Persiapan$/);
     await expect(wedding).toHaveAttribute("href", /\/proyek\/\d+\/ringkasan$/);
-    await expect(page.locator('[data-day="2027-03-13"] a[data-kind="event"]')).toHaveCount(0);
+    await expect(page.locator('[data-day="2027-03-13"] a[data-kind="event"]')).toHaveAccessibleName(/^Citra & Bima ?, Akad di .+, Persiapan$/);
 
     // Termin 2 is due on 25 October 2026 and is overdue (status in words, not colour alone).
     await visit(page, "/kalender?bulan=2026-10");
@@ -72,7 +73,7 @@ test.describe("Kalender", () => {
     const day = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: /Minggu, 14 Maret/ }) });
     const wedding = day.locator('a[data-kind="event"]');
     await expect(wedding).toContainText("Citra & Bima");
-    await expect(wedding).toContainText("Hari acara");
+    await expect(wedding).toContainText(/Resepsi di /);
     await context.close();
   });
 });

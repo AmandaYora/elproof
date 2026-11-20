@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/domain"
-	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
 	"elproof/internal/shared/logger"
 	"elproof/internal/shared/pagination"
@@ -30,9 +29,8 @@ type ProjectRepository interface {
 	// ListSortSpec is the ?sort= whitelist (public name -> fixed SQL) and the
 	// default order of ListPaginated.
 	ListSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
-	// ListByVenueID/ListByStaffPIC back the hard-delete "impact" endpoints
-	// (PLAN.md) -- see their infrastructure implementations' doc comments.
-	ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error)
+	// ListByStaffPIC backs the staff hard-delete "impact" endpoint (PLAN.md)
+	// -- see its infrastructure implementation's doc comment.
 	ListByStaffPIC(ctx context.Context, tenantID, staffID int64) ([]domain.ProjectRef, error)
 	FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
@@ -65,22 +63,6 @@ type ClientCleaner interface {
 	DeleteAllForProject(ctx context.Context, tenantID, projectID int64) error
 }
 
-// VenueResolver is the narrow shape ProjectService needs from `vendors` to
-// resolve a project's attached venue_id into display data (ADR-0016) --
-// deliberately a local interface (not an import of vendors/application) so
-// this file only depends on vendors' public contracts package for the return
-// type. Bridged from main.go via Module.SetVenueResolver, the same two-phase
-// idiom as SetClientCleaner above -- needed because `vendors` itself depends
-// on `projects.Contracts()` (built after `projects`), so `projects` can't
-// take this as a constructor argument.
-type VenueResolver interface {
-	GetVenueSummary(ctx context.Context, tenantID, venueID int64) (vendorscontracts.VenueSummary, error)
-	// GetVenueForAttach is the venue's name and current prices (staff-only
-	// data, so not part of the public-safe summary); used when a project is
-	// created with its venue.
-	GetVenueForAttach(ctx context.Context, tenantID, venueID int64) (vendorscontracts.VenueAttachInfo, error)
-}
-
 // StaffNameResolver is the narrow shape ProjectService needs from `staff` to
 // embed a project's PIC name directly in its own response (PLAN.md's Client
 // Portal restructure). Deliberately typed with primitives only (not
@@ -90,7 +72,7 @@ type VenueResolver interface {
 // import cycle (projects/application -> staff/contracts -> staff/application
 // -> projects/contracts -> projects/application). main.go bridges the real
 // staffcontracts.Contracts into this shape with a small adapter instead.
-// Unlike ClientCleaner/VenueResolver, `staff` is already built before
+// Unlike ClientCleaner, `staff` is already built before
 // `projects` in main.go, so this is a direct constructor argument, no
 // two-phase setter needed.
 type StaffNameResolver interface {
@@ -123,48 +105,101 @@ type ProjectService struct {
 	repo               ProjectRepository
 	milestones         MilestoneRepository
 	milestoneTemplates MilestoneTemplateRepository
-	vendorEngagements  VendorEngagementRepository
+	suppliers          SupplierRepository
 	vendorMilestones   VendorMilestoneRepository
 	issues             IssueRepository
-	payments           PaymentRepository
-	venuePayments      VenuePaymentRepository
+	payments           SupplierPaymentRepository
+	events             EventRepository
 	evidence           *EvidenceService
 	activity           *ActivityService
 	clients            ClientCleaner
-	venues             VenueResolver
 	staff              StaffNameResolver
 	quota              TrialQuota
+	// eventService validates and writes the events of a new project (SetEvents).
+	eventService *EventService
 	// tx/terms back CreateAtomic (wired by SetAtomicSupport).
 	tx    Transactor
 	terms PaymentTermRepository
 	// listMoney backs the derived columns of the list (SetListMoney).
 	listMoney ListMoneySource
+	// workspace says whether the workspace is PKP (copied onto a new project).
+	workspace WorkspaceProfileSource
+	// lines copies a duplicated project's Rincian (SetLines).
+	lines *LineService
+	// quotations is `offers` for "Jadikan proyek" and the purge mark
+	// (SetQuotations, main.go).
+	quotations QuotationSource
 }
 
-// SetAtomicSupport wires what creating a project with its venue and payment
+// SetQuotations wires `offers`' quotations (built after this module).
+func (s *ProjectService) SetQuotations(q QuotationSource) { s.quotations = q }
+
+// WorkspaceProfile is what a project copies from its workspace when it is
+// created (PLAN §3.2): whether the WO is PKP, so its contract carries PPN.
+type WorkspaceProfile struct {
+	IsPKP bool
+}
+
+// WorkspaceProfileSource reads it from `platform` (adapted in main.go).
+type WorkspaceProfileSource interface {
+	WorkspaceProfile(ctx context.Context, tenantID int64) (WorkspaceProfile, error)
+}
+
+// SetWorkspaceProfile wires the workspace profile (platform is built first,
+// but the adaptor lives in main.go).
+func (s *ProjectService) SetWorkspaceProfile(w WorkspaceProfileSource) { s.workspace = w }
+
+// SetLines wires the Rincian (built after this service).
+func (s *ProjectService) SetLines(l *LineService) { s.lines = l }
+
+// workspaceIsPKP is the workspace's PKP flag now (false when no profile is
+// wired: a contract without PPN is the safe default).
+func (s *ProjectService) workspaceIsPKP(ctx context.Context, tenantID int64) (bool, error) {
+	if s.workspace == nil {
+		return false, nil
+	}
+	p, err := s.workspace.WorkspaceProfile(ctx, tenantID)
+	if err != nil {
+		return false, err
+	}
+	return p.IsPKP, nil
+}
+
+// SetAtomicSupport wires what creating a project with its events and payment
 // schedule in one transaction needs.
 func (s *ProjectService) SetAtomicSupport(tx Transactor, terms PaymentTermRepository) {
 	s.tx, s.terms = tx, terms
 }
 
+// SetEvents wires the event service (it needs this service back, so it is
+// built after it).
+func (s *ProjectService) SetEvents(e *EventService) { s.eventService = e }
+
 func NewProjectService(
 	repo ProjectRepository,
 	milestones MilestoneRepository,
 	milestoneTemplates MilestoneTemplateRepository,
-	vendorEngagements VendorEngagementRepository,
+	suppliers SupplierRepository,
 	vendorMilestones VendorMilestoneRepository,
 	issues IssueRepository,
-	payments PaymentRepository,
-	venuePayments VenuePaymentRepository,
+	payments SupplierPaymentRepository,
+	events EventRepository,
 	evidence *EvidenceService,
 	activity *ActivityService,
 	staff StaffNameResolver,
 ) *ProjectService {
 	return &ProjectService{
-		repo: repo, milestones: milestones, milestoneTemplates: milestoneTemplates, vendorEngagements: vendorEngagements,
-		vendorMilestones: vendorMilestones, issues: issues, payments: payments, venuePayments: venuePayments,
+		repo: repo, milestones: milestones, milestoneTemplates: milestoneTemplates, suppliers: suppliers,
+		vendorMilestones: vendorMilestones, issues: issues, payments: payments, events: events,
 		evidence: evidence, activity: activity, staff: staff,
 	}
+}
+
+func (s *ProjectService) txOrDirect() Transactor {
+	if s.tx == nil {
+		return noTransactor{}
+	}
+	return s.tx
 }
 
 // ResolvePICName backs the `picName` field on a project's response (PLAN.md's
@@ -229,50 +264,11 @@ func (s *ProjectService) SetClientCleaner(cleaner ClientCleaner) {
 	s.clients = cleaner
 }
 
-// SetVenueResolver completes the two-phase wiring described on VenueResolver
-// above. main.go calls this right after vendorsModule is built, the same
-// slot as SetClientCleaner/SetClientAccessResolver.
-func (s *ProjectService) SetVenueResolver(resolver VenueResolver) {
-	s.venues = resolver
-}
-
-// GetVenue resolves this project's attached venue (if any) into display
-// data via the vendors module's contract. Returns (nil, nil) — not an error
-// — when no venue is attached, so callers (both the WO Console tab and
-// Client Portal's) can render an empty state rather than treat it as a
-// failure. A NotFound from the vendors module (the venue itself has since
-// been hard-deleted — PLAN.md's Vendor/Venue hard delete, which never
-// cleans up this stale reference) is treated exactly the same way: the
-// venue is simply no longer resolvable, not a real error to surface.
-func (s *ProjectService) GetVenue(ctx context.Context, tenantID, projectID int64) (*vendorscontracts.VenueSummary, error) {
-	p, err := s.Get(ctx, tenantID, projectID)
-	if err != nil {
-		return nil, err
-	}
-	if p.VenueID == nil || s.venues == nil {
-		return nil, nil
-	}
-	summary, err := s.venues.GetVenueSummary(ctx, tenantID, *p.VenueID)
-	if err != nil {
-		if appErr, ok := apperror.As(err); ok && appErr.Kind == apperror.KindNotFound {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &summary, nil
-}
-
 // picStaffID/picSalesStaffID scope results to a single PIC's own projects —
 // nil/nil means every project in the tenant (see
 // MySQLProjectRepository.List's own doc comment).
 func (s *ProjectService) List(ctx context.Context, tenantID int64, picStaffID, picSalesStaffID *int64) ([]domain.Project, error) {
 	return s.repo.List(ctx, tenantID, picStaffID, picSalesStaffID)
-}
-
-// ListAffectedProjectsForVenue backs the hard-delete "impact" endpoint for
-// Venue (PLAN.md) -- see ListByVenueID's doc comment.
-func (s *ProjectService) ListAffectedProjectsForVenue(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error) {
-	return s.repo.ListByVenueID(ctx, tenantID, venueID)
 }
 
 // ListAffectedProjectsForStaff backs the hard-delete "impact" endpoint for
@@ -354,7 +350,7 @@ func (s *ProjectService) ListMoney(ctx context.Context, projects []domain.Projec
 		return nil, err
 	}
 	for _, p := range projects {
-		out[p.ID] = domain.ComputeListMoney(p.ContractValue, lines[p.ID], terms[p.ID])
+		out[p.ID] = domain.ComputeListMoney(p.ContractTotal, lines[p.ID], terms[p.ID])
 	}
 	return out, nil
 }
@@ -383,37 +379,19 @@ func (s *ProjectService) ExistsForTenant(ctx context.Context, tenantID, id int64
 }
 
 type ProjectInput struct {
-	Name          string
-	BrideName     string
-	GroomName     string
+	Name      string
+	BrideName string
+	GroomName string
+	// EventDate is the main event's date. CreateAtomic takes it from the first
+	// event; Duplicate shifts the copied events so the main one lands on it.
 	EventDate     time.Time
-	Venue         string
 	PrepStartDate time.Time
-	PackageName   string
-	ContractValue int64
 	Status        domain.ProjectStatus
 	PICStaffID    int64
 	// PICSalesStaffID is the "PIC Sales" slot -- see Project.PICSalesStaffID's
-	// doc comment. Create forces this to the caller's own staff id when
-	// callerRole is "Sales" (ignoring whatever's sent here); Owner/Admin's
-	// value passes through untouched.
+	// doc comment.
 	PICSalesStaffID int64
 	Description     string
-	// VenueID is only ever read by Update (Create always leaves a new
-	// project's VenueID nil — attaching a venue is a separate, post-creation
-	// action, see ADR-0016). nil means the caller's JSON body omitted the
-	// key entirely — leave the project's current attachment untouched; `0`
-	// explicitly detaches; a positive ID attaches that venue. Venue IDs are
-	// AUTO_INCREMENT starting at 1, so `0` is never a real one.
-	VenueID *int64
-	// VenueRentalPrice/VenueCharge ride along with VenueID whenever it's
-	// present at all (see Update below) -- the per-project cost snapshot,
-	// PLAN.md "Financial Calculation Correctness". Only meaningful when
-	// VenueID is a positive attach/change; ignored on detach (force-cleared
-	// regardless) and left nil-safe when VenueID itself is nil (every other
-	// project edit that never touches venue attachment at all).
-	VenueRentalPrice *int64
-	VenueCharge      *int64
 }
 
 // ProjectActor is the staff member acting and what their workspace role
@@ -428,16 +406,15 @@ type ProjectActor struct {
 	CanAssignPIC bool
 }
 
-// ProjectSetup is what can be saved together with a new project, in the same
-// transaction: the client's payment schedule. (The venue travels in
-// ProjectInput.VenueID / VenueRentalPrice / VenueCharge.)
+// ProjectSetup is what is saved together with a new project, in the same
+// transaction: its events (at least one; the first is the main event). The
+// client's payment schedule is made after the Rincian is saved (PLAN §9.1).
 type ProjectSetup struct {
-	// Terms is the payment schedule (nil or empty: none).
-	Terms []PaymentTermInput
+	Events []EventInput
 	// FieldErrors are problems the caller already found while reading the
-	// request (a date that is not YYYY-MM-DD, keyed "eventDate",
-	// "terms[1].dueDate", ...). They are reported together with everything the
-	// service finds, as one validation error.
+	// request (a date that is not YYYY-MM-DD, keyed "events.0.eventDate", ...).
+	// They are reported together with everything the service finds, as one
+	// validation error.
 	FieldErrors map[string][]string
 }
 
@@ -449,12 +426,14 @@ func (s *ProjectService) Create(ctx context.Context, tenantID int64, actor Proje
 }
 
 // CreateAtomic creates a project and, in the same database transaction, its
-// default milestones, its venue (when input.VenueID is positive) and its client
-// payment schedule (setup.Terms). Everything is validated first and every
-// problem of every part is returned together as ONE validation error (keys
-// "picStaffId", "venueId", "venueRentalPrice", "venueCharge", "terms",
-// "terms[2].amount", ...); nothing is written when anything is wrong, and if a
-// write fails the transaction rolls back, so no half-made project is ever left.
+// default milestones and its events (with the venues they bring in). The
+// project copies the workspace's PKP flag; its contract starts at 0 until the
+// Rincian is saved. Everything is validated first and every problem of every
+// part is returned together as ONE validation error (keys "picStaffId",
+// "events", "events.1.venueId", ...); nothing is written
+// when anything is wrong, and if a write fails the transaction rolls back, so
+// no half-made project is ever left. The project's event date is the first
+// (main) event's.
 // The trial quota and PIC rules are unchanged.
 func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor ProjectActor, input ProjectInput, setup ProjectSetup) (*domain.Project, error) {
 	actorStaffID := actor.StaffID
@@ -468,17 +447,18 @@ func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor
 
 	fe := newFieldErrors()
 	fe.mergeFields(setup.FieldErrors)
-	checkContractValue(fe, input.ContractValue)
 	if err := s.checkPICs(ctx, tenantID, input.PICStaffID, picSalesStaffID); err != nil && !fe.mergeErr(err) {
 		return nil, err
 	}
-	venue, err := s.resolveVenueForCreate(ctx, tenantID, input, fe)
+	if s.eventService == nil {
+		return nil, apperror.Internal("Layanan acara belum tersedia")
+	}
+	events, err := s.eventService.PrepareForProject(ctx, tenantID, setup.Events, fe)
 	if err != nil {
 		return nil, err
 	}
-	terms, err := s.checkSetupTerms(input.ContractValue, setup.Terms, fe)
-	if err != nil {
-		return nil, err
+	if len(events) > 0 {
+		input.EventDate = events[0].event.EventDate
 	}
 	if err := fe.err(); err != nil {
 		return nil, err
@@ -486,138 +466,34 @@ func (s *ProjectService) CreateAtomic(ctx context.Context, tenantID int64, actor
 	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
 		return nil, err
 	}
+	isPKP, err := s.workspaceIsPKP(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 
 	p := &domain.Project{
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
-		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
-		PackageName: input.PackageName, ContractValue: input.ContractValue, Status: input.Status,
+		EventDate: input.EventDate, PrepStartDate: input.PrepStartDate, IsPKP: isPKP, Status: input.Status,
 		PICStaffID: input.PICStaffID, PICSalesStaffID: picSalesStaffID, Description: input.Description,
 	}
-	if venue != nil {
-		// One place for the venue: while one is attached from the directory,
-		// the project's venue text IS its name (same rule as Update).
-		id := venue.ID
-		p.VenueID, p.VenueRentalPrice, p.VenueCharge = &id, &venue.rental, &venue.charge
-		if venue.name != "" {
-			p.Venue = venue.name
-		}
-	}
-	tx := s.tx
-	if tx == nil {
-		tx = noTransactor{}
-	}
-	err = tx.InTx(ctx, func(ctx context.Context) error {
+	err = s.txOrDirect().InTx(ctx, func(ctx context.Context) error {
 		if err := s.repo.Create(ctx, p); err != nil {
+			return err
+		}
+		if err := s.eventService.createForProject(ctx, p.ID, actorStaffID, events); err != nil {
 			return err
 		}
 		if err := s.seedDefaultMilestones(ctx, tenantID, p.ID, p.EventDate, p.PrepStartDate); err != nil {
 			return err
 		}
-		if len(terms) > 0 {
-			for i := range terms {
-				terms[i].ProjectID = p.ID
-			}
-			if err := s.terms.ReplaceAll(ctx, p.ID, terms); err != nil {
-				return err
-			}
-		}
 		s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
 			"Proyek baru dibuat: "+p.Name)
-		if len(terms) > 0 {
-			s.activity.Record(ctx, &p.ID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(p.ID), p.Name,
-				"Jadwal termin klien diperbarui")
-		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return p, nil
-}
-
-// venueForCreate is a venue verified for attaching, with the prices the project
-// will snapshot.
-type venueForCreate struct {
-	ID             int64
-	name           string
-	rental, charge int64
-}
-
-// resolveVenueForCreate validates the venue part of a create request. It
-// returns nil (and no error) when no venue is asked for. A venue that is not
-// this workspace's is reported on "venueId"; prices left out default to the
-// venue's current ones (the project's own snapshot, freely different later).
-func (s *ProjectService) resolveVenueForCreate(ctx context.Context, tenantID int64, input ProjectInput, fe *fieldErrors) (*venueForCreate, error) {
-	if input.VenueID == nil || *input.VenueID == 0 {
-		return nil, nil
-	}
-	if *input.VenueID < 0 {
-		fe.add("Venue tidak ditemukan", "venueId")
-		return nil, nil
-	}
-	if s.venues == nil {
-		return nil, apperror.Internal("Direktori venue belum tersedia")
-	}
-	info, err := s.venues.GetVenueForAttach(ctx, tenantID, *input.VenueID)
-	if err != nil {
-		if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
-			fe.add("Venue tidak ditemukan", "venueId")
-			return nil, nil
-		}
-		return nil, err
-	}
-	v := &venueForCreate{ID: info.ID, name: info.Name, rental: info.RentalPrice, charge: info.Charge}
-	if input.VenueRentalPrice != nil {
-		if *input.VenueRentalPrice < 0 || *input.VenueRentalPrice > domain.MaxMoney {
-			fe.add("Harga sewa venue harus 0 atau lebih dan wajar", "venueRentalPrice")
-		}
-		v.rental = *input.VenueRentalPrice
-	}
-	if input.VenueCharge != nil {
-		if *input.VenueCharge < 0 || *input.VenueCharge > domain.MaxMoney {
-			fe.add("Biaya tambahan venue harus 0 atau lebih dan wajar", "venueCharge")
-		}
-		v.charge = *input.VenueCharge
-	}
-	return v, nil
-}
-
-// checkSetupTerms validates a payment schedule sent with a new project exactly
-// as PUT /payment-terms does (buildTerms: every row's problems at once, keyed
-// "terms[i].label|amount|dueDate"; at most 20; together not above the contract
-// value), adding to fe.
-func (s *ProjectService) checkSetupTerms(contractValue int64, inputs []PaymentTermInput, fe *fieldErrors) ([]domain.PaymentTerm, error) {
-	if len(inputs) == 0 {
-		return nil, nil
-	}
-	if s.terms == nil {
-		return nil, apperror.Internal("Jadwal pembayaran belum tersedia")
-	}
-	if len(inputs) > maxPaymentTerms {
-		fe.add("Maksimal 20 termin per proyek", "terms")
-		return nil, nil
-	}
-	terms, total, err := buildTerms(0, inputs)
-	if err != nil {
-		if !fe.mergeErr(err) {
-			return nil, err
-		}
-		return nil, nil
-	}
-	if contractValue > 0 && total > contractValue {
-		fe.add("Jumlah termin "+formatRupiah(total)+" melebihi nilai kontrak "+formatRupiah(contractValue)+". Kurangi nominal salah satu termin.", "terms")
-	}
-	return terms, nil
-}
-
-// checkContractValue refuses a contract value below zero or beyond MaxMoney
-// (EP-10: a negative value used to be saved as typed), keyed "contractValue".
-func checkContractValue(fe *fieldErrors, value int64) {
-	if value < 0 {
-		fe.add("Nilai kontrak tidak boleh negatif", "contractValue")
-	} else if value > domain.MaxMoney {
-		fe.add("Nilai kontrak terlalu besar", "contractValue")
-	}
 }
 
 // checkPICs confirms every named PIC is a staff member of this workspace (0 =
@@ -644,15 +520,12 @@ func (s *ProjectService) checkPICs(ctx context.Context, tenantID int64, ids ...i
 // Transition / Cancel, so editing a project's details can never skip a step of its
 // life (FLOW-IDEAL 2.4).
 type ProjectPatch struct {
-	Name, BrideName, GroomName, Venue, PackageName, Description Opt[string]
-	EventDate, PrepStartDate                                    Opt[time.Time]
-	ContractValue                                               Opt[int64]
+	Name, BrideName, GroomName, Description Opt[string]
+	// PrepStartDate is the booking date the early steps count from. The event
+	// date is not here: it is the main event's, changed on the event.
+	PrepStartDate Opt[time.Time]
 	// PICStaffID / PICSalesStaffID: 0 means "none"; PICSalesStaffID may be null.
 	PICStaffID, PICSalesStaffID Opt[int64]
-	// VenueID: null or 0 detaches the venue (and clears its cost snapshot), a
-	// positive id attaches that venue. VenueRentalPrice/VenueCharge: the cost
-	// snapshot of the attached venue (null clears).
-	VenueID, VenueRentalPrice, VenueCharge Opt[int64]
 	// IsArchived is the explicit archive state.
 	IsArchived Opt[bool]
 }
@@ -660,17 +533,16 @@ type ProjectPatch struct {
 // HasDetails reports whether the patch touches anything besides the archive state
 // (which has its own permission).
 func (p ProjectPatch) HasDetails() bool {
-	return p.Name.Present() || p.BrideName.Present() || p.GroomName.Present() || p.Venue.Present() || p.PackageName.Present() ||
-		p.Description.Present() || p.EventDate.Present() || p.PrepStartDate.Present() || p.ContractValue.Present() ||
-		p.PICStaffID.Present() || p.PICSalesStaffID.Present() || p.VenueID.Present() || p.VenueRentalPrice.Present() || p.VenueCharge.Present()
+	return p.Name.Present() || p.BrideName.Present() || p.GroomName.Present() ||
+		p.Description.Present() || p.PrepStartDate.Present() ||
+		p.PICStaffID.Present() || p.PICSalesStaffID.Present()
 }
 
 // Patch changes the fields of a project that were sent, and only those. The
 // business rules are judged on the merged result: a Wedding Planner ("Staff" role)
 // still cannot reassign a PIC (only Owner/Admin assign who a project's PIC is, and
 // a Sales caller keeps handover through PICStaffID), a PIC that changes must be
-// this workspace's staff, a venue is attached or detached with its cost snapshot,
-// and un-archiving counts against the trial cap. A patch that changes nothing
+// this workspace's staff, and un-archiving counts against the trial cap. A patch that changes nothing
 // writes nothing and answers with the project as it is. With `expected` the write
 // is a compare-and-set on updated_at: a stale version is a 409 (apperror.Stale)
 // carrying the current project.
@@ -683,22 +555,6 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	requiredText(fe, "name", "Nama proyek wajib diisi", patch.Name)
 	requiredText(fe, "brideName", "Nama pengantin wanita wajib diisi", patch.BrideName)
 	requiredText(fe, "groomName", "Nama pengantin pria wajib diisi", patch.GroomName)
-	requiredText(fe, "packageName", "Nama paket wajib diisi", patch.PackageName)
-	if patch.ContractValue.Present() {
-		checkContractValue(fe, patch.ContractValue.Value())
-	}
-	for _, f := range []struct {
-		o   Opt[int64]
-		key string
-		msg string
-	}{
-		{patch.VenueRentalPrice, "venueRentalPrice", "Harga sewa venue harus 0 atau lebih dan wajar"},
-		{patch.VenueCharge, "venueCharge", "Biaya tambahan venue harus 0 atau lebih dan wajar"},
-	} {
-		if f.o.Present() && !f.o.IsNull() && (f.o.Value() < 0 || f.o.Value() > domain.MaxMoney) {
-			fe.add(f.msg, f.key)
-		}
-	}
 	if patch.PICStaffID.Present() && patch.PICStaffID.Value() < 0 {
 		fe.add("Anggota tim tidak ditemukan", "picStaffId")
 	}
@@ -715,12 +571,8 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	setVal(&ch, "name", "nama", &p.Name, patch.Name)
 	setVal(&ch, "brideName", "nama pengantin wanita", &p.BrideName, patch.BrideName)
 	setVal(&ch, "groomName", "nama pengantin pria", &p.GroomName, patch.GroomName)
-	setDate(&ch, "eventDate", "tanggal acara", &p.EventDate, patch.EventDate)
 	setDate(&ch, "prepStartDate", "mulai persiapan", &p.PrepStartDate, patch.PrepStartDate)
-	setVal(&ch, "packageName", "paket", &p.PackageName, patch.PackageName)
-	setVal(&ch, "contractValue", "nilai kontrak", &p.ContractValue, patch.ContractValue)
 	setVal(&ch, "description", "deskripsi", &p.Description, patch.Description)
-	setVal(&ch, "venue", "venue", &p.Venue, patch.Venue)
 	setVal(&ch, "picStaffId", "PIC", &p.PICStaffID, patch.PICStaffID)
 	setVal(&ch, "picSalesStaffId", "PIC Sales", &p.PICSalesStaffID, orZero(patch.PICSalesStaffID))
 	setVal(&ch, "isArchived", "status arsip", &p.IsArchived, patch.IsArchived)
@@ -745,9 +597,6 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 			return nil, err
 		}
 	}
-	if err := s.patchVenue(ctx, tenantID, p, patch, &ch); err != nil {
-		return nil, err
-	}
 	if wasArchived && !p.IsArchived && isActiveProject(p.Status, false) {
 		if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
 			return nil, err
@@ -757,22 +606,18 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 		return p, nil
 	}
 
-	// The Timeline steps that follow the event date move with it, in the same
+	// The Timeline steps counted from the booking date move with it, in the same
 	// transaction as the project's own write (EP-06). Nothing moves when the write
 	// did not happen (a stale If-Match is answered by finishPatch below).
 	var wrote bool
 	moved := 0
-	tx := s.tx
-	if tx == nil {
-		tx = noTransactor{}
-	}
-	err = tx.InTx(ctx, func(ctx context.Context) error {
+	err = s.txOrDirect().InTx(ctx, func(ctx context.Context) error {
 		w, err := s.repo.Patch(ctx, p, ch.keys, expected)
 		if err != nil {
 			return err
 		}
 		wrote = w
-		if w && (ch.has("eventDate") || ch.has("prepStartDate")) {
+		if w && ch.has("prepStartDate") {
 			moved, err = s.shiftMilestones(ctx, p.ID, p.EventDate, p.PrepStartDate)
 		}
 		return err
@@ -788,7 +633,7 @@ func (s *ProjectService) Patch(ctx context.Context, tenantID, id int64, actor Pr
 	}
 	if moved > 0 {
 		s.activity.Record(ctx, &fresh.ID, domain.ActivityMilestoneUpdated, actor.StaffID, "project_milestone", "", fresh.Name,
-			strconv.Itoa(moved)+" tahapan mengikuti tanggal acara yang baru")
+			strconv.Itoa(moved)+" tahapan mengikuti tanggal booking yang baru")
 	}
 	if len(ch.keys) == 1 && ch.has("isArchived") {
 		action := "diarsipkan"
@@ -811,95 +656,28 @@ func orZero(o Opt[int64]) Opt[int64] {
 	return o
 }
 
-// patchVenue applies the venue part of a project patch onto the merged project:
-// attach, change or detach the directory venue, and the cost snapshot that rides
-// with it. The rules are the ones the full edit had; what a patch adds is that a
-// venue attached without prices snapshots the venue's current ones (as create
-// does), and prices sent for a project with no venue are refused.
-func (s *ProjectService) patchVenue(ctx context.Context, tenantID int64, p *domain.Project, patch ProjectPatch, ch *changeSet) error {
-	venueSent := patch.VenueID.Present()
-	detach := venueSent && (patch.VenueID.IsNull() || patch.VenueID.Value() == 0)
-	switch {
-	case detach:
-		// Detach always force-clears the cost snapshot too, whatever the request
-		// sent for those two fields: there is no cost without a venue.
-		if p.VenueID != nil {
-			p.VenueID = nil
-			ch.note("venueId", "venue")
-		}
-		if p.VenueRentalPrice != nil {
-			p.VenueRentalPrice = nil
-			ch.note("venueRentalPrice", "harga sewa venue")
-		}
-		if p.VenueCharge != nil {
-			p.VenueCharge = nil
-			ch.note("venueCharge", "biaya venue")
-		}
+// syncEventDate makes the project's event date the main event's and moves the
+// Timeline steps that follow it, inside the caller's transaction (EventService
+// calls it whenever the main event or its date changes).
+func (s *ProjectService) syncEventDate(ctx context.Context, tenantID, projectID, actorStaffID int64, date time.Time) error {
+	p, err := s.Get(ctx, tenantID, projectID)
+	if err != nil {
+		return err
+	}
+	if p.EventDate.Format("2006-01-02") == date.Format("2006-01-02") {
 		return nil
-	case venueSent:
-		venueID := patch.VenueID.Value()
-		if venueID < 0 {
-			return apperror.Validation("Venue tidak ditemukan", map[string][]string{"venueId": {"Venue tidak ditemukan"}})
-		}
-		sameVenue := p.VenueID != nil && *p.VenueID == venueID
-		if !sameVenue && s.venues != nil {
-			// A different venue is being attached now and must be this workspace's own.
-			info, err := s.venues.GetVenueForAttach(ctx, tenantID, venueID)
-			if err != nil {
-				if ae, ok := apperror.As(err); ok && ae.Kind == apperror.KindNotFound {
-					return apperror.Validation("Venue tidak ditemukan", map[string][]string{"venueId": {"Venue tidak ditemukan"}})
-				}
-				return err
-			}
-			id := venueID
-			p.VenueID = &id
-			ch.note("venueId", "venue")
-			if !patch.VenueRentalPrice.Present() {
-				v := info.RentalPrice
-				p.VenueRentalPrice = &v
-				ch.note("venueRentalPrice", "harga sewa venue")
-			}
-			if !patch.VenueCharge.Present() {
-				v := info.Charge
-				p.VenueCharge = &v
-				ch.note("venueCharge", "biaya venue")
-			}
-			// One place for the venue: while one is attached from the directory, the
-			// project's venue text IS its name, so the two can never disagree.
-			if info.Name != "" && p.Venue != info.Name {
-				p.Venue = info.Name
-				ch.note("venue", "venue")
-			}
-		} else if sameVenue && s.venues != nil {
-			// Same venue as before: lenient (a venue deleted since must not make every
-			// later edit fail); the text follows the venue's name while it resolves.
-			if summary, err := s.venues.GetVenueSummary(ctx, tenantID, venueID); err == nil && summary.Name != "" && p.Venue != summary.Name {
-				p.Venue = summary.Name
-				ch.note("venue", "venue")
-			}
-		} else if !sameVenue {
-			id := venueID
-			p.VenueID = &id
-			ch.note("venueId", "venue")
-		}
 	}
-	if patch.VenueRentalPrice.Present() || patch.VenueCharge.Present() {
-		if p.VenueID == nil {
-			if (patch.VenueRentalPrice.Present() && !patch.VenueRentalPrice.IsNull()) || (patch.VenueCharge.Present() && !patch.VenueCharge.IsNull()) {
-				return apperror.Validation("Pilih venue lebih dulu", map[string][]string{"venueId": {"Pilih venue lebih dulu sebelum mengisi biayanya"}})
-			}
-			return nil // clearing a snapshot that is already empty
-		}
-		setNullable(ch, "venueRentalPrice", "harga sewa venue", &p.VenueRentalPrice, patch.VenueRentalPrice)
-		setNullable(ch, "venueCharge", "biaya venue", &p.VenueCharge, patch.VenueCharge)
+	p.EventDate = date
+	if _, err := s.repo.Patch(ctx, p, []string{"eventDate"}, nil); err != nil {
+		return err
 	}
-	// The venue text follows the directory venue's name while one is attached, so a
-	// patch of just the text cannot make the two disagree.
-	if patch.Venue.Present() && !venueSent && p.VenueID != nil && s.venues != nil {
-		if summary, err := s.venues.GetVenueSummary(ctx, tenantID, *p.VenueID); err == nil && summary.Name != "" && p.Venue != summary.Name {
-			p.Venue = summary.Name
-			ch.note("venue", "venue")
-		}
+	moved, err := s.shiftMilestones(ctx, p.ID, p.EventDate, p.PrepStartDate)
+	if err != nil {
+		return err
+	}
+	if moved > 0 {
+		s.activity.Record(ctx, &p.ID, domain.ActivityMilestoneUpdated, actorStaffID, "project_milestone", "", p.Name,
+			strconv.Itoa(moved)+" tahapan mengikuti tanggal acara utama yang baru")
 	}
 	return nil
 }
@@ -1060,22 +838,28 @@ func (s *ProjectService) Delete(ctx context.Context, tenantID, id int64) error {
 		}
 	}
 
+	// A project made from a quotation: the quotation stays converted, with
+	// "Proyek sudah dihapus" (PLAN §5.4). Best effort, like the steps above.
+	if p.QuotationID != nil && s.quotations != nil {
+		if err := s.quotations.MarkProjectDeleted(ctx, tenantID, id); err != nil {
+			logger.Error("failed to mark quotation %d of deleted project %d: %v", *p.QuotationID, id, err)
+		}
+	}
+
 	return nil
 }
 
 // Duplicate creates a new project from `input` (the caller's, possibly
-// user-edited, copy of the source project's fields — see ADR-0014) and
-// clones the source's Project Milestones and Vendor Engagements (with their
-// own Vendor Milestones) as a reusable structural template. Deliberately
-// excluded: vendor_payments, vendor_issues, evidence, activity_log, and
-// clients — all historical/transactional data tied to what actually happened
-// on the source project, not to a template. Every cloned row is reset to its
-// initial state (milestone status, engagement status, paid/DP amounts);
-// every date (booking/due dates, and Timeline steps dated by hand) is copied
-// verbatim, not shifted — the user adjusts whatever's stale by hand afterward,
-// same as any other edit. The exception is a Timeline step that follows the
-// event date (EP-06): it keeps its offset and is dated from the new project's
-// own event and booking dates.
+// user-edited, copy of the source project's fields — see ADR-0014) and copies
+// the source's structure as a template, in one transaction: its Timeline steps,
+// its vendors and venues (back to "Planned", with their payer, "tampilkan
+// nama", agreed cost and steps) and its events. The events keep their spacing:
+// they move by the distance between the source's event date and input's, so the
+// main event lands on the new date. Deliberately excluded: payments, kendala,
+// files, activity and clients — what actually happened on the source project.
+// Every copied step starts "Not Started"; dates set by hand are copied as they
+// are, a Timeline step that follows the event date (EP-06) is dated from the new
+// project's own dates.
 func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorStaffID int64, sourceID int64, input ProjectInput) (*domain.Project, error) {
 	source, err := s.Get(ctx, tenantID, sourceID)
 	if err != nil {
@@ -1083,33 +867,51 @@ func (s *ProjectService) Duplicate(ctx context.Context, tenantID int64, actorSta
 	}
 	input.Status = domain.StatusDraft // a copy always starts as Draft (ADR-0027)
 	fe := newFieldErrors()
-	checkContractValue(fe, input.ContractValue)
+	if input.EventDate.IsZero() {
+		fe.add("Tanggal acara wajib diisi", "eventDate")
+	}
 	if err := fe.err(); err != nil {
 		return nil, err
 	}
 	if err := s.checkActiveProjectQuota(ctx, tenantID); err != nil {
 		return nil, err
 	}
+	if err := s.checkCopiedCapacity(ctx, source.ID); err != nil {
+		return nil, err
+	}
+	isPKP, err := s.workspaceIsPKP(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 
 	p := &domain.Project{
 		TenantID: tenantID, Name: input.Name, BrideName: input.BrideName, GroomName: input.GroomName,
-		EventDate: input.EventDate, Venue: input.Venue, PrepStartDate: input.PrepStartDate,
-		PackageName: input.PackageName, ContractValue: input.ContractValue, Status: input.Status,
+		EventDate: input.EventDate, PrepStartDate: input.PrepStartDate, IsPKP: isPKP, Status: input.Status,
 		PICStaffID: input.PICStaffID, PICSalesStaffID: input.PICSalesStaffID, Description: input.Description,
 	}
-	if err := s.repo.Create(ctx, p); err != nil {
+	err = s.txOrDirect().InTx(ctx, func(ctx context.Context) error {
+		if err := s.repo.Create(ctx, p); err != nil {
+			return err
+		}
+		if err := s.cloneMilestonesFrom(ctx, sourceID, p); err != nil {
+			return err
+		}
+		suppliers, events, err := s.cloneSuppliersAndEvents(ctx, source, p)
+		if err != nil {
+			return err
+		}
+		// The Rincian comes along (amounts and rule copies; never a payment),
+		// and the contract cache is written in this same transaction.
+		if err := s.lines.CloneLines(ctx, tenantID, source.ID, p.ID, actorStaffID, events, suppliers); err != nil {
+			return err
+		}
+		s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
+			"Proyek baru dibuat dari duplikat proyek: "+source.Name)
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	if err := s.cloneMilestonesFrom(ctx, sourceID, p); err != nil {
-		return nil, err
-	}
-	if err := s.cloneVendorEngagementsFrom(ctx, sourceID, p.ID, p.EventDate); err != nil {
-		return nil, err
-	}
-
-	s.activity.Record(ctx, &p.ID, domain.ActivityProjectCreated, actorStaffID, "project", formatID(p.ID), p.Name,
-		"Proyek baru dibuat dari duplikat proyek: "+source.Name)
 	return p, nil
 }
 
@@ -1136,46 +938,99 @@ func (s *ProjectService) cloneMilestonesFrom(ctx context.Context, sourceProjectI
 	return nil
 }
 
-// cloneVendorEngagementsFrom clones every vendor engagement (and each one's
-// own vendor milestones) from the source project. EventDate is synced to the
-// new project's own event date (newEventDate) rather than copied from the
-// source engagement — it's a denormalized mirror of the parent project's
-// event date, always set that way on every other creation path (see
-// useProjectStore.ts's vendorEngagementInputBody), not an independent piece
-// of information the "copy dates verbatim" choice applies to. BookingDate and
-// DueDate, which are genuinely independent, are copied as-is.
-func (s *ProjectService) cloneVendorEngagementsFrom(ctx context.Context, sourceProjectID, newProjectID int64, newEventDate time.Time) error {
-	engagements, err := s.vendorEngagements.ListByProject(ctx, sourceProjectID)
+// checkCopiedCapacity applies the capacity rule to the events the copy will
+// have, at the venues it will have (PLAN §3.2 "Kapasitas dicek ulang"): the
+// source's events against its live, not cancelled venues and their copied
+// capacities. A copy that would not fit is refused, with the numbers, and
+// nothing is created.
+func (s *ProjectService) checkCopiedCapacity(ctx context.Context, sourceID int64) error {
+	if s.eventService == nil {
+		return nil
+	}
+	suppliers, err := s.suppliers.ListByProject(ctx, sourceID)
 	if err != nil {
 		return err
 	}
-	for _, pv := range engagements {
-		clone := &domain.ProjectVendor{
-			ProjectID: newProjectID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope,
-			ContractValue: pv.ContractValue, PricingTier: pv.PricingTier, EngagementStatus: domain.EngagementPlanned,
-			BookingDate: pv.BookingDate, EventDate: newEventDate, DPAmount: 0,
-			DueDate: pv.DueDate, PICStaffID: pv.PICStaffID, Notes: pv.Notes,
+	venues := map[int64]domain.ProjectSupplier{}
+	for _, sup := range suppliers {
+		if sup.Kind == domain.SupplierVenue && sup.EngagementStatus != domain.EngagementCancelled {
+			venues[sup.ID] = sup
 		}
-		if err := s.vendorEngagements.Create(ctx, clone); err != nil {
-			return err
-		}
+	}
+	events, err := s.events.ListByProject(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+	domain.SortEvents(events)
+	return s.eventService.capacityRefusal("Proyek belum bisa diduplikat. ", events, venues)
+}
 
-		vendorMilestones, err := s.vendorMilestones.ListByProjectVendor(ctx, pv.ID)
-		if err != nil {
-			return err
+// cloneSuppliersAndEvents copies the source's live vendors and venues (with
+// their steps) and its events onto target. A cancelled supplier is left out on
+// purpose (the copy is a new start, and a cancelled booking is not part of it),
+// so an event held at a cancelled venue is copied without a venue: its guests
+// are then "belum dicek ke kapasitas venue" until one is chosen. Every other
+// event's venue points at the copy of its venue.
+//
+// It returns the source → copy id maps of the suppliers and the events (the
+// Rincian lines that point at them are remapped with them).
+func (s *ProjectService) cloneSuppliersAndEvents(ctx context.Context, source, target *domain.Project) (map[int64]int64, map[int64]int64, error) {
+	suppliers, err := s.suppliers.ListByProject(ctx, source.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	copied := map[int64]int64{}
+	for _, sup := range suppliers {
+		if sup.EngagementStatus == domain.EngagementCancelled {
+			continue
 		}
-		for _, vm := range vendorMilestones {
-			vmClone := &domain.VendorMilestone{
-				ProjectVendorID: clone.ID, SortOrder: vm.SortOrder, Name: vm.Name, Description: vm.Description,
-				Status: domain.MilestoneNotStarted, TargetDate: vm.TargetDate,
-				PICStaffID: vm.PICStaffID, Notes: vm.Notes,
+		clone := sup
+		clone.ID, clone.ProjectID, clone.EngagementStatus = 0, target.ID, domain.EngagementPlanned
+		clone.DeletedAt = nil
+		if err := s.suppliers.Create(ctx, &clone); err != nil {
+			return nil, nil, err
+		}
+		copied[sup.ID] = clone.ID
+		steps, err := s.vendorMilestones.ListBySupplier(ctx, sup.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, vm := range steps {
+			step := &domain.VendorMilestone{
+				ProjectSupplierID: clone.ID, SortOrder: vm.SortOrder, Name: vm.Name, Description: vm.Description,
+				Status: domain.MilestoneNotStarted, TargetDate: vm.TargetDate, PICStaffID: vm.PICStaffID, Notes: vm.Notes,
 			}
-			if err := s.vendorMilestones.Create(ctx, vmClone); err != nil {
-				return err
+			if err := s.vendorMilestones.Create(ctx, step); err != nil {
+				return nil, nil, err
 			}
 		}
 	}
-	return nil
+	events, err := s.events.ListByProject(ctx, source.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	eventCopies := map[int64]int64{}
+	shift := target.EventDate.Sub(source.EventDate)
+	for _, e := range events {
+		clone := e
+		clone.ID, clone.ProjectID = 0, target.ID
+		clone.EventDate = e.EventDate.Add(shift)
+		clone.VenueSupplierID = nil
+		if e.VenueSupplierID != nil {
+			if id, ok := copied[*e.VenueSupplierID]; ok {
+				clone.VenueSupplierID = &id
+			}
+		}
+		clone.Sessions = append([]domain.EventSession(nil), e.Sessions...)
+		for i := range clone.Sessions {
+			clone.Sessions[i].ID, clone.Sessions[i].EventID = 0, 0
+		}
+		if err := s.events.Create(ctx, &clone); err != nil {
+			return nil, nil, err
+		}
+		eventCopies[e.ID] = clone.ID
+	}
+	return copied, eventCopies, nil
 }
 
 // --- Project milestones ---
@@ -1452,25 +1307,23 @@ func (s *ProjectService) computeBatch(ctx context.Context, projectIDs []int64, a
 }
 
 // progressData is every row progress is computed from, grouped per project.
-// Deleted engagements, payments and the kendala of a deleted engagement are not
-// in it (the repositories skip them), so they count for nothing.
+// Deleted suppliers, payments and the kendala of a deleted supplier are not in
+// it (the repositories skip them), so they count for nothing.
 type progressData struct {
 	milestones       map[int64][]domain.ProjectMilestone
-	engagements      map[int64][]domain.ProjectVendor
-	vendorMilestones map[int64][]domain.VendorMilestone // by engagement
+	suppliers        map[int64][]domain.ProjectSupplier
+	vendorMilestones map[int64][]domain.VendorMilestone // by supplier
 	issues           map[int64][]domain.VendorIssue
-	payments         map[int64][]domain.VendorPayment
-	venuePayments    map[int64][]domain.VenuePayment
+	payments         map[int64][]domain.SupplierPayment
 	evidence         map[int64][]domain.Evidence
 }
 
-// loadProgressData reads the seven sources in seven queries.
+// loadProgressData reads the six sources in six queries.
 func (s *ProjectService) loadProgressData(ctx context.Context, projectIDs []int64) (*progressData, error) {
 	d := &progressData{
-		milestones: map[int64][]domain.ProjectMilestone{}, engagements: map[int64][]domain.ProjectVendor{},
+		milestones: map[int64][]domain.ProjectMilestone{}, suppliers: map[int64][]domain.ProjectSupplier{},
 		vendorMilestones: map[int64][]domain.VendorMilestone{}, issues: map[int64][]domain.VendorIssue{},
-		payments: map[int64][]domain.VendorPayment{}, venuePayments: map[int64][]domain.VenuePayment{},
-		evidence: map[int64][]domain.Evidence{},
+		payments: map[int64][]domain.SupplierPayment{}, evidence: map[int64][]domain.Evidence{},
 	}
 	milestones, err := s.milestones.ListByProjects(ctx, projectIDs)
 	if err != nil {
@@ -1479,21 +1332,21 @@ func (s *ProjectService) loadProgressData(ctx context.Context, projectIDs []int6
 	for _, m := range milestones {
 		d.milestones[m.ProjectID] = append(d.milestones[m.ProjectID], m)
 	}
-	engagements, err := s.vendorEngagements.ListByProjects(ctx, projectIDs)
+	suppliers, err := s.suppliers.ListByProjects(ctx, projectIDs)
 	if err != nil {
 		return nil, err
 	}
-	engagementIDs := make([]int64, 0, len(engagements))
-	for _, pv := range engagements {
-		d.engagements[pv.ProjectID] = append(d.engagements[pv.ProjectID], pv)
-		engagementIDs = append(engagementIDs, pv.ID)
+	supplierIDs := make([]int64, 0, len(suppliers))
+	for _, sup := range suppliers {
+		d.suppliers[sup.ProjectID] = append(d.suppliers[sup.ProjectID], sup)
+		supplierIDs = append(supplierIDs, sup.ID)
 	}
-	vendorMilestones, err := s.vendorMilestones.ListByProjectVendors(ctx, engagementIDs)
+	vendorMilestones, err := s.vendorMilestones.ListBySuppliers(ctx, supplierIDs)
 	if err != nil {
 		return nil, err
 	}
 	for _, vm := range vendorMilestones {
-		d.vendorMilestones[vm.ProjectVendorID] = append(d.vendorMilestones[vm.ProjectVendorID], vm)
+		d.vendorMilestones[vm.ProjectSupplierID] = append(d.vendorMilestones[vm.ProjectSupplierID], vm)
 	}
 	issues, err := s.issues.ListByProjects(ctx, projectIDs)
 	if err != nil {
@@ -1509,13 +1362,6 @@ func (s *ProjectService) loadProgressData(ctx context.Context, projectIDs []int6
 	for _, p := range payments {
 		d.payments[p.ProjectID] = append(d.payments[p.ProjectID], p)
 	}
-	venuePayments, err := s.venuePayments.ListByProjects(ctx, projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, p := range venuePayments {
-		d.venuePayments[p.ProjectID] = append(d.venuePayments[p.ProjectID], p)
-	}
 	evidence, err := s.evidence.ListByProjects(ctx, projectIDs)
 	if err != nil {
 		return nil, err
@@ -1527,13 +1373,14 @@ func (s *ProjectService) loadProgressData(ctx context.Context, projectIDs []int6
 }
 
 // progressFor computes one project's progress from the loaded rows. clientView
-// counts only the kendala shared with the client.
+// counts only the kendala shared with the client, and only the payments the
+// client made to a supplier (what the WO pays its suppliers is not theirs).
 func (d *progressData) progressFor(projectID int64, asOf time.Time, clientView bool) domain.ProjectProgress {
 	projectStats := domain.ComputeMilestoneStats(toMilestoneLikes(d.milestones[projectID]), asOf)
 
 	var vendorMilestones []domain.VendorMilestone
-	for _, pv := range d.engagements[projectID] {
-		vendorMilestones = append(vendorMilestones, d.vendorMilestones[pv.ID]...)
+	for _, sup := range d.suppliers[projectID] {
+		vendorMilestones = append(vendorMilestones, d.vendorMilestones[sup.ID]...)
 	}
 	vendorStats := domain.ComputeMilestoneStats(toVendorMilestoneLikes(vendorMilestones), asOf)
 
@@ -1548,17 +1395,13 @@ func (d *progressData) progressFor(projectID int64, asOf time.Time, clientView b
 		}
 	}
 
-	evidences := d.evidence[projectID]
-	hasInvoice, hasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedPayment)
+	hasInvoice, hasProof := domain.PaymentEvidenceStatus(d.evidence[projectID], domain.RelatedSupplierPayment)
 	incompleteCount := 0
 	for _, p := range d.payments[projectID] {
-		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof) {
-			incompleteCount++
+		if clientView && p.Payer != domain.PayerClient {
+			continue
 		}
-	}
-	vHasInvoice, vHasProof := domain.PaymentEvidenceStatus(evidences, domain.RelatedVenuePayment)
-	for _, p := range d.venuePayments[projectID] {
-		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, vHasInvoice, vHasProof) {
+		if !domain.IsPaymentEvidenceComplete(p.Type, p.ID, hasInvoice, hasProof) {
 			incompleteCount++
 		}
 	}

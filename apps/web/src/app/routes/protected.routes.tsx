@@ -9,6 +9,9 @@ import { ProjectTabRedirect } from "@/app/routes/ProjectTabRedirect";
 
 const DashboardPage = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
 const ProjectListPage = lazy(() => import("@/modules/projects/pages/ProjectListPage"));
+const QuotationListPage = lazy(() => import("@/modules/offers/pages/QuotationListPage"));
+const QuotationPage = lazy(() => import("@/modules/offers/pages/QuotationPage"));
+const QuotationConvertPage = lazy(() => import("@/modules/offers/pages/QuotationConvertPage"));
 const ProjectCreatePage = lazy(() => import("@/modules/projects/pages/ProjectCreatePage"));
 const ProjectDetailLayout = lazy(() => import("@/modules/projects/pages/ProjectDetailLayout"));
 const ProjectSummaryTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectSummaryTabPage"));
@@ -17,11 +20,15 @@ const ProjectVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/Pr
 const ProjectMilestoneTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectMilestoneTabPage"));
 const ProjectFinanceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectFinanceTabPage"));
 const FinanceClientTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceClientTabPage"));
-const FinanceVendorTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceVendorTabPage"));
-const FinanceVenueTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceVenueTabPage"));
+const FinanceSupplierTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceSupplierTabPage"));
+const FinanceClientPaidTabPage = lazy(() => import("@/modules/projects/pages/tabs/FinanceClientPaidTabPage"));
+const ProjectEventsTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectEventsTabPage"));
 const ProjectEvidenceTabPage = lazy(() => import("@/modules/projects/pages/tabs/ProjectEvidenceTabPage"));
 const ClientListPage = lazy(() => import("@/modules/clients/pages/ClientListPage"));
 const VendorCategoryListPage = lazy(() => import("@/modules/vendor-categories/pages/VendorCategoryListPage"));
+const PackageListPage = lazy(() => import("@/modules/packages/pages/PackageListPage"));
+const PackageFormPage = lazy(() => import("@/modules/packages/pages/PackageFormPage"));
+const EventKindListPage = lazy(() => import("@/modules/event-kinds/pages/EventKindListPage"));
 const MilestoneTemplateListPage = lazy(() => import("@/modules/milestone-templates/pages/MilestoneTemplateListPage"));
 const VendorListPage = lazy(() => import("@/modules/vendors/pages/VendorListPage"));
 const VenueListPage = lazy(() => import("@/modules/venues/pages/VenueListPage"));
@@ -58,6 +65,18 @@ export const protectedRoutes: RouteObject = {
         // Project stays open to every staff role, including Wedding Planner
         // (scoped server-side to their own PIC'd projects — see PLAN.md's
         // RBAC section) — no RequireRole wrapper needed here.
+        // Penawaran (paket WO Tahap 5): reading needs quotation.view; "Jadikan proyek" also project.create.
+        {
+          element: <RequirePermission all={["quotation.view"]} />,
+          children: [
+            { path: ROUTE_PATHS.quotations, element: <QuotationListPage />, handle: { title: "Penawaran" } },
+            { path: "/penawaran/:quotationId", element: <QuotationPage />, handle: { title: "Penawaran" } },
+            {
+              element: <RequirePermission all={["quotation.view", "project.create"]} />,
+              children: [{ path: "/penawaran/:quotationId/jadikan-proyek", element: <QuotationConvertPage />, handle: { title: "Jadikan proyek" } }],
+            },
+          ],
+        },
         { path: ROUTE_PATHS.projects, element: <ProjectListPage />, handle: { title: "Proyek" } },
         // A static path wins over "/proyek/:projectId" below.
         {
@@ -70,6 +89,7 @@ export const protectedRoutes: RouteObject = {
           children: [
             { index: true, element: <Navigate to="ringkasan" replace /> },
             { path: "ringkasan", element: <ProjectSummaryTabPage />, handle: { title: "Ringkasan proyek" } },
+            { path: "acara-rincian", element: <ProjectEventsTabPage />, handle: { title: "Acara dan rincian proyek" } },
             { path: "jadwal", element: <ProjectMilestoneTabPage />, handle: { title: "Jadwal proyek" } },
             { path: "vendor", element: <ProjectVendorTabPage />, handle: { title: "Vendor dan venue proyek" } },
             {
@@ -78,8 +98,8 @@ export const protectedRoutes: RouteObject = {
               children: [
                 { index: true, element: <Navigate to="klien" replace /> },
                 { path: "klien", element: <FinanceClientTabPage />, handle: { title: "Keuangan proyek: klien" } },
-                { path: "vendor", element: <FinanceVendorTabPage />, handle: { title: "Keuangan proyek: vendor" } },
-                { path: "venue", element: <FinanceVenueTabPage />, handle: { title: "Keuangan proyek: venue" } },
+                { path: "vendor-venue", element: <FinanceSupplierTabPage />, handle: { title: "Keuangan proyek: vendor dan venue" } },
+                { path: "dibayar-klien", element: <FinanceClientPaidTabPage />, handle: { title: "Keuangan proyek: dibayar klien langsung" } },
               ],
             },
             { path: "kendala", element: <ProjectIssuesTabPage />, handle: { title: "Kendala proyek" } },
@@ -107,6 +127,16 @@ export const protectedRoutes: RouteObject = {
           children: [
             { path: ROUTE_PATHS.vendors, element: <VendorListPage />, handle: { title: "Vendor" } },
             { path: ROUTE_PATHS.venues, element: <VenueListPage />, handle: { title: "Venue" } },
+          ],
+        },
+        // Katalog › Paket and Jenis acara (paket WO Tahap 1). "/paket/baru" is static, so it wins over "/paket/:packageId".
+        {
+          element: <RequirePermission all={["package.manage"]} />,
+          children: [
+            { path: ROUTE_PATHS.packages, element: <PackageListPage />, handle: { title: "Paket" } },
+            { path: ROUTE_PATHS.packageNew, element: <PackageFormPage />, handle: { title: "Paket baru" } },
+            { path: "/paket/:packageId", element: <PackageFormPage />, handle: { title: "Paket" } },
+            { path: ROUTE_PATHS.eventKinds, element: <EventKindListPage />, handle: { title: "Jenis acara" } },
           ],
         },
         { element: <RequirePermission all={["vendor.category.manage"]} />, children: [{ path: ROUTE_PATHS.vendorCategories, element: <VendorCategoryListPage />, handle: { title: "Kategori vendor" } }] },

@@ -1,5 +1,7 @@
 # ADR-0020: General project documents + per-document Client Portal visibility
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): jenis bukti kini `vendorMilestone`, `supplierPayment`, `projectSupplier`, `issue`, `clientPayment`, `general`, `projectMilestone`; file tahapan vendor tampil ke klien bila dibayar klien langsung atau ditandai, file pembayaran hanya untuk pembayaran oleh klien.
+
 ## Status
 Accepted — implemented.
 

@@ -18,6 +18,41 @@ type followDB struct {
 	terms      []domain.PaymentTerm
 	payments   []domain.ClientPayment
 	patched    []string // "<milestone id>:<keys>" of every milestone write
+	events     *memEvents
+	suppliers  *memSuppliers
+	eventSvc   *EventService
+	tx         *followTx
+	// lines is the Rincian (line_service_test.go); nil elsewhere.
+	lines *memLines
+}
+
+// followTx is a Transactor over followDB: a failed InTx puts the project, its
+// steps, events and suppliers back.
+type followTx struct {
+	db            *followDB
+	began, locked int
+}
+
+func (t *followTx) InTx(ctx context.Context, fn func(context.Context) error) error {
+	t.began++
+	p, ms := t.db.project, append([]domain.ProjectMilestone(nil), t.db.milestones...)
+	undoEvents, undoSuppliers := t.db.events.snapshot(), t.db.suppliers.snapshot()
+	undoLines := func() {}
+	if t.db.lines != nil {
+		undoLines = t.db.lines.snapshot()
+	}
+	if err := fn(ctx); err != nil {
+		t.db.project, t.db.milestones = p, ms
+		undoEvents()
+		undoSuppliers()
+		undoLines()
+		return err
+	}
+	return nil
+}
+func (t *followTx) LockProject(context.Context, int64) error {
+	t.locked++
+	return nil
 }
 
 type followProjects struct {
@@ -113,25 +148,47 @@ func ymd(s string) time.Time {
 	return t
 }
 
+// newFollow is a project service of workspace 1 with its event service (see
+// wireEventsWith), all in memory.
 func newFollow() (*ProjectService, *followDB, *memActivity) {
-	db := &followDB{}
+	db := &followDB{events: &memEvents{}, suppliers: &memSuppliers{pays: &memSupplierPayments{}}}
+	db.tx = &followTx{db: db}
 	mem := &memActivity{}
 	act := NewActivityService(activityRepoAdapter{mem})
 	svc := NewProjectService(followProjects{db: db}, followMilestones{db: db}, followTemplates{}, nil, nil, nil, nil, nil, nil, act,
 		staffByTenant{1: {10: "Ani"}})
+	svc.SetAtomicSupport(db.tx, followTerms{db: db})
+	db.eventSvc = wireEventsWith(svc, db.events, db.suppliers, db.tx, act)
 	return svc, db, mem
+}
+
+// akadOn is a one-session Akad with no venue yet.
+func akadOn(date time.Time) EventInput {
+	return EventInput{EventKindID: kindAkad, EventDate: date, Layout: domain.LayoutSeated, Sessions: []SessionInput{session("", 100)}}
 }
 
 func createFollowProject(t *testing.T, svc *ProjectService) *domain.Project {
 	t.Helper()
-	p, err := svc.Create(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, ProjectInput{
-		Name: "Ayu & Bima", BrideName: "Ayu", GroomName: "Bima", EventDate: ymd("2027-06-12"), Venue: "-",
-		PrepStartDate: ymd("2026-11-15"), PackageName: "Gold", ContractValue: 100_000_000,
-	})
+	p, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, ProjectInput{
+		Name: "Ayu & Bima", BrideName: "Ayu", GroomName: "Bima",
+		PrepStartDate: ymd("2026-11-15"),
+	}, ProjectSetup{Events: []EventInput{akadOn(ymd("2027-06-12"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// moveMainEvent changes the date of the project's main event.
+func moveMainEvent(t *testing.T, db *followDB, projectID int64, date time.Time) {
+	t.Helper()
+	main := domain.MainEvent(db.events.rows)
+	if main == nil {
+		t.Fatal("no main event")
+	}
+	if _, err := db.eventSvc.Update(context.Background(), 1, projectID, main.ID, 10, akadOn(date), nil); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func targets(ms []domain.ProjectMilestone) string {
@@ -156,8 +213,8 @@ func TestNewProjectStepsFollowTheEventDate(t *testing.T) {
 	}
 }
 
-// EP-06: moving the event date moves the steps that follow it, not the ones
-// dated by hand or already done.
+// EP-06: moving the main event's date moves the project's date and the steps
+// that follow it, not the ones dated by hand or already done.
 func TestEventDateChangeShiftsFollowingSteps(t *testing.T) {
 	svc, db, mem := newFollow()
 	p := createFollowProject(t, svc)
@@ -165,10 +222,9 @@ func TestEventDateChangeShiftsFollowingSteps(t *testing.T) {
 	manual := ymd("2027-05-01")
 	db.milestones = append(db.milestones, domain.ProjectMilestone{ID: 4, Name: "Fitting", Status: domain.MilestoneNotStarted, TargetDate: manual})
 
-	_, err := svc.Patch(context.Background(), 1, p.ID, ProjectActor{StaffID: 10, CanAssignPIC: true},
-		ProjectPatch{EventDate: Some(ymd("2027-08-01"))}, nil)
-	if err != nil {
-		t.Fatal(err)
+	moveMainEvent(t, db, p.ID, ymd("2027-08-01"))
+	if !db.project.EventDate.Equal(ymd("2027-08-01")) {
+		t.Errorf("the project's date is the main event's: %s", db.project.EventDate.Format("2006-01-02"))
 	}
 	if got, want := targets(db.milestones), "2027-03-14 2027-07-18 2027-08-01 2027-05-01"; got != want {
 		t.Fatalf("targets %s, want %s", got, want)
@@ -232,31 +288,9 @@ func TestPatchMilestoneStampsCompletionAndFixesManualDates(t *testing.T) {
 	if m.DaysBeforeEvent != nil {
 		t.Error("a target set by hand no longer follows the event date")
 	}
-	if _, err := svc.Patch(ctx, 1, p.ID, ProjectActor{StaffID: 10}, ProjectPatch{EventDate: Some(ymd("2027-07-01"))}, nil); err != nil {
-		t.Fatal(err)
-	}
+	moveMainEvent(t, db, p.ID, ymd("2027-07-01"))
 	if db.milestones[2].TargetDate.Format("2006-01-02") != "2027-06-13" {
 		t.Errorf("the hand-dated step stays put: %s", db.milestones[2].TargetDate.Format("2006-01-02"))
-	}
-}
-
-// EP-10: a negative contract value is a 422 on contractValue, on create and on edit.
-func TestNegativeContractValueIsRefused(t *testing.T) {
-	svc, db, _ := newFollow()
-	_, err := svc.Create(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, ProjectInput{
-		Name: "X", EventDate: ymd("2027-06-12"), PrepStartDate: ymd("2026-11-15"), ContractValue: -5_000_000,
-	})
-	ae, ok := apperror.As(err)
-	if !ok || ae.Kind != apperror.KindValidation || len(ae.Fields["contractValue"]) == 0 || ae.Fields["contractValue"][0] != "Nilai kontrak tidak boleh negatif" {
-		t.Fatalf("create: want 422 on contractValue, got %v", err)
-	}
-	if len(db.milestones) != 0 {
-		t.Error("nothing is written")
-	}
-	p := createFollowProject(t, svc)
-	_, err = svc.Patch(context.Background(), 1, p.ID, ProjectActor{StaffID: 10}, ProjectPatch{ContractValue: Some(int64(-1))}, nil)
-	if ae, ok := apperror.As(err); !ok || len(ae.Fields["contractValue"]) == 0 {
-		t.Fatalf("edit: want 422 on contractValue, got %v", err)
 	}
 }
 
@@ -264,6 +298,8 @@ func TestNegativeContractValueIsRefused(t *testing.T) {
 func TestRecalculateTermsFollowsContractValue(t *testing.T) {
 	svc, db, mem := newFollow()
 	p := createFollowProject(t, svc)
+	// The contract comes from the Rincian (Tahap 3): Rp 100.000.000.
+	db.project.ContractSubtotal, db.project.ContractTotal = 100_000_000, 100_000_000
 	terms := NewPaymentTermService(followTerms{db: db}, followPayments{db: db}, svc, NewActivityService(activityRepoAdapter{mem}))
 	db.terms = []domain.PaymentTerm{
 		{ID: 1, Label: "DP", Amount: 30, DueDate: ymd("2026-11-15")},

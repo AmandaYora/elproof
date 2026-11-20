@@ -71,6 +71,19 @@ type VendorService struct {
 	categoryRepo VendorCategoryRepository
 	storage      VendorObjectStorage
 	buildKey     func(tenantID, projectID, category, filename string) string
+	offers       OfferReferences
+}
+
+// SetOfferReferences hands the service the check of packages and quotations
+// that still refer to a vendor (see OfferReferences); nil means none do.
+func (s *VendorService) SetOfferReferences(r OfferReferences) { s.offers = r }
+
+// OfferReferenced reports whether a package or quotation still refers to the vendor.
+func (s *VendorService) OfferReferenced(ctx context.Context, tenantID, id int64) (bool, error) {
+	if s.offers == nil {
+		return false, nil
+	}
+	return s.offers.VendorReferenced(ctx, tenantID, id)
 }
 
 func NewVendorService(repo VendorRepository, categoryRepo VendorCategoryRepository, storage VendorObjectStorage, buildKey func(string, string, string, string) string) *VendorService {
@@ -218,18 +231,30 @@ func (s *VendorService) SetActive(ctx context.Context, tenantID, id int64, isAct
 	return vendor, nil
 }
 
+// MsgVendorInOffers is the 409 a permanent delete answers while a package or a
+// quotation still refers to the vendor (PLAN paket-wo §3.3).
+const MsgVendorInOffers = "Vendor ini dipakai di paket atau penawaran. Nonaktifkan saja agar tidak bisa dipilih lagi."
+
+// CodeVendorInOffers is that refusal's machine-readable code (errors.code).
+const CodeVendorInOffers = "vendor_in_offers"
+
 // Delete permanently removes a vendor -- an explicit, guarded exception to
 // this codebase's soft-state convention (PLAN.md's hard-delete plan).
-// Owner-only and informed-consent are enforced by the caller (handler +
+// Owner-only and the projects in-use refusal are the caller's (handler +
 // frontend confirmation dialog, after fetching this vendor's "delete-impact");
-// this method itself performs no reference check and never blocks. The
-// vendor's object-storage attachment (if any) is deleted best-effort, after
-// the row itself is gone -- a failure here is logged, never propagated,
-// mirroring ADR-0013's EvidenceService.DeleteStorageObjects.
+// this method refuses (409) while a package or quotation still refers to the
+// vendor. The vendor's object-storage attachment (if any) is deleted
+// best-effort, after the row itself is gone -- a failure here is logged, never
+// propagated, mirroring ADR-0013's EvidenceService.DeleteStorageObjects.
 func (s *VendorService) Delete(ctx context.Context, tenantID, id int64) error {
 	vendor, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return err
+	}
+	if used, err := s.OfferReferenced(ctx, tenantID, id); err != nil {
+		return err
+	} else if used {
+		return apperror.Conflict(MsgVendorInOffers).WithCode(CodeVendorInOffers)
 	}
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err

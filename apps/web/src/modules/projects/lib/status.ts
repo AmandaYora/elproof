@@ -7,6 +7,7 @@ import type {
   IssueStatus,
   ProjectCondition,
   PaymentTermStatus,
+  SupplierPaymentStatus,
 } from "@/modules/projects/types";
 
 export const PROJECT_STATUS_TONE: Record<ProjectStatus, BadgeTone> = {
@@ -70,4 +71,12 @@ export const TERM_STATUS_TONE: Record<PaymentTermStatus, BadgeTone> = {
   partial: "warning",
   due_soon: "warning",
   upcoming: "neutral",
+};
+
+/** A payment to a vendor the client pays directly: the couple's proof waits, matches, or was refused (Paket WO Tahap 4). */
+export const SUPPLIER_PAYMENT_STATUS_TONE: Record<SupplierPaymentStatus, BadgeTone> = {
+  recorded: "neutral",
+  pending: "warning",
+  verified: "success",
+  rejected: "danger",
 };

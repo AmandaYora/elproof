@@ -264,7 +264,7 @@ func (r *MySQLVendorRepository) UpdateAttachment(ctx context.Context, tenantID, 
 // Delete permanently removes a vendor -- a deliberate, guarded exception to
 // this codebase's soft-state convention (PLAN.md's hard-delete plan:
 // informed-consent, not a blocking precondition). Never touches
-// project_vendors or any other row that might reference this vendor --
+// project_suppliers or any other row that might reference this vendor --
 // those are cross-module, no SQL FK, and are left to degrade gracefully via
 // the frontend's existing "Vendor tidak dikenal" fallback, exactly the
 // tradeoff the confirmation dialog exists to make explicit.

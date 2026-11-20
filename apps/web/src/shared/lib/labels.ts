@@ -2,7 +2,23 @@
 // PLAN.md Fase 3b). The database keeps English enum values; staff and
 // clients each read their own wording. `null` for a client means "do not
 // show this to the client" (internal detail).
-import type { EngagementStatus, IssueImpact, IssueStatus, MilestoneStatus, PaymentTermStatus, ProjectStatus, VendorPricingTier } from "@/modules/projects/types";
+import type {
+  EngagementStatus,
+  EventLayout,
+  IssueImpact,
+  IssueStatus,
+  LineKind,
+  MilestoneStatus,
+  PaymentTermStatus,
+  ProjectStatus,
+  SupplierKind,
+  SupplierPayer,
+  SupplierPaymentStatus,
+} from "@/modules/projects/types";
+import type { AcceptChannel, QuotationDisplayStatus, TermDueBasis } from "@/modules/offers/types";
+
+/** The price columns of a directory vendor. */
+type VendorPricingTier = "Akad" | "AkadResepsi" | "Resepsi";
 
 export type Audience = "staff" | "client";
 
@@ -82,16 +98,49 @@ export const TERM_STATUS_LABELS: Labels<PaymentTermStatus> = {
 };
 
 /** Where an amount the WO owes a vendor or venue stands (GET /finance/payables). */
-export const PAYABLE_STATUS_LABELS: Record<"paid" | "unpaid" | "overdue", string> = {
+export const PAYABLE_STATUS_LABELS: Record<"paid" | "unpaid" | "overdue" | "incomplete", string> = {
   paid: "Lunas",
   unpaid: "Belum lunas",
   overdue: "Terlambat",
+  // A vendor or venue the WO pays with no "Biaya rekanan" yet: what is owed is not known.
+  incomplete: "Belum lengkap",
+};
+
+/** What a line of the rincian is (DESAIN §8: "Isi paket", "Potongan", never "Komponen" or "Diskon"). */
+export const LINE_KIND_LABELS: Record<LineKind, string> = {
+  Package: "Paket",
+  Component: "Isi paket",
+  ExtraGuests: "Tambahan tamu",
+  Item: "Item",
+  Discount: "Potongan",
 };
 
 /** Who an amount the WO owes goes to. */
-export const PAYABLE_KIND_LABELS: Record<"vendor" | "venue", string> = {
+export const PAYABLE_KIND_LABELS: Record<SupplierKind, string> = {
   vendor: "Vendor",
   venue: "Venue",
+};
+
+/** "Tata letak" of an event at its venue (DESAIN §8: Berdiri / Duduk, never Standing / Seated). */
+export const EVENT_LAYOUT_LABELS: Record<EventLayout, string> = {
+  Standing: "Berdiri",
+  Seated: "Duduk",
+};
+
+/**
+ * Where a payment to a vendor or venue the client pays directly stands (Paket WO Tahap 4, "Tagihan vendor"). The couple
+ * sends proof from the portal; the WO marks it as matching ("Tandai sesuai") or refuses it with a reason. A payment the
+ * WO recorded itself is just "Dicatat WO" to staff.
+ */
+export const SUPPLIER_PAYMENT_STATUS_LABELS: Labels<SupplierPaymentStatus> = {
+  staff: { recorded: "Dicatat WO", pending: "Menunggu diperiksa", verified: "Sesuai", rejected: "Ditolak" },
+  client: { recorded: "Dicatat wedding organizer Anda", pending: "Menunggu diperiksa wedding organizer Anda", verified: "Sesuai", rejected: "Ditolak" },
+};
+
+/** "Dibayar oleh" of a vendor or venue (DESAIN §8). */
+export const SUPPLIER_PAYER_LABELS: Record<SupplierPayer, string> = {
+  WO: "WO",
+  Client: "Klien langsung",
 };
 
 // Activity entries are written by the server as text. Older ones used English words ("Project baru dibuat",
@@ -191,6 +240,8 @@ export const DISALLOWED_UI_TERMS: { pattern: RegExp; use: string }[] = [
   { pattern: /\bTimeline\b/, use: "Jadwal" },
   { pattern: /\bMilestone(s)?\b/, use: "Tahapan" },
   { pattern: /\bSubmit\b/, use: "kata kerja + objek, mis. \"Simpan pembayaran\"" },
+  { pattern: /\bBills?\b/, use: "Tagihan vendor" },
+  { pattern: /\b(Approve|Reject)(d|ed)?\b/, use: "Tandai sesuai / Tolak dengan alasan" },
 ];
 
 /**
@@ -216,3 +267,28 @@ export function evidenceTypeLabel(type: string): string {
   return EVIDENCE_TYPE_LABELS[type] ?? type;
 }
 
+
+// ---- Penawaran (paket WO Tahap 5) -------------------------------------------
+// The stored status plus "Expired", which the API derives for a draft past its validity. Each badge also carries
+// its own symbol (DESAIN §6.1): ◷ Draf · ⊘ Kedaluwarsa · ✓ Diterima · ✕ Ditolak · ⇢ Digantikan.
+export const QUOTATION_STATUS_LABELS: Record<QuotationDisplayStatus, string> = {
+  Draft: "Draf",
+  Expired: "Kedaluwarsa",
+  Accepted: "Diterima",
+  Rejected: "Ditolak",
+  Superseded: "Digantikan",
+};
+
+/** How the couple said yes to a quotation. */
+export const ACCEPT_CHANNEL_LABELS: Record<AcceptChannel, string> = {
+  WhatsApp: "WhatsApp",
+  InPerson: "Tatap muka",
+  Email: "Email",
+  Other: "Lainnya",
+};
+
+/** What a term's due date counts from. */
+export const TERM_DUE_BASIS_LABELS: Record<TermDueBasis, string> = {
+  Accepted: "Setelah penawaran diterima",
+  Event: "Dari tanggal acara",
+};

@@ -5,6 +5,7 @@ import { useCan } from "@/shared/stores/usePermissionStore";
 import { HomeHero } from "@/modules/client-portal/components/home/HomeHero";
 import { ActionCard } from "@/modules/client-portal/components/home/ActionCard";
 import { NextPaymentCard } from "@/modules/client-portal/components/home/NextPaymentCard";
+import { NextVendorBillCard } from "@/modules/client-portal/components/home/NextVendorBillCard";
 import { ProgressStages } from "@/modules/client-portal/components/home/ProgressStages";
 import { RecentUpdates } from "@/modules/client-portal/components/home/RecentUpdates";
 import { ContactCard } from "@/modules/client-portal/components/home/ContactCard";
@@ -45,6 +46,7 @@ export default function HomeTabPage() {
         <div className="flex flex-col gap-4 sm:gap-5">
           <ActionCard actions={actions} tasks={urgentTasks} contact={contact} />
           {open && finance && <NextPaymentCard finance={finance} payTo={home.payTo} contact={contact} />}
+          {open && finance?.nextSupplierBill && <NextVendorBillCard bill={finance.nextSupplierBill} />}
           {open && tasks.length > 0 && <ClientTasksCard tasks={tasks} eventDate={project.eventDate} />}
 
           {issuesLink && (

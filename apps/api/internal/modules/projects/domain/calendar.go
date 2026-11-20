@@ -28,8 +28,8 @@ type CalendarItem struct {
 	Kind        CalendarKind
 	ProjectID   int64
 	ProjectName string
-	// RefID is the step or installment id (0 for an event): it keeps the order
-	// of same-day entries stable.
+	// RefID is the event, step or installment id: it keeps the order of
+	// same-day entries stable.
 	RefID     int64
 	Title     string
 	Status    string

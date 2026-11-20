@@ -22,7 +22,11 @@ func (h *Handler) clientPaymentResponses(ctx context.Context, claims staffClaims
 	if err != nil {
 		return nil, err
 	}
-	ix := indexEvidence(evidences, claims.isClient, claims.can)
+	view, err := h.portalViewFor(ctx, claims, projectID)
+	if err != nil {
+		return nil, err
+	}
+	ix := indexEvidence(evidences, view)
 	var staffIDs []int64
 	for _, p := range list {
 		if !claims.isClient {

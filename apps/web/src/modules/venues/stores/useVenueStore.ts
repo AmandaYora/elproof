@@ -6,7 +6,7 @@ import type { VenueFormValues, VenueCreateFormValues } from "@/modules/venues/sc
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
-import { toAffectedProjects, type AffectedProject, type RawDeleteImpact } from "@/shared/types/delete-impact";
+import { toDeleteImpact, type DeleteImpact, type RawDeleteImpact } from "@/shared/types/delete-impact";
 
 interface RawVenue {
   id: number;
@@ -17,9 +17,12 @@ interface RawVenue {
   email: string | null;
   address: string | null;
   city: string | null;
-  rentalPrice: number | null;
+  capacityStanding: number | null;
+  capacitySeated: number | null;
+  priceAkad: number | null;
+  priceResepsi: number | null;
+  priceAkadResepsi: number | null;
   charge: number | null;
-  capacity: number | null;
   facilities: string | null;
   socialMedia: string | null;
   notes: string;
@@ -43,15 +46,18 @@ function toVenueImportResult(raw: RawVenueImportResult): VenueImportResult {
   return { insertedCount: raw.insertedCount, updatedCount: raw.updatedCount, errors: raw.errors };
 }
 
-// rentalPrice/charge/capacity are plain numbers in the form (0 == "not
-// set", same convention as ProjectFormModal's contractValue) — converted to
-// null here so an unset field round-trips as SQL NULL, not a literal 0.
+// Capacities and prices are plain numbers in the form (0 == "not set", same
+// convention as ProjectFormModal's contractValue) — converted to null here so
+// an unset field round-trips as SQL NULL, not a literal 0.
 function toRequestBody(values: VenueFormValues | VenueCreateFormValues) {
   return {
     ...values,
-    rentalPrice: values.rentalPrice || null,
+    capacityStanding: values.capacityStanding || null,
+    capacitySeated: values.capacitySeated || null,
+    priceAkad: values.priceAkad || null,
+    priceResepsi: values.priceResepsi || null,
+    priceAkadResepsi: values.priceAkadResepsi || null,
     charge: values.charge || null,
-    capacity: values.capacity || null,
   };
 }
 
@@ -64,8 +70,8 @@ interface VenueState {
   fetchVenuePage: (params: Record<string, string | number>) => Promise<void>;
   /** Activates or deactivates many venues in one call. */
   bulkVenues: (ids: string[], action: "activate" | "deactivate") => Promise<{ updated: number; unchanged: string[]; notFound: string[] }>;
-  // Full staff-only record (rental price, charge, PIC contact) — used by
-  // Project Detail's Venue tab once it knows which venue is attached, never
+  // Full staff-only record (prices, charge, PIC contact) for the venue
+  // directory's own screens, never
   // by Client Portal (see ADR-0016).
   fetchVenue: (id: string) => Promise<Venue>;
   createVenue: (values: VenueCreateFormValues) => Promise<void>;
@@ -78,8 +84,8 @@ interface VenueState {
   // Exports the currently filtered set (search/city) as .xlsx — same column
   // order as the import template, plus a Status column.
   exportVenues: (filter: { q: string; city: string; isActive: string }) => Promise<Blob>;
-  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition.
-  fetchVenueDeleteImpact: (id: string) => Promise<AffectedProject[]>;
+  // Hard delete (PLAN.md): refused while a project, package or quotation still uses the venue.
+  fetchVenueDeleteImpact: (id: string) => Promise<DeleteImpact>;
   deleteVenue: (id: string) => Promise<void>;
 }
 
@@ -159,7 +165,7 @@ export const useVenueStore = create<VenueState>((set, get) => ({
 
   fetchVenueDeleteImpact: async (id) => {
     const res = await httpClient.get(API.venues.deleteImpact(id));
-    return toAffectedProjects(res.data.data as RawDeleteImpact);
+    return toDeleteImpact(res.data.data as RawDeleteImpact);
   },
 
   deleteVenue: async (id) => {

@@ -3,6 +3,7 @@ import { expect, prepareContext, visit, test } from "../lib/fixtures";
 import { open } from "../lib/suite";
 import { AUTH, apiURL } from "../lib/config";
 import { browserSession } from "../lib/session";
+import { resepsiOn, withContract } from "../lib/project";
 
 const API = (path: string) => `${apiURL()}/api/v1${path}`;
 
@@ -12,12 +13,14 @@ async function newProject(page: Page, name: string) {
   const made = await page.request.post(API("/projects"), {
     headers: auth,
     data: {
-      name, brideName: "Lina Kusuma", groomName: "Reza Mahendra", eventDate: "2027-07-01", venue: "Gedung Uji", prepStartDate: "2026-11-09",
-      packageName: "Paket Uji", contractValue: 10_000_000, status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
+      name, brideName: "Lina Kusuma", groomName: "Reza Mahendra", events: await resepsiOn(session.accessToken, "2027-07-01"), prepStartDate: "2026-11-09",
+      status: "Draft", picStaffId: Number(session.principalId), picSalesStaffId: 0, description: "",
     },
   });
   expect(made.status()).toBe(201);
-  return { id: ((await made.json()).data as { id: number }).id, auth };
+  const id = ((await made.json()).data as { id: number }).id;
+  await withContract(session.accessToken, id, 10_000_000);
+  return { id, auth };
 }
 
 // PLAN Tahap 8: animations respect prefers-reduced-motion; two sessions never overwrite each other silently (ADR-0036).

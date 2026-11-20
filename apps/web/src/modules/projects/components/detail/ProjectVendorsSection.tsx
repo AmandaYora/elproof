@@ -1,698 +1,241 @@
-import { useEffect, useMemo, useState } from "react";
-import { ISSUE_STATUS_LABELS, MILESTONE_STATUS_LABELS } from "@/shared/lib/labels";
-import { ChevronDown, ChevronRight, Plus, Pencil, FileWarning, Ban, CheckCircle2, AlertTriangle } from "lucide-react";
-import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Eye, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { SUPPLIER_PAYER_LABELS } from "@/shared/lib/labels";
 import { Button } from "@/shared/components/ui/Button";
-import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
-import { Pagination } from "@/shared/components/ui/Pagination";
+import { RowActions } from "@/shared/components/ui/RowActions";
+import { DataTable, type Column } from "@/shared/data-table/DataTable";
+import { ListToolbar } from "@/shared/data-table/ListToolbar";
 import { usePagination } from "@/shared/hooks/usePagination";
-import { MilestoneRail } from "@/shared/components/ui/MilestoneRail";
-import { IconActionButton } from "@/shared/components/ui/IconActionButton";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import {
-  EngagementStatusBadge,
-  IssueImpactBadge,
-} from "@/modules/projects/components/StatusBadges";
-import { ProjectVendorFormModal } from "@/modules/projects/components/ProjectVendorFormModal";
-import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project-vendor.schema";
-import { VendorMilestoneFormModal } from "@/modules/projects/components/VendorMilestoneFormModal";
-import type { VendorMilestoneFormValues } from "@/modules/projects/schemas/vendor-milestone.schema";
-import {
-  VendorMilestoneEditModal,
-  type MilestoneEditFields,
-  type MilestoneHistoryEntry,
-  type NewEvidenceMeta,
-} from "@/modules/projects/components/detail/VendorMilestoneEditModal";
-import { IssueFormModal } from "@/modules/projects/components/IssueFormModal";
-import { ISSUE_STATUS_OPTIONS } from "@/modules/projects/schemas/issue.schema";
-import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
-import { useProjectStore, toIssueUpdateFields } from "@/modules/projects/stores/useProjectStore";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
-import { useVendorCategoryStore } from "@/modules/vendor-categories/stores/useVendorCategoryStore";
-import { useStaffStore } from "@/modules/users/stores/useStaffStore";
-import { getMilestoneEvidenceCompleteness, todayISO } from "@/modules/projects/lib/dates";
-import { compressFileForUpload } from "@/shared/lib/image-compression";
-import type { ProjectVendor, VendorMilestone, VendorPayment, VendorIssue, MilestoneStatus, IssueStatus } from "@/modules/projects/types";
+import { toast } from "@/shared/stores/useToastStore";
+import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
-import { formatCurrency, formatDate } from "@/shared/lib/formatters";
+import { formatCurrency } from "@/shared/lib/formatters";
 import { cn } from "@/shared/lib/cn";
+import { EngagementStatusBadge } from "@/modules/projects/components/StatusBadges";
+import {
+  isSupplierFilter,
+  matchesFilter,
+  sortSuppliers,
+  stepProgress,
+  stepsOf,
+  SUPPLIER_FILTER_LABELS,
+  SUPPLIER_FILTER_PARAM,
+  SUPPLIER_OPEN_PARAM,
+  type SupplierFilter,
+} from "@/modules/projects/components/suppliers/supplier-helpers";
+import { supplierKindLabel } from "@/modules/rincian";
+import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
+import type { ProjectSupplier } from "@/modules/projects/types";
 
-const MILESTONE_STATUS_OPTIONS: MilestoneStatus[] = ["Not Started", "In Progress", "Completed", "Blocked", "Cancelled"];
+// Opened by a click (or a link with ?buka=): each loads then.
+const SupplierDetailDrawer = lazy(() =>
+  import("@/modules/projects/components/suppliers/SupplierDetailDrawer").then((m) => ({ default: m.SupplierDetailDrawer })),
+);
+const AddVendorModal = lazy(() => import("@/modules/projects/components/suppliers/AddVendorModal").then((m) => ({ default: m.AddVendorModal })));
 
-function sortVendorsForDisplay(list: ProjectVendor[]): ProjectVendor[] {
-  return [...list].sort((a, b) => {
-    const aCancelled = a.engagementStatus === "Cancelled";
-    const bCancelled = b.engagementStatus === "Cancelled";
-    if (aCancelled !== bCancelled) return aCancelled ? 1 : -1;
-    return 0;
-  });
-}
-
-function sortVendorMilestones(list: VendorMilestone[]): VendorMilestone[] {
-  return [...list].sort((a, b) => {
-    const aCancelled = a.status === "Cancelled";
-    const bCancelled = b.status === "Cancelled";
-    if (aCancelled !== bCancelled) return aCancelled ? 1 : -1;
-    return a.order - b.order;
-  });
-}
-
+/**
+ * Vendor & venue of a project (DESAIN §5.2): one table of every vendor and venue, filtered by `?saring=`, a row opening
+ * its drawer (`?buka=<id>`). Venues come in through events; "Tambah vendor" adds one from the directory.
+ */
 export function ProjectVendorsSection({ projectId }: { projectId: string }) {
-  const canEdit = useCan("project.edit");
-  const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
+  const suppliers = useProjectStore((s) => s.suppliers);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
-  const payments = useProjectStore((s) => s.payments);
-  const issues = useProjectStore((s) => s.issues);
-  const evidence = useProjectStore((s) => s.evidence);
-  const milestoneHistory = useProjectStore((s) => s.milestoneHistory);
-  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const fetchPayments = useProjectStore((s) => s.fetchPayments);
-  const fetchIssues = useProjectStore((s) => s.fetchIssues);
-  const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
-  const fetchVendorMilestoneHistory = useProjectStore((s) => s.fetchVendorMilestoneHistory);
-  const createVendorEngagement = useProjectStore((s) => s.createVendorEngagement);
-  const updateVendorEngagement = useProjectStore((s) => s.updateVendorEngagement);
-  const cancelVendorEngagement = useProjectStore((s) => s.cancelVendorEngagement);
-  const createVendorMilestone = useProjectStore((s) => s.createVendorMilestone);
-  const updateVendorMilestone = useProjectStore((s) => s.updateVendorMilestone);
-  const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
-  const createIssue = useProjectStore((s) => s.createIssue);
-  const updateIssue = useProjectStore((s) => s.updateIssue);
-  const setIssueStatus = useProjectStore((s) => s.setIssueStatus);
+  const fetchSuppliers = useProjectStore((s) => s.fetchSuppliers);
+  const deleteSupplier = useProjectStore((s) => s.deleteSupplier);
+  const refreshSupplierCapacity = useProjectStore((s) => s.refreshSupplierCapacity);
+  const canEdit = useCan("project.edit");
+  // "Biaya rekanan" is the other half of the margin: the column is not there at all without the permission.
+  const canMargin = useCan("finance.margin.view");
+  const [params, setParams] = useSearchParams();
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [search, setSearch] = useState("");
+  const [adding, setAdding] = useState(false);
 
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
-  const categories = useVendorCategoryStore((s) => s.categories);
-  const fetchCategories = useVendorCategoryStore((s) => s.fetchCategories);
-  const staff = useStaffStore((s) => s.staffSummaries);
-  const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
+  const rawFilter = params.get(SUPPLIER_FILTER_PARAM);
+  const filter: SupplierFilter = isSupplierFilter(rawFilter) ? rawFilter : "semua";
+  const openId = params.get(SUPPLIER_OPEN_PARAM);
 
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<ProjectVendor | null>(null);
-  const [editingMilestone, setEditingMilestone] = useState<{ milestone: VendorMilestone; vendorName: string; total: number } | null>(null);
-  const [addMilestoneFor, setAddMilestoneFor] = useState<{ projectVendorId: string; vendorName: string } | null>(null);
-  const [issueModal, setIssueModal] = useState<{
-    mode: "create" | "edit";
-    issueId?: string;
-    /** `updatedAt` of the kendala when the form was opened (ADR-0036). */
-    version?: string;
-    milestoneLocked: boolean;
-    initialValues: IssueFormValues;
-  } | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  function load() {
+    setStatus("loading");
+    fetchSuppliers(projectId).then(
+      () => setStatus("ready"),
+      () => setStatus("error"),
+    );
+  }
+  useEffect(load, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // First paint needs only the engagements (names, PIC and the steps' proof come with them) and the issues: two calls.
-  useEffect(() => {
-    void fetchVendorSection(projectId);
-    void fetchIssues(projectId);
-  }, [projectId, fetchVendorSection, fetchIssues]);
-
-  // Payments, proof files, step history and the pickers are needed only once someone expands an engagement or opens a form.
-  const needsDetails = expanded.size > 0 || addOpen || editing !== null || editingMilestone !== null || addMilestoneFor !== null || issueModal !== null;
-  useEffect(() => {
-    if (!needsDetails) return;
-    void fetchPayments(projectId);
-    void fetchEvidence(projectId);
-    void fetchVendorMilestoneHistory(projectId);
-    void fetchVendors();
-    void fetchCategories();
-    void fetchStaff();
-  }, [needsDetails, projectId, fetchPayments, fetchEvidence, fetchVendorMilestoneHistory, fetchVendors, fetchCategories, fetchStaff]);
-
-  function toggle(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  function setParam(key: string, value: string | null) {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === null) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: key === SUPPLIER_FILTER_PARAM },
+    );
   }
 
-  // The four form submit handlers below do not catch: errors propagate to the
-  // form, which shows a 422 on its fields and any other failure inside the modal.
-  async function handleAdd(values: ProjectVendorFormValues) {
-    setActionError(null);
-    await createVendorEngagement(projectId, values);
-    setAddOpen(false);
+  function hrefFor(s: ProjectSupplier): string {
+    const next = new URLSearchParams(params);
+    next.set(SUPPLIER_OPEN_PARAM, s.id);
+    return `?${next.toString()}`;
   }
 
-  async function handleEdit(values: ProjectVendorFormValues) {
-    if (!editing) return;
-    setActionError(null);
-    await updateVendorEngagement(projectId, editing.id, values, editing.updatedAt);
-    setEditing(null);
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    // "Biaya rekanan belum diisi" means nothing to someone who cannot see the cost.
+    const effective = filter === "tanpa-biaya" && !canMargin ? "semua" : filter;
+    return sortSuppliers(suppliers).filter(
+      (s) => matchesFilter(s, effective) && (q === "" || s.name.toLowerCase().includes(q) || supplierKindLabel(s).toLowerCase().includes(q)),
+    );
+  }, [suppliers, filter, search, canMargin]);
+  const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(visible);
+
+  function remove(s: ProjectSupplier) {
+    void deleteWithUndo(s.kind === "venue" ? "Venue" : "Vendor", () => deleteSupplier(projectId, s.id));
   }
 
-  async function handleCancelVendor(pvId: string) {
-    setActionError(null);
+  async function refreshCapacity(s: ProjectSupplier) {
     try {
-      await cancelVendorEngagement(projectId, pvId);
+      await refreshSupplierCapacity(projectId, s.id);
+      toast.success(`Kapasitas ${s.name} diperbarui dari direktori venue`);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal membatalkan vendor"));
+      toast.error(getApiErrorMessage(err, "Kapasitas belum bisa diperbarui"));
     }
   }
 
-  async function handleAddVendorMilestone(values: VendorMilestoneFormValues) {
-    if (!addMilestoneFor) return;
-    setActionError(null);
-    await createVendorMilestone(projectId, addMilestoneFor.projectVendorId, values);
-    setAddMilestoneFor(null);
-  }
+  const columns: Column<ProjectSupplier>[] = [
+    {
+      id: "name",
+      header: "Nama",
+      primary: true,
+      className: "min-w-48",
+      cell: (s) => (
+        <span className="flex min-w-0 flex-col">
+          <span className={cn("truncate font-medium text-foreground", s.engagementStatus === "Cancelled" && "line-through")}>{s.name}</span>
+          <span className="truncate text-[12.5px] text-muted-foreground">{supplierKindLabel(s)}</span>
+        </span>
+      ),
+    },
+    { id: "paidBy", header: "Dibayar oleh", card: true, className: "whitespace-nowrap", cell: (s) => SUPPLIER_PAYER_LABELS[s.paidBy] },
+    {
+      id: "shown",
+      header: "Tampil ke klien",
+      className: "whitespace-nowrap",
+      // A venue, and anything the client pays itself, is always named to the client (domain.ProjectSupplier.NameShown).
+      cell: (s) => (s.kind === "venue" || s.paidBy === "Client" ? "Selalu" : s.showName ? "Ya" : "Tidak"),
+    },
+    { id: "status", header: "Status", card: true, className: "whitespace-nowrap", cell: (s) => <EngagementStatusBadge status={s.engagementStatus} /> },
+    ...(canMargin
+      ? [
+          {
+            id: "cost",
+            header: "Biaya rekanan",
+            align: "right",
+            card: true,
+            className: "whitespace-nowrap",
+            cell: (s: ProjectSupplier) =>
+              s.paidBy === "Client" ? (
+                <span className="text-muted-foreground">—</span>
+              ) : s.agreedCost === null ? (
+                <span className="text-warning-text">Belum diisi</span>
+              ) : (
+                <span className="tabular-nums">{formatCurrency(s.agreedCost)}</span>
+              ),
+          } satisfies Column<ProjectSupplier>,
+        ]
+      : []),
+    {
+      id: "progress",
+      header: "Progres",
+      card: true,
+      className: "whitespace-nowrap",
+      cell: (s) => {
+        const { done, total } = stepProgress(stepsOf(vendorMilestones, s.id));
+        return total === 0 ? <span className="text-muted-foreground">—</span> : <span className="tabular-nums">{done}/{total} tahap</span>;
+      },
+    },
+  ];
 
-  async function toggleVendorMilestoneCancelled(m: VendorMilestone) {
-    setActionError(null);
-    try {
-      await updateVendorMilestone(projectId, m.projectVendorId, m.id, { status: m.status === "Cancelled" ? "Not Started" : "Cancelled" }, m.updatedAt);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Tahapan belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
-    }
-  }
-
-  async function quickStatusChange(m: VendorMilestone, status: MilestoneStatus) {
-    setActionError(null);
-    try {
-      // Only the status (and the completion date when finishing); the rest of the step is not sent.
-      await updateVendorMilestone(projectId, m.projectVendorId, m.id, {
-        status,
-        ...(status === "Completed" && { completedDate: m.completedDate ?? todayISO() }),
-      }, m.updatedAt);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Status tahapan belum bisa diperbarui. Periksa koneksi Anda, lalu coba lagi."));
-    }
-  }
-
-  async function handleSaveMilestone(fields: MilestoneEditFields) {
-    if (!editingMilestone) return;
-    setActionError(null);
-    await updateVendorMilestone(projectId, editingMilestone.milestone.projectVendorId, editingMilestone.milestone.id, fields, editingMilestone.milestone.updatedAt);
-    setEditingMilestone(null);
-  }
-
-  async function handleAddMilestoneEvidence(file: File, meta: NewEvidenceMeta) {
-    if (!editingMilestone) return;
-    const compressed = await compressFileForUpload(file);
-    await uploadEvidence(projectId, {
-      ...compressed,
-      name: meta.name,
-      type: meta.type,
-      documentDate: meta.documentDate,
-      description: meta.description,
-      relatedKind: "vendorMilestone",
-      relatedId: editingMilestone.milestone.id,
-    });
-  }
-
-  function defaultIssueValues(projectVendorId: string, vendorMilestoneId: string): IssueFormValues {
-    return {
-      projectVendorId,
-      vendorMilestoneId,
-      title: "",
-      description: "",
-      impact: "Low",
-      foundDate: todayISO(),
-      resolutionPlan: "",
-      picStaffId: staff[0]?.id ?? "",
-      targetResolutionDate: "",
-      status: "Open",
-      isClientVisible: true,
-    };
-  }
-
-  function openAddIssue(pv: ProjectVendor, milestone?: VendorMilestone) {
-    setIssueModal({
-      mode: "create",
-      milestoneLocked: Boolean(milestone),
-      initialValues: defaultIssueValues(pv.id, milestone?.id ?? ""),
-    });
-  }
-
-  function openEditIssue(issue: VendorIssue) {
-    setIssueModal({ mode: "edit", issueId: issue.id, version: issue.updatedAt, milestoneLocked: false, initialValues: toIssueUpdateFields(issue) });
-  }
-
-  async function handleIssueSubmit(values: IssueFormValues) {
-    if (!issueModal) return;
-    setActionError(null);
-    if (issueModal.mode === "edit" && issueModal.issueId) {
-      await updateIssue(projectId, issueModal.issueId, values, issueModal.version);
-    } else {
-      await createIssue(projectId, values);
-    }
-    setIssueModal(null);
-  }
-
-  async function quickIssueStatusChange(issue: VendorIssue, status: IssueStatus) {
-    setActionError(null);
-    try {
-      await setIssueStatus(projectId, issue.id, status);
-    } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal memperbarui status kendala"));
-    }
-  }
-
-  const rows = useMemo(
-    () =>
-      sortVendorsForDisplay(vendorEngagements).map((pv) => ({
-        pv,
-        vendorName: pv.vendorName || vendors.find((v) => v.id === pv.vendorId)?.name || "Vendor tidak dikenal",
-        categoryName: pv.categoryName || categories.find((c) => c.id === pv.categoryId)?.name || "-",
-        picName: pv.picName || staff.find((s) => s.id === pv.picStaffId)?.name || "-",
-        milestones: vendorMilestones.filter((m) => m.projectVendorId === pv.id),
-        payments: payments.filter((p) => p.projectVendorId === pv.id),
-        issues: issues.filter((i) => i.projectVendorId === pv.id),
-      })),
-    [vendorEngagements, vendors, categories, staff, vendorMilestones, payments, issues]
-  );
-
-  function historyFor(milestoneId: string): MilestoneHistoryEntry[] {
-    return milestoneHistory
-      .filter((a) => a.entityId === milestoneId)
-      .map((a) => ({ id: a.id, actorName: a.actorName || "Sistem", timestamp: a.timestamp, text: a.description }));
-  }
-
-  function evidenceFor(milestone: VendorMilestone) {
-    return evidence.filter((e) => e.relatedKind === "vendorMilestone" && e.relatedId === milestone.id);
-  }
+  const filterOptions = (Object.keys(SUPPLIER_FILTER_LABELS) as SupplierFilter[]).filter((f) => f !== "tanpa-biaya" || canMargin);
 
   return (
-    <div id="vendor">
-      <Card>
-        <CardHeader
-          title="Vendor proyek"
-          subtitle="Progres setiap vendor berdasarkan tahapan yang telah diselesaikan."
-          action={
-            canEdit && (
-              <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddOpen(true)}>
-                Tambah vendor
-              </Button>
-            )
-          }
-        />
-        <CardContent className="p-0">
-          {actionError && (
-            <p className="mx-5 mt-4 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">{actionError}</p>
-          )}
-          {vendorEngagements.length === 0 ? (
-            <EmptyState title="Belum ada vendor" description="Tambahkan vendor yang terlibat pada proyek ini." />
-          ) : (
-            <ul className="divide-y divide-border-light">
-              {rows.map(({ pv, vendorName, categoryName, picName, milestones, payments: pvPayments, issues: pvIssues }) => (
-                <VendorAccordionRow
-                  key={pv.id}
-                  pv={pv}
-                  vendorName={vendorName}
-                  categoryName={categoryName}
-                  picName={picName}
-                  milestones={milestones}
-                  payments={pvPayments}
-                  issues={pvIssues}
-                  isOpen={expanded.has(pv.id)}
-                  onToggle={() => toggle(pv.id)}
-                  onEditVendor={() => setEditing(pv)}
-                  onQuickStatusChange={(m, status) => void quickStatusChange(m, status)}
-                  onEditMilestone={(m, vendorNameLabel, total) => setEditingMilestone({ milestone: m, vendorName: vendorNameLabel, total })}
-                  onAddMilestone={() => setAddMilestoneFor({ projectVendorId: pv.id, vendorName })}
-                  onToggleCancelMilestone={(m) => void toggleVendorMilestoneCancelled(m)}
-                  onCancelVendor={() => void handleCancelVendor(pv.id)}
-                  hasEvidence={(m) => evidenceFor(m).length > 0}
-                  evidenceComplete={(m) => getMilestoneEvidenceCompleteness(m.name, evidenceFor(m))}
-                  onAddIssue={(m) => openAddIssue(pv, m)}
-                  onEditIssue={(issue) => openEditIssue(issue)}
-                  onIssueStatusChange={(issue, status) => void quickIssueStatusChange(issue, status)}
-                />
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+    <div id="vendor" className="flex flex-col gap-4">
+      <ListToolbar
+        search={{ value: search, onChange: setSearch, placeholder: "Cari vendor atau venue" }}
+        actions={
+          canEdit && (
+            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAdding(true)}>
+              Tambah vendor
+            </Button>
+          )
+        }
+      >
+        <Select
+          aria-label="Saring vendor dan venue"
+          className="w-56"
+          value={filter}
+          onChange={(e) => setParam(SUPPLIER_FILTER_PARAM, e.target.value === "semua" ? null : e.target.value)}
+        >
+          {filterOptions.map((f) => (
+            <option key={f} value={f}>{f === "semua" ? "Saring: semua" : SUPPLIER_FILTER_LABELS[f]}</option>
+          ))}
+        </Select>
+      </ListToolbar>
 
-      {/* Mounted only while open: the form loads the vendor list, categories and staff when it mounts. */}
-      {addOpen && <ProjectVendorFormModal projectId={projectId} open onClose={() => setAddOpen(false)} onSubmit={handleAdd} />}
-      {editing && (
-        <ProjectVendorFormModal
-          projectId={projectId}
-          open={Boolean(editing)}
-          onClose={() => setEditing(null)}
-          onSubmit={handleEdit}
-          initialProjectVendor={editing}
-        />
+      <DataTable
+        label="Vendor & venue"
+        columns={columns}
+        rows={pageItems}
+        rowId={(s) => s.id}
+        rowHref={hrefFor}
+        rowLabel={(s) => s.name}
+        status={status === "ready" || suppliers.length > 0 ? "ready" : status}
+        onRetry={load}
+        meta={{ page, limit: pageSize, total: totalItems, totalPages }}
+        onPageChange={setPage}
+        sort={null}
+        onSortChange={() => undefined}
+        filtered={filter !== "semua" || search.trim() !== ""}
+        onResetFilters={() => {
+          setSearch("");
+          setParam(SUPPLIER_FILTER_PARAM, null);
+        }}
+        empty={{
+          title: "Belum ada vendor atau venue",
+          description: "Tambahkan vendor dari direktori. Venue masuk otomatis saat dipilih di acara.",
+        }}
+        actions={(s) => (
+          <RowActions
+            rowLabel={s.name}
+            items={[
+              { label: "Buka detail", icon: <Eye className="h-4 w-4" />, onSelect: () => setParam(SUPPLIER_OPEN_PARAM, s.id) },
+              {
+                label: "Perbarui kapasitas",
+                icon: <RefreshCw className="h-4 w-4" />,
+                onSelect: () => void refreshCapacity(s),
+                hidden: !canEdit || s.kind !== "venue",
+              },
+              { label: "Hapus", icon: <Trash2 className="h-4 w-4" />, tone: "danger", onSelect: () => remove(s), hidden: !canEdit },
+            ]}
+          />
+        )}
+      />
+
+      {openId && (
+        <Suspense fallback={null}>
+          <SupplierDetailDrawer projectId={projectId} supplierId={openId} onClose={() => setParam(SUPPLIER_OPEN_PARAM, null)} />
+        </Suspense>
       )}
-      {editingMilestone && (
-        <VendorMilestoneEditModal
-          open={Boolean(editingMilestone)}
-          onClose={() => setEditingMilestone(null)}
-          milestone={editingMilestone.milestone}
-          vendorName={editingMilestone.vendorName}
-          totalMilestones={editingMilestone.total}
-          evidenceList={evidenceFor(editingMilestone.milestone)}
-          historyEntries={historyFor(editingMilestone.milestone.id)}
-          onSave={handleSaveMilestone}
-          onAddEvidence={handleAddMilestoneEvidence}
-        />
-      )}
-      {addMilestoneFor && (
-        <VendorMilestoneFormModal
-          open={Boolean(addMilestoneFor)}
-          onClose={() => setAddMilestoneFor(null)}
-          onSubmit={handleAddVendorMilestone}
-          vendorName={addMilestoneFor.vendorName}
-        />
-      )}
-      {issueModal && (
-        <IssueFormModal
-          open={Boolean(issueModal)}
-          onClose={() => setIssueModal(null)}
-          onSubmit={handleIssueSubmit}
-          initialValues={issueModal.initialValues}
-          mode={issueModal.mode}
-          milestoneLocked={issueModal.milestoneLocked}
-          vendorEngagements={vendorEngagements}
-          vendors={vendors}
-          vendorMilestones={vendorMilestones}
-          staff={staff}
-        />
+      {adding && (
+        <Suspense fallback={null}>
+          <AddVendorModal projectId={projectId} onClose={() => setAdding(false)} />
+        </Suspense>
       )}
     </div>
-  );
-}
-
-interface VendorAccordionRowProps {
-  pv: ProjectVendor;
-  vendorName: string;
-  categoryName: string;
-  picName: string;
-  milestones: VendorMilestone[];
-  payments: VendorPayment[];
-  issues: VendorIssue[];
-  isOpen: boolean;
-  onToggle: () => void;
-  onEditVendor: () => void;
-  onQuickStatusChange: (milestone: VendorMilestone, status: MilestoneStatus) => void;
-  onEditMilestone: (milestone: VendorMilestone, vendorName: string, total: number) => void;
-  onAddMilestone: () => void;
-  onToggleCancelMilestone: (milestone: VendorMilestone) => void;
-  onCancelVendor: () => void;
-  hasEvidence: (milestone: VendorMilestone) => boolean;
-  evidenceComplete: (milestone: VendorMilestone) => { requiresEvidence: boolean; complete: boolean };
-  onAddIssue: (milestone?: VendorMilestone) => void;
-  onEditIssue: (issue: VendorIssue) => void;
-  onIssueStatusChange: (issue: VendorIssue, status: IssueStatus) => void;
-}
-
-function VendorAccordionRow({
-  pv,
-  vendorName,
-  categoryName,
-  picName,
-  milestones,
-  payments,
-  issues,
-  isOpen,
-  onToggle,
-  onEditVendor,
-  onQuickStatusChange,
-  onEditMilestone,
-  onAddMilestone,
-  onToggleCancelMilestone,
-  onCancelVendor,
-  onAddIssue,
-  onEditIssue,
-  onIssueStatusChange,
-  hasEvidence,
-  evidenceComplete,
-}: VendorAccordionRowProps) {
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
-  // Vendors, their timeline and issues change only with project.edit.
-  const canEdit = useCan("project.edit");
-  const remaining = pv.contractValue - pv.paidAmount;
-  const sortedMilestones = sortVendorMilestones(milestones);
-  const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(sortedMilestones);
-  const vendorCancelled = pv.engagementStatus === "Cancelled";
-
-  function openIssueCountFor(milestoneId: string) {
-    return issues.filter((i) => i.vendorMilestoneId === milestoneId && i.status !== "Resolved" && i.status !== "Closed").length;
-  }
-
-  // Sibling buttons, never inside the row's toggle button: nested controls cannot be reached by keyboard or named by a screen reader.
-  const actionIcons = canEdit && (
-    <>
-      <IconActionButton icon={Pencil} label={`Ubah ${vendorName}`} onClick={onEditVendor} />
-      {!vendorCancelled && <IconActionButton icon={Ban} label={`Batalkan ${vendorName}`} tone="danger" onClick={() => setConfirmingCancel(true)} />}
-    </>
-  );
-
-  return (
-    <li className={vendorCancelled ? "opacity-60" : undefined}>
-      {/* Mobile: stacked card header — fixed-width columns don't fit one line on small screens */}
-      <div className="relative transition-colors hover:bg-surface-muted sm:hidden">
-        <button type="button" onClick={onToggle} aria-expanded={isOpen} className="flex w-full flex-col gap-2.5 px-5 py-3.5 text-left">
-          <div className="flex min-w-0 items-center gap-2.5 pr-20">
-            {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
-            <span className="min-w-0">
-              <span className={cn("block truncate text-[13.5px] font-semibold text-text-primary", vendorCancelled && "line-through")}>
-                {vendorName}
-              </span>
-              <span className="block truncate text-[12px] text-text-secondary">{categoryName} · {pv.scope}</span>
-            </span>
-          </div>
-          <MilestoneRail milestones={milestones} size="sm" />
-          <div className="flex items-center justify-between gap-3">
-            <EngagementStatusBadge status={pv.engagementStatus} />
-            <span className="text-[13px] tabular-nums text-text-primary">{formatCurrency(pv.contractValue)}</span>
-          </div>
-        </button>
-        <span className="absolute right-3 top-2.5 flex items-center gap-1">{actionIcons}</span>
-      </div>
-
-      {/* Desktop: single-line row */}
-      <div className="hidden items-center pr-5 transition-colors hover:bg-surface-muted sm:flex">
-        <button type="button" onClick={onToggle} aria-expanded={isOpen} className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pl-5 text-left">
-          {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" /> : <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
-          <span className="min-w-45 flex-1">
-            <span className={cn("block text-[13.5px] font-semibold text-text-primary", vendorCancelled && "line-through")}>
-              {vendorName}
-            </span>
-            <span className="block text-[12px] text-text-secondary">{categoryName} · {pv.scope}</span>
-          </span>
-          <span className="w-40 shrink-0">
-            <MilestoneRail milestones={milestones} size="sm" />
-          </span>
-          <span className="w-32 shrink-0">
-            <EngagementStatusBadge status={pv.engagementStatus} />
-          </span>
-          <span className="w-32 shrink-0 text-right text-[13px] tabular-nums text-text-primary">
-            {formatCurrency(pv.contractValue)}
-          </span>
-        </button>
-        <span className="flex shrink-0 items-center gap-1 pl-4">{actionIcons}</span>
-      </div>
-
-      {confirmingCancel && (
-        <div className="mx-5 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-soft px-4 py-3">
-          <span className="flex items-center gap-2 text-[13px] font-medium text-danger-text">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Yakin ingin membatalkan kerja sama dengan vendor ini? Tahapan, pembayaran, dan kendala yang sudah tercatat tidak akan dihapus.
-          </span>
-          <span className="flex shrink-0 gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setConfirmingCancel(false)}>Batal</Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => {
-                onCancelVendor();
-                setConfirmingCancel(false);
-              }}
-            >
-              Batalkan kerja sama
-            </Button>
-          </span>
-        </div>
-      )}
-
-      {isOpen && (
-        <div className="bg-surface-muted/50 px-5 pb-5 pt-1">
-          <div className="grid grid-cols-1 gap-3 pb-3 text-[12.5px] text-text-secondary sm:grid-cols-4">
-            <span>PIC: <span className="font-medium text-text-primary">{picName}</span></span>
-            <span>DP: <span className="font-medium text-text-primary">{formatCurrency(pv.dpAmount)}</span></span>
-            <span>Sudah dibayar: <span className="font-medium text-text-primary">{formatCurrency(pv.paidAmount)}</span></span>
-            <span>Sisa: <span className="font-medium text-text-primary">{formatCurrency(remaining)}</span></span>
-          </div>
-
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[13px] font-semibold text-text-primary">Tahapan vendor</p>
-            {canEdit && (
-              <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={onAddMilestone}>
-                Tambah tahapan
-              </Button>
-            )}
-          </div>
-
-          {milestones.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-card px-4 py-3 text-[13px] text-text-secondary">
-              Belum ada tahapan untuk vendor ini.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-md border border-border bg-card">
-              <table className="w-full text-left text-[13px]">
-                <thead className="border-b border-border-light">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Tahapan</th>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Status</th>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Target</th>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Selesai</th>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Bukti</th>
-                    <th className="px-3 py-2 font-semibold text-text-secondary">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-light">
-                  {pageItems.map((m) => {
-                    const evidenceCheck = evidenceComplete(m);
-                    const milestoneCancelled = m.status === "Cancelled";
-                    const openIssueCount = openIssueCountFor(m.id);
-                    return (
-                      <tr key={m.id} className={milestoneCancelled ? "opacity-50" : undefined}>
-                        <td className={cn("px-3 py-2 font-medium text-text-primary", milestoneCancelled && "line-through")}>
-                          {m.order}. {m.name}
-                          {openIssueCount > 0 && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-danger-text">
-                              <AlertTriangle className="h-3 w-3" /> {openIssueCount}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Select
-                            value={m.status}
-                            onChange={(e) => onQuickStatusChange(m, e.target.value as MilestoneStatus)}
-                            disabled={!canEdit}
-                            className="h-8 w-34 text-[12.5px]"
-                          >
-                            {MILESTONE_STATUS_OPTIONS.map((s) => (
-                              <option key={s} value={s}>{MILESTONE_STATUS_LABELS.staff[s]}</option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td className="px-3 py-2 text-text-secondary">{formatDate(m.targetDate)}</td>
-                        <td className="px-3 py-2 text-text-secondary">{formatDate(m.completedDate)}</td>
-                        <td className="px-3 py-2">
-                          {hasEvidence(m) ? (
-                            <Badge tone="success">Bukti tersedia</Badge>
-                          ) : evidenceCheck.requiresEvidence ? (
-                            <Badge tone="warning">Belum lengkap</Badge>
-                          ) : (
-                            <span className="text-text-secondary">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {canEdit && <div className="flex items-center gap-1.5">
-                            <IconActionButton
-                              icon={Pencil}
-                              label="Ubah tahapan"
-                              tone="neutral"
-                              onClick={() => onEditMilestone(m, vendorName, milestones.length)}
-                            />
-                            {milestoneCancelled ? (
-                              <IconActionButton
-                                icon={CheckCircle2}
-                                label="Aktifkan kembali"
-                                tone="success"
-                                onClick={() => onToggleCancelMilestone(m)}
-                              />
-                            ) : (
-                              <IconActionButton
-                                icon={Ban}
-                                label="Batalkan tahapan"
-                                tone="danger"
-                                onClick={() => onToggleCancelMilestone(m)}
-                              />
-                            )}
-                            <IconActionButton
-                              icon={AlertTriangle}
-                              label="Tambah kendala"
-                              tone="info"
-                              onClick={() => onAddIssue(m)}
-                            />
-                          </div>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <Pagination page={page} totalPages={totalPages} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
-            </div>
-          )}
-
-          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-md border border-border bg-card p-3">
-              <p className="mb-2 text-[13px] font-semibold text-text-primary">Pembayaran</p>
-              {payments.length === 0 ? (
-                <p className="text-[13px] text-text-secondary">Belum ada pembayaran tercatat.</p>
-              ) : (
-                <ul className="flex flex-col gap-1.5">
-                  {payments.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between text-[13px]">
-                      <span>{p.type} · {formatDate(p.paymentDate)}</span>
-                      <span className="flex items-center gap-2 tabular-nums">
-                        {formatCurrency(p.amount)}
-                        {!p.evidenceComplete && <FileWarning className="h-3.5 w-3.5 text-warning-text" />}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="rounded-md border border-border bg-card p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[13px] font-semibold text-text-primary">Kendala</p>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => onAddIssue()}
-                    className="text-[12px] font-semibold text-primary hover:underline"
-                  >
-                    + Kendala
-                  </button>
-                )}
-              </div>
-              {issues.length === 0 ? (
-                <p className="text-[13px] text-text-secondary">Tidak ada kendala tercatat.</p>
-              ) : (
-                <ul className="flex flex-col gap-2.5">
-                  {issues.map((i) => (
-                    <li key={i.id} className="flex flex-col gap-1.5 border-b border-border-light pb-2.5 last:border-b-0 last:pb-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="block truncate text-[13px] font-medium text-text-primary">{i.title}</span>
-                          <span className="block text-[11.5px] text-text-secondary">
-                            {milestones.find((m) => m.id === i.vendorMilestoneId)?.name ?? "Kendala umum"}
-                          </span>
-                        </div>
-                        <span className="flex shrink-0 items-center gap-1.5">
-                          <IssueImpactBadge impact={i.impact} />
-                          {canEdit && <IconActionButton icon={Pencil} label="Ubah kendala" tone="neutral" onClick={() => onEditIssue(i)} />}
-                        </span>
-                      </div>
-                      <Select
-                        value={i.status}
-                        onChange={(e) => onIssueStatusChange(i, e.target.value as IssueStatus)}
-                        disabled={!canEdit}
-                        className="h-8 w-full text-[12.5px]"
-                      >
-                        {ISSUE_STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{ISSUE_STATUS_LABELS.staff[s]}</option>
-                        ))}
-                      </Select>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </li>
   );
 }

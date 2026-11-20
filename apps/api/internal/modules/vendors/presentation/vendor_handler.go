@@ -379,6 +379,9 @@ type deleteImpactResponse struct {
 	AffectedProjects []deleteImpactProjectRef `json:"affectedProjects"`
 	// HiddenProjectCount: affected projects outside the caller's scope, counted but not named.
 	HiddenProjectCount int `json:"hiddenProjectCount"`
+	// UsedInOffers: a package or quotation still refers to the row, so a
+	// permanent delete will be refused (409 vendor_in_offers / venue_in_offers).
+	UsedInOffers bool `json:"usedInOffers"`
 }
 
 type deleteImpactProjectRef struct {
@@ -425,6 +428,10 @@ func (h *VendorHandler) deleteImpact(w http.ResponseWriter, r *http.Request, ten
 		writeAppError(w, err)
 		return
 	}
+	if impact.UsedInOffers, err = h.vendors.OfferReferenced(r.Context(), tenantID, vendorID); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.OK(w, "ok", impact)
 }
 
@@ -437,7 +444,7 @@ type vendorProjectHistoryResponse struct {
 }
 
 // projectHistory backs "Lihat Project" — a vendor's engagement history
-// across every project in the tenant. `project_vendors` is owned by
+// across every project in the tenant. `project_suppliers` is owned by
 // `projects`, not this module, so the actual query is resolved through
 // `projects.Contracts` (see vendors.module.go's doc comment). Owner/Admin
 // only (requireManagerRole in Item's routing above) — unlike the plain
@@ -458,7 +465,7 @@ func (h *VendorHandler) projectHistory(w http.ResponseWriter, r *http.Request, t
 	for _, row := range rows {
 		result = append(result, vendorProjectHistoryResponse{
 			ProjectID: row.ProjectID, ProjectName: row.ProjectName,
-			EventDate: row.EventDate.Format("2006-01-02"), Venue: row.Venue, EngagementStatus: row.EngagementStatus,
+			EventDate: row.EventDate.Format("2006-01-02"), Venue: row.Location, EngagementStatus: row.EngagementStatus,
 		})
 	}
 	response.OK(w, "ok", result)

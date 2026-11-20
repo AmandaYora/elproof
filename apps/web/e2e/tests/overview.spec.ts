@@ -27,7 +27,7 @@ test.describe("project page", () => {
     const history = data.filter((c) => c.includes("/projects/1/activity"));
     expect(history, data.join("\n")).toHaveLength(1);
     expect(history[0]).toMatch(/[?&]limit=5(&|$)/);
-    for (const old of ["/milestones", "/vendors", "/client-payments", "/payment-terms", "/issues", "/staff", "/evidence", "/clients"]) {
+    for (const old of ["/milestones", "/suppliers", "/client-payments", "/payment-terms", "/issues", "/staff", "/evidence", "/clients"]) {
       expect(data.some((c) => c.includes(old)), `unexpected call ${old}\n${data.join("\n")}`).toBe(false);
     }
     expect(data.length, data.join("\n")).toBeLessThanOrEqual(4);
@@ -44,7 +44,7 @@ test.describe("project page", () => {
     });
     await page.getByRole("navigation", { name: "Bagian proyek" }).getByRole("link", { name: "Vendor & venue" }).click();
     await expect(page).toHaveURL(/\/proyek\/1\/vendor/);
-    await expect(page.getByRole("heading", { name: /Vendor/ }).first()).toBeVisible();
+    await expect(page.getByRole("table", { name: "Vendor & venue" })).toBeVisible();
     await page.waitForLoadState("networkidle");
     const data = dataCalls(calls);
     // The vendors and their steps (two), and the attached venue's own record (one).
@@ -63,8 +63,8 @@ test.describe("project page", () => {
       ["client", /\/proyek\/1\/ringkasan$/],
       ["aktivitas", /\/proyek\/1\/ringkasan$/],
       ["pembayaran/client", /\/proyek\/1\/keuangan\/klien$/],
-      ["pembayaran/vendor", /\/proyek\/1\/keuangan\/vendor$/],
-      ["pembayaran/venue", /\/proyek\/1\/keuangan\/venue$/],
+      ["pembayaran/vendor", /\/proyek\/1\/keuangan\/vendor-venue$/],
+      ["pembayaran/venue", /\/proyek\/1\/keuangan\/vendor-venue$/],
     ] as const) {
       await visit(page, `/proyek/1/${from}`);
       await expect(page, from).toHaveURL(to);

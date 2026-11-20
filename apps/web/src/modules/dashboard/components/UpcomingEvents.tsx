@@ -54,7 +54,7 @@ export function UpcomingEvents({ projects, canCreate }: { projects: Project[]; c
                       <span className="block truncate text-[14px] font-medium text-foreground">{p.name}</span>
                       <span className="block truncate text-[12px] text-muted-foreground">
                         <span className="sr-only">{`${d} ${MONTHS[m - 1]}, `}</span>
-                        {p.venue || "Venue belum diisi"}
+                        {[p.location || "Venue belum dipilih", p.eventsLine].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                     <span className="shrink-0 text-[13px] font-semibold tabular-nums text-highlight-text">

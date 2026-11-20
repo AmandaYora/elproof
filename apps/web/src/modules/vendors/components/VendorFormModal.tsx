@@ -165,15 +165,24 @@ export function VendorFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, i
             ))}
           </Combobox>
         </Field>
-        <Field label="Harga Akad (Rp)" required={!isEditing} name="priceAkad" error={errors.priceAkad}>
-          <CurrencyInput value={values.priceAkad} onChange={(n) => set("priceAkad", n)} />
-        </Field>
-        <Field label="Harga Akad + Resepsi (Rp)" required={!isEditing} name="priceAkadResepsi" error={errors.priceAkadResepsi}>
-          <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} />
-        </Field>
-        <Field label="Harga Resepsi saja (Rp)" name="priceResepsi" error={errors.priceResepsi}>
-          <CurrencyInput value={values.priceResepsi} onChange={(n) => set("priceResepsi", n)} />
-        </Field>
+        {/* Partner reference prices (PLAN paket-wo §3.3): they only prefill the partner cost of a quotation, never reach a client. */}
+        <fieldset className="flex flex-col gap-2 sm:col-span-2" aria-describedby="vendor-partner-price-note">
+          <legend className="text-[13px] font-medium text-foreground">Harga rekanan acuan</legend>
+          <span id="vendor-partner-price-note" className="mb-1 text-xs text-muted-foreground">
+            Hanya untuk tim internal, tidak tampil ke klien.
+          </span>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="Harga Akad (Rp)" required={!isEditing} name="priceAkad" error={errors.priceAkad}>
+              <CurrencyInput value={values.priceAkad} onChange={(n) => set("priceAkad", n)} aria-invalid={Boolean(errors.priceAkad)} />
+            </Field>
+            <Field label="Harga Resepsi saja (Rp)" name="priceResepsi" error={errors.priceResepsi}>
+              <CurrencyInput value={values.priceResepsi} onChange={(n) => set("priceResepsi", n)} aria-invalid={Boolean(errors.priceResepsi)} />
+            </Field>
+            <Field label="Harga Akad + Resepsi (Rp)" required={!isEditing} name="priceAkadResepsi" error={errors.priceAkadResepsi}>
+              <CurrencyInput value={values.priceAkadResepsi} onChange={(n) => set("priceAkadResepsi", n)} aria-invalid={Boolean(errors.priceAkadResepsi)} />
+            </Field>
+          </div>
+        </fieldset>
         <div className="sm:col-span-2">
           <Field label="Alamat" name="address" error={errors.address}>
             <Textarea rows={2} value={values.address} onChange={(e) => set("address", e.target.value)} placeholder="Opsional" />

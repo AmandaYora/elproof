@@ -62,18 +62,21 @@ interface LedgerTableProps<T> {
   onPageChange: (page: number) => void;
   empty: { title: string; description?: string; action?: ReactNode };
   actions?: (row: T) => ReactNode;
+  /** Whether the ledger has loaded: until it has, a skeleton or the error with "Coba lagi", never an empty book or rows left from before. */
+  status?: "loading" | "error" | "ready";
+  onRetry?: () => void;
 }
 
 /** The shared DataTable over a ledger already in the browser: no sorting or filtering, paged locally. */
-export function LedgerTable<T>({ label, columns, rows, rowId, page, pageSize, totalPages, totalItems, onPageChange, empty, actions }: LedgerTableProps<T>) {
+export function LedgerTable<T>({ label, columns, rows, rowId, page, pageSize, totalPages, totalItems, onPageChange, empty, actions, status = "ready", onRetry = () => undefined }: LedgerTableProps<T>) {
   return (
     <DataTable
       label={label}
       columns={columns}
-      rows={rows}
+      rows={status === "ready" ? rows : []}
       rowId={rowId}
-      status="ready"
-      onRetry={() => undefined}
+      status={status}
+      onRetry={onRetry}
       meta={{ page, limit: pageSize, total: totalItems, totalPages }}
       onPageChange={onPageChange}
       sort={null}

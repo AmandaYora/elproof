@@ -10,7 +10,8 @@ interface DrawerProps {
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "md" | "lg";
+  /** xl: a wide side-by-side view (Bandingkan revisi). */
+  size?: "md" | "lg" | "xl";
   /** A save is running: Escape, outside clicks and the close button do nothing. */
   busy?: boolean;
 }
@@ -18,6 +19,7 @@ interface DrawerProps {
 const SIZE: Record<NonNullable<DrawerProps["size"]>, string> = {
   md: "data-[side=right]:sm:max-w-md",
   lg: "data-[side=right]:sm:max-w-2xl",
+  xl: "data-[side=right]:sm:max-w-4xl",
 };
 
 const FIRST_FIELD = "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled])";

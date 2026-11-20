@@ -1,5 +1,7 @@
 # ADR-0018: Hard delete for Vendor, Venue, Pengguna — informed consent, not block-then-cascade
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): proyek yang memakai vendor atau venue dibaca dari `project_suppliers` (venue lewat acara), bukan `project_vendors`/`projects.venue_id`; PIC yang dihitung adalah `project_suppliers.pic_staff_id`.
+
 ## Status
 Accepted — implemented.
 

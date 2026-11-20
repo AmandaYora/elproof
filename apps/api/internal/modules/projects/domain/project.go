@@ -21,27 +21,23 @@ type Project struct {
 	Name      string
 	BrideName string
 	GroomName string
-	EventDate time.Time
-	Venue     string
-	// VenueID is a cross-module primitive reference into vendors' Venue
-	// directory (ADR-0016) -- resolved via a module contract, never a SQL
-	// foreign key. nil means no structured venue is attached yet; Venue
-	// (the free-text field above) stays as the fallback display in that case.
-	VenueID *int64
-	// VenueRentalPrice/VenueCharge are a per-project SNAPSHOT of the
-	// attached venue's cost, captured (and freely editable) at attach time
-	// -- never a live join against venues' own current price. This mirrors
-	// project_vendors.contract_value's exact lifecycle and exists so a
-	// completed project's recorded Margin can never drift just because
-	// venue master data changed later. Both nil whenever VenueID is nil;
-	// ProjectService.Update force-clears both on detach regardless of what
-	// the request body contains -- see PLAN.md "Financial Calculation
-	// Correctness".
-	VenueRentalPrice *int64
-	VenueCharge      *int64
-	PrepStartDate    time.Time
-	PackageName      string
-	ContractValue    int64
+	// EventDate is the main event's date ("Acara utama", the Hari H), kept here
+	// in the same transaction as the event itself so lists, the calendar and
+	// the H-n schedule read one column. Where it happens comes from the events'
+	// venues (LocationLine).
+	EventDate     time.Time
+	PrepStartDate time.Time
+	// IsPKP is the workspace's PKP status copied when the project was created:
+	// PPN is added to the lines only when it is set (PLAN §3.2).
+	IsPKP bool
+	// ContractSubtotal, ContractTax and ContractTotal are the cache of the live
+	// lines (subtotal = packages + extra guests + items - discounts; PPN; total =
+	// the contract value), rewritten in the same transaction as every change of
+	// a line or a guest number. LinesVersion is the lines' own If-Match version.
+	ContractSubtotal int64
+	ContractTax      int64
+	ContractTotal    int64
+	LinesVersion     time.Time
 	Status           ProjectStatus
 	PICStaffID       int64
 	// PICSalesStaffID is the second, independent PIC slot ("PIC Sales") --
@@ -52,7 +48,15 @@ type Project struct {
 	// see PLAN.md revisi-timeline-vendor-role-sales.
 	PICSalesStaffID int64
 	Description     string
-	IsArchived      bool
+	// QuotationID is the Accepted quotation (in `offers`) this project was
+	// created from ("Jadikan proyek", PLAN §5.4); nil for a project made by
+	// hand or duplicated. Unique per workspace, so a conversion is idempotent.
+	// QuotationNumber and QuotationRevisionN cache the banner "Dibuat dari
+	// <number> Revisi <n>" at conversion.
+	QuotationID        *int64
+	QuotationNumber    string
+	QuotationRevisionN int
+	IsArchived         bool
 	// CoverPhotoPath is the object-storage key of the Client Portal hero photo
 	// (ADR-0047); nil = no cover. CoverUpdatedAt is when it last changed (the
 	// `?v=` of the cover URL). Neither is part of the PATCH surface: the cover

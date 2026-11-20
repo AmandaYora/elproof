@@ -9,14 +9,24 @@ import (
 	"elproof/internal/shared/apperror"
 )
 
-type fakeContracts struct{ project, venue, engagement int64 }
+// fakeContracts answers the client's contract value and the project's live
+// suppliers (a supplier that is not listed is not found, like a deleted one).
+type fakeContracts struct {
+	project   int64
+	suppliers []domain.ProjectSupplier
+}
 
 func (f fakeContracts) ProjectContractValue(context.Context, int64, int64) (int64, error) {
 	return f.project, nil
 }
-func (f fakeContracts) VenueCost(context.Context, int64, int64) (int64, error) { return f.venue, nil }
-func (f fakeContracts) EngagementContractValue(context.Context, int64, int64) (int64, error) {
-	return f.engagement, nil
+func (f fakeContracts) Supplier(_ context.Context, _, id int64) (*domain.ProjectSupplier, error) {
+	for _, s := range f.suppliers {
+		if s.ID == id {
+			c := s
+			return &c, nil
+		}
+	}
+	return nil, errSupplierNotFound
 }
 
 type fakeClientPayments struct {

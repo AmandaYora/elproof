@@ -72,20 +72,23 @@ func BuildCashFlow(today time.Time, in, out []DueAmount) []CashFlowWeek {
 	return weeks
 }
 
-// VendorDue is one unpaid vendor engagement balance with its due date.
-type VendorDue struct {
-	ProjectID   int64
-	ProjectName string
-	VendorID    int64
-	DueDate     time.Time
-	Remaining   int64
+// SupplierDue is one unpaid balance of a vendor or venue the WO pays, with its
+// due date.
+type SupplierDue struct {
+	ProjectSupplierID int64
+	ProjectID         int64
+	ProjectName       string
+	SupplierKind      SupplierKind
+	SupplierName      string
+	DueDate           time.Time
+	Remaining         int64
 }
 
-// SelectVendorPaymentsDue keeps the unpaid vendor balances that are overdue or
-// due within 30 days, nearest due date first (overdue first), at most
+// SelectSupplierPaymentsDue keeps the unpaid balances that are overdue or due
+// within 30 days, nearest due date first (overdue first), at most
 // MaxDashboardRows.
-func SelectVendorPaymentsDue(today time.Time, rows []VendorDue) []VendorDue {
-	var out []VendorDue
+func SelectSupplierPaymentsDue(today time.Time, rows []SupplierDue) []SupplierDue {
+	var out []SupplierDue
 	for _, r := range rows {
 		if r.Remaining <= 0 {
 			continue
@@ -101,27 +104,29 @@ func SelectVendorPaymentsDue(today time.Time, rows []VendorDue) []VendorDue {
 	return out
 }
 
-// OutstandingOf is what is still owed on an engagement given what was paid
+// OutstandingOf is what is still owed to a supplier given what was paid
 // against it (never negative).
 func OutstandingOf(contractValue int64, lines []PaymentLine) int64 {
 	return ComputeLedger(lines, contractValue).Remaining
 }
 
-// EngagementBalanceRow is one vendor engagement with what is agreed and what
-// has been applied to it, as the dashboard reads them across the workspace.
-type EngagementBalanceRow struct {
-	EngagementID  int64
-	ProjectID     int64
-	ProjectName   string
-	VendorID      int64
-	ContractValue int64
-	DueDate       time.Time
-	Applied       int64
+// SupplierBalanceRow is one vendor or venue the WO pays, with its agreed cost
+// and what the WO has applied to it, as the dashboard reads them across the
+// workspace (only suppliers with a due date).
+type SupplierBalanceRow struct {
+	ProjectSupplierID int64
+	ProjectID         int64
+	ProjectName       string
+	SupplierKind      SupplierKind
+	SupplierName      string
+	AgreedCost        int64
+	DueDate           time.Time
+	Applied           int64
 }
 
-// Remaining is what is still owed on the engagement (never negative).
-func (r EngagementBalanceRow) Remaining() int64 {
-	return OutstandingOf(r.ContractValue, []PaymentLine{{Type: PaymentDP, Amount: max64(r.Applied, 0)}})
+// Remaining is what is still owed to the supplier (never negative).
+func (r SupplierBalanceRow) Remaining() int64 {
+	return OutstandingOf(r.AgreedCost, []PaymentLine{{Type: PaymentDP, Amount: max64(r.Applied, 0)}})
 }
 
 func max64(a, b int64) int64 {
@@ -131,12 +136,14 @@ func max64(a, b int64) int64 {
 	return b
 }
 
-// UnconfirmedVendorRow is a vendor still Planned/Negotiation close to the event.
-type UnconfirmedVendorRow struct {
-	EngagementID     int64
-	ProjectID        int64
-	ProjectName      string
-	VendorID         int64
-	EngagementStatus EngagementStatus
-	EventDate        time.Time
+// UnconfirmedSupplierRow is a vendor or venue still Planned/Negotiation close
+// to the event.
+type UnconfirmedSupplierRow struct {
+	ProjectSupplierID int64
+	ProjectID         int64
+	ProjectName       string
+	SupplierKind      SupplierKind
+	SupplierName      string
+	EngagementStatus  EngagementStatus
+	EventDate         time.Time
 }

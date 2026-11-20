@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { CircleCheck, Eye, EyeOff, Plus } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
@@ -7,7 +7,6 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { Select } from "@/shared/components/ui/Input";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { IssueImpactBadge } from "@/modules/projects/components/StatusBadges";
-import { IssueFormModal } from "@/modules/projects/components/IssueFormModal";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import { ISSUE_STATUS_OPTIONS } from "@/modules/projects/schemas/issue.schema";
 import { useProjectStore, toIssueUpdateFields } from "@/modules/projects/stores/useProjectStore";
@@ -20,23 +19,28 @@ import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatDate } from "@/shared/lib/formatters";
 import { todayISO } from "@/modules/projects/lib/dates";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { SUPPLIER_OPEN_PARAM } from "@/modules/projects/components/suppliers/supplier-helpers";
 import type { IssueStatus, VendorIssue } from "@/modules/projects/types";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
+
+// The form opens on a click: it loads then.
+const IssueFormModal = lazy(() => import("@/modules/projects/components/IssueFormModal").then((m) => ({ default: m.IssueFormModal })));
 
 const OPEN_STATUSES = new Set(["Open", "In Review", "In Resolution"]);
 
 /**
- * Every kendala of the project, open ones first: about a vendor or about the event itself. The status changes in place
- * (no form), and each kendala says whether the client sees it. Two calls: the kendala and the vendors they point to.
+ * Every kendala of the project, open ones first: about a vendor or venue, or about the event itself ("Umum"). The status
+ * changes in place (no form), and each kendala says whether the client sees it. Two calls: the kendala and the vendors
+ * and venues they point to.
  */
 export default function ProjectIssuesTabPage() {
   const { projectId } = useOutletContext<ProjectDetailContext>();
   const canEdit = useCan("project.edit");
   const issues = useProjectStore((s) => s.issues);
-  const engagements = useProjectStore((s) => s.vendorEngagements);
+  const suppliers = useProjectStore((s) => s.suppliers);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
-  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
+  const fetchSuppliers = useProjectStore((s) => s.fetchSuppliers);
   const createIssue = useProjectStore((s) => s.createIssue);
   const updateIssue = useProjectStore((s) => s.updateIssue);
   const setIssueStatus = useProjectStore((s) => s.setIssueStatus);
@@ -47,8 +51,8 @@ export default function ProjectIssuesTabPage() {
 
   useEffect(() => {
     void fetchIssues(projectId);
-    void fetchVendorSection(projectId);
-  }, [projectId, fetchIssues, fetchVendorSection]);
+    void fetchSuppliers(projectId);
+  }, [projectId, fetchIssues, fetchSuppliers]);
 
   // The people list is only needed for the PIC picker of the form.
   useEffect(() => {
@@ -59,13 +63,12 @@ export default function ProjectIssuesTabPage() {
     (a, b) => Number(OPEN_STATUSES.has(b.status)) - Number(OPEN_STATUSES.has(a.status)) || b.foundDate.localeCompare(a.foundDate),
   );
   const openCount = sorted.filter((i) => OPEN_STATUSES.has(i.status)).length;
-  const vendorLookup = engagements.map((e) => ({ id: e.vendorId, name: e.vendorName || "Vendor", city: null }));
 
   function openCreate() {
     setModal({
       mode: "create",
       initialValues: {
-        projectVendorId: "", vendorMilestoneId: "", title: "", description: "", impact: "Low", foundDate: todayISO(),
+        projectSupplierId: "", vendorMilestoneId: "", title: "", description: "", impact: "Low", foundDate: todayISO(),
         resolutionPlan: "", picStaffId: currentStaffId ?? "", targetResolutionDate: "", status: "Open", isClientVisible: true,
       },
     });
@@ -92,7 +95,7 @@ export default function ProjectIssuesTabPage() {
     <Card>
       <CardHeader
         title="Kendala"
-        subtitle={openCount > 0 ? `${openCount} kendala masih terbuka.` : "Kendala proyek ini, tentang vendor atau tentang acaranya."}
+        subtitle={openCount > 0 ? `${openCount} kendala masih terbuka.` : "Kendala proyek ini, tentang vendor atau venue, atau umum tentang acaranya."}
         action={canEdit && <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={openCreate}>Tambah kendala</Button>}
       />
       <CardContent>
@@ -100,7 +103,7 @@ export default function ProjectIssuesTabPage() {
           <EmptyState
             icon={<CircleCheck className="h-6 w-6" />}
             title="Belum ada kendala"
-            description="Catat kendala begitu muncul, tentang vendor atau tentang acaranya. Klien bisa melihatnya dan penanganannya."
+            description="Catat kendala begitu muncul, tentang vendor atau venue, atau umum tentang acaranya. Klien bisa melihatnya dan penanganannya."
           />
         ) : (
           <ul className="flex flex-col divide-y divide-border-light">
@@ -123,7 +126,7 @@ export default function ProjectIssuesTabPage() {
                   )}
                   <IssueImpactBadge impact={issue.impact} />
                   <span className="text-[12.5px] text-text-secondary">
-                    {issue.vendorName || "Tentang acara"} · ditemukan {formatDate(issue.foundDate)}
+                    {issue.projectSupplierId ? issue.supplierName || "Vendor atau venue" : "Umum"} · ditemukan {formatDate(issue.foundDate)}
                     {issue.picName && ` · PIC ${issue.picName}`}
                   </span>
                   <span className="flex items-center gap-1 text-[12.5px] text-text-secondary">
@@ -150,9 +153,12 @@ export default function ProjectIssuesTabPage() {
                       Ubah kendala
                     </button>
                   )}
-                  {issue.projectVendorId && (
-                    <Link to={ROUTE_PATHS.projectDetail(projectId, "vendor")} className="text-[13px] font-medium text-primary underline-offset-2 hover:underline">
-                      Buka di tab Vendor
+                  {issue.projectSupplierId && (
+                    <Link
+                      to={`${ROUTE_PATHS.projectDetail(projectId, "vendor")}?${SUPPLIER_OPEN_PARAM}=${encodeURIComponent(issue.projectSupplierId)}`}
+                      className="text-[13px] font-medium text-primary underline-offset-2 hover:underline"
+                    >
+                      Buka di Vendor & venue
                     </Link>
                   )}
                 </div>
@@ -163,19 +169,20 @@ export default function ProjectIssuesTabPage() {
       </CardContent>
 
       {modal && (
-        <IssueFormModal
-          open
-          onClose={() => setModal(null)}
-          onSubmit={handleSubmit}
-          initialValues={modal.initialValues}
-          mode={modal.mode}
-          milestoneLocked={false}
-          vendorChoice
-          vendorEngagements={engagements}
-          vendors={vendorLookup}
-          vendorMilestones={vendorMilestones}
-          staff={staff}
-        />
+        <Suspense fallback={null}>
+          <IssueFormModal
+            open
+            onClose={() => setModal(null)}
+            onSubmit={handleSubmit}
+            initialValues={modal.initialValues}
+            mode={modal.mode}
+            milestoneLocked={false}
+            supplierChoice
+            suppliers={suppliers}
+            vendorMilestones={vendorMilestones}
+            staff={staff}
+          />
+        </Suspense>
       )}
     </Card>
   );

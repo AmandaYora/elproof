@@ -25,13 +25,17 @@ const P = 1; // the rich project ("Citra & Bima")
 
 export const WO_PAGES: GoldenPage[] = [
   { id: "beranda", auth: "owner", route: "/dashboard", fail: ["/api/v1/dashboard"], empty: true },
+  // Penawaran (paket WO Tahap 5) sits before Proyek in the menu.
+  { id: "penawaran", auth: "owner", route: "/penawaran", fail: ["/api/v1/quotations"], empty: true },
   { id: "proyek", auth: "owner", route: "/proyek", fail: ["/api/v1/projects"], empty: true },
-  // The project page's six tabs (RISET WO Console §3 #4); Keuangan is shown on its first ledger.
+  // The project page's seven tabs (DESAIN paket WO §3.2); Keuangan is shown on each of its three books.
   { id: "proyek-ringkasan", auth: "owner", route: `/proyek/${P}/ringkasan`, fail: [`/api/v1/projects/${P}`] },
+  { id: "proyek-acara", auth: "owner", route: `/proyek/${P}/acara-rincian`, fail: [`/api/v1/projects/${P}/events`] },
   { id: "proyek-jadwal", auth: "owner", route: `/proyek/${P}/jadwal` },
-  { id: "proyek-vendor", auth: "owner", route: `/proyek/${P}/vendor` },
+  { id: "proyek-vendor", auth: "owner", route: `/proyek/${P}/vendor`, fail: [`/api/v1/projects/${P}/suppliers`] },
   { id: "proyek-keuangan", auth: "owner", route: `/proyek/${P}/keuangan/klien` },
-  { id: "proyek-keuangan-vendor", auth: "owner", route: `/proyek/${P}/keuangan/vendor` },
+  { id: "proyek-keuangan-vendor-venue", auth: "owner", route: `/proyek/${P}/keuangan/vendor-venue` },
+  { id: "proyek-keuangan-dibayar-klien", auth: "owner", route: `/proyek/${P}/keuangan/dibayar-klien` },
   { id: "proyek-kendala", auth: "owner", route: `/proyek/${P}/kendala` },
   { id: "proyek-dokumen", auth: "owner", route: `/proyek/${P}/dokumen` },
   { id: "klien", auth: "owner", route: "/clients", fail: ["/api/v1/clients"], empty: true },
@@ -53,6 +57,14 @@ export const WO_DIALOGS: GoldenDialog[] = [
     },
   },
   {
+    id: "ubah-acara",
+    auth: "owner",
+    route: `/proyek/${P}/acara-rincian`,
+    open: async (page) => {
+      await page.getByRole("button", { name: "Tambah acara" }).click();
+    },
+  },
+  {
     id: "tambah-pembayaran",
     auth: "owner",
     route: `/proyek/${P}/keuangan/klien`,
@@ -66,7 +78,7 @@ export const PORTAL_PAGES: GoldenPage[] = [
   { id: "beranda", auth: "client", route: "/portal/beranda", fail: ["/api/v1/projects/me"] },
   { id: "jadwal", auth: "client", route: "/portal/timeline", fail: ["/api/v1/projects/me"] },
   { id: "pembayaran", auth: "client", route: "/portal/pembayaran", fail: ["/api/v1/projects/"] },
-  { id: "vendor", auth: "client", route: "/portal/vendor", fail: ["/api/v1/projects/"] },
+  { id: "layanan", auth: "client", route: "/portal/layanan", fail: ["/api/v1/projects/"] },
   { id: "kendala", auth: "client", route: "/portal/kendala", fail: ["/api/v1/projects/"] },
   { id: "dokumen", auth: "client", route: "/portal/dokumen" },
   { id: "lainnya", auth: "client", route: "/portal/lainnya" },

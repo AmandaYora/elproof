@@ -73,16 +73,18 @@ export function lookOf(item: CalendarItem, today: string): ItemLook {
   switch (item.kind) {
     case "event": {
       const status = PROJECT_STATUS_LABELS.staff[item.status];
+      // One entry per event of the project: its kind, and its venue when chosen ("Resepsi di Gedung Melati").
+      const what = item.title || "Acara";
       return {
         icon: Gem,
         chip: "bg-primary text-primary-foreground border-primary",
         mark: "bg-primary text-primary-foreground",
         chipText: item.projectName,
         heading: item.projectName,
-        meta: "Hari acara",
+        meta: what,
         statusText: status,
-        full: `Hari acara ${item.projectName} (${status})`,
-        srExtra: `, hari acara, ${status}`,
+        full: `${what}, ${item.projectName} (${status})`,
+        srExtra: `, ${what}, ${status}`,
         late: false,
       };
     }

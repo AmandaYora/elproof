@@ -117,6 +117,7 @@ var nouns = map[string]string{
 	"vendor-categories": "kategori vendor", "milestone-templates": "templat jadwal", "milestones": "tahapan",
 	"payments": "pembayaran", "client-payments": "pembayaran klien", "documents": "dokumen", "evidence": "bukti",
 	"issues": "kendala", "roles": "peran", "invite": "undangan", "uploads": "unggahan",
+	"events": "acara", "suppliers": "vendor & venue", "supplier-payments": "pembayaran vendor & venue",
 	"subscription-transactions": "tagihan langganan",
 }
 
@@ -127,6 +128,9 @@ var actionVerbs = map[string]string{
 	"toggle-client-visible": "Mengubah tampilan untuk klien pada",
 	"restore":               "Memulihkan",
 	"duplicate":             "Menduplikasi",
+	"set-main":              "Menandai sebagai utama",
+	"move":                  "Mengubah urutan",
+	"refresh-capacity":      "Memperbarui kapasitas",
 }
 
 // What a method does to one item, or to a collection.

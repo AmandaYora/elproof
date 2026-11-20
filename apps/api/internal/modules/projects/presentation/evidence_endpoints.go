@@ -9,12 +9,17 @@ import (
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
-	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
 
-func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, tenantID, projectID int64, isClient bool) {
+func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	tenantID, isClient := claims.tenantID, claims.isClient
 	list, err := h.evidence.List(r.Context(), projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.portalViewFor(r.Context(), claims, projectID)
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -25,7 +30,7 @@ func (h *Handler) listEvidence(w http.ResponseWriter, r *http.Request, tenantID,
 	}
 	result := make([]evidenceResponse, 0, len(list))
 	for _, e := range list {
-		if isClient && !clientCanSeeEvidence(e, middleware.GrantsFrom(r.Context()).Can) {
+		if !view.canSee(e) {
 			continue
 		}
 		resp := toEvidenceResponse(e)
@@ -189,7 +194,7 @@ func (h *Handler) deleteEvidence(w http.ResponseWriter, r *http.Request, claims 
 		return
 	}
 	switch e.RelatedKind {
-	case domain.RelatedClientPayment, domain.RelatedPayment, domain.RelatedVenuePayment:
+	case domain.RelatedClientPayment, domain.RelatedSupplierPayment:
 		if !claims.can("finance.payment.delete") {
 			forbiddenPermission(w, "Peran Anda tidak dapat menghapus bukti pembayaran")
 			return
@@ -202,7 +207,7 @@ func (h *Handler) deleteEvidence(w http.ResponseWriter, r *http.Request, claims 
 	response.OK(w, "Dokumen berhasil dihapus", h.mutated(r.Context(), claims.tenantID, projectID, map[string]int64{"id": evidenceID}))
 }
 
-func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string, isClient bool) {
+func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, evidenceIDRaw string) {
 	evidenceID, err := parseInt64(evidenceIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
@@ -217,7 +222,7 @@ func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, proje
 	// id still cannot fetch its file. 404 (not 403) so the response doesn't
 	// confirm the document exists. Judged before storage is touched, so the
 	// answer never depends on the file being there.
-	if isClient && !clientCanSeeEvidence(*e, middleware.GrantsFrom(r.Context()).Can) {
+	if !h.canSeeEvidence(r.Context(), claims, projectID, *e) {
 		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
 		return
 	}
@@ -239,7 +244,7 @@ func (h *Handler) downloadEvidence(w http.ResponseWriter, r *http.Request, proje
 // the rules of downloadEvidence (project scope, client visibility); when the
 // deployment has no direct links the answer is 501 presign_unavailable and the
 // web falls back to /file.
-func (h *Handler) linkEvidence(w http.ResponseWriter, r *http.Request, projectID int64, evidenceIDRaw string, isClient bool) {
+func (h *Handler) linkEvidence(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64, evidenceIDRaw string) {
 	evidenceID, err := parseInt64(evidenceIDRaw)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID tidak valid", nil)
@@ -249,7 +254,7 @@ func (h *Handler) linkEvidence(w http.ResponseWriter, r *http.Request, projectID
 	e, url, expiresAt, err := h.evidence.Link(r.Context(), projectID, evidenceID, attachment)
 	// A client may not learn that an internal document exists, even by the
 	// shape of an error, so visibility is judged before anything else is said.
-	if e != nil && isClient && !clientCanSeeEvidence(*e, middleware.GrantsFrom(r.Context()).Can) {
+	if e != nil && !h.canSeeEvidence(r.Context(), claims, projectID, *e) {
 		response.Error(w, http.StatusNotFound, "Dokumen tidak ditemukan", nil)
 		return
 	}
@@ -258,4 +263,11 @@ func (h *Handler) linkEvidence(w http.ResponseWriter, r *http.Request, projectID
 		return
 	}
 	response.OK(w, "ok", map[string]string{"url": url, "expiresAt": expiresAt.In(wib).Format(time.RFC3339)})
+}
+
+// canSeeEvidence is the per-file rule of downloadEvidence and linkEvidence; a
+// failed lookup of the owners counts as "no".
+func (h *Handler) canSeeEvidence(ctx context.Context, claims staffClaims, projectID int64, e domain.Evidence) bool {
+	view, err := h.portalViewFor(ctx, claims, projectID)
+	return err == nil && view.canSee(e)
 }

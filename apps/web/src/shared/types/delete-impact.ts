@@ -26,6 +26,28 @@ export interface RawDeleteImpact {
   affectedProjects: RawAffectedProject[];
   /** Affected projects outside the caller's project scope: counted, never named (ADR-0026). */
   hiddenProjectCount?: number;
+  /** A package or quotation still refers to the vendor or venue: a permanent delete is refused (409 `*_in_offers`). */
+  usedInOffers?: boolean;
+}
+
+/** What a vendor or venue delete would touch: the projects using it, and whether a package or quotation refers to it. */
+export interface DeleteImpact {
+  projects: AffectedProject[];
+  usedInOffers: boolean;
+}
+
+export function toDeleteImpact(raw: RawDeleteImpact): DeleteImpact {
+  return { projects: toAffectedProjects(raw), usedInOffers: raw.usedInOffers === true };
+}
+
+/**
+ * Whether a refused delete (409) says a package or quotation still refers to the row
+ * (`vendor_in_offers`, `venue_in_offers`, `category_in_offers`). The server's message says so in words.
+ */
+export function isInOffersRefusal(err: unknown): boolean {
+  const res = (err as { response?: { status?: number; data?: { errors?: { code?: unknown } | null } } } | undefined)?.response;
+  const code = res?.status === 409 ? res.data?.errors?.code : undefined;
+  return typeof code === "string" && code.endsWith("_in_offers");
 }
 
 /**

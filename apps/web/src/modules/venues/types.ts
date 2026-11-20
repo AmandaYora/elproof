@@ -14,9 +14,14 @@ export interface Venue {
   email: string | null;
   address: string | null;
   city: string | null;
-  rentalPrice: number | null;
+  /** Capacity per layout; at least one is set. */
+  capacityStanding: number | null;
+  capacitySeated: number | null;
+  priceAkad: number | null;
+  priceResepsi: number | null;
+  priceAkadResepsi: number | null;
+  /** Optional extra charge. */
   charge: number | null;
-  capacity: number | null;
   facilities: string | null;
   socialMedia: string | null;
   notes: string;

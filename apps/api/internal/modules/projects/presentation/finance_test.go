@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +76,12 @@ func TestFinanceAccessAndScope(t *testing.T) {
 		"/api/v1/finance/verifications": (*Handler).FinanceVerifications,
 	}
 	for path, route := range routes {
+		// The payables are what the WO owes its suppliers: they also need
+		// finance.margin.view.
+		record := []string{"finance.record"}
+		if strings.HasSuffix(path, "/payables") {
+			record = append(record, "finance.margin.view")
+		}
 		t.Run(path, func(t *testing.T) {
 			call := func(r *http.Request) (*httptest.ResponseRecorder, *fakeFinance) {
 				f := &fakeFinance{}
@@ -98,17 +105,17 @@ func TestFinanceAccessAndScope(t *testing.T) {
 			}
 
 			// A client principal (the portal) never reaches it.
-			if w, f := call(financeRequest(http.MethodGet, path, "client", financeGrants(true, "finance.record"))); w.Code != http.StatusForbidden || len(f.scopes) != 0 {
+			if w, f := call(financeRequest(http.MethodGet, path, "client", financeGrants(true, record...))); w.Code != http.StatusForbidden || len(f.scopes) != 0 {
 				t.Errorf("client: status %d, reads %d", w.Code, len(f.scopes))
 			}
 
 			// Read-only.
-			if w, f := call(financeRequest(http.MethodPost, path, "staff", financeGrants(true, "finance.record"))); w.Code != http.StatusMethodNotAllowed || len(f.scopes) != 0 {
+			if w, f := call(financeRequest(http.MethodPost, path, "staff", financeGrants(true, record...))); w.Code != http.StatusMethodNotAllowed || len(f.scopes) != 0 {
 				t.Errorf("POST: status %d, reads %d", w.Code, len(f.scopes))
 			}
 
 			// Every project: the whole workspace, no holder.
-			w, f = call(financeRequest(http.MethodGet, path, "staff", financeGrants(true, "finance.record")))
+			w, f = call(financeRequest(http.MethodGet, path, "staff", financeGrants(true, record...)))
 			if w.Code != http.StatusOK || len(f.scopes) != 1 {
 				t.Fatalf("all projects: status %d body %s", w.Code, w.Body.String())
 			}
@@ -117,7 +124,7 @@ func TestFinanceAccessAndScope(t *testing.T) {
 			}
 
 			// Own projects only: the holder is the caller, whatever the query says.
-			w, f = call(financeRequest(http.MethodGet, path+"?picStaffId=99", "staff", financeGrants(false, "finance.record")))
+			w, f = call(financeRequest(http.MethodGet, path+"?picStaffId=99", "staff", financeGrants(false, record...)))
 			if w.Code != http.StatusOK || len(f.scopes) != 1 {
 				t.Fatalf("assigned: status %d body %s", w.Code, w.Body.String())
 			}
@@ -176,14 +183,22 @@ func TestFinancePayablesFilters(t *testing.T) {
 	f := &fakeFinance{}
 	w := httptest.NewRecorder()
 	(&Handler{finance: f}).FinancePayables(w, financeRequest(http.MethodGet, "/api/v1/finance/payables?kind=venue&status=open&q=graha",
-		"staff", financeGrants(true, "finance.record")))
-	if w.Code != http.StatusOK || f.payFilter.Kind != domain.PayableVenue || f.payFilter.Status != "open" || f.payFilter.Search != "graha" {
+		"staff", financeGrants(true, "finance.record", "finance.margin.view")))
+	if w.Code != http.StatusOK || f.payFilter.Kind != domain.SupplierVenue || f.payFilter.Status != "open" || f.payFilter.Search != "graha" {
 		t.Errorf("status %d filter %+v", w.Code, f.payFilter)
 	}
 	w = httptest.NewRecorder()
 	(&Handler{finance: &fakeFinance{}}).FinancePayables(w, financeRequest(http.MethodGet, "/api/v1/finance/payables?kind=dekor&status=x",
-		"staff", financeGrants(true, "finance.record")))
+		"staff", financeGrants(true, "finance.record", "finance.margin.view")))
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("bad kind/status: status %d", w.Code)
+	}
+	// A Wedding Planner records payments but does not see what the WO owes
+	// its suppliers: 403, nothing read.
+	f = &fakeFinance{}
+	w = httptest.NewRecorder()
+	(&Handler{finance: f}).FinancePayables(w, financeRequest(http.MethodGet, "/api/v1/finance/payables", "staff", financeGrants(false, "finance.record")))
+	if w.Code != http.StatusForbidden || len(f.scopes) != 0 {
+		t.Errorf("no finance.margin.view: status %d, reads %d", w.Code, len(f.scopes))
 	}
 }

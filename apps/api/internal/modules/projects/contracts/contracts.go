@@ -1,8 +1,8 @@
 // Package contracts is the ONLY package other modules may import from
 // projects — used by `clients` (validate a project_id belongs to the
 // caller's tenant) and `vendors` (resolve a vendor's cross-project
-// engagement history for "Lihat Project", since `project_vendors` is owned
-// by `projects`, not `vendors`).
+// project history for "Lihat proyek", since `project_suppliers` is owned by
+// `projects`, not `vendors`).
 package contracts
 
 import (
@@ -10,22 +10,23 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/application"
+	"elproof/internal/modules/projects/domain"
 )
 
 // VendorEngagementHistoryItem is the cross-module-safe shape of one history
-// row — a primitive projection of domain.VendorEngagementHistoryRow, never
-// the domain type itself.
+// row — a primitive projection of domain.SupplierHistoryRow, never the domain
+// type itself. Location is where the project happens (its events' venues).
 type VendorEngagementHistoryItem struct {
 	ProjectID        int64
 	ProjectName      string
 	EventDate        time.Time
-	Venue            string
+	Location         string
 	EngagementStatus string
 }
 
 // ProjectRef is a minimal {id, name} projection of a project — a
 // cross-module-safe copy of domain.ProjectRef, same convention as
-// VendorEngagementHistoryItem mirroring VendorEngagementHistoryRow above.
+// VendorEngagementHistoryItem mirroring SupplierHistoryRow above.
 type ProjectRef struct {
 	ID   int64
 	Name string
@@ -73,12 +74,12 @@ type Contracts interface {
 
 type impl struct {
 	projects           *application.ProjectService
-	vendorEngagements  *application.VendorEngagementService
+	suppliers          *application.SupplierService
 	milestoneTemplates *application.MilestoneTemplateService
 }
 
-func New(projects *application.ProjectService, vendorEngagements *application.VendorEngagementService, milestoneTemplates *application.MilestoneTemplateService) Contracts {
-	return &impl{projects: projects, vendorEngagements: vendorEngagements, milestoneTemplates: milestoneTemplates}
+func New(projects *application.ProjectService, suppliers *application.SupplierService, milestoneTemplates *application.MilestoneTemplateService) Contracts {
+	return &impl{projects: projects, suppliers: suppliers, milestoneTemplates: milestoneTemplates}
 }
 
 func (c *impl) ProjectExists(ctx context.Context, tenantID, projectID int64) (bool, error) {
@@ -114,7 +115,7 @@ func (c *impl) ProjectPICSalesStaffID(ctx context.Context, tenantID, projectID i
 }
 
 func (c *impl) ListVendorEngagementHistory(ctx context.Context, tenantID, vendorID int64) ([]VendorEngagementHistoryItem, error) {
-	rows, err := c.vendorEngagements.ListHistoryForVendor(ctx, tenantID, vendorID)
+	rows, err := c.suppliers.History(ctx, tenantID, domain.SupplierVendor, vendorID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,19 +123,25 @@ func (c *impl) ListVendorEngagementHistory(ctx context.Context, tenantID, vendor
 	for _, r := range rows {
 		items = append(items, VendorEngagementHistoryItem{
 			ProjectID: r.ProjectID, ProjectName: r.ProjectName, EventDate: r.EventDate,
-			Venue: r.Venue, EngagementStatus: string(r.EngagementStatus),
+			Location: r.Location, EngagementStatus: string(r.EngagementStatus),
 		})
 	}
 	return items, nil
 }
 
-// ListAffectedProjectsForVendor reuses ListVendorEngagementHistory's own data
-// (project_vendors joined to projects) -- the exact same set the existing
-// "Lihat Project" feature already surfaces, just projected down to {id, name}
-// and de-duplicated (a vendor could in principle have more than one
-// project_vendors row against the same project across its history).
+// ListAffectedProjectsForVendor/Venue reuse the "Lihat proyek" data
+// (project_suppliers of that kind), projected down to {id, name} and
+// de-duplicated (a vendor may work on one project more than once).
 func (c *impl) ListAffectedProjectsForVendor(ctx context.Context, tenantID, vendorID int64) ([]ProjectRef, error) {
-	rows, err := c.vendorEngagements.ListHistoryForVendor(ctx, tenantID, vendorID)
+	return c.affected(ctx, tenantID, domain.SupplierVendor, vendorID)
+}
+
+func (c *impl) ListAffectedProjectsForVenue(ctx context.Context, tenantID, venueID int64) ([]ProjectRef, error) {
+	return c.affected(ctx, tenantID, domain.SupplierVenue, venueID)
+}
+
+func (c *impl) affected(ctx context.Context, tenantID int64, kind domain.SupplierKind, id int64) ([]ProjectRef, error) {
+	rows, err := c.suppliers.History(ctx, tenantID, kind, id)
 	if err != nil {
 		return nil, err
 	}
@@ -146,18 +153,6 @@ func (c *impl) ListAffectedProjectsForVendor(ctx context.Context, tenantID, vend
 		}
 		seen[r.ProjectID] = true
 		refs = append(refs, ProjectRef{ID: r.ProjectID, Name: r.ProjectName})
-	}
-	return refs, nil
-}
-
-func (c *impl) ListAffectedProjectsForVenue(ctx context.Context, tenantID, venueID int64) ([]ProjectRef, error) {
-	rows, err := c.projects.ListAffectedProjectsForVenue(ctx, tenantID, venueID)
-	if err != nil {
-		return nil, err
-	}
-	refs := make([]ProjectRef, 0, len(rows))
-	for _, r := range rows {
-		refs = append(refs, ProjectRef{ID: r.ID, Name: r.Name})
 	}
 	return refs, nil
 }

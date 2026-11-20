@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, ExternalLink } from "lucide-react";
+import { FileText, ExternalLink, CircleAlert } from "lucide-react";
 import { Modal } from "@/shared/components/ui/Modal";
 import { Button } from "@/shared/components/ui/Button";
 import { Input, Textarea, Field } from "@/shared/components/ui/Input";
 import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { Combobox } from "@/shared/components/ui/Combobox";
-import { venueSchema, venueCreateSchema, type VenueFormValues, type VenueCreateFormValues } from "@/modules/venues/schemas/venue.schema";
+import {
+  venueSchema,
+  venueCreateSchema,
+  CAPACITY_REQUIRED_MESSAGE,
+  type VenueFormValues,
+  type VenueCreateFormValues,
+} from "@/modules/venues/schemas/venue.schema";
 import { CITIES } from "@/shared/constants/cities";
 import type { Venue } from "@/modules/venues/types";
 import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
@@ -18,20 +24,23 @@ import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nama venue", picName: "Nama PIC", phonePic: "No. telepon PIC", phoneVenue: "No. telepon venue", email: "Email", city: "Kota",
-  capacity: "Kapasitas", rentalPrice: "Harga sewa", charge: "Charge", address: "Alamat", facilities: "Fasilitas", socialMedia: "Media sosial",
+  capacityStanding: "Kapasitas berdiri", capacitySeated: "Kapasitas duduk", priceAkad: "Harga Akad", priceResepsi: "Harga Resepsi",
+  priceAkadResepsi: "Harga Akad + Resepsi", charge: "Charge tambahan", address: "Alamat", facilities: "Fasilitas", socialMedia: "Media sosial",
 };
 
 function toFormValues(venue?: Venue): VenueFormValues {
   if (!venue) {
     return {
       name: "", picName: "", phonePic: "", phoneVenue: "", email: "", address: "", city: "",
-      rentalPrice: 0, charge: 0, capacity: 0, facilities: "", socialMedia: "", notes: "",
+      capacityStanding: 0, capacitySeated: 0, priceAkad: 0, priceResepsi: 0, priceAkadResepsi: 0, charge: 0,
+      facilities: "", socialMedia: "", notes: "",
     };
   }
   return {
     name: venue.name, picName: venue.picName, phonePic: venue.phonePic,
     phoneVenue: venue.phoneVenue ?? "", email: venue.email ?? "", address: venue.address ?? "", city: venue.city ?? "",
-    rentalPrice: venue.rentalPrice ?? 0, charge: venue.charge ?? 0, capacity: venue.capacity ?? 0,
+    capacityStanding: venue.capacityStanding ?? 0, capacitySeated: venue.capacitySeated ?? 0,
+    priceAkad: venue.priceAkad ?? 0, priceResepsi: venue.priceResepsi ?? 0, priceAkadResepsi: venue.priceAkadResepsi ?? 0, charge: venue.charge ?? 0,
     facilities: venue.facilities ?? "", socialMedia: venue.socialMedia ?? "", notes: venue.notes,
   };
 }
@@ -91,6 +100,10 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
     }
   }
 
+  // Neither capacity filled: one message for the pair, under the group, instead of the same sentence under both inputs.
+  const capacityPairMissing = errors.capacityStanding === CAPACITY_REQUIRED_MESSAGE && errors.capacitySeated === CAPACITY_REQUIRED_MESSAGE;
+  const capacityError = (key: "capacityStanding" | "capacitySeated") => (capacityPairMissing ? undefined : errors[key]);
+
   const submit = form.handleSubmit(
     async (parsed) => {
       if (isEditing) await onSubmitEdit(parsed as VenueFormValues);
@@ -145,15 +158,67 @@ export function VenueFormModal({ open, onClose, onSubmitCreate, onSubmitEdit, in
             ))}
           </Combobox>
         </Field>
-        <Field label="Kapasitas (orang)" name="capacity" error={errors.capacity}>
-          <Input type="number" min={0} value={values.capacity} onChange={(e) => set("capacity", Number(e.target.value))} onBlur={() => blur("capacity")} />
-        </Field>
-        <Field label="Harga sewa (Rp)" required={!isEditing} name="rentalPrice" error={errors.rentalPrice}>
-          <CurrencyInput value={values.rentalPrice} onChange={(n) => set("rentalPrice", n)} />
-        </Field>
-        <Field label="Charge (Rp)" name="charge" error={errors.charge}>
-          <CurrencyInput value={values.charge} onChange={(n) => set("charge", n)} />
-        </Field>
+        <fieldset className="flex flex-col gap-2 sm:col-span-2" aria-describedby="venue-capacity-note">
+          <legend className="mb-2 text-[13px] font-medium text-foreground">
+            Kapasitas
+            <span aria-hidden className="text-danger-text"> *</span>
+            <span className="sr-only"> (wajib diisi)</span>
+          </legend>
+          <div className="grid grid-cols-2 gap-3">
+            {(
+              [
+                ["capacityStanding", "Berdiri"],
+                ["capacitySeated", "Duduk"],
+              ] as const
+            ).map(([key, label]) => (
+              <Field key={key} label={label} name={key} error={capacityError(key)}>
+                <div className="relative">
+                  <CurrencyInput
+                    value={values[key]}
+                    onChange={(n) => set(key, n)}
+                    onBlur={() => blur(key)}
+                    aria-invalid={Boolean(errors[key])}
+                    className="pr-14"
+                  />
+                  <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] text-muted-foreground">
+                    orang
+                  </span>
+                </div>
+              </Field>
+            ))}
+          </div>
+          {capacityPairMissing ? (
+            <span id="venue-capacity-note" role="alert" className="flex items-start gap-1 text-xs font-medium text-danger-text">
+              <CircleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
+              {CAPACITY_REQUIRED_MESSAGE}
+            </span>
+          ) : (
+            <span id="venue-capacity-note" className="text-xs text-muted-foreground">
+              Isi minimal satu. Kosongkan tata letak yang tidak tersedia di venue ini.
+            </span>
+          )}
+        </fieldset>
+
+        <fieldset className="flex flex-col gap-2 sm:col-span-2" aria-describedby="venue-price-note">
+          <legend className="mb-2 text-[13px] font-medium text-foreground">Harga</legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["priceAkad", "Akad (Rp)"],
+                ["priceResepsi", "Resepsi (Rp)"],
+                ["priceAkadResepsi", "Akad + Resepsi (Rp)"],
+                ["charge", "Charge tambahan (Rp)"],
+              ] as const
+            ).map(([key, label]) => (
+              <Field key={key} label={label} name={key} error={errors[key]}>
+                <CurrencyInput value={values[key]} onChange={(n) => set(key, n)} onBlur={() => blur(key)} aria-invalid={Boolean(errors[key])} />
+              </Field>
+            ))}
+          </div>
+          <span id="venue-price-note" className="text-xs text-muted-foreground">
+            Kosongkan harga untuk acara yang tidak disewakan venue ini.
+          </span>
+        </fieldset>
         <div className="sm:col-span-2">
           <Field label="Alamat" name="address" error={errors.address}>
             <Textarea rows={2} value={values.address} onChange={(e) => set("address", e.target.value)} onBlur={() => blur("address")} placeholder="Opsional" />

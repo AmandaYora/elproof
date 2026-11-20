@@ -98,6 +98,12 @@ func (m *Module) SetVendors(vendors vendorscontracts.Contracts) {
 	m.tenantService.SetVendors(vendors)
 }
 
+// SetEventKinds completes two-phase wiring with the offers module: a new
+// workspace gets its default event kinds (paket-wo PLAN §2.1).
+func (m *Module) SetEventKinds(k application.EventKindSeeder) {
+	m.tenantService.SetEventKinds(k)
+}
+
 // SetProjects completes the same two-phase wiring as SetVendors above — see
 // TenantService.SetProjects. main.go calls this right after projectsModule
 // is built.
@@ -129,6 +135,16 @@ func (m *Module) TrialLimit(ctx context.Context, tenantID int64, resource string
 // caller decides who may see the bank account.
 func (m *Module) PortalContact(ctx context.Context, tenantID int64) (whatsapp, bankName, accountNumber, accountHolder string, err error) {
 	return m.tenantService.PortalContact(ctx, tenantID)
+}
+
+// IsPKP says whether the workspace charges PPN (Profil usaha › Penawaran);
+// projects copies it onto a project when it is created (wired in cmd/server).
+func (m *Module) IsPKP(ctx context.Context, tenantID int64) (bool, error) {
+	q, err := m.tenantService.GetQuoteSettings(ctx, tenantID)
+	if err != nil {
+		return false, err
+	}
+	return q.IsPKP, nil
 }
 
 // TenantName implements identity's TenantNameResolver (invitation pages

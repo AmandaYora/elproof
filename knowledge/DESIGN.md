@@ -5,6 +5,9 @@
 > `docs/plan/revamp-ui-shadcn/PLAN.md`. Alur dan susunan menu per peran mengikuti
 > `docs/plan/registrasi-wo-self-service/FLOW-IDEAL.md`; dokumen ini mengatur **rupa, komponen, bahasa, dan perilaku UI**.
 >
+> **Revisi 6 (19 Nov 2026, ADR-0048):** glosarium paket WO (Paket vs Paket langganan, Isi paket, Jenis acara, Tamu,
+> Kode usaha, Penawaran, Potongan, Biaya rekanan, Vendor & venue). Berubah: §7. Rupa dan alur layarnya di
+> `docs/plan/paket-wo/DESAIN.md`.
 > **Revisi 5 (16 Nov 2026, ADR-0046):** aturan visual WO Console, susunan menu baru, URL berbahasa Indonesia. Berubah: §4.5 (baru).
 > **Revisi 4 (16 Nov 2026, ADR-0045):** palet diganti navy + emas segel dari logo baru, untuk semua permukaan. Berubah: §4.1, §4.3.
 > **Revisi 3 (10 Nov 2026, T-20261110-11, ADR-0039):** satu palet plum + emas segel dan satu huruf (Plus Jakarta Sans)
@@ -319,7 +322,29 @@ FLOW-IDEAL §0 menetapkan Bahasa Indonesia penuh dengan "Anda", tetapi UI sekara
 | issue | **Kendala** | Issue |
 | timeline / milestone | **Jadwal** (daftar), **tahapan** (butir) — D15 | Timeline, Milestone |
 | vendor, venue | **Vendor**, **Venue** (lazim di industri WO, dipertahankan) | — |
-| paket harga vendor (`pricingTier`) | **Akad**, **Akad + Resepsi**, **Resepsi saja**; kolom harganya "Harga Akad", "Harga Akad + Resepsi", "Harga Resepsi saja" (label di `PRICING_TIER_LABELS`) | Pemberkatan, Resepsi Only |
+| paket harga vendor (`pricingTier`) | **Jenis acara** (Akad, Akad + Resepsi, Resepsi saja); kolom harganya "Harga Akad", "Harga Akad + Resepsi", "Harga Resepsi saja" (label di `PRICING_TIER_LABELS`) | Paket harga vendor, Pemberkatan, Resepsi Only |
+| produk WO di katalog (ADR-0048) | **Paket** | Package, Produk |
+| langganan ElProof | **Paket langganan** (tidak pernah "Paket" saja) | Plan, Paket |
+| layanan di dalam paket | **Isi paket** | Komponen, Item paket |
+| bagian pernikahan (akad, resepsi, …) | **Acara** (butir), **Jenis acara** (daftar di Katalog) | Event |
+| orang yang diperkirakan hadir | **Tamu**; "Tamu termasuk", "Tambahan per … tamu" | Pax, Undangan |
+| tata letak venue | **Berdiri**, **Duduk** | Standing, Seated |
+| kode di nomor dokumen | **Kode usaha** | Prefix, Kode dokumen |
+| surat harga untuk calon klien | **Penawaran** | Quotation, Proposal |
+| nominal pengurang | **Potongan** | Diskon |
+| yang WO bayar ke vendor/venue | **Biaya rekanan**; di katalog **Perkiraan biaya** (hanya terlihat oleh tim pemegang izin margin) | Harga modal |
+| vendor dan venue dalam proyek/penawaran | **Vendor & venue** (butirnya vendor atau venue) | Pemasok |
+| revisi penawaran yang tidak berlaku lagi | **Digantikan** | Superseded |
+| revisi penawaran yang diterima | **Kesepakatan awal** | Snapshot |
+| versi penawaran yang dibagikan ke klien (Paket WO Tahap 5) | **Revisi** ("Revisi 2"), dibuat dengan **Buat revisi untuk klien**; isi yang belum dibagikan: "Ada perubahan yang belum dikirim ke klien" | Versi, Draft PDF |
+| penawaran yang lewat masa berlaku | **Kedaluwarsa**; masa berlaku ditambah dengan **Perpanjang** | Expired |
+| penawaran lain untuk pasangan yang sama | **Alternatif** ("Buat alternatif") | Opsi, Varian |
+| penawaran yang diterima menjadi proyek | **Jadikan proyek** (tombol akhir: "Buat proyek") | Convert, Konversi |
+| uang yang dibayar klien saat proyek dibuat dari penawaran | **Tanda jadi**, dicatat sebagai pembayaran DP | Booking fee |
+| status pajak | **PKP** / **Bukan PKP** | — |
+| tagihan dari vendor/venue yang dibayar klien langsung (Paket WO Tahap 4) | **Tagihan vendor** (butirnya "DP", "Pelunasan", …); di luar nilai kontrak dan kas WO | Bill, Invoice vendor |
+| bukti yang pasangan kirim untuk tagihan vendor | **Kirim bukti bayar** (tombol Portal); di console **Bukti bayar vendor** | Upload bukti, Submit |
+| WO memeriksa bukti dari pasangan | **Periksa bukti** → **Tandai sesuai** / **Tolak dengan alasan**; status **Menunggu diperiksa**, **Sesuai**, **Ditolak** (label di `SUPPLIER_PAYMENT_STATUS_LABELS`) | Approve, Reject, Verifikasi (untuk bukti vendor) |
 | tenant (hanya Platform Console internal) | **Tenant**; untuk WO sendiri: "usaha Anda" | — |
 
 **Aturan tulisan:**

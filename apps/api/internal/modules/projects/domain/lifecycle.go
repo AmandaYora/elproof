@@ -59,20 +59,21 @@ type ChecklistItem struct {
 	Detail string
 }
 
-// VendorBalance is what one active vendor engagement is owed and has been paid.
-type VendorBalance struct {
-	ContractValue int64
-	Payments      []PaymentLine
+// SupplierBalance is what one active vendor or venue the WO pays is owed (its
+// agreed cost) and what the WO has paid it.
+type SupplierBalance struct {
+	AgreedCost int64
+	Payments   []PaymentLine
 }
 
 // ClosingInput is everything the closing checklist is computed from.
 type ClosingInput struct {
 	ContractValue  int64
 	ClientPayments []PaymentLine
-	Vendors        []VendorBalance
-	VenueCost      int64
-	VenuePayments  []PaymentLine
-	OpenIssues     int
+	// Suppliers are the active vendors and venues the WO pays that have an
+	// agreed cost; a supplier the client pays is settled between them.
+	Suppliers  []SupplierBalance
+	OpenIssues int
 }
 
 func rupiah(n int64) string {
@@ -106,28 +107,19 @@ func BuildClosingChecklist(in ClosingInput) []ChecklistItem {
 	}
 	items = append(items, client)
 
-	unpaidVendors := 0
-	var vendorLeft int64
-	for _, v := range in.Vendors {
-		if left := v.ContractValue - AppliedToContract(v.Payments); left > 0 {
-			unpaidVendors++
-			vendorLeft += left
+	unpaid := 0
+	var left int64
+	for _, v := range in.Suppliers {
+		if l := v.AgreedCost - AppliedToContract(v.Payments); l > 0 {
+			unpaid++
+			left += l
 		}
 	}
-	vendors := ChecklistItem{Key: "vendors_paid", Label: "Pembayaran vendor sudah tuntas", Done: unpaidVendors == 0}
-	if !vendors.Done {
-		vendors.Detail = fmt.Sprintf("%d vendor belum lunas, total sisa %s", unpaidVendors, rupiah(vendorLeft))
+	suppliers := ChecklistItem{Key: "suppliers_paid", Label: "Pembayaran vendor & venue sudah tuntas", Done: unpaid == 0}
+	if !suppliers.Done {
+		suppliers.Detail = fmt.Sprintf("%d vendor & venue belum lunas, total sisa %s", unpaid, rupiah(left))
 	}
-	items = append(items, vendors)
-
-	if in.VenueCost > 0 {
-		venueLeft := in.VenueCost - AppliedToContract(in.VenuePayments)
-		venue := ChecklistItem{Key: "venue_paid", Label: "Pembayaran venue sudah tuntas", Done: venueLeft <= 0}
-		if !venue.Done {
-			venue.Detail = "Masih ada sisa " + rupiah(venueLeft)
-		}
-		items = append(items, venue)
-	}
+	items = append(items, suppliers)
 
 	issues := ChecklistItem{Key: "issues_closed", Label: "Semua kendala sudah ditutup", Done: in.OpenIssues == 0}
 	if !issues.Done {

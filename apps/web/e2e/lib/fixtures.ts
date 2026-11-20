@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { test as base, expect, type BrowserContext, type Page, type TestInfo, type Locator } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { FIXED_NOW, STATE_FILE, TMP, type State } from "./config";
 
@@ -99,24 +99,19 @@ export async function visit(page: Page, route: string) {
   await settle(page);
 }
 
-/** Text that follows the real server clock (or the wall clock) and so cannot be pinned: masked in every shot. */
-export function volatile(page: Page): Locator[] {
-  return [
-    page.getByText(/Masa coba .*tersisa/),
-    page.getByText(/Masa coba: \d+ hari lagi/),
-    page.getByText(/tersisa \d+ hari/),
-    page.getByText(/Terlambat \d+ hari|terlambat \d+ hari/),
-  ];
-}
-
 export interface ShotOptions {
-  mask?: Locator[];
   fullPage?: boolean;
 }
 
+/**
+ * A golden shows the page exactly as a person sees it: nothing is masked. Everything a page counts in days (trial
+ * days left, H-n, days overdue) is pinned: the browser clock and the API's business clock both start at FIXED_NOW and
+ * the seed pins the trial end (seed.ts). A golden that drifts with the real date points at a time.Now() that should be
+ * clock.Now(), not at a mask to add.
+ */
 export async function shot(page: Page, info: TestInfo, group: string, name: string, opts: ShotOptions = {}) {
   const file = [group, `${name}-${info.project.name}.png`];
-  await expect(page).toHaveScreenshot(file, { fullPage: opts.fullPage ?? true, mask: [...volatile(page), ...(opts.mask ?? [])] });
+  await expect(page).toHaveScreenshot(file, { fullPage: opts.fullPage ?? true });
 }
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];

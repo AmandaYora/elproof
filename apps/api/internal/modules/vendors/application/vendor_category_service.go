@@ -38,7 +38,19 @@ type VendorCategoryUsageChecker interface {
 type VendorCategoryService struct {
 	repo    VendorCategoryRepository
 	vendors VendorCategoryUsageChecker
+	offers  OfferReferences
 }
+
+// SetOfferReferences hands the service the check of packages and quotations
+// that still refer to a category (see OfferReferences); nil means none do.
+func (s *VendorCategoryService) SetOfferReferences(r OfferReferences) { s.offers = r }
+
+// MsgCategoryInOffers is the 409 a delete answers while a package or a
+// quotation still refers to the category (PLAN paket-wo §3.3).
+const MsgCategoryInOffers = "Kategori ini dipakai di paket atau penawaran. Nonaktifkan saja agar tidak bisa dipilih lagi."
+
+// CodeCategoryInOffers is that refusal's machine-readable code (errors.code).
+const CodeCategoryInOffers = "category_in_offers"
 
 func NewVendorCategoryService(repo VendorCategoryRepository, vendors VendorCategoryUsageChecker) *VendorCategoryService {
 	return &VendorCategoryService{repo: repo, vendors: vendors}
@@ -202,6 +214,15 @@ func (s *VendorCategoryService) Delete(ctx context.Context, tenantID, id int64) 
 	}
 	if count > 0 {
 		return apperror.Conflict(fmt.Sprintf("Kategori masih digunakan oleh %d vendor dan tidak dapat dihapus. Ubah kategori pada vendor tersebut terlebih dahulu.", count))
+	}
+	if s.offers != nil {
+		used, err := s.offers.CategoryReferenced(ctx, tenantID, id)
+		if err != nil {
+			return err
+		}
+		if used {
+			return apperror.Conflict(MsgCategoryInOffers).WithCode(CodeCategoryInOffers)
+		}
 	}
 	return s.repo.Delete(ctx, tenantID, id)
 }

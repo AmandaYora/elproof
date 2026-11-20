@@ -332,12 +332,17 @@ func (s *stack) staffAs(t tenant, roleName string) (string, int64) {
 	return tok, id
 }
 
+// projectFor creates a project with the given PIC and status, and a Rincian
+// worth `contract` (setContract).
 func (s *stack) projectFor(t tenant, name string, contract int64, eventIn int, picStaffID int64, status string) int64 {
 	s.t.Helper()
-	return s.mustOK("project "+name, s.do(t.token, "POST", "/api/v1/projects", map[string]any{
-		"name": name, "brideName": "Bride " + name, "groomName": "Groom " + name, "eventDate": day(eventIn), "venue": "Gedung " + name,
-		"prepStartDate": day(-30), "packageName": "Paket", "contractValue": contract, "status": status, "picStaffId": picStaffID,
+	id := s.mustOK("project "+name, s.do(t.token, "POST", "/api/v1/projects", map[string]any{
+		"name": name, "brideName": "Bride " + name, "groomName": "Groom " + name,
+		"prepStartDate": day(-30), "status": status, "picStaffId": picStaffID,
+		"events": []map[string]any{eventOf(s.kind(t, "Akad"), day(eventIn), 100, 0)},
 	})).id("data", "id")
+	s.setContract(t, id, contract)
+	return id
 }
 
 func (s *stack) vendorWith(t tenant, name string, category int64, city string, price *int64) int64 {
@@ -355,11 +360,11 @@ func (s *stack) vendorWith(t tenant, name string, category int64, city string, p
 func (s *stack) venueWith(t tenant, name, city string, capacity int, rental *int64) int64 {
 	s.t.Helper()
 	body := venueBody(t, name)
-	body["city"], body["capacity"] = city, capacity
+	body["city"], body["capacityStanding"] = city, capacity
 	if rental == nil {
-		delete(body, "rentalPrice")
+		delete(body, "priceAkadResepsi")
 	} else {
-		body["rentalPrice"] = *rental
+		body["priceAkadResepsi"] = *rental
 	}
 	return s.mustOK("venue "+name, s.do(t.token, "POST", "/api/v1/venues", body)).id("data", "id")
 }
@@ -644,7 +649,7 @@ func TestTahap6(t *testing.T) {
 				"isActive": flag("isActive"), "createdAt": name("createdAt"),
 			}},
 			{name: "venues", token: x.token, path: "/api/v1/venues", def: "createdAt:asc", foreignIDs: []int64{yVenue}, foreignTxt: y.marker, fields: map[string]func(map[string]any) sortKey{
-				"name": name("name"), "city": name("city"), "capacity": number("capacity"), "rentalPrice": number("rentalPrice"),
+				"name": name("name"), "city": name("city"), "capacityStanding": number("capacityStanding"), "priceAkadResepsi": number("priceAkadResepsi"),
 				"isActive": flag("isActive"), "createdAt": name("createdAt"),
 			}},
 			{name: "vendor-categories", token: x.token, path: "/api/v1/vendor-categories", def: "createdAt:asc", foreignIDs: []int64{yCat}, foreignTxt: y.marker, fields: map[string]func(map[string]any) sortKey{
@@ -1056,7 +1061,7 @@ func TestTahap6(t *testing.T) {
 			}
 		}
 		// Venue and vendor lists never show Y's rows, whatever the filter.
-		for _, path := range []string{"/api/v1/vendors?isActive=true&sort=name&limit=100", "/api/v1/venues?isActive=true&sort=capacity:asc&limit=100"} {
+		for _, path := range []string{"/api/v1/vendors?isActive=true&sort=name&limit=100", "/api/v1/venues?isActive=true&sort=capacityStanding:asc&limit=100"} {
 			if r := s.mustOK(path, s.do(x.token, "GET", path, nil)); strings.Contains(string(r.body), y.marker) {
 				t.Errorf("%s leaks Y: %s", path, r)
 			}

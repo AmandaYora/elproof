@@ -51,9 +51,14 @@ var Catalog = []Permission{
 	{"vendor.view", KindStaff, "Direktori", "Lihat vendor & venue", "Membuka menu Vendor dan Venue: daftar lengkap, ekspor, dan riwayat proyek. Tanpa izin ini, orang yang mengerjakan proyek tetap bisa memilih vendor dan venue untuk proyeknya."},
 	{"vendor.manage", KindStaff, "Direktori", "Kelola vendor & venue", "Menambah, mengubah, mengimpor, dan mengekspor vendor dan venue."},
 	{"vendor.delete", KindStaff, "Direktori", "Hapus vendor & venue", "Menghapus vendor dan venue secara permanen."},
-	{"vendor.category.manage", KindStaff, "Direktori", "Kelola kategori vendor", "Menambah dan mengubah kategori vendor."},
 
-	{"template.manage", KindStaff, "Pengaturan", "Kelola jadwal bawaan", "Mengubah tahapan bawaan yang dipakai setiap proyek baru."},
+	{"quotation.view", KindStaff, "Penawaran", "Lihat penawaran", "Membuka menu Penawaran, revisi, dan PDF-nya. Dengan cakupan 'proyek saya', hanya penawaran yang ia pegang sebagai PIC."},
+	{"quotation.manage", KindStaff, "Penawaran", "Kelola penawaran", "Membuat, mengubah, membuat revisi, dan mengubah status penawaran (diterima, ditolak, dibuka lagi), serta menyalin dan membuat alternatif."},
+
+	{"package.manage", KindStaff, "Katalog", "Kelola paket & jenis acara", "Menambah, mengubah, dan menonaktifkan paket, isi paket, dan jenis acara. Tanpa izin ini, tim tetap bisa memilih paket untuk penawaran."},
+	{"template.manage", KindStaff, "Katalog", "Kelola jadwal bawaan", "Mengubah tahapan bawaan yang dipakai setiap proyek baru."},
+	{"vendor.category.manage", KindStaff, "Katalog", "Kelola kategori vendor", "Menambah dan mengubah kategori vendor."},
+
 	{"team.manage", KindStaff, "Pengaturan", "Kelola tim", "Mengundang, mengubah, dan menonaktifkan anggota tim."},
 	{"role.manage", KindStaff, "Pengaturan", "Kelola peran & akses", "Membuat dan mengubah peran serta izinnya."},
 	{"subscription.manage", KindStaff, "Pengaturan", "Kelola langganan", "Melihat tagihan dan membayar langganan ElProof."},
@@ -117,16 +122,20 @@ const (
 
 // Templates mirror migration 000058 (which seeded existing workspaces) plus
 // the permissions later migrations added to the built-in roles (000078
-// portal.finance.submit, 000079 portal.tasks.complete — Pengantin only).
+// portal.finance.submit, 000079 portal.tasks.complete — Pengantin only,
+// 000086 package.manage — Owner and Admin, 000090 quotation.view and
+// quotation.manage — Owner, Admin, and Sales).
 var Templates = []Template{
 	{TemplateOwner, KindStaff, "Owner", "Pemilik workspace. Semua akses; tidak bisa diubah atau dihapus.", true, ScopeAll, AllKeys(KindStaff)},
 	{TemplateAdmin, KindStaff, "Admin", "Mengelola semua proyek, klien, vendor, dan keuangan. Tanpa pengaturan workspace.", false, ScopeAll,
 		[]string{"dashboard.view", "dashboard.revenue.view", "project.create", "project.edit", "project.assign_pic", "project.duplicate", "project.archive",
-			"finance.record", "finance.margin.view", "finance.payment.delete", "client.manage", "vendor.view", "vendor.manage"}},
+			"finance.record", "finance.margin.view", "finance.payment.delete", "client.manage", "vendor.view", "vendor.manage", "package.manage",
+			"quotation.view", "quotation.manage"}},
 	{TemplateWeddingPlanner, KindStaff, "Wedding Planner", "Menjalankan proyek yang ditugaskan kepadanya.", false, ScopeAssigned,
 		[]string{"project.edit", "finance.record"}},
 	{TemplateSales, KindStaff, "Sales", "Membuat proyek baru dan mengelola klien dari proyek yang ia pegang.", false, ScopeAssigned,
-		[]string{"project.create", "project.edit", "project.assign_pic", "project.archive", "finance.record", "finance.margin.view", "client.manage"}},
+		[]string{"project.create", "project.edit", "project.assign_pic", "project.archive", "finance.record", "finance.margin.view", "client.manage",
+			"quotation.view", "quotation.manage"}},
 	{TemplateFinance, KindStaff, "Keuangan", "Mencatat dan memantau pembayaran di semua proyek.", false, ScopeAll,
 		[]string{"dashboard.view", "dashboard.revenue.view", "finance.record", "finance.margin.view", "finance.payment.delete", "vendor.view"}},
 	{TemplateBride, KindClient, "Pengantin", "Melihat seluruh portal, termasuk tagihan dan riwayat pembayaran.", false, ScopeAll,

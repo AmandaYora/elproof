@@ -22,9 +22,10 @@ import { VenueStatusBadge } from "@/modules/venues/components/VenueStatusBadge";
 import type { VenueFormValues, VenueCreateFormValues } from "@/modules/venues/schemas/venue.schema";
 import { useVenueStore } from "@/modules/venues/stores/useVenueStore";
 import type { Venue } from "@/modules/venues/types";
+import { venueCapacityText, venuePriceLines } from "@/modules/venues/lib/venue-display";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { formatCurrency } from "@/shared/lib/formatters";
-import { describeAffectedProjects, inUseProjectsOf, type AffectedProject } from "@/shared/types/delete-impact";
+import { describeAffectedProjects, inUseProjectsOf, isInOffersRefusal, type AffectedProject } from "@/shared/types/delete-impact";
 
 export default function VenueListPage() {
   // Adding, editing, importing and (de)activating need vendor.manage (ADR-0026); useCan also reads "no" while the
@@ -59,6 +60,8 @@ export default function VenueListPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<AffectedProject[] | null>(null);
+  // A package or quotation still refers to it (PLAN paket-wo §3.3): the server refuses the delete, like a project does.
+  const [usedInOffers, setUsedInOffers] = useState(false);
   // Why the server refused the delete (e.g. 409: still used by a project), shown inside the dialog that asked.
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
@@ -130,9 +133,12 @@ export default function VenueListPage() {
   async function openDeleteConfirm(venue: Venue) {
     setDeleteTarget(venue);
     setDeleteImpact(null);
+    setUsedInOffers(false);
     setImpactLoading(true);
     try {
-      setDeleteImpact(await fetchVenueDeleteImpact(venue.id));
+      const impact = await fetchVenueDeleteImpact(venue.id);
+      setDeleteImpact(impact.projects);
+      setUsedInOffers(impact.usedInOffers);
     } catch {
       setDeleteImpact([]);
     } finally {
@@ -143,6 +149,7 @@ export default function VenueListPage() {
   function closeDeleteConfirm() {
     setDeleteTarget(null);
     setDeleteImpact(null);
+    setUsedInOffers(false);
     setDeleteError(null);
   }
 
@@ -158,6 +165,8 @@ export default function VenueListPage() {
       // A project started using it since the check (409 venue_in_use): the dialog turns into "deactivate instead".
       const inUse = inUseProjectsOf(err);
       if (inUse) setDeleteImpact(inUse);
+      // Or a package or quotation refers to it now (409 *_in_offers): the same "deactivate instead".
+      if (isInOffersRefusal(err)) setUsedInOffers(true);
       setDeleteError(getApiErrorMessage(err, "Venue belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setIsDeleting(false);
@@ -221,14 +230,32 @@ export default function VenueListPage() {
       ),
     },
     { id: "city", header: "Kota", sortKey: "city", card: true, truncate: true, className: "w-[18%]", cell: (v) => v.city ?? <span className="text-muted-foreground">-</span> },
-    { id: "capacity", header: "Kapasitas", sortKey: "capacity", align: "right", card: true, cell: (v) => (v.capacity ? `${v.capacity} orang` : "-") },
     {
-      id: "rentalPrice",
-      header: "Harga sewa",
-      sortKey: "rentalPrice",
-      align: "right",
+      id: "capacity",
+      header: "Kapasitas",
+      sortKey: "capacityStanding",
       card: true,
-      cell: (v) => (v.rentalPrice ? formatCurrency(v.rentalPrice) : <span className="text-muted-foreground">Belum diisi</span>),
+      className: "whitespace-nowrap",
+      cell: (v) => venueCapacityText(v) ?? <span className="text-muted-foreground">-</span>,
+    },
+    {
+      id: "prices",
+      header: "Harga",
+      sortKey: "priceAkadResepsi",
+      card: true,
+      cell: (v) => {
+        const prices = venuePriceLines(v);
+        if (prices.length === 0) return <span className="text-muted-foreground">Belum diisi</span>;
+        return (
+          <span className="flex flex-col text-[12.5px] leading-snug">
+            {prices.map(([label, amount]) => (
+              <span key={label} className="whitespace-nowrap">
+                <span className="text-muted-foreground">{label}</span> {formatCurrency(amount)}
+              </span>
+            ))}
+          </span>
+        );
+      },
     },
     { id: "status", header: "Status", sortKey: "isActive", card: true, className: "whitespace-nowrap", cell: (v) => <VenueStatusBadge isActive={v.isActive} /> },
   ];
@@ -372,24 +399,30 @@ export default function VenueListPage() {
       <Modal
         open={deleteTarget !== null}
         onClose={closeDeleteConfirm}
-        title={deleteTarget ? `${deleteImpact?.length ? "Venue masih dipakai" : "Hapus venue"} — ${deleteTarget.name}` : "Hapus venue"}
+        title={deleteTarget ? `${deleteImpact?.length || usedInOffers ? "Venue masih dipakai" : "Hapus venue"} — ${deleteTarget.name}` : "Hapus venue"}
         size="sm"
         busy={isDeleting}
         error={deleteError}
       >
         {impactLoading ? (
           <p className="text-[13px] text-text-secondary">Memeriksa penggunaan...</p>
-        ) : deleteImpact && deleteImpact.length > 0 ? (
+        ) : (deleteImpact && deleteImpact.length > 0) || usedInOffers ? (
           // A venue a project still uses cannot be deleted (the server answers 409, QA FQ-02): say where, offer to deactivate.
           <div className="flex flex-col gap-4">
             <p className="flex items-start gap-2 text-[13px] text-text-secondary">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-text" />
               <span>
-                Venue ini masih dipakai di <strong className="text-text-primary">{describeAffectedProjects(deleteImpact)}</strong>, jadi belum bisa
-                dihapus.{" "}
+                Venue ini masih dipakai di{" "}
+                {deleteImpact && deleteImpact.length > 0 && <strong className="text-text-primary">{describeAffectedProjects(deleteImpact)}</strong>}
+                {deleteImpact && deleteImpact.length > 0 && usedInOffers && " dan di "}
+                {usedInOffers && <strong className="text-text-primary">paket atau penawaran</strong>}, jadi belum bisa dihapus.{" "}
                 {deleteTarget?.isActive
-                  ? "Nonaktifkan saja: venue tidak muncul lagi saat memilih venue proyek, dan data di proyek tadi tetap utuh."
-                  : "Venue ini sudah nonaktif, jadi tidak muncul lagi saat memilih venue proyek."}
+                  ? usedInOffers
+                    ? "Nonaktifkan saja: venue tidak bisa dipilih lagi untuk proyek, paket, atau penawaran baru, dan data yang sudah ada tetap utuh."
+                    : "Nonaktifkan saja: venue tidak muncul lagi saat memilih venue proyek, dan data di proyek tadi tetap utuh."
+                  : usedInOffers
+                    ? "Venue ini sudah nonaktif, jadi tidak bisa dipilih lagi untuk proyek, paket, atau penawaran baru."
+                    : "Venue ini sudah nonaktif, jadi tidak muncul lagi saat memilih venue proyek."}
               </span>
             </p>
             <div className="flex justify-end gap-2">

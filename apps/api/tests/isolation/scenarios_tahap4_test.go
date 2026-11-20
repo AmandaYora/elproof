@@ -249,136 +249,101 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 		}
 	})
 
-	t.Run("(a) vendor and venue payments, and the vendor derives category and date", func(t *testing.T) {
-		eng := map[string]any{"vendorId": vendorID, "scope": "Dekorasi T4", "contractValue": 5_000_000, "pricingTier": "Akad", "engagementStatus": "Booked", "picStaffId": tn.staffID}
+	t.Run("(a) a supplier payment and its proofs are one call", func(t *testing.T) {
 		routesCovered += 4
-		bad := map[string]any{}
-		for k, v := range eng {
-			bad[k] = v
+		r := s.mustOK("supplier", s.do(tn.token, "POST", proj(pX, "/suppliers"), map[string]any{
+			"vendorId": vendorID, "paidBy": "WO", "agreedCost": 5_000_000, "scope": "Dekorasi T4", "engagementStatus": "Booked", "picStaffId": tn.staffID,
+		}))
+		if num(r, "data", "categoryId") != vendorCategory || str(r, "data", "kind") != "vendor" {
+			t.Errorf("the supplier takes its category from the vendor: %s", r)
 		}
-		bad["eventDate"], bad["categoryId"] = day(121), vendorCategory+1000
-		r := s.do(tn.token, "POST", proj(pX, "/vendors"), bad)
-		if r.status != http.StatusUnprocessableEntity || !hasKey(r, "eventDate") || !hasKey(r, "categoryId") {
-			t.Errorf("a date or category that disagrees with the server is refused, both at once: %s", r)
-		}
-		r = s.mustOK("engagement without category and date", s.do(tn.token, "POST", proj(pX, "/vendors"), eng))
-		if num(r, "data", "categoryId") != vendorCategory || str(r, "data", "eventDate") != day(120) {
-			t.Errorf("category from the vendor, date from the project: %s", r)
-		}
-		same := map[string]any{}
-		for k, v := range eng {
-			same[k] = v
-		}
-		same["eventDate"], same["categoryId"] = day(120), vendorCategory
-		s.mustOK("engagement with matching values", s.do(tn.token, "POST", proj(pX, "/vendors"), same))
-		engID := r.id("data", "id")
+		supID := r.id("data", "id")
 
 		inv, _ := s.uploadFile(tn, pX, "invoice.pdf", "application/pdf", file)
 		prf, _ := s.uploadFile(tn, pX, "transfer.pdf", "application/pdf", file)
-		vp := s.doWith(tn.token, "POST", proj(pX, "/payments"), map[string]any{
-			"projectVendorId": engID, "type": "DP", "amount": 2_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "T4-V1",
+		vp := s.doWith(tn.token, "POST", proj(pX, "/supplier-payments"), map[string]any{
+			"projectSupplierId": supID, "type": "DP", "amount": 2_000_000, "paymentDate": day(-1), "method": "Transfer", "referenceNumber": "T4-V1",
 			"evidence": []map[string]any{proofOf(inv, "Invoice"), proofOf(prf, "Transfer Proof")},
 		}, nil)
 		if vp.status != http.StatusCreated || len(rows(vp, "data", "evidence")) != 2 || vp.dig("data", "evidenceComplete") != true {
-			t.Fatalf("vendor payment with invoice and proof: %s", vp)
+			t.Fatalf("supplier payment with invoice and proof: %s", vp)
 		}
 		if num(vp, "data", "ledgerSummary", "contractValue") != 5_000_000 || num(vp, "data", "ledgerSummary", "paid") != 2_000_000 || num(vp, "data", "ledgerSummary", "remaining") != 3_000_000 {
-			t.Errorf("vendor ledger: %s", vp)
+			t.Errorf("supplier ledger: %s", vp)
 		}
 		if _, has := vp.json()["data"].(map[string]any)["ledgerSummary"].(map[string]any)["terms"]; has {
 			t.Error("only the client ledger carries terms")
 		}
 		// The list has the proof refs too.
-		if l := rows(s.mustOK("vendor payments", s.do(tn.token, "GET", proj(pX, "/payments"), nil)), "data"); len(l) != 1 || len(l[0]["evidence"].([]any)) != 2 {
-			t.Errorf("vendor payments list carries evidence: %v", l)
+		if l := rows(s.mustOK("supplier payments", s.do(tn.token, "GET", proj(pX, "/supplier-payments"), nil)), "data"); len(l) != 1 || len(l[0]["evidence"].([]any)) != 2 {
+			t.Errorf("supplier payments list carries evidence: %v", l)
 		}
-		// Overpaying the engagement leaves nothing behind.
+		// Overpaying the agreed cost leaves nothing behind.
 		extra, _ := s.uploadFile(tn, pX, "x.pdf", "application/pdf", file)
 		proofs := cnt("evidence", pX)
-		r = s.do(tn.token, "POST", proj(pX, "/payments"), map[string]any{"projectVendorId": engID, "type": "Pelunasan", "amount": 9_000_000, "paymentDate": day(-1), "method": "Transfer", "evidence": []map[string]any{proofOf(extra, "Transfer Proof")}})
+		r = s.do(tn.token, "POST", proj(pX, "/supplier-payments"), map[string]any{"projectSupplierId": supID, "type": "Pelunasan", "amount": 9_000_000, "paymentDate": day(-1), "method": "Transfer", "evidence": []map[string]any{proofOf(extra, "Transfer Proof")}})
 		if r.status != http.StatusUnprocessableEntity || r.dig("errors", "code") != "payment_exceeds_contract" || cnt("evidence", pX) != proofs {
-			t.Errorf("vendor overpayment: %s", r)
+			t.Errorf("supplier overpayment: %s", r)
 		}
 	})
 
-	var e7Project int64
-	t.Run("(e) a project with its venue and schedule is one call", func(t *testing.T) {
-		body := func(name string, extra map[string]any) map[string]any {
-			b := map[string]any{
-				"name": name, "brideName": "A", "groomName": "B", "eventDate": day(150), "venue": "-", "prepStartDate": day(1),
-				"packageName": "Paket", "contractValue": 100_000_000, "picStaffId": tn.staffID,
-			}
-			for k, v := range extra {
-				b[k] = v
-			}
-			return b
+	var e7Project, e7Venue int64
+	t.Run("(e) a project with its events and venue is one call", func(t *testing.T) {
+		akad, otherAkad := s.kind(tn, "Akad"), s.kind(other, "Akad")
+		body := func(name string, events ...map[string]any) map[string]any {
+			return s.projectBody(tn, name, 150, events...)
 		}
 		routesCovered += 6
-		r := s.do(tn.token, "POST", "/api/v1/projects", body("Proyek T4 E7 "+tn.marker, map[string]any{
-			"venueId": venue,
-			"terms":   []map[string]any{{"label": "DP", "amount": 30_000_000, "dueDate": day(10)}, {"label": "Pelunasan", "amount": 70_000_000, "dueDate": day(100)}},
-		}))
+		r := s.do(tn.token, "POST", "/api/v1/projects", body("Proyek T4 E7 "+tn.marker,
+			eventOf(akad, day(150), 200, venue), eventOf(s.kind(tn, "Resepsi"), day(150), 250, 0)))
 		if r.status != http.StatusCreated {
 			t.Fatalf("atomic create: %s", r)
 		}
 		e7Project = r.id("data", "id")
-		if num(r, "data", "venueId") != venue || num(r, "data", "venueRentalPrice") != 10_000_000 || num(r, "data", "venueCharge") != 500_000 ||
-			str(r, "data", "venue") != "Venue T4 "+tn.marker || str(r, "data", "venueSummary", "name") != "Venue T4 "+tn.marker {
-			t.Errorf("venue attached with the venue's current prices: %s", r)
-		}
-		terms := rows(r, "data", "terms")
-		if len(terms) != 2 || terms[0]["label"] != "DP" || terms[0]["status"] == nil || terms[1]["remaining"] != float64(70_000_000) {
-			t.Errorf("terms progress in the response: %s", r)
-		}
-		if got := rows(s.mustOK("terms", s.do(tn.token, "GET", proj(e7Project, "/payment-terms"), nil)), "data"); len(got) != 2 {
-			t.Errorf("schedule saved: %v", got)
+		s.setContract(tn, e7Project, 100_000_000)
+		evs := rows(r, "data", "events")
+		if len(evs) != 2 || evs[0]["isMain"] != true || evs[0]["venue"] == nil || evs[0]["venue"].(map[string]any)["name"] != "Venue T4 "+tn.marker {
+			t.Errorf("events with the venue in the response: %s", r)
 		}
 		if ms := rows(s.mustOK("milestones", s.do(tn.token, "GET", proj(e7Project, "/milestones"), nil)), "data"); len(ms) == 0 {
 			t.Error("default milestones are created as before")
 		}
-		if v := s.mustOK("venue", s.do(tn.token, "GET", proj(e7Project, "/venue"), nil)); str(v, "data", "name") != "Venue T4 "+tn.marker {
-			t.Errorf("GET /venue: %s", v)
+		for _, sup := range rows(s.mustOK("suppliers", s.do(tn.token, "GET", proj(e7Project, "/suppliers"), nil)), "data") {
+			if sup["kind"] == "venue" && sup["supplierId"] == float64(venue) {
+				e7Venue = int64(sup["id"].(float64))
+			}
 		}
-		// Explicit prices win; without venue/terms the response is the old shape plus empty extras.
-		r2 := s.do(tn.token, "POST", "/api/v1/projects", body("Proyek T4 E7b "+tn.marker, map[string]any{"venueId": venue, "venueRentalPrice": 9_000_000, "venueCharge": 0}))
-		if r2.status != http.StatusCreated || num(r2, "data", "venueRentalPrice") != 9_000_000 || r2.dig("data", "venueCharge") != float64(0) {
-			t.Errorf("explicit prices: %s", r2)
+		if e7Venue == 0 {
+			t.Errorf("the event's venue joins the suppliers in the same call")
 		}
-		// Cancel it again to stay under the trial cap of active projects.
-		s.mustOK("cancel", s.do(tn.token, "POST", proj(r2.id("data", "id"), "/cancel"), map[string]any{}))
-		plain := s.do(tn.token, "POST", "/api/v1/projects", body("Proyek T4 polos "+tn.marker, nil))
-		if plain.status != http.StatusCreated || plain.dig("data", "venueSummary") != nil || len(rows(plain, "data", "terms")) != 0 || plain.dig("data", "terms") == nil {
-			t.Errorf("a plain create still works: %s", plain)
-		}
-		s.mustOK("cancel", s.do(tn.token, "POST", proj(plain.id("data", "id"), "/cancel"), map[string]any{}))
 
 		// Problems in several parts at once: all reported, nothing created.
 		total := s.count("SELECT COUNT(*) FROM projects WHERE tenant_id = ?", tn.tenant)
-		termsBefore := s.count("SELECT COUNT(*) FROM client_payment_terms")
-		bad := s.do(tn.token, "POST", "/api/v1/projects", body("Proyek T4 GAGAL "+tn.marker, map[string]any{
-			"venueId": otherVenue, "eventDate": "31-12-2026",
-			"terms": []map[string]any{{"label": "", "amount": 10, "dueDate": day(10)}, {"label": "B", "amount": 0, "dueDate": day(11)}, {"label": "C", "amount": 5, "dueDate": "besok"}},
-		}))
-		for _, k := range []string{"venueId", "eventDate", "terms[0].label", "terms[1].amount", "terms[2].dueDate"} {
-			if !hasKey(bad, k) {
-				t.Errorf("422 must include %q: %s", k, bad)
+		bad := body("Proyek T4 GAGAL "+tn.marker, eventOf(akad, day(150), 10, otherVenue), eventOf(otherAkad, day(151), 10, 0), eventOf(akad, "31-12-2026", 10, 0))
+		bad["prepStartDate"] = "besok"
+		br := s.do(tn.token, "POST", "/api/v1/projects", bad)
+		for _, k := range []string{"events.0.venueId", "events.1.eventKindId", "events.2.eventDate", "prepStartDate"} {
+			if !hasKey(br, k) {
+				t.Errorf("422 must include %q: %s", k, br)
 			}
 		}
-		if bad.status != http.StatusUnprocessableEntity {
-			t.Errorf("status: %s", bad)
+		if br.status != http.StatusUnprocessableEntity {
+			t.Errorf("status: %s", br)
 		}
-		if s.count("SELECT COUNT(*) FROM projects WHERE tenant_id = ?", tn.tenant) != total || s.count("SELECT COUNT(*) FROM projects WHERE name LIKE 'Proyek T4 GAGAL%'") != 0 ||
-			s.count("SELECT COUNT(*) FROM client_payment_terms") != termsBefore {
-			t.Error("a refused create must leave no project, milestone or term behind")
+		if s.count("SELECT COUNT(*) FROM projects WHERE tenant_id = ?", tn.tenant) != total || s.count("SELECT COUNT(*) FROM projects WHERE name LIKE 'Proyek T4 GAGAL%'") != 0 {
+			t.Error("a refused create must leave no project, milestone or event behind")
 		}
-		// A venue of another workspace alone; a schedule above the contract alone; a venue that does not exist.
-		for name, extra := range map[string]map[string]any{
-			"another workspace's venue": {"venueId": otherVenue},
-			"no such venue":             {"venueId": 987654321},
-			"schedule above contract":   {"terms": []map[string]any{{"label": "A", "amount": 99_000_000, "dueDate": day(10)}, {"label": "B", "amount": 2_000_000, "dueDate": day(20)}}},
-			"negative venue price":      {"venueId": venue, "venueRentalPrice": -1},
+		// A venue of another workspace alone; a venue that does not exist; a session above the venue; no event at all.
+		noEvents := body("Proyek T4 GAGAL2 " + tn.marker)
+		noEvents["events"] = []map[string]any{}
+		for name, b := range map[string]map[string]any{
+			"another workspace's venue": body("Proyek T4 GAGAL2 "+tn.marker, eventOf(akad, day(150), 10, otherVenue)),
+			"no such venue":             body("Proyek T4 GAGAL2 "+tn.marker, eventOf(akad, day(150), 10, 987654321)),
+			"another workspace's kind":  body("Proyek T4 GAGAL2 "+tn.marker, eventOf(otherAkad, day(150), 10, 0)),
+			"above the venue":           body("Proyek T4 GAGAL2 "+tn.marker, eventOf(akad, day(150), 301, venue)),
+			"no event":                  noEvents,
 		} {
-			r := s.do(tn.token, "POST", "/api/v1/projects", body("Proyek T4 GAGAL2 "+tn.marker, extra))
+			r := s.do(tn.token, "POST", "/api/v1/projects", b)
 			if r.status != http.StatusUnprocessableEntity {
 				t.Errorf("%s: want 422, got %s", name, r)
 			}
@@ -392,14 +357,19 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 	})
 
 	t.Run("(a) a venue payment with proof", func(t *testing.T) {
+		if e7Venue == 0 {
+			t.Skip("no venue supplier (see (e))")
+		}
 		tok, _ := s.uploadFile(tn, e7Project, "venue.pdf", "application/pdf", file)
-		r := s.do(tn.token, "POST", proj(e7Project, "/venue-payments"), clientPayBody(4_000_000, "T4-VN", proofOf(tok, "Transfer Proof")))
+		body := clientPayBody(4_000_000, "T4-VN", proofOf(tok, "Transfer Proof"))
+		body["projectSupplierId"] = e7Venue
+		r := s.do(tn.token, "POST", proj(e7Project, "/supplier-payments"), body)
 		routesCovered++
 		if r.status != http.StatusCreated || len(rows(r, "data", "evidence")) != 1 {
 			t.Fatalf("venue payment: %s", r)
 		}
-		if num(r, "data", "ledgerSummary", "contractValue") != 10_500_000 || num(r, "data", "ledgerSummary", "paid") != 4_000_000 || num(r, "data", "ledgerSummary", "remaining") != 6_500_000 {
-			t.Errorf("venue ledger (rental + charge): %s", r)
+		if num(r, "data", "ledgerSummary", "paid") != 4_000_000 {
+			t.Errorf("venue ledger: %s", r)
 		}
 	})
 
@@ -440,7 +410,7 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 		}
 		// The same key on a project create: one project.
 		pk := map[string]string{"Idempotency-Key": "t4-proj-" + fmt.Sprint(time.Now().UnixNano())}
-		pb := map[string]any{"name": "Proyek T4 idem " + tn.marker, "brideName": "A", "groomName": "B", "eventDate": day(160), "venue": "-", "prepStartDate": day(1), "packageName": "P", "contractValue": 1_000_000, "picStaffId": tn.staffID}
+		pb := s.projectBody(tn, "Proyek T4 idem "+tn.marker, 160)
 		p1, p2 := s.doWith(tn.token, "POST", "/api/v1/projects", pb, pk), s.doWith(tn.token, "POST", "/api/v1/projects", pb, pk)
 		if p1.status != http.StatusCreated || p1.id("data", "id") != p2.id("data", "id") || p2.header.Get("Idempotent-Replay") != "true" ||
 			s.count("SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND name = ?", tn.tenant, "Proyek T4 idem "+tn.marker) != 1 {
@@ -449,9 +419,9 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 		s.mustOK("cancel", s.do(tn.token, "POST", proj(p1.id("data", "id"), "/cancel"), map[string]any{}))
 		// The same key on a vendor payment route is a different request (route is part of the key).
 		vk := map[string]string{"Idempotency-Key": "t4-vend-" + fmt.Sprint(time.Now().UnixNano())}
-		vb := map[string]any{"type": "DP", "amount": 100_000, "paymentDate": day(-1), "method": "Transfer"}
-		v1 := s.doWith(tn.token, "POST", proj(e7Project, "/venue-payments"), vb, vk)
-		v2 := s.doWith(tn.token, "POST", proj(e7Project, "/venue-payments"), vb, vk)
+		vb := map[string]any{"projectSupplierId": e7Venue, "type": "DP", "amount": 100_000, "paymentDate": day(-1), "method": "Transfer"}
+		v1 := s.doWith(tn.token, "POST", proj(e7Project, "/supplier-payments"), vb, vk)
+		v2 := s.doWith(tn.token, "POST", proj(e7Project, "/supplier-payments"), vb, vk)
 		if v1.status != http.StatusCreated || v1.id("data", "id") != v2.id("data", "id") {
 			t.Errorf("venue payment replay: %s / %s", v1, v2)
 		}
@@ -481,10 +451,14 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 		if r.status != http.StatusUnprocessableEntity || !hasKey(r, "evidence[0].uploadToken") {
 			t.Errorf("B's token in A's project: %s", r)
 		}
-		// On the vendor and venue routes too.
-		r = s.do(other.token, "POST", proj(oP, "/venue-payments"), clientPayBody(1000, "c4", proofOf(tokX, "Transfer Proof")))
+		// On the supplier payment route too.
+		oVendor := s.mustOK("other vendor", s.do(other.token, "POST", "/api/v1/vendors", vendorBody(s, other, "Vendor T4 lain "+other.marker, 0))).id("data", "id")
+		oSup := s.engageBy(other, oP, oVendor, "Lain", "Client", true)
+		sp := clientPayBody(1000, "c4", proofOf(tokX, "Transfer Proof"))
+		sp["projectSupplierId"] = oSup
+		r = s.do(other.token, "POST", proj(oP, "/supplier-payments"), sp)
 		if r.status != http.StatusUnprocessableEntity || !hasKey(r, "evidence[0].uploadToken") {
-			t.Errorf("venue route: %s", r)
+			t.Errorf("supplier payment route: %s", r)
 		}
 		// The PUT route refuses a token that is not for that project.
 		if r := s.putRaw(tn.token, proj(pY, "/uploads/"+tokX), "application/pdf", file); r.status != http.StatusUnprocessableEntity || !hasKey(r, "uploadToken") {
@@ -512,9 +486,10 @@ func (w *world) tahap4Scenarios(t *testing.T, s *stack) {
 		tok := "abc.def"
 		for _, d := range []attack{
 			{name: "client payment with proof", method: "POST", path: s.projectsPath(P, "/client-payments"), body: clientPayBody(1, "x", proofOf(tok, "Transfer Proof"))},
-			{name: "vendor payment with proof", method: "POST", path: s.projectsPath(P, "/payments"), body: map[string]any{"projectVendorId": w.Engagement, "type": "DP", "amount": 1, "evidence": []map[string]any{proofOf(tok, "Invoice")}}},
-			{name: "venue payment with proof", method: "POST", path: s.projectsPath(P, "/venue-payments"), body: clientPayBody(1, "x", proofOf(tok, "Invoice"))},
-			{name: "project with venue and terms", method: "POST", path: "/api/v1/projects", body: map[string]any{"name": "x", "venueId": w.Venue, "terms": []map[string]any{{"label": "a", "amount": 1, "dueDate": day(3)}}}},
+			{name: "supplier payment with proof", method: "POST", path: s.projectsPath(P, "/supplier-payments"), body: map[string]any{"projectSupplierId": w.Supplier, "type": "DP", "amount": 1, "evidence": []map[string]any{proofOf(tok, "Invoice")}}},
+			{name: "venue payment with proof", method: "POST", path: s.projectsPath(P, "/supplier-payments"), body: map[string]any{"projectSupplierId": w.VenueSupplier, "type": "DP", "amount": 1, "evidence": []map[string]any{proofOf(tok, "Invoice")}}},
+			{name: "project with events and venue", method: "POST", path: "/api/v1/projects", body: map[string]any{"name": "x", "events": []map[string]any{eventOf(w.Kind, day(3), 1, w.Venue)}}},
+			{name: "event with venue", method: "POST", path: s.projectsPath(P, "/events"), body: eventOf(w.Kind, day(3), 1, w.Venue)},
 		} {
 			routesCovered++
 			r := s.doWith(c, d.method, d.path, d.body, map[string]string{"Idempotency-Key": "t4-client-0001"})

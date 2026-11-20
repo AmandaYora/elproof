@@ -16,16 +16,22 @@ import (
 // commercial terms, the booking date, vendor money or internal notes.
 
 type homeProjectResponse struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	BrideName   string `json:"brideName"`
-	GroomName   string `json:"groomName"`
-	EventDate   string `json:"eventDate"`
-	Venue       string `json:"venue"`
-	PackageName string `json:"packageName"`
-	Status      string `json:"status"`
-	PICName     string `json:"picName"`
-	PICPhone    string `json:"picPhone"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	BrideName string `json:"brideName"`
+	GroomName string `json:"groomName"`
+	EventDate string `json:"eventDate"`
+	// MainEventKind, Location and EventsLine describe the events ("" without
+	// portal.timeline.view): the main event's kind, where the events happen,
+	// and the other events in one line.
+	MainEventKind string `json:"mainEventKind"`
+	Location      string `json:"location"`
+	EventsLine    string `json:"eventsLine"`
+	// PackageNames are the project's packages ([] without portal.vendor.view).
+	PackageNames []string `json:"packageNames"`
+	Status       string   `json:"status"`
+	PICName      string   `json:"picName"`
+	PICPhone     string   `json:"picPhone"`
 	// CoverURL: the hero photo (/api/v1/projects/{id}/cover?v=...), null without one.
 	CoverURL *string `json:"coverUrl"`
 }
@@ -49,11 +55,28 @@ type homeNextTermResponse struct {
 }
 
 type homeFinanceResponse struct {
-	ContractValue int64                 `json:"contractValue"`
-	Paid          int64                 `json:"paid"`
-	Remaining     int64                 `json:"remaining"`
-	NextTerm      *homeNextTermResponse `json:"nextTerm"`
-	OverdueCount  int                   `json:"overdueCount"`
+	ContractValue int64 `json:"contractValue"`
+	// ContractTax is the PPN inside contractValue (0 when not PKP).
+	ContractTax  int64                 `json:"contractTax"`
+	Paid         int64                 `json:"paid"`
+	Remaining    int64                 `json:"remaining"`
+	NextTerm     *homeNextTermResponse `json:"nextTerm"`
+	OverdueCount int                   `json:"overdueCount"`
+	// NextSupplierBill is the earliest open bill of a vendor the client pays
+	// directly (Paket WO Tahap 4), outside the contract; null when none.
+	NextSupplierBill *homeSupplierBillResponse `json:"nextSupplierBill"`
+}
+
+type homeSupplierBillResponse struct {
+	BillTermID        int64  `json:"billTermId"`
+	ProjectSupplierID int64  `json:"projectSupplierId"`
+	SupplierName      string `json:"supplierName"`
+	Label             string `json:"label"`
+	Amount            int64  `json:"amount"`
+	DueDate           string `json:"dueDate"`
+	Status            string `json:"status"`
+	Remaining         int64  `json:"remaining"`
+	Pending           int64  `json:"pending"`
 }
 
 type homePayToResponse struct {
@@ -122,7 +145,8 @@ func toClientHomeResponse(h *application.ClientHome) clientHomeResponse {
 	out := clientHomeResponse{
 		Project: homeProjectResponse{
 			ID: h.Project.ID, Name: h.Project.Name, BrideName: h.Project.BrideName, GroomName: h.Project.GroomName,
-			EventDate: h.Project.EventDate.Format(dateLayout), Venue: h.Project.Venue, PackageName: h.Project.PackageName,
+			EventDate: h.Project.EventDate.Format(dateLayout), MainEventKind: h.Project.MainEventKind, Location: h.Project.Location,
+			EventsLine: h.Project.EventsLine, PackageNames: h.Project.PackageNames,
 			Status: h.Project.Status, PICName: h.Project.PICName, PICPhone: h.Project.PICPhone,
 			CoverURL: coverURL(domain.Project{ID: h.Project.ID, CoverPhotoPath: h.Project.CoverPhotoPath, CoverUpdatedAt: h.Project.CoverUpdatedAt}),
 		},
@@ -138,11 +162,17 @@ func toClientHomeResponse(h *application.ClientHome) clientHomeResponse {
 	}
 	if h.Finance != nil {
 		f := &homeFinanceResponse{
-			ContractValue: h.Finance.ContractValue, Paid: h.Finance.Paid, Remaining: h.Finance.Remaining, OverdueCount: h.Finance.OverdueCount,
+			ContractValue: h.Finance.ContractValue, ContractTax: h.Finance.ContractTax, Paid: h.Finance.Paid, Remaining: h.Finance.Remaining, OverdueCount: h.Finance.OverdueCount,
 		}
 		if t := h.Finance.NextTerm; t != nil {
 			f.NextTerm = &homeNextTermResponse{
 				ID: t.ID, Label: t.Label, Amount: t.Amount, DueDate: t.DueDate.Format(dateLayout), Status: t.Status, Remaining: t.Remaining,
+			}
+		}
+		if b := h.Finance.NextSupplierBill; b != nil {
+			f.NextSupplierBill = &homeSupplierBillResponse{
+				BillTermID: b.BillTermID, ProjectSupplierID: b.ProjectSupplierID, SupplierName: b.SupplierName, Label: b.Label,
+				Amount: b.Amount, DueDate: b.DueDate.Format(dateLayout), Status: b.Status, Remaining: b.Remaining, Pending: b.Pending,
 			}
 		}
 		out.Finance = f

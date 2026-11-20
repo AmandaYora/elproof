@@ -57,7 +57,7 @@ function buildSteps(s: OnboardingStatus, openProfile: () => void): Step[] {
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   const full = used >= limit;
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
+    <div className="flex min-w-max flex-1 items-center gap-2">
       <span className="shrink-0 text-[12px] text-muted-foreground">{label}</span>
       <div aria-hidden className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
         <div className={cn("h-full rounded-full", full ? "bg-warning" : "bg-primary")} style={{ width: `${Math.min(100, (used / Math.max(1, limit)) * 100)}%` }} />
@@ -164,7 +164,7 @@ export function OnboardingChecklist({ welcome = false }: { welcome?: boolean }) 
           <h3 id="trial-limits-title" className="shrink-0 text-[13px] font-semibold text-foreground">
             Batas masa coba
           </h3>
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:gap-6">
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-x-6">
             <UsageMeter label="Anggota tim selain Owner" used={status.usage.staff} limit={limits.maxStaff} />
             <UsageMeter label="Proyek aktif" used={status.usage.activeProjects} limit={limits.maxActiveProjects} />
             <UsageMeter label="Akun klien" used={status.usage.clients} limit={limits.maxClients} />

@@ -22,8 +22,10 @@ func NewMySQLProjectRepository(db *sql.DB) *MySQLProjectRepository {
 	return &MySQLProjectRepository{db: db}
 }
 
-const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, venue_rental_price, venue_charge,
-	prep_start_date, package_name, contract_value, status, pic_staff_id, pic_sales_staff_id, description, is_archived,
+const projectColumns = `id, tenant_id, name, bride_name, groom_name, event_date,
+	prep_start_date, is_pkp, contract_subtotal, contract_tax, contract_total, lines_version,
+	status, pic_staff_id, pic_sales_staff_id, description,
+	quotation_id, quotation_number, quotation_revision_n, is_archived,
 	cover_photo_path, cover_updated_at, created_at, updated_at`
 
 func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) {
@@ -31,10 +33,11 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	var status string
 	var description, coverPath sql.NullString
 	var coverAt sql.NullTime
-	var venueID sql.NullInt64
-	var venueRentalPrice, venueCharge sql.NullInt64
-	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate, &p.Venue, &venueID, &venueRentalPrice, &venueCharge,
-		&p.PrepStartDate, &p.PackageName, &p.ContractValue, &status, &p.PICStaffID, &p.PICSalesStaffID, &description, &p.IsArchived,
+	var quotationID, quotationRevision sql.NullInt64
+	var quotationNumber sql.NullString
+	err := scan(&p.ID, &p.TenantID, &p.Name, &p.BrideName, &p.GroomName, &p.EventDate,
+		&p.PrepStartDate, &p.IsPKP, &p.ContractSubtotal, &p.ContractTax, &p.ContractTotal, &p.LinesVersion, &status, &p.PICStaffID, &p.PICSalesStaffID, &description,
+		&quotationID, &quotationNumber, &quotationRevision, &p.IsArchived,
 		&coverPath, &coverAt, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -44,6 +47,12 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 	}
 	p.Status = domain.ProjectStatus(status)
 	p.Description = description.String
+	if quotationID.Valid {
+		id := quotationID.Int64
+		p.QuotationID = &id
+		p.QuotationNumber = quotationNumber.String
+		p.QuotationRevisionN = int(quotationRevision.Int64)
+	}
 	if coverPath.Valid && coverPath.String != "" {
 		path := coverPath.String
 		p.CoverPhotoPath = &path
@@ -51,15 +60,6 @@ func scanProject(scan func(dest ...interface{}) error) (*domain.Project, error) 
 			at := coverAt.Time
 			p.CoverUpdatedAt = &at
 		}
-	}
-	if venueID.Valid {
-		p.VenueID = &venueID.Int64
-	}
-	if venueRentalPrice.Valid {
-		p.VenueRentalPrice = &venueRentalPrice.Int64
-	}
-	if venueCharge.Valid {
-		p.VenueCharge = &venueCharge.Int64
 	}
 	return &p, nil
 }
@@ -95,32 +95,10 @@ func (r *MySQLProjectRepository) List(ctx context.Context, tenantID int64, picSt
 	return projects, rows.Err()
 }
 
-// ListByVenueID backs the hard-delete "impact" endpoint for Venue (PLAN.md) —
-// every project this venue is currently attached to (projects.venue_id has no
-// SQL FK, cross-module by design, so this is the one place that can answer
-// "what still points at this venue").
-func (r *MySQLProjectRepository) ListByVenueID(ctx context.Context, tenantID, venueID int64) ([]domain.ProjectRef, error) {
-	rows, err := conn(ctx, r.db).QueryContext(ctx, `SELECT id, name FROM projects WHERE tenant_id = ? AND venue_id = ?`, tenantID, venueID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var refs []domain.ProjectRef
-	for rows.Next() {
-		var ref domain.ProjectRef
-		if err := rows.Scan(&ref.ID, &ref.Name); err != nil {
-			return nil, err
-		}
-		refs = append(refs, ref)
-	}
-	return refs, rows.Err()
-}
-
 // ListByStaffPIC backs the hard-delete "impact" endpoint for Staff (PLAN.md)
 // — every project this staff member is a live PIC assignment on, across the
 // four columns that represent an active "responsible person" role
-// (projects.pic_staff_id, project_vendors.pic_staff_id,
+// (projects.pic_staff_id, project_suppliers.pic_staff_id,
 // vendor_milestones.pic_staff_id, vendor_issues.pic_staff_id). Deliberately
 // excludes activity_log.actor_staff_id/evidence.uploaded_by_staff_id — those
 // are immutable historical audit trail, not a live assignment, so a staff
@@ -131,16 +109,16 @@ func (r *MySQLProjectRepository) ListByStaffPIC(ctx context.Context, tenantID, s
 	rows, err := conn(ctx, r.db).QueryContext(ctx,
 		`SELECT p.id, p.name FROM projects p WHERE p.tenant_id = ? AND p.pic_staff_id = ?
 		 UNION
-		 SELECT p.id, p.name FROM project_vendors pv JOIN projects p ON p.id = pv.project_id
-		   WHERE p.tenant_id = ? AND pv.pic_staff_id = ? AND pv.deleted_at IS NULL
+		 SELECT p.id, p.name FROM project_suppliers s JOIN projects p ON p.id = s.project_id
+		   WHERE p.tenant_id = ? AND s.pic_staff_id = ? AND s.deleted_at IS NULL
 		 UNION
 		 SELECT p.id, p.name FROM vendor_milestones vm
-		   JOIN project_vendors pv ON pv.id = vm.project_vendor_id
-		   JOIN projects p ON p.id = pv.project_id
-		   WHERE p.tenant_id = ? AND vm.pic_staff_id = ? AND pv.deleted_at IS NULL
+		   JOIN project_suppliers s ON s.id = vm.project_supplier_id
+		   JOIN projects p ON p.id = s.project_id
+		   WHERE p.tenant_id = ? AND vm.pic_staff_id = ? AND s.deleted_at IS NULL
 		 UNION
 		 SELECT p.id, p.name FROM vendor_issues vi JOIN projects p ON p.id = vi.project_id
-		   WHERE p.tenant_id = ? AND vi.pic_staff_id = ? AND (vi.project_vendor_id IS NULL OR vi.project_vendor_id NOT IN (`+deletedEngagementIDs+`))`,
+		   WHERE p.tenant_id = ? AND vi.pic_staff_id = ? AND (vi.project_supplier_id IS NULL OR vi.project_supplier_id NOT IN (`+deletedSupplierIDs+`))`,
 		tenantID, staffID, tenantID, staffID, tenantID, staffID, tenantID, staffID,
 	)
 	if err != nil {
@@ -211,7 +189,7 @@ var projectSortColumns = map[string]pagination.SortColumn{
 	"name":          pagination.Col("projects.name"),
 	"eventDate":     pagination.Col("projects.event_date"),
 	"status":        pagination.Col("projects.status"),
-	"contractValue": pagination.Col("projects.contract_value"),
+	"contractValue": pagination.Col("projects.contract_total"),
 	"createdAt":     pagination.Col("projects.created_at"),
 	"remaining":     pagination.Col(projectRemainingSQL),
 	"nextDueDate":   pagination.NullableCol(projectNextDueSQL),
@@ -229,7 +207,7 @@ const projectAppliedSQL = `GREATEST(COALESCE((SELECT SUM(CASE WHEN cp.type IN ('
 		WHEN cp.type = 'Refund' THEN -CAST(cp.amount AS SIGNED) ELSE 0 END)
 	FROM client_payments cp WHERE cp.project_id = projects.id AND cp.deleted_at IS NULL AND ` + domain.ContractCountsSQL + `), 0), 0)`
 
-const projectRemainingSQL = `GREATEST(CAST(projects.contract_value AS SIGNED) - ` + projectAppliedSQL + `, 0)`
+const projectRemainingSQL = `GREATEST(projects.contract_total - ` + projectAppliedSQL + `, 0)`
 
 const projectNextDueSQL = `(SELECT MIN(t.due_date) FROM client_payment_terms t WHERE t.project_id = projects.id AND
 	(SELECT SUM(t2.amount) FROM client_payment_terms t2 WHERE t2.project_id = t.project_id
@@ -248,9 +226,9 @@ func (r *MySQLProjectRepository) ListPaginated(ctx context.Context, tenantID int
 		args = append(args, condArgs...)
 	}
 	if f.Search != "" {
-		where += ` AND (name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ? OR venue LIKE ?)`
+		where += ` AND (name LIKE ? OR bride_name LIKE ? OR groom_name LIKE ?)`
 		like := "%" + utils.EscapeLike(f.Search) + "%"
-		args = append(args, like, like, like, like)
+		args = append(args, like, like, like)
 	}
 	if f.Status != "" {
 		where += ` AND status = ?`
@@ -317,6 +295,21 @@ func (r *MySQLProjectRepository) ListLabels(ctx context.Context, tenantID int64,
 	return list, rows.Err()
 }
 
+// nullableQuotation stores a quotation cache column only when the project
+// carries a quotation.
+func nullableQuotation[T any](p *domain.Project, v T) any {
+	if p.QuotationID == nil {
+		return nil
+	}
+	return v
+}
+
+// FindByQuotation is the workspace's project created from the quotation, or nil.
+func (r *MySQLProjectRepository) FindByQuotation(ctx context.Context, tenantID, quotationID int64) (*domain.Project, error) {
+	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE tenant_id = ? AND quotation_id = ? LIMIT 1`, tenantID, quotationID)
+	return scanProject(row.Scan)
+}
+
 func (r *MySQLProjectRepository) FindByID(ctx context.Context, tenantID, id int64) (*domain.Project, error) {
 	row := conn(ctx, r.db).QueryRowContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE tenant_id = ? AND id = ? LIMIT 1`, tenantID, id)
 	return scanProject(row.Scan)
@@ -324,13 +317,19 @@ func (r *MySQLProjectRepository) FindByID(ctx context.Context, tenantID, id int6
 
 func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) error {
 	result, err := conn(ctx, r.db).ExecContext(ctx,
-		`INSERT INTO projects (tenant_id, name, bride_name, groom_name, event_date, venue, venue_id, venue_rental_price, venue_charge,
-		 prep_start_date, package_name, contract_value, status, pic_staff_id, pic_sales_staff_id, description)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.TenantID, p.Name, p.BrideName, p.GroomName, p.EventDate, p.Venue, p.VenueID, p.VenueRentalPrice, p.VenueCharge,
-		p.PrepStartDate, p.PackageName, p.ContractValue, string(p.Status), p.PICStaffID, p.PICSalesStaffID, p.Description,
+		`INSERT INTO projects (tenant_id, name, bride_name, groom_name, event_date,
+		 prep_start_date, is_pkp, status, pic_staff_id, pic_sales_staff_id, description,
+		 quotation_id, quotation_number, quotation_revision_n)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.TenantID, p.Name, p.BrideName, p.GroomName, p.EventDate,
+		p.PrepStartDate, p.IsPKP, string(p.Status), p.PICStaffID, p.PICSalesStaffID, p.Description,
+		p.QuotationID, nullableQuotation(p, p.QuotationNumber), nullableQuotation(p, p.QuotationRevisionN),
 	)
 	if err != nil {
+		var me *mysql.MySQLError
+		if p.QuotationID != nil && errors.As(err, &me) && me.Number == 1062 {
+			return domain.ErrQuotationConverted
+		}
 		return err
 	}
 	id, err := result.LastInsertId()
@@ -343,21 +342,15 @@ func (r *MySQLProjectRepository) Create(ctx context.Context, p *domain.Project) 
 
 // projectPatchColumns maps each patchable field of a project to its column.
 var projectPatchColumns = map[string]column[domain.Project]{
-	"name":             col("name", func(p *domain.Project) any { return p.Name }),
-	"brideName":        col("bride_name", func(p *domain.Project) any { return p.BrideName }),
-	"groomName":        col("groom_name", func(p *domain.Project) any { return p.GroomName }),
-	"eventDate":        col("event_date", func(p *domain.Project) any { return p.EventDate }),
-	"venue":            col("venue", func(p *domain.Project) any { return p.Venue }),
-	"venueId":          col("venue_id", func(p *domain.Project) any { return p.VenueID }),
-	"venueRentalPrice": col("venue_rental_price", func(p *domain.Project) any { return p.VenueRentalPrice }),
-	"venueCharge":      col("venue_charge", func(p *domain.Project) any { return p.VenueCharge }),
-	"prepStartDate":    col("prep_start_date", func(p *domain.Project) any { return p.PrepStartDate }),
-	"packageName":      col("package_name", func(p *domain.Project) any { return p.PackageName }),
-	"contractValue":    col("contract_value", func(p *domain.Project) any { return p.ContractValue }),
-	"picStaffId":       col("pic_staff_id", func(p *domain.Project) any { return p.PICStaffID }),
-	"picSalesStaffId":  col("pic_sales_staff_id", func(p *domain.Project) any { return p.PICSalesStaffID }),
-	"description":      col("description", func(p *domain.Project) any { return p.Description }),
-	"isArchived":       col("is_archived", func(p *domain.Project) any { return p.IsArchived }),
+	"name":            col("name", func(p *domain.Project) any { return p.Name }),
+	"brideName":       col("bride_name", func(p *domain.Project) any { return p.BrideName }),
+	"groomName":       col("groom_name", func(p *domain.Project) any { return p.GroomName }),
+	"eventDate":       col("event_date", func(p *domain.Project) any { return p.EventDate }),
+	"prepStartDate":   col("prep_start_date", func(p *domain.Project) any { return p.PrepStartDate }),
+	"picStaffId":      col("pic_staff_id", func(p *domain.Project) any { return p.PICStaffID }),
+	"picSalesStaffId": col("pic_sales_staff_id", func(p *domain.Project) any { return p.PICSalesStaffID }),
+	"description":     col("description", func(p *domain.Project) any { return p.Description }),
+	"isArchived":      col("is_archived", func(p *domain.Project) any { return p.IsArchived }),
 }
 
 // Patch writes the changed fields of p in one statement; see patchRow for the
@@ -416,22 +409,29 @@ func (r *MySQLProjectRepository) ChangeStatus(ctx context.Context, tenantID, id 
 
 // projectOwnedTables is every table of this module that hangs off one project,
 // in the order DeleteCascade empties them: a row goes before anything its
-// foreign keys point at (vendor_issues → vendor_milestones → project_vendors →
-// projects; the payment tables, the schedule, the files and the Timeline each
-// point straight at projects). Soft-deleted rows are deleted too: nothing of a
-// permanently deleted project waits for the purge. A table added to this module
-// with a project_id must be added here (FQ-01: venue_payments was missing, so a
-// project that ever had a venue payment could not be deleted).
+// foreign keys point at (vendor_issues → vendor_milestones → project_suppliers;
+// supplier_payments → project_suppliers; event sessions → events →
+// project_suppliers (the venue) → projects; the client payments, the schedule,
+// the files and the Timeline each point straight at projects). Soft-deleted rows
+// are deleted too: nothing of a permanently deleted project waits for the purge.
+// A table added to this module with a project_id must be added here (FQ-01: a
+// missing table made a project undeletable).
 var projectOwnedTables = []struct{ table, where string }{
 	{"activity_log", "project_id = ?"},
 	{"vendor_issues", "project_id = ?"},
-	{"vendor_payments", "project_id = ?"},
-	{"venue_payments", "project_id = ?"},
+	{"supplier_payments", "project_id = ?"},
+	// Bills of client-paid suppliers: after the payments that point at them.
+	{"supplier_bill_terms", "project_id = ?"},
 	{"client_payments", "project_id = ?"},
 	{"client_payment_terms", "project_id = ?"},
-	{"vendor_milestones", "project_vendor_id IN (SELECT id FROM project_vendors WHERE project_id = ?)"},
+	{"vendor_milestones", "project_supplier_id IN (SELECT id FROM project_suppliers WHERE project_id = ?)"},
 	{"evidence", "project_id = ?"},
-	{"project_vendors", "project_id = ?"},
+	// Lines point at events, suppliers and their own package: children first.
+	{"project_lines", "project_id = ? AND parent_line_id IS NOT NULL"},
+	{"project_lines", "project_id = ?"},
+	{"project_event_sessions", "event_id IN (SELECT id FROM project_events WHERE project_id = ?)"},
+	{"project_events", "project_id = ?"},
+	{"project_suppliers", "project_id = ?"},
 	{"project_milestones", "project_id = ?"},
 }
 

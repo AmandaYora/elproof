@@ -8,18 +8,32 @@ import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
 import { newIdempotencyKey } from "@/shared/lib/direct-upload";
 import { formatCurrency } from "@/shared/lib/formatters";
-import { paymentSchema, PAYMENT_METHOD_OPTIONS, PAYMENT_TYPE_OPTIONS, type PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
+import {
+  supplierPaymentSchema,
+  PAYMENT_METHOD_OPTIONS,
+  PAYMENT_TYPE_OPTIONS,
+  type SupplierPaymentFormValues,
+} from "@/modules/projects/schemas/payment.schema";
 import { countsAgainstContract, overpaymentMessage, remainingToPay, type PaymentLike } from "@/modules/projects/lib/payments";
 import { todayISO } from "@/modules/projects/lib/dates";
 import type { SaveOptions } from "@/modules/projects/stores/useProjectStore";
 
-/** What a payment is measured against: the contract (client), one engagement (vendor) or the venue. */
+/** What the drawer records: a client payment leaves `projectSupplierId` empty. */
+export type RecordPaymentValues = SupplierPaymentFormValues;
+
+/** What a payment is measured against: the contract (client) or the "Biaya rekanan" of one vendor or venue the WO pays. */
 export interface OwedContext {
-  /** 0 = not set yet: nothing is limited. */
+  /** 0 = not set yet (or the client pays the supplier): nothing is limited. */
   contractValue: number;
   existing: PaymentLike[];
-  /** "sisa tagihan", "sisa pembayaran vendor", "sisa biaya venue": how the remaining amount is named. */
+  /** "sisa tagihan", "sisa biaya rekanan": how the remaining amount is named. */
   owedLabel: string;
+}
+
+/** One vendor or venue the caller may record a payment to. */
+export interface SupplierOption {
+  value: string;
+  label: string;
 }
 
 interface Props {
@@ -27,22 +41,27 @@ interface Props {
   onClose: () => void;
   title: string;
   description: string;
-  /** Vendor payments pick an engagement; client and venue payments have none. */
-  vendorOptions?: Array<{ value: string; label: string }>;
+  /**
+   * A payment to a vendor or venue picks one of these (only those the caller may record to); a client payment has
+   * none. Who pays is the supplier's "Dibayar oleh", never a choice here.
+   */
+  supplierOptions?: SupplierOption[];
+  /** Opened from one supplier's drawer: that supplier is chosen already. */
+  initialSupplierId?: string;
   /** Which file slots exist: a client payment has only a transfer proof. */
   slots: { invoice: boolean };
-  owed: (projectVendorId: string) => OwedContext;
+  owed: (projectSupplierId: string) => OwedContext;
   /** Saves payment + proof in one call and closes the drawer. Throw to keep it open. */
-  onSubmit: (values: PaymentFormValues, options: SaveOptions) => Promise<void>;
+  onSubmit: (values: RecordPaymentValues, options: SaveOptions) => Promise<void>;
 }
 
 const LABELS: Record<string, string> = {
-  projectVendorId: "Vendor", type: "Jenis pembayaran", amount: "Nominal", paymentDate: "Tanggal", method: "Metode",
-  referenceNumber: "No. referensi", invoiceFile: "Invoice", proofFile: "Bukti transfer", notes: "Catatan",
+  projectSupplierId: "Vendor atau venue", type: "Jenis pembayaran", amount: "Nominal", paymentDate: "Tanggal", method: "Metode",
+  referenceNumber: "No. referensi", invoiceFile: "Berkas tagihan", proofFile: "Bukti transfer", notes: "Catatan",
 };
 
-function initialValues(vendorId: string): PaymentFormValues {
-  return { projectVendorId: vendorId, type: "DP", amount: 0, paymentDate: todayISO(), method: "Transfer Bank", referenceNumber: "", notes: "", invoiceFile: undefined, proofFile: undefined };
+function initialValues(supplierId: string): RecordPaymentValues {
+  return { projectSupplierId: supplierId, type: "DP", amount: 0, paymentDate: todayISO(), method: "Transfer Bank", referenceNumber: "", notes: "", invoiceFile: undefined, proofFile: undefined };
 }
 
 const FILE_CLASS =
@@ -55,8 +74,9 @@ const FILE_CLASS =
  * (Idempotency-Key). If saving fails nothing was saved and the panel stays open
  * with everything typed.
  */
-export function RecordPaymentDrawer({ open, onClose, title, description, vendorOptions, slots, owed, onSubmit }: Props) {
-  const isVendor = vendorOptions !== undefined;
+export function RecordPaymentDrawer({ open, onClose, title, description, supplierOptions, initialSupplierId, slots, owed, onSubmit }: Props) {
+  const isSupplier = supplierOptions !== undefined;
+  const firstSupplier = initialSupplierId ?? supplierOptions?.[0]?.value ?? "";
   const owedRef = useRef(owed);
   owedRef.current = owed;
   const keyRef = useRef(newIdempotencyKey());
@@ -64,44 +84,44 @@ export function RecordPaymentDrawer({ open, onClose, title, description, vendorO
 
   // A save refused for being over the contract is a field message on Nominal, same wording as the server's.
   const schema = useMemo(() => {
-    // Client and venue payments have no engagement: the field exists in the shape but may be empty.
-    const base = isVendor ? paymentSchema : paymentSchema.extend({ projectVendorId: z.string().default("") });
+    // A client payment has no supplier: the field exists in the shape but may be empty.
+    const base = isSupplier ? supplierPaymentSchema : supplierPaymentSchema.extend({ projectSupplierId: z.string().default("") });
     return base.superRefine((v, ctx) => {
-      const o = owedRef.current(v.projectVendorId ?? "");
+      const o = owedRef.current(v.projectSupplierId ?? "");
       const message = overpaymentMessage(o.contractValue, o.existing, { type: v.type, amount: v.amount }, formatCurrency, o.owedLabel);
       if (message) ctx.addIssue({ code: "custom", path: ["amount"], message });
-    }) as unknown as typeof paymentSchema;
-  }, [isVendor]);
+    }) as unknown as typeof supplierPaymentSchema;
+  }, [isSupplier]);
 
-  const form = useZodForm({ schema, initial: initialValues(vendorOptions?.[0]?.value ?? "") });
+  const form = useZodForm({ schema, initial: initialValues(firstSupplier) });
   const { values, errors, blur } = form;
 
   useEffect(() => {
     if (open) {
-      form.reset(initialValues(vendorOptions?.[0]?.value ?? ""));
+      form.reset(initialValues(firstSupplier));
       keyRef.current = newIdempotencyKey();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Any change makes a different request, so it must not reuse the earlier key.
-  function set<K extends keyof PaymentFormValues & string>(key: K, value: PaymentFormValues[K]) {
+  function set<K extends keyof RecordPaymentValues & string>(key: K, value: RecordPaymentValues[K]) {
     keyRef.current = newIdempotencyKey();
     form.set(key, value);
   }
 
-  const o = owed(values.projectVendorId);
+  const o = owed(values.projectSupplierId);
   const remaining = Math.max(remainingToPay(o.contractValue, o.existing), 0);
 
   // Pelunasan means "what is left", so one tap fills it.
-  function changeType(type: PaymentFormValues["type"]) {
+  function changeType(type: RecordPaymentValues["type"]) {
     set("type", type);
     if (type === "Pelunasan" && values.amount === 0 && remaining > 0) set("amount", remaining);
   }
 
   const submit = form.handleSubmit(
     async (parsed) => {
-      await onSubmit({ ...parsed, projectVendorId: parsed.projectVendorId ?? "" }, { idempotencyKey: keyRef.current });
+      await onSubmit({ ...parsed, projectSupplierId: parsed.projectSupplierId ?? "" }, { idempotencyKey: keyRef.current });
       keyRef.current = newIdempotencyKey();
     },
     {
@@ -137,17 +157,17 @@ export function RecordPaymentDrawer({ open, onClose, title, description, vendorO
           </p>
         )}
 
-        {isVendor && (
-          <Field label="Vendor" required name="projectVendorId" error={errors.projectVendorId}>
-            <Select value={values.projectVendorId} onChange={(e) => set("projectVendorId", e.target.value)}>
-              {vendorOptions!.map((v) => (
+        {isSupplier && (
+          <Field label="Vendor atau venue" required name="projectSupplierId" error={errors.projectSupplierId}>
+            <Select aria-label="Vendor atau venue" value={values.projectSupplierId} onChange={(e) => set("projectSupplierId", e.target.value)}>
+              {supplierOptions!.map((v) => (
                 <option key={v.value} value={v.value}>{v.label}</option>
               ))}
             </Select>
           </Field>
         )}
         <Field label="Jenis pembayaran" required name="type" error={errors.type}>
-          <Select value={values.type} onChange={(e) => changeType(e.target.value as PaymentFormValues["type"])}>
+          <Select value={values.type} onChange={(e) => changeType(e.target.value as RecordPaymentValues["type"])}>
             {PAYMENT_TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
@@ -166,7 +186,7 @@ export function RecordPaymentDrawer({ open, onClose, title, description, vendorO
           <Input type="date" value={values.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} onBlur={() => blur("paymentDate")} />
         </Field>
         <Field label="Metode" required name="method" error={errors.method}>
-          <Select value={values.method} onChange={(e) => set("method", e.target.value as PaymentFormValues["method"])}>
+          <Select value={values.method} onChange={(e) => set("method", e.target.value as RecordPaymentValues["method"])}>
             {PAYMENT_METHOD_OPTIONS.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}

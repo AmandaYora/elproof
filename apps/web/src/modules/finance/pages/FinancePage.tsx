@@ -9,6 +9,7 @@ import { ReceivablesTab } from "@/modules/finance/components/ReceivablesTab";
 import { PayablesTab } from "@/modules/finance/components/PayablesTab";
 import { CashFlowTab } from "@/modules/finance/components/CashFlowTab";
 import { VerificationsTab } from "@/modules/finance/components/VerificationsTab";
+import { useCan } from "@/shared/stores/usePermissionStore";
 
 type Section = "tagihan" | "keluar" | "arus-kas" | "verifikasi";
 
@@ -28,7 +29,10 @@ const SECTIONS: { id: Section; label: string }[] = [
 export default function FinancePage() {
   const [search] = useSearchParams();
   const raw = search.get("tab");
-  const section: Section = SECTIONS.some((s) => s.id === raw) ? (raw as Section) : "tagihan";
+  // What the WO owes its vendors and venues is its cost: only for those who may see the margin (the API answers 403).
+  const canMargin = useCan("finance.margin.view");
+  const sections = canMargin ? SECTIONS : SECTIONS.filter((s) => s.id !== "keluar");
+  const section: Section = sections.some((s) => s.id === raw) ? (raw as Section) : "tagihan";
 
   const summary = useFinanceStore((s) => s.summary);
   const fetchSummary = useFinanceStore((s) => s.fetchSummary);
@@ -52,7 +56,7 @@ export default function FinancePage() {
       <PageHeader
         className="mb-0"
         title="Keuangan"
-        description="Tagihan klien, pembayaran ke vendor dan venue, serta arus kas dari semua proyek Anda."
+        description={canMargin ? "Tagihan klien, pembayaran ke vendor dan venue, serta arus kas dari semua proyek Anda." : "Tagihan klien dan arus kas dari semua proyek Anda."}
       />
 
       <FinanceKpis summary={summary} status={summaryStatus} onRetry={loadSummary} />
@@ -61,7 +65,7 @@ export default function FinancePage() {
         {/* `relative`: the badge's sr-only word is absolutely positioned; without a positioned ancestor inside the scrolling
             row it escapes it and widens the whole page on a phone (QA FQ-05). */}
         <nav aria-label="Bagian keuangan" className="relative -mx-1 flex gap-6 overflow-x-auto border-b border-border px-1">
-          {SECTIONS.map((s) => {
+          {sections.map((s) => {
             const active = s.id === section;
             return (
               <Link
@@ -89,7 +93,7 @@ export default function FinancePage() {
           <ReceivablesTab counts={summary ? { overdue: summary.overdue.count, due_30d: summary.dueSoon.count } : undefined} />
         )}
         {section === "keluar" && <PayablesTab />}
-        {section === "arus-kas" && <CashFlowTab weeks={summary?.cashFlow ?? null} status={summaryStatus} onRetry={loadSummary} />}
+        {section === "arus-kas" && <CashFlowTab weeks={summary?.cashFlow ?? null} status={summaryStatus} onRetry={loadSummary} showOut={canMargin && summary?.payables !== undefined} />}
         {section === "verifikasi" && <VerificationsTab />}
       </div>
     </div>

@@ -50,10 +50,10 @@ func TestPurgeCutoffMatchesTheRestoreRule(t *testing.T) {
 }
 
 func TestPurgeReportTotals(t *testing.T) {
-	a := PurgeReport{ClientPayments: 1, Engagements: 2, EngagementPayments: 3, Evidence: 4, Objects: 9}
-	b := PurgeReport{VendorPayments: 1, VenuePayments: 1, EngagementIssues: 2, EngagementMilestones: 1}
+	a := PurgeReport{ClientPayments: 1, Suppliers: 2, SupplierOwnedPayments: 3, Evidence: 4, Objects: 9}
+	b := PurgeReport{SupplierPayments: 2, SupplierIssues: 2, SupplierMilestones: 1}
 	a.Add(b)
-	if a.Total() != 1+2+3+4+1+1+2+1 {
+	if a.Total() != 1+2+3+4+2+2+1 {
 		t.Errorf("Total = %d (stored files are not rows)", a.Total())
 	}
 	if a.Objects != 9 {
@@ -73,19 +73,19 @@ func TestClientVisibleIssuesKeepsOnlyShared(t *testing.T) {
 	if got := ClientVisibleIssues(nil); got == nil || len(got) != 0 {
 		t.Error("an empty result must be an empty slice")
 	}
-	if (VendorIssue{}).HasVendor() || !(VendorIssue{ProjectVendorID: 4}).HasVendor() {
-		t.Error("HasVendor: 0 means none")
+	if (VendorIssue{}).HasSupplier() || !(VendorIssue{ProjectSupplierID: 4}).HasSupplier() {
+		t.Error("HasSupplier: 0 means none")
 	}
 }
 
 func TestHiddenIssueProofIsNeverVisibleToAClient(t *testing.T) {
-	can := func(string) bool { return true }
+	p := NewPortalPolicy(func(string) bool { return true })
 	shown := Evidence{RelatedKind: RelatedIssue}
 	hidden := Evidence{RelatedKind: RelatedIssue, ClientHidden: true}
-	if !ClientCanSeeEvidence(shown, can) {
+	if !p.Evidence(shown, EvidenceOwner{}) {
 		t.Error("proof of a shared kendala is visible with portal.issues.view")
 	}
-	if ClientCanSeeEvidence(hidden, can) {
+	if p.Evidence(hidden, EvidenceOwner{}) {
 		t.Error("proof of a kendala not shared with the client must stay hidden")
 	}
 }

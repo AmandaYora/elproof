@@ -38,13 +38,13 @@ export function VendorMilestoneFormModal({ open, onClose, onSubmit, vendorName }
     }
   }, [staff, values.picStaffId, set]);
 
-  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Tahapan vendor belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
+  const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Tahapan belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Tambah tahapan vendor"
+      title="Tambah tahapan"
       description={`Tahapan baru untuk ${vendorName}, ditambahkan di urutan paling akhir.`}
       busy={form.submitting}
       footer={

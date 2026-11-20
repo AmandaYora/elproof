@@ -1,5 +1,7 @@
 # ADR-0014: Project duplicate (structural template, not a full clone)
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): duplikat menyalin acara (tanggal digeser ikut acara utama) dan Vendor & venue yang tidak batal (status kembali Planned, tanpa tier harga), bukan lagi `project_vendors`.
+
 ## Status
 Accepted
 

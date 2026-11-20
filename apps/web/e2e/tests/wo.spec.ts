@@ -5,7 +5,7 @@ import { expect, shot, test, visit } from "../lib/fixtures";
 screenshotSuite("wo", WO_PAGES, WO_DIALOGS);
 
 // Keyboard focus on kit controls (T-20261110-11): the ring a person sees after Tab, on a button and on a text field.
-// "WO Berbayar" has no trial banner, so no volatile mask lands across the dialog.
+// "WO Berbayar" has no trial banner, so the dialog shots show no trial card behind the overlay.
 test.describe("wo: focus", () => {
   test("tombol", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "paying");

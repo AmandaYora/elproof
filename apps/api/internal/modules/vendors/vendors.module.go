@@ -3,7 +3,7 @@
 // own table, but still this module, since Venue and Vendor are conceptually
 // siblings. Vendor CRUD itself needs no orchestration — see PLAN.md Fase 3 —
 // but "Lihat Project" (a vendor's engagement history across projects)
-// resolves through `projects.Contracts`, since `project_vendors` is owned by
+// resolves through `projects.Contracts`, since `project_suppliers` is owned by
 // `projects`, not this module.
 package vendors
 
@@ -24,6 +24,9 @@ type Module struct {
 	vendorHandler   *presentation.VendorHandler
 	venueHandler    *presentation.VenueHandler
 	contracts       vendorscontracts.Contracts
+	categories      *application.VendorCategoryService
+	vendors         *application.VendorService
+	venues          *application.VenueService
 }
 
 func NewModule(db *sql.DB, projects projectscontracts.Contracts, storageClient *storage.Client) *Module {
@@ -40,7 +43,21 @@ func NewModule(db *sql.DB, projects projectscontracts.Contracts, storageClient *
 		vendorHandler:   presentation.NewVendorHandler(vendorService, categoryService, projects),
 		venueHandler:    presentation.NewVenueHandler(venueService, projects),
 		contracts:       vendorscontracts.New(categoryService, venueService, vendorService),
+		categories:      categoryService,
+		vendors:         vendorService,
+		venues:          venueService,
 	}
+}
+
+// SetOfferReferences hands the vendor, venue, and category services the check
+// of packages and quotations that still refer to a row (PLAN paket-wo §3.3), so
+// a permanent delete of a referenced one is refused. `offers` is built after
+// this module, hence a setter wired in main.go rather than a constructor
+// argument. Never called = nothing is referenced.
+func (m *Module) SetOfferReferences(r application.OfferReferences) {
+	m.categories.SetOfferReferences(r)
+	m.vendors.SetOfferReferences(r)
+	m.venues.SetOfferReferences(r)
 }
 
 // Contracts exposes vendors' cross-module surface — used by `platform` to

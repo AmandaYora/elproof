@@ -35,6 +35,10 @@ func toPaymentTermResponses(list []domain.TermProgress) []paymentTermResponse {
 }
 
 func (h *Handler) listPaymentTerms(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
+	if claims.isClient && !domain.NewPortalPolicy(claims.can).Term() {
+		forbiddenPermission(w, "Data ini tidak dibagikan untuk akun Anda")
+		return
+	}
 	list, err := h.terms.List(r.Context(), claims.tenantID, projectID, nowWIB())
 	if err != nil {
 		writeAppError(w, err)

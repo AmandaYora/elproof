@@ -1,7 +1,8 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
-import { useNavigate } from "react-router-dom";
-import { Pencil, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban, CalendarDays, Package, UserRound, MapPin, type LucideIcon } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Pencil, Archive, ArchiveRestore, Copy, Check, CircleAlert, Trash2, Ban, CalendarDays, CalendarRange, Package, UserRound, MapPin, FileCheck2, type LucideIcon } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/components/kit/tooltip";
 import { Breadcrumbs } from "@/shared/components/ui/Breadcrumbs";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -14,8 +15,8 @@ import type { ProjectFormValues } from "@/modules/projects/schemas/project.schem
 import type { ClosingChecklist, ProjectStatus, ProjectStatusAction } from "@/modules/projects/types";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
 import { daysUntil } from "@/modules/projects/lib/dates";
-import { hasUnpaidTerms, shiftUnpaidTerms, termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
-import { daysBetween, formatCurrency, formatDate, formatDayCountdown } from "@/shared/lib/formatters";
+import { eventsLine, locationLine } from "@/modules/rincian";
+import { formatDate, formatDayCountdown } from "@/shared/lib/formatters";
 import { getApiErrorMessage } from "@/shared/lib/api-error";
 import { toast } from "@/shared/stores/useToastStore";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -41,11 +42,6 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const setProjectArchived = useProjectStore((s) => s.setProjectArchived);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const duplicateProject = useProjectStore((s) => s.duplicateProject);
-  const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
-  const fetchPaymentTerms = useProjectStore((s) => s.fetchPaymentTerms);
-  const recalculatePaymentTerms = useProjectStore((s) => s.recalculatePaymentTerms);
-  const savePaymentTerms = useProjectStore((s) => s.savePaymentTerms);
-  const canRecordFinance = useCan("finance.record");
   // Actions follow the workspace role's permissions (ADR-0026).
   const canDelete = useCan("project.delete");
   const canEdit = useCan("project.edit");
@@ -55,6 +51,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   // PLAN.md's RBAC section); the backend already rejects both roles' POST
   // .../duplicate.
   const canDuplicate = useCan("project.duplicate");
+  const canViewQuotation = useCan("quotation.view");
   // The server sends `margin` only to roles allowed to see it (finance.margin.view), so its presence is the permission.
 
   const [editOpen, setEditOpen] = useState(false);
@@ -70,14 +67,8 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const [closing, setClosing] = useState<{ checklist: ClosingChecklist | null; error: string | null } | null>(null);
   const [completing, setCompleting] = useState(false);
   const closingToken = useRef(0);
-  // The schedule no longer adds up to a contract value just saved: offer to fit it (EP-05).
-  const [termsMismatch, setTermsMismatch] = useState<{ total: number; contractValue: number } | null>(null);
-  const [recalculating, setRecalculating] = useState(false);
-  const [recalcError, setRecalcError] = useState<string | null>(null);
-  // The event date moved but unpaid installments did not: offer to move their due dates by the same number of days (QA RT-04).
-  const [dueShift, setDueShift] = useState<number | null>(null);
-  const [shifting, setShifting] = useState(false);
-  const [shiftError, setShiftError] = useState<string | null>(null);
+  // The events as the Acara tab last loaded them: the header follows an event write without another request.
+  const events = useProjectStore((s) => (s.eventsFor === projectId ? s.events : null));
 
   if (!project) {
     return <div className="text-sm text-text-secondary">Proyek tidak ditemukan.</div>;
@@ -87,72 +78,17 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   const isOpenProject = project.status !== "Completed" && project.status !== "Cancelled";
   const lifecycle = LIFECYCLE_ACTION[project.status];
   const picName = overview?.team.picName || project.picName;
+  const location = events ? locationLine(events) : project.location;
+  const lineOfEvents = events ? eventsLine(events) : project.eventsLine;
 
   // The two form handlers throw on failure so the modal can show the
   // message next to the form, with what the user typed still in place.
   async function handleEdit(values: ProjectFormValues) {
-    const before = project!;
-    const saved = await updateProject(projectId, values, editVersion);
+    // The event date is not part of this form: it is the main event's, changed on the Acara & rincian tab. The
+    // contract value is not either: it comes from the rincian, which says itself when the schedule no longer fits.
+    await updateProject(projectId, values, editVersion);
     setEditOpen(false);
     toast.success("Perubahan proyek disimpan");
-    // Timeline steps that follow the event date were moved by the server (EP-06).
-    if (saved.eventDate !== before.eventDate || saved.prepStartDate !== before.prepStartDate) void fetchMilestones(projectId).catch(() => undefined);
-    // A new contract value no longer matches the schedule: offer to fit it (EP-05).
-    if (saved.contractValue !== before.contractValue && canRecordFinance) void offerRecalculation(saved.contractValue);
-    // The installments do not follow the event date on their own (QA RT-04): offer to move the unpaid ones with it.
-    if (saved.eventDate !== before.eventDate && canRecordFinance) void offerDueShift(daysBetween(before.eventDate, saved.eventDate));
-  }
-
-  async function offerDueShift(days: number) {
-    if (days === 0) return;
-    try {
-      await fetchPaymentTerms(projectId);
-    } catch {
-      return; // the schedule can still be edited by hand on the Keuangan tab
-    }
-    if (hasUnpaidTerms(useProjectStore.getState().paymentTerms)) setDueShift(days);
-  }
-
-  async function handleDueShift() {
-    if (dueShift === null) return;
-    setShiftError(null);
-    setShifting(true);
-    try {
-      // Read the schedule as it is now: "Hitung ulang termin" may have just changed the amounts.
-      await savePaymentTerms(projectId, shiftUnpaidTerms(useProjectStore.getState().paymentTerms, dueShift));
-      setDueShift(null);
-      toast.success("Jatuh tempo termin digeser");
-    } catch (err) {
-      setShiftError(getApiErrorMessage(err, "Jatuh tempo termin belum digeser. Periksa koneksi Anda, lalu coba lagi."));
-    } finally {
-      setShifting(false);
-    }
-  }
-
-  async function offerRecalculation(contractValue: number) {
-    try {
-      await fetchPaymentTerms(projectId);
-    } catch {
-      return; // the Keuangan tab still shows the difference when it loads
-    }
-    const terms = useProjectStore.getState().paymentTerms;
-    const total = termsTotal(terms);
-    const standing = termsVsContract(total, contractValue, terms.length);
-    if (standing === "under" || standing === "over") setTermsMismatch({ total, contractValue });
-  }
-
-  async function handleRecalculate() {
-    setRecalcError(null);
-    setRecalculating(true);
-    try {
-      await recalculatePaymentTerms(projectId);
-      setTermsMismatch(null);
-      toast.success("Jadwal termin dihitung ulang");
-    } catch (err) {
-      setRecalcError(getApiErrorMessage(err, "Jadwal termin belum dihitung ulang. Periksa koneksi Anda, lalu coba lagi."));
-    } finally {
-      setRecalculating(false);
-    }
   }
 
   async function handleTransition(action: ProjectStatusAction, successMessage: string) {
@@ -302,18 +238,40 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           <span className="text-foreground">{formatDate(project.eventDate)}</span>
           {isOpenProject && <span className="ml-1.5 font-semibold tabular-nums text-highlight-text">{formatDayCountdown(d)}</span>}
         </Property>
-        {project.packageName && (
-          <Property icon={Package} label="Paket">
-            {project.packageName}
-          </Property>
-        )}
+        <Property icon={Package} label="Paket" full={project.packageNames.length > 1 ? project.packageNames.join(", ") : undefined}>
+          {project.packageNames.length > 0 ? project.packageNames.join(", ") : "Tanpa paket"}
+        </Property>
         <Property icon={UserRound} label="PIC">
           {picName || "PIC belum ditugaskan"}
         </Property>
-        {project.venue && (
-          <Property icon={MapPin} label="Venue">
-            {project.venue}
+        {lineOfEvents && (
+          <Property icon={CalendarRange} label="Acara" full={lineOfEvents}>
+            {lineOfEvents}
           </Property>
+        )}
+        <Property icon={MapPin} label="Lokasi" full={location || undefined}>
+          {location || "Venue belum dipilih"}
+        </Property>
+        {project.quotation && (
+          <li className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5">
+            <FileCheck2 aria-hidden className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Dari{" "}
+              {canViewQuotation ? (
+                <Link to={ROUTE_PATHS.quotationDetail(project.quotation.id)} className="text-foreground underline-offset-2 hover:underline">
+                  {project.quotation.number} Revisi {project.quotation.revisionN}
+                </Link>
+              ) : (
+                <span className="text-foreground">
+                  {project.quotation.number} Revisi {project.quotation.revisionN}
+                </span>
+              )}
+            </span>
+            <span aria-hidden>·</span>
+            <Link to={`${ROUTE_PATHS.projectDetail(projectId, "acara-rincian")}?kesepakatan=1`} className="font-medium text-primary underline-offset-2 hover:underline">
+              Lihat kesepakatan awal
+            </Link>
+          </li>
         )}
       </ul>
 
@@ -396,52 +354,7 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
           Seluruh jadwal, vendor, pembayaran, kendala, dan bukti proyek ini ikut terhapus dan tidak bisa dipulihkan.
         </p>
       </ConfirmDialog>
-      <ConfirmDialog
-        open={termsMismatch !== null}
-        title="Hitung ulang jadwal termin?"
-        confirmLabel="Hitung ulang termin"
-        tone="primary"
-        isSubmitting={recalculating}
-        error={recalcError}
-        onConfirm={() => void handleRecalculate()}
-        onClose={() => {
-          setTermsMismatch(null);
-          setRecalcError(null);
-        }}
-      >
-        {termsMismatch && (
-          <p>
-            Nilai kontrak sekarang {formatCurrency(termsMismatch.contractValue)}, sedangkan jumlah termin{" "}
-            {formatCurrency(termsMismatch.total)}. Termin yang sudah ada pembayarannya tidak berubah; termin yang belum
-            dibayar dihitung ulang sesuai porsinya sampai jumlahnya sama dengan nilai kontrak. Pilih Batal untuk mengatur
-            termin sendiri di tab Keuangan.
-          </p>
-        )}
-      </ConfirmDialog>
-      <ConfirmDialog
-        // After "Hitung ulang jadwal termin?" when both were changed at once: one question at a time.
-        open={dueShift !== null && termsMismatch === null}
-        title="Geser jatuh tempo termin?"
-        confirmLabel="Geser jatuh tempo"
-        cancelLabel="Biarkan"
-        tone="primary"
-        isSubmitting={shifting}
-        error={shiftError}
-        onConfirm={() => void handleDueShift()}
-        onClose={() => {
-          setDueShift(null);
-          setShiftError(null);
-        }}
-      >
-        {dueShift !== null && (
-          <p>
-            Tanggal acara {dueShift > 0 ? "mundur" : "maju"} {Math.abs(dueShift)} hari. Geser jatuh tempo termin yang belum lunas{" "}
-            {dueShift > 0 ? "mundur" : "maju"} {Math.abs(dueShift)} hari juga? Termin yang sudah lunas tidak berubah. Pilih Biarkan untuk
-            mengatur jatuh tempo sendiri di tab Keuangan.
-          </p>
-        )}
-      </ConfirmDialog>
-      <ProjectFormModal open={editOpen}onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
+      <ProjectFormModal open={editOpen} onClose={() => setEditOpen(false)} onSubmit={handleEdit} initialProject={project} />
       <ProjectFormModal
         open={duplicateOpen}
         onClose={() => setDuplicateOpen(false)}
@@ -453,13 +366,32 @@ export function ProjectHeaderCard({ projectId }: { projectId: string }) {
   );
 }
 
-/** One property of the header: an icon, a name for assistive technology, the value. */
-function Property({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
+/**
+ * One property of the header: an icon, a name for assistive technology, the value on one line. A value that may be
+ * long (`full`) is cut at the edge and shown whole in a tooltip, which keyboard users reach with Tab.
+ */
+function Property({ icon: Icon, label, full, children }: { icon: LucideIcon; label: string; full?: string; children: ReactNode }) {
   return (
     <li className="flex min-w-0 max-w-full items-center gap-1.5">
       <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
       <span className="sr-only">{label}: </span>
-      <span className="min-w-0 truncate">{children}</span>
+      {full ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                tabIndex={0}
+                className="min-w-0 truncate rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+              />
+            }
+          >
+            {children}
+          </TooltipTrigger>
+          <TooltipContent className="max-w-sm">{full}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span className="min-w-0 truncate">{children}</span>
+      )}
     </li>
   );
 }

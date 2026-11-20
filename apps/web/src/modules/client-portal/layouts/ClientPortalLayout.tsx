@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { CalendarDays, Ellipsis, House, Loader2, LogOut, MessageCircle, Store, Wallet, type LucideIcon } from "lucide-react";
+import { CalendarDays, ConciergeBell, Ellipsis, House, Loader2, LogOut, MessageCircle, Wallet, type LucideIcon } from "lucide-react";
 import { AppLogoMark } from "@/shared/components/AppLogoMark";
 import { Toaster } from "@/shared/components/ui/Toaster";
 import { Button } from "@/shared/components/ui/Button";
@@ -40,7 +40,7 @@ const NAV: NavItem[] = [
   { tab: "beranda", label: "Beranda", icon: House },
   { tab: "timeline", label: "Jadwal", icon: CalendarDays, requires: "portal.timeline.view" },
   { tab: "pembayaran", label: "Pembayaran", icon: Wallet, requires: "portal.finance.view" },
-  { tab: "vendor", label: "Vendor", icon: Store, requires: "portal.vendor.view" },
+  { tab: "layanan", label: "Layanan", icon: ConciergeBell, requires: "portal.vendor.view" },
   { tab: "lainnya", label: "Lainnya", icon: Ellipsis, alsoActiveOn: ["dokumen", "kendala"] },
 ];
 
@@ -48,7 +48,7 @@ const NAV: NavItem[] = [
 const GUARDED: Partial<Record<ClientPortalTab, string>> = {
   timeline: "portal.timeline.view",
   pembayaran: "portal.finance.view",
-  vendor: "portal.vendor.view",
+  layanan: "portal.vendor.view",
   kendala: "portal.issues.view",
   dokumen: "portal.documents.view",
 };

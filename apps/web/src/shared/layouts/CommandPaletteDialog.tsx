@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FolderKanban, Store, Users, type LucideIcon } from "lucide-react";
+import { FileText, FolderKanban, Store, Users, type LucideIcon } from "lucide-react";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/shared/components/kit/command";
 import { httpClient } from "@/shared/services/http-client";
 import { hasPermission, usePermissionStore } from "@/shared/stores/usePermissionStore";
@@ -26,6 +26,12 @@ interface Named {
   status?: string;
 }
 
+interface QuotationHit {
+  id: number | string;
+  number: string;
+  coupleNames: string;
+}
+
 /** One kind of result: a small page searched on the server, never the whole list. */
 async function searchKind(url: string, q: string, signal: AbortSignal): Promise<Named[]> {
   const res = await httpClient.get(url, { params: { search: q, limit: PER_KIND }, signal });
@@ -47,6 +53,7 @@ export default function CommandPaletteDialog({ open, onOpenChange: setOpen, page
   // for the rest is refused with 403 and leads to pages the role cannot see.
   const grants = usePermissionStore((s) => s.grants);
   const searchVendors = hasPermission(grants, "vendor.view");
+  const searchQuotations = hasPermission(grants, "quotation.view");
   const searchClients = hasPermission(grants, "client.manage") && grants?.projectScope === "all";
 
   useEffect(() => {
@@ -66,19 +73,23 @@ export default function CommandPaletteDialog({ open, onOpenChange: setOpen, page
     setSearching(true);
     Promise.all([
       settle(searchKind(API.projects.base, debounced, controller.signal)),
+      searchQuotations
+        ? settle(httpClient.get(API.quotations.base, { params: { search: debounced, limit: PER_KIND }, signal: controller.signal }).then((res) => res.data.data as QuotationHit[]))
+        : Promise.resolve({ ok: false as const }),
       searchVendors ? settle(searchKind(API.vendors.base, debounced, controller.signal)) : Promise.resolve({ ok: false as const }),
       searchClients ? settle(searchKind(API.clients.base, debounced, controller.signal)) : Promise.resolve({ ok: false as const }),
-    ]).then(([projects, vendors, clients]) => {
+    ]).then(([projects, quotations, vendors, clients]) => {
       if (controller.signal.aborted) return;
       setHits([
         ...(projects.ok ? projects.value : []).map((p) => ({ key: `p-${p.id}`, label: p.name, sublabel: "Proyek", icon: FolderKanban, path: ROUTE_PATHS.projectDetail(String(p.id)) })),
+        ...(quotations.ok ? quotations.value : []).map((x) => ({ key: `q-${x.id}`, label: `${x.number} · ${x.coupleNames}`, sublabel: "Penawaran", icon: FileText, path: ROUTE_PATHS.quotationDetail(String(x.id)) })),
         ...(vendors.ok ? vendors.value : []).map((v) => ({ key: `v-${v.id}`, label: v.name, sublabel: "Vendor", icon: Store, path: `${ROUTE_PATHS.vendors}?q=${encodeURIComponent(v.name)}` })),
         ...(clients.ok ? clients.value : []).map((c) => ({ key: `c-${c.id}`, label: c.name, sublabel: "Klien", icon: Users, path: `${ROUTE_PATHS.clients}?q=${encodeURIComponent(c.name)}` })),
       ].slice(0, 9));
       setSearching(false);
     });
     return () => controller.abort();
-  }, [debounced, searchRecords, searchVendors, searchClients]);
+  }, [debounced, searchRecords, searchQuotations, searchVendors, searchClients]);
 
   const matchingPages = pages.filter((p) => p.label.toLowerCase().includes(q.toLowerCase()));
 

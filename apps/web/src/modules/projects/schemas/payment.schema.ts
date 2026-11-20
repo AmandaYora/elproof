@@ -6,13 +6,12 @@ export const PAYMENT_TYPE_OPTIONS = ["DP", "Termin", "Pelunasan", "Tambahan", "R
 // forms can never drift apart on which methods are offered.
 export const PAYMENT_METHOD_OPTIONS = ["Tunai", "Transfer Bank", "QRIS"] as const;
 
-// invoiceFile/proofFile are validated only client-side and never sent as
-// part of the JSON body itself — the store action uploads each as a
-// separate evidence call after the payment is created (see
-// useProjectStore.createPayment), same convention as
-// client-payment.schema.ts's own proofFile.
-export const paymentSchema = z.object({
-  projectVendorId: z.string().min(1, "Vendor wajib dipilih"),
+// A payment to a vendor or venue of the project. Who pays it (the WO or the
+// client directly) is the supplier's "Dibayar oleh": the server takes it from
+// there, never from the form. invoiceFile/proofFile are validated here only and
+// go up as upload tokens with the payment (useProjectStore.createSupplierPayment).
+export const supplierPaymentSchema = z.object({
+  projectSupplierId: z.string().min(1, "Pilih vendor atau venue"),
   type: z.enum(PAYMENT_TYPE_OPTIONS),
   amount: z.coerce.number().positive("Nominal harus lebih dari 0"),
   paymentDate: z.string().min(1, "Tanggal wajib diisi"),
@@ -23,13 +22,11 @@ export const paymentSchema = z.object({
   proofFile: z.instanceof(File).optional(),
 });
 
-export type PaymentFormValues = z.infer<typeof paymentSchema>;
+export type SupplierPaymentFormValues = z.infer<typeof supplierPaymentSchema>;
 
-// Edit scope is the ledger fields only — no projectVendorId (re-parenting a
-// payment to a different vendor engagement isn't supported; delete and
-// recreate instead) and no file re-upload (already covered by the existing
-// generic evidence tab) — see PLAN.md §2.5.
-export const paymentUpdateSchema = z.object({
+// Edit scope is the ledger fields only: a payment does not move to another
+// supplier (delete and record it again) and its files are managed in Dokumen.
+export const supplierPaymentUpdateSchema = z.object({
   type: z.enum(PAYMENT_TYPE_OPTIONS),
   amount: z.coerce.number().positive("Nominal harus lebih dari 0"),
   paymentDate: z.string().min(1, "Tanggal wajib diisi"),
@@ -38,4 +35,4 @@ export const paymentUpdateSchema = z.object({
   notes: z.string().optional().default(""),
 });
 
-export type PaymentUpdateFormValues = z.infer<typeof paymentUpdateSchema>;
+export type SupplierPaymentUpdateFormValues = z.infer<typeof supplierPaymentUpdateSchema>;

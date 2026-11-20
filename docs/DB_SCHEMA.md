@@ -258,7 +258,8 @@ Venue is now its own directory (`venues`, below), not a category.
 | email | VARCHAR(150) NULL | no longer mandatory — migration `000023` |
 | social_media | TEXT NULL | free text, migration `000023` |
 | city | VARCHAR(100) NULL | migration `000023` |
-| price_akad | BIGINT UNSIGNED NULL | vendor's own preset price for an "Akad Saja" engagement — migration `000023`. Reference/catalog price only: a specific project engagement's own `project_vendors.contract_value` is always the source of truth and may be freely negotiated away from this number (see `pricing_tier` below) |
+| price_akad | BIGINT UNSIGNED NULL | vendor's own preset price for an Akad only — migration `000023`. Reference/catalog price only: what the WO agreed with the vendor on a project is that project's `project_suppliers.agreed_cost` (Biaya rekanan), negotiated freely |
+| price_resepsi | BIGINT UNSIGNED NULL | same as above, for "Resepsi" — migration `000042` |
 | price_akad_resepsi | BIGINT UNSIGNED NULL | same as above, for "Akad + Resepsi" |
 | address | VARCHAR(255) NULL | no longer mandatory — migration `000023` |
 | notes | TEXT NULL | |
@@ -272,9 +273,9 @@ filter.
 
 ### `venues` — **ADR-0016**
 Its own directory inside `vendors` (not a new top-level module — Venue and Vendor are conceptually
-siblings), not a vendor category. Exactly one venue per project, referenced by `projects.venue_id`
-below (never a `project_venues` engagement table — no per-project negotiated price/DP/paid-amount
-tracking for venues, unlike vendor engagements).
+siblings), not a vendor category. A venue enters a project only through an event (`project_events.venue_supplier_id`
+→ a `project_suppliers` row of kind `venue`, below), so a project may use several venues, one per event or
+shared between events (ADR-0048).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -287,9 +288,12 @@ tracking for venues, unlike vendor engagements).
 | email | VARCHAR(150) NULL | |
 | address | VARCHAR(255) NULL | optional (Revisi — was mandatory in the original ADR-0016 plan) |
 | city | VARCHAR(100) NULL | mandatory on the create form, validated against a fixed 128 kota/kabupaten list; nullable at the DB only so the one-time vendor→venue data migration doesn't fail for rows with no city info |
-| rental_price | BIGINT UNSIGNED NULL | mandatory on the create form; nullable at the DB for the same migration-safety reason as `city` — the UI flags "harga sewa belum diisi" rather than blocking attachment to a project |
-| charge | BIGINT UNSIGNED NULL | separate fixed charge, distinct from `rental_price` |
-| capacity | INT NULL | |
+| capacity_standing | INT UNSIGNED NULL | capacity for a standing layout (Kapasitas berdiri) — migration `000084` (ADR-0048, paket WO Tahap 1). At least one of `capacity_standing`/`capacity_seated` is required (≥ 1) by the service, the form and the import; the DB keeps both nullable. Packages and quotation events check guests against the number for their layout |
+| capacity_seated | INT UNSIGNED NULL | capacity for a seated layout (Kapasitas duduk) — migration `000084` |
+| price_akad | BIGINT UNSIGNED NULL | rental price for an Akad — migration `000084`; optional |
+| price_resepsi | BIGINT UNSIGNED NULL | rental price for a Resepsi — migration `000084`; optional |
+| price_akad_resepsi | BIGINT UNSIGNED NULL | rental price for Akad + Resepsi — migration `000084`; optional |
+| charge | BIGINT UNSIGNED NULL | separate optional extra charge (Charge tambahan), distinct from the three prices |
 | facilities | TEXT NULL | free text (Revisi — the original ADR-0016 plan used a JSON array; simplified for UI consistency + easier bulk-import) |
 | social_media | TEXT NULL | free text, same Revisi reasoning as `facilities` |
 | notes | TEXT NULL | |
@@ -301,14 +305,189 @@ tracking for venues, unlike vendor engagements).
 Existing tenants' real venue data (previously `vendors` rows under a "Venue" category) was
 one-time-migrated into this table by `000022_migrate_venue_vendor_data` — new fields land empty for
 the WO to fill in; the source `vendors` rows are deactivated, not deleted, and never auto-linked to
-old `project_vendors` history (fuzzy-matching risk — see ADR-0016).
+a project's history (fuzzy-matching risk — see ADR-0016).
 
 Composite index `(tenant_id, city)` — migration `000033` — same shape as `vendors` above, backs the
 Venue list page's Kota filter.
 
+Migration `000084` replaced the single `capacity` and `rental_price` columns: the old capacity
+became `capacity_standing`, the old rental price became `price_akad_resepsi`, then both old columns
+were dropped (pre-launch, no compatibility columns). The import template and export columns follow
+the same shape (`Kapasitas Berdiri`, `Kapasitas Duduk`, `Harga Akad`, `Harga Resepsi`,
+`Harga Akad+Resepsi`, `Charge`).
+
 Both `vendors` and `venues` (and `staff`, and `vendor_categories`) can now also be permanently hard-
 deleted (Owner-only, informed-consent — ADR-0018) — no schema change for this, since every
 cross-module reference to these rows was already a primitive, un-enforced ID.
+Since paket WO Tahap 1 the delete is refused (409 `vendor_in_offers` / `venue_in_offers` /
+`category_in_offers`) while a row of the `offers` module (a package's default venue or a
+component's vendor or category) still points at it — checked through vendors' `OfferReferences`
+port, still with no SQL foreign key.
+
+---
+
+## Module `offers` — migration `000086`, ADR-0049 (paket WO Tahap 1)
+
+The catalog a WO quotes from: the kinds of event it organises and its packages, and (Tahap 5)
+the quotations themselves. Every table carries `tenant_id` (ADR-0004), child tables included, and every unique key
+leads with it. Venue, vendor and vendor category are primitive ids into `vendors` (`FK*`, resolved
+through `vendors.Contracts`); the only SQL foreign keys stay inside this module.
+
+### `event_kinds`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | `FK*` → `platform.tenants.id` |
+| name | VARCHAR(60) NOT NULL | Jenis acara. `UNIQUE uq_event_kinds_tenant_name (tenant_id, name)`; the service also refuses a case-insensitive duplicate (422). Quotation and project events copy the name, so a rename never rewrites an earlier document |
+| default_key | VARCHAR(20) NULL | which built-in kind the row was seeded as (`lamaran`, `pengajian`, `siraman`, `akad`, `resepsi`, `ngunduh_mantu`); `NULL` for a kind the WO added. Survives a rename, so seeding stays idempotent. `UNIQUE uq_event_kinds_tenant_default (tenant_id, default_key)` |
+| sort_order | INT NOT NULL DEFAULT 0 | display order; a new kind goes last |
+| is_active | BOOLEAN NOT NULL DEFAULT TRUE | an inactive kind cannot be picked for a new package or event |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP(6) | the `If-Match` version of a rename (ADR-0036) |
+
+The migration seeds the six built-in kinds for every existing tenant (`INSERT IGNORE`); a new
+workspace gets them at sign-up (`platform` → `offers.SeedDefaultEventKinds`). A kind a package covers
+cannot be deleted (409 `event_kind_in_use`); it is deactivated instead.
+
+### `packages`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | `FK*` → `platform.tenants.id` |
+| name | VARCHAR(150) NOT NULL | `UNIQUE uq_packages_tenant_name (tenant_id, name)`; the service also refuses a case-insensitive duplicate |
+| price | BIGINT UNSIGNED NOT NULL | package price in rupiah |
+| included_guests | INT UNSIGNED NULL | Tamu termasuk: how many guests `price` covers; `NULL` = the price does not depend on guests |
+| extra_guest_step | INT UNSIGNED NULL | Tambahan per … tamu: every started step of this many guests above `included_guests` costs `extra_guest_step_price`. Both step columns are `NULL` (no charge) or both set, and only with `included_guests` (service) |
+| extra_guest_step_price | BIGINT UNSIGNED NULL | price per step |
+| default_venue_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.venues.id`; `KEY idx_packages_tenant_venue (tenant_id, default_venue_id)` backs the venue delete check. `included_guests` may not exceed the venue's largest capacity (service) |
+| is_active | BOOLEAN NOT NULL DEFAULT TRUE | |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP(6) | the `If-Match` version of an edit (ADR-0036) |
+
+### `package_event_kinds`
+| Column | Type | Notes |
+|---|---|---|
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| package_id | BIGINT UNSIGNED | `FK` → `packages.id` `ON DELETE CASCADE` |
+| event_kind_id | BIGINT UNSIGNED | `FK` → `event_kinds.id` (no cascade: a kind in use cannot be deleted) |
+
+`PK (package_id, event_kind_id)`, `KEY idx_package_event_kinds_kind (tenant_id, event_kind_id)`. The
+kinds a package covers; at least one (service).
+
+### `package_components`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| package_id | BIGINT UNSIGNED | `FK` → `packages.id` `ON DELETE CASCADE` |
+| description | VARCHAR(255) NOT NULL | Isi paket ("Katering buffet 450 porsi") |
+| category_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.vendor_categories.id`, optional; filled from the vendor's category when only `vendor_id` is given |
+| vendor_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.vendors.id`, optional |
+| estimated_cost | BIGINT UNSIGNED NULL | the WO's own cost estimate; read and written only with `finance.margin.view` (an edit without it keeps the stored value) |
+| sort_order | INT NOT NULL DEFAULT 0 | row order in the form |
+
+Keys `(tenant_id, package_id)`, `(tenant_id, vendor_id)`, `(tenant_id, category_id)` — the last two
+back the vendor and category delete checks. At most 50 components per package (service). A package
+edit rewrites its kinds and components in one transaction.
+
+Migration `000086` also grants the new permission `package.manage` to every workspace's built-in
+Owner and Admin roles (`tenant_role_permissions`, module `access`).
+
+### Quotations — migration `000090`, ADR-0050 (paket WO Tahap 5)
+
+A **Penawaran** has the same shape as a project (ADR-0048): events with sessions, Vendor & venue,
+lines; plus payment terms, terms & conditions, frozen revisions and an activity log. Every table
+carries `tenant_id` and every key leads with it. Kind, venue, vendor, category, package, staff and
+project ids are primitive (`FK*`); SQL foreign keys stay among the `quotation_*` tables.
+
+#### `quotations`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | `FK*` → `platform.tenants.id` |
+| number | VARCHAR(24) NOT NULL | `KODE-PNW-YYMMDD-NNN`, frozen at creation. `UNIQUE uq_quotations_tenant_number (tenant_id, number)` |
+| doc_date | DATE NOT NULL | the WIB day in the number |
+| couple_names | VARCHAR(150) NOT NULL | |
+| contact_whatsapp | VARCHAR(30) NOT NULL DEFAULT '' | optional |
+| pic_staff_id | BIGINT UNSIGNED NOT NULL | `FK*` → `staff.staff_members.id`; the `assigned` scope matches it |
+| valid_until | DATE NOT NULL | valid through the end of this WIB day; default today + the workspace's validity days (14) |
+| notes | TEXT NULL | internal |
+| status | ENUM('Draft','Accepted','Rejected','Superseded') | `Kedaluwarsa` is computed (a Draft past `valid_until`), never stored |
+| alternative_of_id | BIGINT UNSIGNED NULL | the group's first quotation (NULL for that first one) |
+| superseded_by_id | BIGINT UNSIGNED NULL | the copy or accepted alternative that replaced it |
+| accepted_revision_id | BIGINT UNSIGNED NULL | the revision the couple accepted |
+| accepted_on | DATE NULL | |
+| accepted_channel | ENUM('WhatsApp','InPerson','Email','Other') NULL | |
+| accepted_attachment_key / _name / _type | VARCHAR NULL | optional evidence of acceptance in the workspace's storage path |
+| rejected_reason | VARCHAR(500) NULL | |
+| rejected_at | DATETIME NULL | |
+| converted_project_id | BIGINT UNSIGNED NULL | `FK*` → `projects.projects.id`; a cache written through `offers/contracts.MarkConverted` |
+| converted_at | DATETIME NULL | |
+| project_deleted_at | DATETIME NULL | set by `MarkProjectDeleted` ("Proyek sudah dihapus") |
+| is_pkp | BOOLEAN NOT NULL | copied from the workspace at creation |
+| terms_text | TEXT NOT NULL | Syarat & ketentuan, seeded from the workspace default |
+| revision_count | INT UNSIGNED NOT NULL DEFAULT 0 | highest revision n (0 = none) |
+| contract_total | BIGINT UNSIGNED NOT NULL | working-copy total cache for the list |
+| main_event_date | DATE NULL | earliest event date cache for the list |
+| created_by_staff_id | BIGINT UNSIGNED NULL | |
+| deleted_at | DATETIME NULL | |
+| created_at | TIMESTAMP(6) | |
+| updated_at | TIMESTAMP(6) | header `If-Match` version (written explicitly, no `ON UPDATE`) |
+| lines_updated_at | TIMESTAMP(6) | lines `If-Match` version |
+| terms_updated_at | TIMESTAMP(6) | terms and terms-text `If-Match` version |
+| changed_at | TIMESTAMP(6) | last change of anything; the list's default order |
+
+Keys `(tenant_id, status, valid_until)`, `(tenant_id, alternative_of_id)`, `(tenant_id, pic_staff_id)`,
+`(tenant_id, changed_at)`, `(tenant_id, converted_project_id)`.
+
+#### `quotation_counters`
+`PK (tenant_id, doc_date)`, `last_seq INT UNSIGNED` — the per-workspace, per-WIB-day sequence of the
+number, taken under a row lock in the creating transaction (at most 999 a day).
+
+#### `quotation_suppliers`, `quotation_events`, `quotation_event_sessions`, `quotation_lines`
+Same columns and meaning as `project_suppliers`, `project_events`, `project_event_sessions` and
+`project_lines` (with `quotation_id` instead of `project_id`): `supplier_kind ENUM('vendor','venue')`
++ `supplier_id` (`FK*` → `vendors.vendors` / `vendors.venues`), copied name, category and capacities,
+`paid_by ENUM('WO','Client')`, `show_name`, `agreed_cost` (only with `finance.margin.view`);
+events with `event_kind_id` (`FK*` → `event_kinds.id`), copied `kind_name`, an optional `event_date`
+(a quotation may be an estimate), `venue_supplier_id` (`FK` → `quotation_suppliers`, `SET NULL`),
+`layout ENUM('Standing','Seated')`; sessions with `guests`; lines `kind ENUM('Package','Component',
+'ExtraGuests','Item','Discount')` with `parent_line_id`, `package_id` (`FK*`, `KEY (tenant_id,
+package_id)` backs "a package in a quotation can only be deactivated"), the copied `package_rule`
+JSON and `copied_at`, `event_id` and `supplier_ref` (`FK` within the quotation, `SET NULL`). All
+cascade from `quotations`.
+
+#### `quotation_terms`
+| Column | Type | Notes |
+|---|---|---|
+| label | VARCHAR(60) NOT NULL | "DP", "Termin 1", "Pelunasan" |
+| percent / amount | INT / BIGINT UNSIGNED NULL | exactly one is set |
+| due_basis | ENUM('Accepted','Event') | due relative to the acceptance day or an event's date |
+| due_offset_days | INT NOT NULL | days after acceptance (0–365) or before/after the event (−730…365) |
+| due_event_id | BIGINT UNSIGNED NULL | `FK` → `quotation_events` `SET NULL`; NULL = the earliest event |
+| sort_order | INT | |
+
+Defaults for a new quotation: DP 30% on acceptance, Termin 1 40% at H-60, Pelunasan 30% at H-7.
+
+#### `quotation_revisions`
+| Column | Type | Notes |
+|---|---|---|
+| n | INT UNSIGNED NOT NULL | Revisi n; `UNIQUE (tenant_id, quotation_id, n)` |
+| snapshot | JSON NOT NULL | everything the PDF needs, frozen (`schemaVersion`, number, issued at, validity, PIC name, letterhead identity incl. logo key, content with positions instead of ids) |
+| content_hash | CHAR(64) NOT NULL | sha256 of the content only; `UNIQUE (tenant_id, quotation_id, content_hash)` — identical content never adds a revision |
+| contract_total | BIGINT UNSIGNED | |
+| created_by_staff_id | BIGINT UNSIGNED NULL | |
+| created_at | TIMESTAMP(6) | |
+
+#### `quotation_activity`
+`type VARCHAR(40)` (`created`, `header_changed`, `events_changed`, `suppliers_changed`, `lines_changed`,
+`terms_changed`, `revision_created`, `shared`, `extended`, `accepted`, `unaccepted`, `rejected`,
+`reopened`, `superseded`, `copied`, `alternative_added`, `converted`, `project_deleted`,
+`attachment_added`), `actor_staff_id`, `summary VARCHAR(500)`, `created_at`;
+`KEY (tenant_id, quotation_id, created_at)`.
+
+Migration `000090` also grants `quotation.view` and `quotation.manage` to every workspace's built-in
+Owner, Admin and Sales roles.
 
 ---
 
@@ -321,19 +500,46 @@ cross-module reference to these rows was already a primitive, un-enforced ID.
 | tenant_id | BIGINT UNSIGNED NOT NULL | |
 | name | VARCHAR(150) | |
 | bride_name, groom_name | VARCHAR(150) | |
-| event_date, prep_start_date | DATE | |
-| venue | VARCHAR(255) | free-text location — kept as a fallback for projects that never get a structured `venue_id` below (ADR-0016); not touched by attaching one |
-| venue_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.venues.id` (ADR-0016) — at most one venue per project; resolved via `vendors.Contracts` (`VenueResolver`), never a SQL join. `NULL` means no structured venue attached yet |
-| venue_rental_price, venue_charge | BIGINT UNSIGNED NULL | per-project cost **snapshot**, captured (and freely editable) the moment `venue_id` is attached/changed — never a live join against `venues.rental_price`/`charge`. Both `NULL` whenever `venue_id` is `NULL`; force-cleared to `NULL` on detach regardless of what a request sends. Exists so a completed project's recorded Margin can never drift just because venue master data changed later (or the venue is hard-deleted — ADR-0018) |
-| package_name | VARCHAR(150) | |
-| contract_value | BIGINT UNSIGNED | the WO's own price quoted to the client for the whole event — a distinct figure from any vendor's or the venue's own cost (see `project_vendors.contract_value` and this table's own `venue_rental_price`/`venue_charge`); the frontend derives a "Margin/Keuntungan" figure as this value minus those costs, computed client-side, never stored |
+| event_date | DATE | the date of the project's **main event** (`project_events.is_main`), Hari H of the schedule. Written only by the event service, in the same transaction as the event that moves it (create, edit, set-main, delete of the main event), together with the steps that follow H-n |
+| prep_start_date | DATE | |
+| is_pkp | BOOLEAN NOT NULL DEFAULT FALSE | migration `000088` — **copied** from the workspace (`tenant_business_details.is_pkp`, through the `WorkspaceProfile` port) when the project is created (a project made from a quotation copies the accepted revision's `is_pkp` instead); later changes to the workspace never touch an existing project. PPN 11% applies to this project's lines when set |
+| contract_subtotal | BIGINT NOT NULL DEFAULT 0 | migration `000088` — **cache** of the live `project_lines`: Σ Package + ExtraGuests + Item − Σ Discount (never negative; a discount above the gross is refused, 422 `discount_exceeds_subtotal`). The WO's own price to the client — distinct from what it agreed to pay its vendors and venues (`project_suppliers.agreed_cost`); margin = this subtotal minus those costs, computed on read for `finance.margin.view`, never stored |
+| contract_tax | BIGINT NOT NULL DEFAULT 0 | migration `000088` — cache: `contract_subtotal × 11 / 100` when `is_pkp`, else 0 (offers `LineTotals`) |
+| contract_total | BIGINT NOT NULL DEFAULT 0 | migration `000088` — cache: subtotal + PPN, the **contract value** every reader uses (ledger, schedule, overpayment, dashboard, finance, portal, exports). The three columns are rewritten by one `UPDATE … SET … = (SELECT SUM …)` in the same transaction as every change of a line, an event's guests, a line or project soft delete/restore, and a duplicate; nothing else writes them |
+| lines_version | TIMESTAMP(6) NOT NULL | migration `000088` — the Rincian's own version (If-Match of every line write, ADR-0036), separate from `updated_at` so editing lines never makes an open project form stale. Bumped by every line write; a guest-driven recompute of the extra-guest charge keeps it |
 | status | ENUM('Draft','Preparation','Ready','Completed','Cancelled') | |
 | pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` — reassignable only by Owner/Admin, never by the "Staff" (Wedding Planner) role itself, see ADR-0017 |
 | description | TEXT NULL | |
+| quotation_id | BIGINT UNSIGNED NULL | migration `000091` (paket WO Tahap 5, PLAN §5.4) — `FK*` → `offers.quotations.id` (primitive id, read through `offers/contracts.Quotations`): the accepted quotation this project was made from ("Jadikan proyek"); `NULL` for a project made by hand. `UNIQUE uq_projects_tenant_quotation (tenant_id, quotation_id)` makes a quotation one project at most — two concurrent conversions meet this key, the loser rolls back and answers the winner's project. A duplicate never copies it; a purge tells `offers` (`MarkProjectDeleted`), after which the quotation may be converted again |
+| quotation_number, quotation_revision_n | VARCHAR(24) NULL, INT UNSIGNED NULL | migration `000091` — **cache** of the quotation's number and the accepted revision's n at conversion, so the project page shows "Dari penawaran MO-PNW-… Revisi n" without a call to `offers`. Written only at conversion |
 | is_archived | BOOLEAN NOT NULL DEFAULT FALSE | orthogonal to `status` — see ADR-0013 |
 | cover_photo_path | VARCHAR(500) NULL | migration `000077` (ADR-0047) — object-storage key of the Client Portal hero photo (`…/{tenant}/{project}/cover/<unix>-<uuid>.jpg|png`, always re-encoded by the server). `NULL` = no cover. Written only by `PUT/DELETE /projects/{id}/cover`, which keep `updated_at` as it is; the old object is deleted after a replace, and on project delete |
 | cover_updated_at | TIMESTAMP NULL | migration `000077` — when the cover last changed: the `?v=` of `coverUrl`. `NULL` with the cover |
 | created_at, updated_at | TIMESTAMP | |
+
+### `project_lines` — migration `000088` (Rincian, paket WO Tahap 3)
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | every read and write filters by it |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | |
+| kind | ENUM('Package','Component','ExtraGuests','Item','Discount') | a Package brings its Components (amount 0) and, when its rule charges extra guests and the decisive event has more than the included guests, one ExtraGuests line, always computed by the server |
+| parent_line_id | BIGINT UNSIGNED NULL `FK` → project_lines.id `ON DELETE CASCADE` | Component and ExtraGuests point at their Package; deleting a Package takes its children with it |
+| package_rule | JSON NULL | Package only: the **copy** of the catalog package's rule when it was added (`offers` `PackageCopy`: id, name, price, event kind ids, included guests, step, step price). A later catalog change never changes the project |
+| description | VARCHAR(255) | Uraian, required |
+| category_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.vendor_categories.id` (primitive id, checked through the references port) |
+| event_id | BIGINT UNSIGNED NULL `FK` → project_events.id `ON DELETE SET NULL` | the event a line belongs to; must be this project's |
+| quantity, unit, unit_price | INT UNSIGNED NULL, VARCHAR(30), BIGINT UNSIGNED NULL | Item only: `amount = quantity × unit_price`; a bonus (`is_bonus`) has unit price 0 |
+| amount | BIGINT UNSIGNED NOT NULL DEFAULT 0 | always ≥ 0; the kind says whether it adds or (Discount) subtracts. Component = 0 |
+| is_bonus | BOOLEAN | Item only |
+| supplier_ref | BIGINT UNSIGNED NULL `FK` → project_suppliers.id `ON DELETE SET NULL` | the project's own WO-paid, live supplier that provides the line; never shown in the portal |
+| sort_order | INT | screen order; a package's children follow it |
+| deleted_at | DATETIME NULL | soft delete (ADR-0034): restorable for 24 h, then purged |
+| created_at, updated_at | TIMESTAMP, TIMESTAMP(6) | |
+
+Keys `idx_project_lines_project (tenant_id, project_id, deleted_at)`, `idx_project_lines_parent (tenant_id, parent_line_id)`,
+`idx_project_lines_deleted (deleted_at)`. Every change (add, edit, delete, restore, reorder, replace, guest change)
+writes an `activity_log` entry with the old and new value (`line_added`, `line_updated`, `line_deleted`).
 
 ### `project_milestones`
 | Column | Type | Notes |
@@ -379,72 +585,149 @@ Migration `000024` also backfilled every already-registered tenant with the prev
 6-item seed via `platform`'s tenant-registration flow instead (`SeedDefaultMilestoneTemplate`,
 mirroring `vendors.SeedDefaultCategories`).
 
-### `project_vendors`
+### `project_events` — migration `000087` (ADR-0048, paket WO Tahap 2)
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
 | project_id | BIGINT UNSIGNED `FK` → projects.id | |
-| vendor_id | BIGINT UNSIGNED | `FK*` → `vendors.vendors.id` |
-| category_id | BIGINT UNSIGNED | `FK*` → `vendors.vendor_categories.id` (denormalized at engagement time) |
-| scope | VARCHAR(255) | |
-| contract_value | BIGINT UNSIGNED | the actual, possibly negotiated, amount for this specific engagement — never re-derived from `pricing_tier`/the vendor's own preset prices after the fact |
-| pricing_tier | VARCHAR(20) NOT NULL DEFAULT 'Akad' | `Akad` \| `AkadResepsi` — which of the vendor's own two preset prices (`vendors.price_akad`/`price_akad_resepsi`) this engagement's `contract_value` was auto-filled from when created/last edited; purely an informational label, not backend-validated against the two-value set (same lax convention as `engagement_status`) |
-| engagement_status | ENUM(...) | see `EngagementStatus` |
-| booking_date, event_date, due_date | DATE NULL | |
-| dp_amount | BIGINT UNSIGNED | plain reference figure ("what DP was agreed at booking") — never summed into any total |
-| pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
-| notes | TEXT NULL | |
-| deleted_at | DATETIME NULL, `KEY idx_project_vendors_deleted` | migration `000068`, ADR-0034 — soft delete. A stamped engagement hides its `vendor_milestones`, `vendor_payments`, `vendor_issues` and every `evidence` row hanging off any of them (the children carry no stamp of their own: visibility is decided by the engagement, so restoring it brings everything back). The purge removes the engagement and all its children together |
+| event_kind_id | BIGINT UNSIGNED | `FK*` → `offers.event_kinds.id` (primitive id, checked through the `offers` contract: the kind must exist and be active when picked) |
+| kind_name | VARCHAR(60) | the kind's name, **copied** when picked: renaming the kind in Katalog does not change a project |
+| event_date | DATE NOT NULL | |
+| start_time, end_time | CHAR(5) NULL | `HH:MM`; the end after the start when both are set |
+| venue_supplier_id | BIGINT UNSIGNED NULL `FK` → project_suppliers.id | the event's venue, a `project_suppliers` row of kind `venue` (same module). `NULL` = no venue yet. Events at the same directory venue share one supplier row |
+| layout | ENUM('Standing','Seated') DEFAULT 'Standing' | Tata letak Berdiri/Duduk: which capacity of the venue the guests are checked against |
+| is_main | BOOLEAN NOT NULL DEFAULT FALSE | Acara utama. Exactly one per project, kept by the service (not by a constraint); its `event_date` is `projects.event_date` |
+| sort_order | INT NOT NULL DEFAULT 0 | order among events of the **same date**; the list itself is ordered by `event_date`, then `sort_order`, then `id` |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP(6) | the row's version (If-Match, ADR-0036) |
 
-No `paid_amount` column (removed, migration `000028`) — "Total Sudah Dibayar" is **computed**, summing
-this engagement's own `vendor_payments` rows (`Refund` netted as a subtraction) in the presentation
-layer, never a stored/manually-typed value. This was a real bug: the old manual field and the actual
-`vendor_payments` ledger were two independently-maintained numbers that could silently contradict each
-other on the same tab.
+Keys `idx_project_events_project (tenant_id, project_id)`, `idx_project_events_date (tenant_id, event_date)`,
+`idx_project_events_kind (tenant_id, event_kind_id)`. A project always has at least one event (the service refuses
+deleting the last one). An event is deleted for good, with its sessions; there is no soft delete.
 
-### `vendor_milestones`
+### `project_event_sessions` — migration `000087`
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
-| project_vendor_id | BIGINT UNSIGNED `FK` → project_vendors.id | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| event_id | BIGINT UNSIGNED `FK` → project_events.id `ON DELETE CASCADE` | |
+| label | VARCHAR(60) | "Sesi 1", "Sesi 2" … when left empty |
+| start_time, end_time | CHAR(5) NULL | `HH:MM` |
+| guests | INT UNSIGNED NOT NULL | 1 … 100,000; checked against the venue capacity for the event's layout |
+| sort_order | INT NOT NULL DEFAULT 0 | |
+
+Key `idx_project_event_sessions_event (tenant_id, event_id)`. An event has 1–10 sessions; the whole set is
+rewritten when the event is saved.
+
+### `project_suppliers` — migration `000087` ("Vendor & venue" of a project)
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | |
+| supplier_kind | ENUM('vendor','venue') | a vendor is added on the Vendor & venue tab; a venue only ever through an event |
+| supplier_id | BIGINT UNSIGNED | `FK*` → `vendors.vendors.id` or `vendors.venues.id` by kind (primitive id, resolved through `vendors.Contracts`) |
+| supplier_name | VARCHAR(150) | **copied** when chosen: the directory row may be renamed or deleted later |
+| category_id | BIGINT UNSIGNED NULL | `FK*` → `vendors.vendor_categories.id`, copied from the vendor; `NULL` for a venue |
+| paid_by | ENUM('WO','Client') DEFAULT 'WO' | Dibayar oleh. Locked once the supplier has a payment or a file (service, 422 `paid_by_locked`). Switching to `Client` clears `agreed_cost` and `show_name` |
+| show_name | BOOLEAN DEFAULT FALSE | Tampilkan nama ke klien — only meaningful for a vendor paid by the WO; a venue and a supplier the client pays are always named in the portal (the service keeps it `FALSE` for them) |
+| capacity_standing, capacity_seated | INT UNSIGNED NULL | venue only: **copied** from the directory when chosen, refreshed only by "Perbarui kapasitas" (`POST …/refresh-capacity`). The event capacity check reads these copies (the directory's numbers only for a venue not yet in the project) |
+| agreed_cost | BIGINT UNSIGNED NULL | Biaya rekanan: what the WO agreed to pay. Only for `paid_by = 'WO'`, optional; written and read only with `finance.margin.view`. Not below what the WO already paid it (service). `NULL` or `0` = not set: the WO's payments are then not limited |
+| engagement_status | ENUM('Planned','Negotiation','Booked','DP Paid','In Progress','Fully Paid','Ready','Completed','Cancelled') DEFAULT 'Planned' | `EngagementStatus` |
+| booking_date, due_date | DATE NULL | `due_date` = when the WO's balance is due (dashboard, Keuangan) |
+| pic_staff_id | BIGINT UNSIGNED NULL | `FK*` → `staff.staff_members.id` |
+| scope | VARCHAR(255) DEFAULT '' | |
+| notes | TEXT NULL | |
+| deleted_at | DATETIME NULL | soft delete (ADR-0034): a stamped supplier hides its `vendor_milestones`, `supplier_payments`, `vendor_issues` and every `evidence` row hanging off any of them (they carry no stamp of their own; restoring the supplier brings them back). A venue an event still uses cannot be deleted (422 `venue_in_use`) |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP(6) | version (If-Match) |
+
+Keys `idx_project_suppliers_project (tenant_id, project_id)`, `idx_project_suppliers_supplier (tenant_id, supplier_kind, supplier_id)`
+(the directory's "Lihat Project" and delete checks), `idx_project_suppliers_deleted (deleted_at)`.
+
+A venue supplier is created by the event service, paid by the WO, in the same transaction as the event that picks it; when
+no event uses it any more and nothing hangs off it (payment, step, kendala, file) it is deleted for good, otherwise it stays,
+shown as "Tidak dipakai acara mana pun". What a supplier has been paid is **computed** from `supplier_payments`
+(DP + Termin + Pelunasan − Refund, per payer), never stored.
+
+### `vendor_milestones` — recreated by migration `000087`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
+| project_supplier_id | BIGINT UNSIGNED `FK` → project_suppliers.id | a step of one vendor or venue of the project |
 | sort_order | SMALLINT UNSIGNED | |
-| name, description | VARCHAR(255), TEXT NULL | |
-| status | ENUM(...) | `MilestoneStatus` |
-| target_date, completed_date | DATE NULL | |
-| pic_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id` |
+| name | VARCHAR(150) | |
+| description | TEXT NULL | |
+| status | ENUM('Not Started','In Progress','Completed','Blocked','Cancelled') DEFAULT 'Not Started' | `MilestoneStatus` |
+| target_date | DATE NOT NULL | |
+| completed_date | DATE NULL | stamped/cleared by the server when only the status changes (EP-06) |
+| pic_staff_id | BIGINT UNSIGNED NOT NULL | `FK*` → `staff.staff_members.id` |
 | notes | TEXT NULL | |
+| updated_at | TIMESTAMP(6) | version (If-Match) |
 
-Displayed as "Timeline Vendor" in the UI — same display-only rename as `project_milestones` above.
+Key `idx_vendor_milestones_supplier (tenant_id, project_supplier_id)`. Displayed as "Tahapan vendor" in the UI.
 
-### `vendor_payments`
+### `supplier_payments` — migration `000087`
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | |
 | project_id | BIGINT UNSIGNED `FK` → projects.id | |
-| project_vendor_id | BIGINT UNSIGNED `FK` → project_vendors.id | |
-| type | ENUM(...) | `PaymentType`, includes `Refund` (special evidence-completeness rule) |
-| amount | BIGINT UNSIGNED | |
+| project_supplier_id | BIGINT UNSIGNED `FK` → project_suppliers.id | not changeable after recording (delete and record again) |
+| payer | ENUM('WO','Client') NOT NULL | who paid: the supplier's `paid_by` at the moment the payment is recorded, **kept on the row**. Every query filters on this column, never on the supplier's `paid_by`, so an old payment never changes meaning. `WO` = money out of the WO (Pembayaran ke rekanan, margin permission); `Client` = the client paid the supplier directly (Dibayar klien, `finance.record`) |
+| type | ENUM('DP','Termin','Pelunasan','Tambahan','Refund') | `PaymentType`; `Refund` needs only a transfer proof to be complete |
+| amount | BIGINT UNSIGNED | 1 … 10^15 |
 | payment_date | DATE | |
-| method | VARCHAR(100) | frontend constrains this to a fixed `Tunai`/`Transfer Bank`/`QRIS` dropdown (`PAYMENT_METHOD_OPTIONS`, shared with `client_payments`); not enforced at this column, same lax convention as `pricing_tier`/`engagement_status` |
-| reference_number | VARCHAR(100) | optional in the frontend form (empty string allowed) — a `Tunai` payment has no transfer reference number |
-| notes | TEXT NULL | |
-| deleted_at | DATETIME NULL, `KEY idx_vendor_payments_deleted` | migration `000068`, ADR-0034 — soft delete. A payment is also hidden while its *engagement* is stamped (no stamp of its own then; restoring the engagement brings it back) |
+| method | VARCHAR(100) | frontend dropdown `Tunai`/`Transfer Bank`/`QRIS`, not enforced at the column |
+| reference_number | VARCHAR(100) DEFAULT '' | optional |
+| notes | TEXT NULL | never sent to a client |
+| recorded_by_staff_id | BIGINT UNSIGNED NULL | `FK*` → `staff.staff_members.id`, no FK |
+| bill_term_id | BIGINT UNSIGNED NULL `FK` → supplier_bill_terms.id ON DELETE SET NULL | migration `000089`: the bill a client's proof pays (only on a portal submission; NULL on what staff record) |
+| submitted_by_client_id | BIGINT UNSIGNED NULL | migration `000089`: `FK*` → `clients.clients.id`, no FK. Set = the couple sent this proof from the portal (payer `Client`); it counts as paid only once `verified_at` is set |
+| verified_at / verified_by_staff_id | DATETIME NULL / BIGINT UNSIGNED NULL | migration `000089`: the WO marked the client's proof right (`FK*` → staff). Cleared when the payment's type, amount, date, method or reference changes, or its last proof file is removed (ADR-0032) |
+| rejected_at / rejected_by_staff_id / rejection_reason | DATETIME NULL / BIGINT UNSIGNED NULL / VARCHAR(500) NULL | migration `000089`: the WO refused the client's proof, with the reason the couple sees. A rejected proof never counts and cannot be verified afterwards |
+| deleted_at | DATETIME NULL | soft delete (ADR-0034), restorable 24 h; also hidden while its supplier is stamped |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP(6) | version (If-Match) |
 
-No `invoice_evidence_id`/`proof_evidence_id` columns (removed, migration `000029`) — confirmed via a
-full-repo search that no code path had ever written a non-null value to either since this table's
-first migration. "Lengkap"/`evidenceComplete` is **computed**, cross-referencing the polymorphic
-`evidence` table (`related_kind = 'payment'`, distinguished by `evidence.type` — `Invoice` vs
-`Transfer Proof`) via `domain.PaymentEvidenceStatus`/`IsPaymentEvidenceComplete` — the same
-presentation-layer derivation pattern already used for `client_payments`' `evidenceComplete` and the
-vendor paid-amount fix. A `Refund` only needs a `Transfer Proof`; every other type needs both an
-`Invoice` and a `Transfer Proof` attached — the same rule the old (dead) columns encoded, now finally
-collectible since "Tambah Pembayaran" attaches both file slots in the same submit that records the
-payment.
+Keys `idx_supplier_payments_project (tenant_id, project_id, payer)`, `idx_supplier_payments_supplier (tenant_id, project_supplier_id)`,
+`idx_supplier_payments_date (tenant_id, payment_date)`, `idx_supplier_payments_deleted (deleted_at)`,
+`idx_supplier_payments_bill_term (tenant_id, bill_term_id)`, `idx_supplier_payments_pending (tenant_id, payer, verified_at, rejected_at)`.
 
-Rows can now be edited (full-field overwrite, no role gate) and deleted (`finance.payment.delete`) — see
-ADR-0019. **Since ADR-0034 a delete is soft** (`deleted_at`, restorable for 24 h; the evidence is hidden, not removed, until the purge hard-deletes row, evidence rows and stored objects together). The description that follows is the earlier hard delete. Deleting a row cascades to its own `evidence` rows (deleted first, then the payment row —
-deliberately reversed order, see ADR-0019) and their S3 objects, best-effort; no schema change was
-needed for this.
+**Counts as paid** (`domain.SupplierPayment.CountsAsPaid`, SQL `domain.SupplierPaymentCountsSQL`): a row staff recorded, or a
+client's proof with `verified_at` set. A pending proof (`SupplierPaymentPendingSQL`: submitted, neither verified nor rejected)
+waits in the WO's verification queue; a rejected one never counts. Payer `Client` rows are the client's own money: the WO's
+cash, revenue, cash flow and payables read `payer = 'WO'` only.
+
+### `supplier_bill_terms` — migration `000089` (Paket WO Tahap 4)
+The bills of a vendor or venue the client pays directly (`project_suppliers.paid_by = 'Client'`): what it asks for and by when.
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| tenant_id | BIGINT UNSIGNED NOT NULL | every query filters on it (ADR-0004) |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | |
+| project_supplier_id | BIGINT UNSIGNED `FK` → project_suppliers.id | must be paid by the client (422 `supplier_paid_by_wo` otherwise); a supplier with a live bill cannot switch to WO-paid |
+| label | VARCHAR(100) | "DP fotografer" |
+| amount | BIGINT UNSIGNED | 1 … 10^15 |
+| due_date | DATE | |
+| sort_order | INT DEFAULT 0 | the order of one supplier's bills |
+| deleted_at | DATETIME NULL | soft delete (ADR-0034), restorable 24 h; also hidden while its supplier is stamped; purged with it |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP(6) | version (If-Match) |
+
+Keys `idx_supplier_bill_terms_project (tenant_id, project_id)`, `idx_supplier_bill_terms_supplier (tenant_id, project_supplier_id)`,
+`idx_supplier_bill_terms_due (tenant_id, due_date)`, `idx_supplier_bill_terms_deleted (deleted_at)`. What is paid of each bill is
+**computed**: the supplier's counted client payments (DP + Termin + Pelunasan − Refund; Tambahan is left out) are spread over its bills,
+earliest due date first (`domain.BuildSupplierBill`, the same rule as `client_payment_terms`); `pending` is the sum of the
+unchecked proofs sent for that bill.
+
+"Lengkap"/`evidenceComplete` is **computed** from `evidence` (`related_kind = 'supplierPayment'`, by `evidence.type`):
+an `Invoice` and a `Transfer Proof`, or only a `Transfer Proof` for a `Refund` (`domain.IsPaymentEvidenceComplete`). What the
+WO pays (DP + Termin + Pelunasan − Refund, payer `WO`) may not exceed the supplier's `agreed_cost` when one is set
+(422 `payment_exceeds_contract`); payments by the client are not limited. Edit and delete follow ADR-0019; a delete is soft
+(ADR-0034) and the purge removes the row with its evidence and stored objects.
 
 ### `tenant_business_details`
 | Column | Type | Notes |
@@ -454,10 +737,17 @@ needed for this.
 | bank_name | VARCHAR(60) | '' when unset |
 | bank_account_number | VARCHAR(40) | '' when unset |
 | bank_account_holder | VARCHAR(100) | '' when unset |
+| document_code | VARCHAR(5) NOT NULL DEFAULT '' | Kode usaha: starts every quotation number (`KODE-PNW-YYMMDD-NNN`) — migration `000085`. 2–5 capital letters or digits (service). `''` = not set yet: the first read (or sign-up) fills it from the business name (initials, or the first three letters of a one-word name; fallback `WO`). Not unique across tenants |
+| is_pkp | TINYINT(1) NOT NULL DEFAULT 0 | the WO is a PKP, so PPN is added to its quotations — migration `000085` |
+| default_quote_validity_days | SMALLINT UNSIGNED NOT NULL DEFAULT 14 | how many days a new quotation stays valid, 1–365 (service) — migration `000085` |
+| default_terms_text | TEXT NULL | default terms copied into each new quotation, max 5,000 characters (service); seeded with example terms on first read — migration `000085` |
 | updated_at | TIMESTAMP | |
 
 What the Owner shares with clients beyond name and WhatsApp (migration 000061, ADR-0029). A separate
 table keeps the hot `tenants` row narrow. The bank account is all-or-nothing, enforced in the service.
+Migration `000085` added the Penawaran settings (Profil usaha › Penawaran, `GET/PUT
+/tenants/me/quote-settings`); they are upserted on their own, leaving the address and bank account
+of the same row untouched.
 
 ### `client_payment_terms`
 | Column | Type | Notes |
@@ -479,12 +769,12 @@ transaction (`PUT`), and deleted with the project.
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
-| project_id | BIGINT UNSIGNED `FK` → projects.id | no `project_vendor_id` — belongs to the project itself, not any vendor |
-| type | ENUM(...) | `PaymentType`, reused verbatim from `vendor_payments` |
+| project_id | BIGINT UNSIGNED `FK` → projects.id | belongs to the project itself, not any supplier (what the client pays a vendor or venue directly is a `supplier_payments` row with payer `Client`) |
+| type | ENUM(...) | `PaymentType`, the same set as `supplier_payments` |
 | amount | BIGINT UNSIGNED | |
 | payment_date | DATE | |
-| method | VARCHAR(100) | same fixed `Tunai`/`Transfer Bank`/`QRIS` frontend dropdown as `vendor_payments`, shared constant |
-| reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `vendor_payments` |
+| method | VARCHAR(100) | same fixed `Tunai`/`Transfer Bank`/`QRIS` frontend dropdown as `supplier_payments`, shared constant |
+| reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `supplier_payments` |
 | notes | TEXT NULL | |
 | created_at | TIMESTAMP | |
 | recorded_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who entered the payment; primitive id, **no FK** (cross-module); `NULL` on older rows, never sent to a client |
@@ -493,41 +783,21 @@ transaction (`PUT`), and deleted with the project.
 | verified_by_staff_id | BIGINT UNSIGNED NULL | migration 65 — staff who verified; primitive id, no FK |
 | deleted_at | DATETIME NULL, `KEY idx_client_payments_deleted` | migration `000068`, ADR-0034 — soft delete: a stamped row is invisible to every read (list, ledger, schedule allocation, portal home, dashboard) and so are its proof files; verification stays on the row and returns on restore. Hard-deleted by the purge after 24 h |
 
-Money coming **in** from the client against the project's own `contract_value` ("Uang Masuk dari
-Client") — the opposite accounting direction from `vendor_payments`, and structurally simpler: no
+Money coming **in** from the client against the project's contract value (`projects.contract_total`) ("Uang Masuk dari
+Client") — the opposite accounting direction from the WO's `supplier_payments`, and structurally simpler: no
 invoice/proof evidence-ID columns either, since it only ever has one evidence slot (a
 transfer proof) resolved via the polymorphic `evidence` table (`related_kind = 'clientPayment'`),
 not a direct FK column.
 
-Edit — same as `vendor_payments` above, see ADR-0019; delete is a soft delete since ADR-0034 (the evidence cascade of ADR-0019 now happens in the purge).
-
-### `venue_payments`
-| Column | Type | Notes |
-|---|---|---|
-| id | BIGINT UNSIGNED PK | independent `AUTO_INCREMENT` sequence from `vendor_payments.id` — the two can numerically collide, which is exactly why `evidence.related_kind` distinguishes them (`'venuePayment'` vs `'payment'`) |
-| project_id | BIGINT UNSIGNED `FK` → projects.id | no `project_vendor_id`-equivalent — a project has at most one venue (`projects.venue_id`), so this ties directly to the project like `client_payments` does |
-| type | ENUM(...) | `PaymentType`, reused verbatim from `vendor_payments` |
-| amount | BIGINT UNSIGNED | |
-| payment_date | DATE | |
-| method | VARCHAR(100) | same fixed `Tunai`/`Transfer Bank`/`QRIS` frontend dropdown, shared constant |
-| reference_number | VARCHAR(100) | optional in the frontend form, same reasoning as `vendor_payments` |
-| notes | TEXT NULL | |
-| created_at | TIMESTAMP | |
-| deleted_at | DATETIME NULL, `KEY idx_venue_payments_deleted` | migration `000068`, ADR-0034 — soft delete, as `client_payments.deleted_at` |
-
-Money going **out** to the project's venue — same accounting direction and same two-slot evidence
-rule (Invoice + Transfer Proof, `Refund` needs only proof) as `vendor_payments`, resolved via the
-polymorphic `evidence` table (`related_kind = 'venuePayment'`), never a direct FK column — same
-lesson already learned from `vendor_payments`' now-removed dead columns.
-
-Edit — same as `vendor_payments` above, see ADR-0019; delete is a soft delete since ADR-0034.
+Edit — see ADR-0019; delete is a soft delete since ADR-0034 (the evidence cascade of ADR-0019 now happens in the purge).
 
 ### `vendor_issues`
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT UNSIGNED PK | |
 | project_id | BIGINT UNSIGNED `FK` → projects.id | |
-| project_vendor_id | BIGINT UNSIGNED NULL `FK` → project_vendors.id | **NULL since migration `000069`** (ADR-0034): a kendala about the event in general has no vendor. The FK stays (same module) |
+| project_supplier_id | BIGINT UNSIGNED NULL `FK` → project_suppliers.id | the vendor or venue the kendala is about; `NULL` = a kendala about the event in general (migration `000087`). Key `idx_vendor_issues_supplier` |
+| vendor_milestone_id | BIGINT UNSIGNED NULL `FK` → vendor_milestones.id | one step of that supplier; only with `project_supplier_id`, and the step must belong to it (service) |
 | title, description | VARCHAR(255), TEXT | |
 | impact | ENUM(...) | `IssueImpact` |
 | found_date | DATE | |
@@ -537,7 +807,7 @@ Edit — same as `vendor_payments` above, see ADR-0019; delete is a soft delete 
 | target_resolution_date, resolved_date | DATE NULL | |
 | is_client_visible | BOOLEAN NOT NULL DEFAULT TRUE | migration `000069` — staff decide whether the couple sees the kendala; **every Client Portal read filters it** (list, home counts/actions/news, progress count and condition, proof files). Existing rows are `TRUE` |
 
-A kendala of a soft-deleted engagement is hidden with it (`project_vendor_id` points at a stamped engagement); a kendala with no vendor is never hidden that way.
+A kendala of a soft-deleted supplier is hidden with it (`project_supplier_id` points at a stamped supplier); a kendala about the event in general is never hidden that way.
 
 ### `evidence`
 | Column | Type | Notes |
@@ -553,9 +823,9 @@ A kendala of a soft-deleted engagement is hidden with it (`project_vendor_id` po
 | description | VARCHAR(255) NULL | |
 | uploaded_by_staff_id | BIGINT UNSIGNED | `FK*` → `staff.staff_members.id`; `0` for a file a client sent from the Client Portal |
 | uploaded_by_client_id | BIGINT UNSIGNED NULL | migration `000080` (RT-07) — the client who sent the file from the Client Portal (a proof of a client payment they submitted); primitive id into `clients`, **no FK**; `NULL` for a staff upload. Backfilled for existing portal proofs from `client_payments.submitted_by_client_id`. Drives `uploadedBySource: "client"` and the client's name as `uploadedByName` |
-| related_kind | ENUM('vendorMilestone','payment','projectVendor','issue','clientPayment','venuePayment','general') | `'general'` (migration `000035`, ADR-0020) is a project-level document with no specific vendor/payment/vendor-engagement/issue to attach to (rundown, buku acara, teks juru bicara, banquet order, rekap dekor, etc.) — powers Client Portal's own "Dokumen" tab |
-| related_id | BIGINT UNSIGNED | polymorphic — same-module FK pointing at one of the tables above depending on `related_kind`. For `related_kind = 'general'`, this is always the sentinel `0` (`AUTO_INCREMENT` never starts at 0), mirroring `projects.venue_id`'s own "0 = none" convention — there's nothing to point at |
-| is_client_visible | BOOLEAN NOT NULL DEFAULT FALSE | migration `000035`, ADR-0020. Only ever meaningful for `related_kind = 'general'` — every other kind stays unconditionally visible to a `client` principal the moment it's attached to something inside their own project (unchanged); toggled via `POST .../evidence/{id}/toggle-client-visible` (rejected 422 for any other `related_kind`). Defaults `FALSE` (safe-by-default): a staff member must explicitly opt a general document in before `GET /projects/{id}/documents` (Client Portal's "Dokumen" tab) will ever return it |
+| related_kind | ENUM('vendorMilestone','supplierPayment','projectSupplier','issue','clientPayment','general','projectMilestone') | what the file hangs off (migration `000087`): a supplier's step, a supplier payment, the supplier itself, a kendala, a client payment, a project step, or nothing (`'general'`, migration `000035`, ADR-0020: a project-level document such as a rundown or buku acara — powers the Client Portal's "Dokumen" tab) |
+| related_id | BIGINT UNSIGNED | polymorphic — same-module id of a row of the table `related_kind` names. For `related_kind = 'general'` always the sentinel `0` (`AUTO_INCREMENT` never starts at 0) |
+| is_client_visible | BOOLEAN NOT NULL DEFAULT FALSE | migration `000035`, ADR-0020. Set by staff (`PATCH …/evidence/{id} {isClientVisible}`) for `general`, `projectMilestone` and `vendorMilestone` files only; forced `FALSE` for every other kind. Safe by default. What a client may see is decided per file by `domain.PortalPolicy.Evidence`: a general document needs the flag; a step attachment needs the flag; a supplier step's file is shown when the supplier is paid by the client or the file is flagged; a supplier payment's file only for a payment by the client; a `projectSupplier` file never |
 
 ### `idempotency_keys` — migration `000066`, ADR-0033
 | Column | Type | Notes |
@@ -737,10 +1007,10 @@ time, never double-applied.
 
 ### Soft delete, restore and purge — migrations `000068`, `000069`, ADR-0034
 
-* `deleted_at DATETIME NULL` (+ index) on `client_payments`, `vendor_payments`, `venue_payments`, `project_vendors` (module `projects`) and `clients` (module `clients`). `NULL` = live. The application writes the stamp (not `CURRENT_TIMESTAMP`), so `restorableUntil` is exactly `deleted_at + 24 h`.
-* **Every read of a live row filters it**: repositories, the batched progress sources, the dashboard queries, the portal home, the overview, `CountActive`. A deleted engagement hides its milestones, payments, kendala and their evidence by joining the stamp of the engagement (the children are not stamped). `evidence` rows hang off these items by `(related_kind, related_id)` with no foreign key; every evidence read adds `NOT (related_kind = … AND related_id IN (SELECT id FROM <table> WHERE deleted_at IS NOT NULL …))` per kind, so a deleted item's files are not listed, opened or linked until it is restored. The unique `evidence.storage_path` keeps a deleted payment's upload claimed (a token cannot be reused by a new payment before the purge); a deleted client keeps its username and email reserved (its login is deactivated, not removed).
-* **Purge** (`api purge`, ticker `PURGE_INTERVAL`): per module, under a MySQL advisory lock (`GET_LOCK`, `elproof_projects_purge` / `elproof_clients_purge`), `DELETE … WHERE deleted_at IS NOT NULL AND deleted_at <= now − 24 h` in batches of 200 per kind (evidence rows first, then the row; an engagement takes its vendor_issues → vendor_payments → vendor_milestones → itself), then the stored objects (best effort, after the commit). Restore accepts `deleted_at > now − 24 h`: exactly the complement, so a row is always restorable or due for purge, never both.
-* `vendor_issues.project_vendor_id` is NULLable and `vendor_issues.is_client_visible BOOLEAN NOT NULL DEFAULT TRUE` was added (migration `000069`).
+* `deleted_at DATETIME NULL` (+ index) on `client_payments`, `supplier_payments`, `project_suppliers` (module `projects`) and `clients` (module `clients`). `NULL` = live. The application writes the stamp (not `CURRENT_TIMESTAMP`), so `restorableUntil` is exactly `deleted_at + 24 h`.
+* **Every read of a live row filters it**: repositories, the batched progress sources, the dashboard queries, the portal home, the overview, `CountActive`. A deleted supplier hides its steps, payments, kendala and their evidence by joining the stamp of the supplier (the children are not stamped). `evidence` rows hang off these items by `(related_kind, related_id)` with no foreign key; every evidence read adds `NOT (related_kind = … AND related_id IN (SELECT id FROM <table> WHERE deleted_at IS NOT NULL …))` per kind, so a deleted item's files are not listed, opened or linked until it is restored. The unique `evidence.storage_path` keeps a deleted payment's upload claimed (a token cannot be reused by a new payment before the purge); a deleted client keeps its username and email reserved (its login is deactivated, not removed).
+* **Purge** (`api purge`, ticker `PURGE_INTERVAL`): per module, under a MySQL advisory lock (`GET_LOCK`, `elproof_projects_purge` / `elproof_clients_purge`), `DELETE … WHERE deleted_at IS NOT NULL AND deleted_at <= now − 24 h` in batches of 200 per kind (evidence rows first, then the row; a supplier takes its vendor_issues → supplier_payments → vendor_milestones → supplier_bill_terms → itself; an expired `supplier_bill_terms` row is purged on its own too), then the stored objects (best effort, after the commit). Restore accepts `deleted_at > now − 24 h`: exactly the complement, so a row is always restorable or due for purge, never both.
+* `vendor_issues.project_supplier_id` is NULLable (a kendala about the event in general) and `vendor_issues.is_client_visible BOOLEAN NOT NULL DEFAULT TRUE` (migration `000069`).
 * Down migrations delete what the old shape cannot hold (soft-deleted rows with their evidence, kendala without a vendor); stored objects stay in the bucket.
 
 ### `tenant_roles` built-in descriptions — migration `000082` (FQ-08, data only)
@@ -779,11 +1049,19 @@ vendors.tenant_id              --*--> tenants.id            (platform)
 venues.tenant_id               --*--> tenants.id            (platform)
 projects.tenant_id             --*--> tenants.id            (platform)
 projects.pic_staff_id          --*--> staff_members.id      (staff)
-projects.venue_id              --*--> venues.id             (vendors)
+event_kinds.tenant_id          --*--> tenants.id            (platform)
+packages.tenant_id             --*--> tenants.id            (platform)
+packages.default_venue_id      --*--> venues.id             (vendors)
+package_components.vendor_id   --*--> vendors.id            (vendors)
+package_components.category_id --*--> vendor_categories.id  (vendors)
 project_milestone_templates.tenant_id --*--> tenants.id     (platform)
-project_vendors.vendor_id      --*--> vendors.id            (vendors)
-project_vendors.category_id    --*--> vendor_categories.id  (vendors)
-project_vendors.pic_staff_id   --*--> staff_members.id      (staff)
+project_events.event_kind_id   --*--> event_kinds.id        (offers)
+project_suppliers.supplier_id  --*--> vendors.id | venues.id (vendors, by supplier_kind)
+project_suppliers.category_id  --*--> vendor_categories.id  (vendors)
+project_suppliers.pic_staff_id --*--> staff_members.id      (staff)
+supplier_payments.recorded_by_staff_id --*--> staff_members.id (staff)
+supplier_payments.submitted_by_client_id --*--> clients.id  (clients)
+supplier_payments.verified_by_staff_id / rejected_by_staff_id --*--> staff_members.id (staff)
 vendor_milestones.pic_staff_id --*--> staff_members.id      (staff)
 vendor_issues.pic_staff_id     --*--> staff_members.id      (staff)
 evidence.uploaded_by_staff_id  --*--> staff_members.id      (staff)
