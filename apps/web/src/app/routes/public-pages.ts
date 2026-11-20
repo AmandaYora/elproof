@@ -1,4 +1,5 @@
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { API } from "@/shared/services/api-endpoints";
 
 /** What a public page says about itself in search results and link previews. */
 export interface PublicPageMeta {
@@ -10,6 +11,11 @@ export interface PublicPageMeta {
   description: string;
   /** Kept out of search results and out of sitemap.xml (sign-in). */
   noindex?: boolean;
+  /**
+   * API reads the page makes as soon as it runs (API paths). The prerendered HTML asks for them alongside its scripts
+   * (`<link rel="preload" as="fetch">`), so the answer is there when the page starts instead of after it.
+   */
+  prefetch?: readonly string[];
 }
 
 /**
@@ -24,6 +30,8 @@ export const PUBLIC_PAGES = {
     title: "Aplikasi wedding organizer: kerja tim lebih ringan, klien makin percaya",
     description:
       "Catat tahapan, vendor, dan pembayaran klien di satu tempat. Pasangan memantau persiapan sendiri lewat Portal Klien, tim Anda punya waktu untuk lebih banyak acara.",
+    // The price section (usePublicPlans).
+    prefetch: [API.public.plans],
   },
   about: {
     path: ROUTE_PATHS.homepageAbout,
