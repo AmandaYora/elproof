@@ -143,12 +143,9 @@ func (w *world) buildPortal(t *testing.T, s *stack) *portal {
 	// Vendors: B's engaged vendor already exists; another one sits in the
 	// directory (engaged on another project) and must never be named to this client.
 	p.OtherVendor = s.mustOK("other vendor", s.do(b.token, "POST", "/api/v1/vendors", vendorBody(s, b, "Vendor LAIN "+b.marker, w.Category))).id("data", "id")
-	s.mustOK("engage other vendor on project 2", s.do(b.token, "POST", s.projectsPath(w.Project2, "/vendors"), map[string]any{
-		"vendorId": p.OtherVendor, "categoryId": w.Category, "scope": "Katering LAIN", "contractValue": 1000, "pricingTier": "Akad",
-		"engagementStatus": "Booked", "eventDate": day(120), "picStaffId": b.staffID,
-	}))
+	s.engageBy(b, w.Project2, p.OtherVendor, "Katering LAIN", "Client", true)
 	p.VendorIssue = s.mustOK("issue with milestone", s.do(b.token, "POST", s.projectsPath(P, "/issues"), map[string]any{
-		"projectVendorId": w.Engagement, "vendorMilestoneId": w.VendorMilestone, "title": "Kendala tahapan " + b.marker, "description": "d",
+		"projectSupplierId": w.Supplier, "vendorMilestoneId": w.VendorMilestone, "title": "Kendala tahapan " + b.marker, "description": "d",
 		"impact": "Low", "foundDate": day(-1), "picStaffId": b.staffID, "targetResolutionDate": day(5),
 	})).id("data", "id")
 
@@ -167,8 +164,9 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 
 	t.Run("a: tenant A's client cannot reach tenant B, and the vendor directories are closed", func(t *testing.T) {
 		for _, path := range []string{
-			s.projectsPath(P, ""), s.projectsPath(P, "/vendors"), s.projectsPath(P, "/issues"), s.projectsPath(P, "/milestones"),
-			s.projectsPath(P, "/client-payments"), s.projectsPath(w.Project2, "/vendors"),
+			s.projectsPath(P, ""), s.projectsPath(P, "/suppliers"), s.projectsPath(P, "/issues"), s.projectsPath(P, "/milestones"),
+			s.projectsPath(P, "/client-payments"), s.projectsPath(w.Project2, "/suppliers"), s.projectsPath(P, "/events"),
+			s.projectsPath(P, "/supplier-payments"),
 		} {
 			r := s.do(p.aClientToken, "GET", path, nil)
 			if r.status != http.StatusForbidden && r.status != http.StatusNotFound {
@@ -208,39 +206,44 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 		}
 	})
 
-	t.Run("b: a client sees vendor names of its own project only", func(t *testing.T) {
-		r := s.mustOK("vendors", s.do(p.brideToken, "GET", s.projectsPath(P, "/vendors"), nil))
-		eng := rowByID(rows(r, "data"), w.Engagement)
-		if eng == nil || eng["vendorName"] != "Vendor B "+w.b.marker || eng["categoryName"] != "Kategori "+w.b.marker {
-			t.Fatalf("own engagement should carry vendorName and categoryName: %s", r)
+	t.Run("b: a client sees the services of its own project only, by the name it may know", func(t *testing.T) {
+		r := s.mustOK("suppliers", s.do(p.brideToken, "GET", s.projectsPath(P, "/suppliers"), nil))
+		// B's decorator is paid by the WO with its name hidden: the client sees the category.
+		eng := rowByID(rows(r, "data"), w.Supplier)
+		if eng == nil || eng["name"] != "Kategori "+w.b.marker || eng["categoryName"] != "Kategori "+w.b.marker {
+			t.Fatalf("own hidden supplier should be named by its category: %s", r)
 		}
-		if body := string(r.body); strings.Contains(body, "LAIN") || strings.Contains(body, w.a.marker) {
-			t.Errorf("another vendor's name reached the client: %s", r)
+		// The venue is always named.
+		if v := rowByID(rows(r, "data"), w.VenueSupplier); v == nil || v["name"] != "Venue B "+w.b.marker {
+			t.Errorf("the venue should be named to the client: %s", r)
 		}
-		if eng["contractValue"].(float64) != 0 || eng["dpAmount"].(float64) != 0 || eng["paidAmount"].(float64) != 0 {
-			t.Errorf("vendor money must stay redacted: %v", eng)
+		if body := string(r.body); strings.Contains(body, "LAIN") || strings.Contains(body, w.a.marker) || strings.Contains(body, "Vendor B "+w.b.marker) {
+			t.Errorf("a vendor name the client may not know reached it: %s", r)
 		}
-		// The issues list names the vendor and the step, from the same project.
+		if eng["agreedCost"] != nil || eng["paidWo"] != nil || eng["notes"] != "" || eng["supplierId"] != nil {
+			t.Errorf("the WO's commercial fields must stay redacted: %v", eng)
+		}
+		// The issues list names the service and the step, from the same project, by the same rule.
 		ir := s.mustOK("issues", s.do(p.brideToken, "GET", s.projectsPath(P, "/issues"), nil))
 		issue := rowByID(rows(ir, "data"), p.VendorIssue)
-		if issue == nil || issue["vendorName"] != "Vendor B "+w.b.marker || issue["vendorMilestoneName"] != "Milestone vendor "+w.b.marker {
-			t.Errorf("issue should carry vendorName and vendorMilestoneName: %s", ir)
+		if issue == nil || issue["supplierName"] != "Kategori "+w.b.marker || issue["vendorMilestoneName"] != "Milestone vendor "+w.b.marker {
+			t.Errorf("issue should carry the category as supplierName and the vendorMilestoneName: %s", ir)
 		}
-		if body := string(ir.body); strings.Contains(body, "LAIN") {
-			t.Errorf("another vendor's name reached the client through issues: %s", ir)
+		if body := string(ir.body); strings.Contains(body, "LAIN") || strings.Contains(body, "Vendor B "+w.b.marker) {
+			t.Errorf("a vendor name reached the client through issues: %s", ir)
 		}
 		// An issue with no milestone has an empty step name.
 		if general := rowByID(rows(ir, "data"), w.Issue); general == nil || general["vendorMilestoneName"] != "" {
 			t.Errorf("a general issue has no milestone name: %v", general)
 		}
-		// Staff get the same names.
-		sr := s.mustOK("staff vendors", s.do(w.b.token, "GET", s.projectsPath(P, "/vendors"), nil))
-		if e := rowByID(rows(sr, "data"), w.Engagement); e == nil || e["vendorName"] != "Vendor B "+w.b.marker {
-			t.Errorf("staff view lost vendorName: %s", sr)
+		// Staff get the real names.
+		sr := s.mustOK("staff suppliers", s.do(w.b.token, "GET", s.projectsPath(P, "/suppliers"), nil))
+		if e := rowByID(rows(sr, "data"), w.Supplier); e == nil || e["name"] != "Vendor B "+w.b.marker {
+			t.Errorf("staff view lost the vendor name: %s", sr)
 		}
 		// A's staff asking for B's project learns nothing.
-		if r := s.do(w.a.token, "GET", s.projectsPath(P, "/vendors"), nil); r.status != http.StatusNotFound && r.status != http.StatusForbidden {
-			t.Errorf("A's staff GET B's vendors: %s", r)
+		if r := s.do(w.a.token, "GET", s.projectsPath(P, "/suppliers"), nil); r.status != http.StatusNotFound && r.status != http.StatusForbidden {
+			t.Errorf("A's staff GET B's suppliers: %s", r)
 		}
 	})
 
@@ -490,7 +493,7 @@ func (w *world) portalScenarios(t *testing.T, s *stack) {
 		}
 		body := string(h.body)
 		// The home is a client view: none of the WO's internals.
-		for _, leak := range []string{"picSalesStaffId", "prepStartDate", "venueRentalPrice", "venueCharge", "recordedBy", "staffId", "Vendor B"} {
+		for _, leak := range []string{"picSalesStaffId", "prepStartDate", "agreedCost", "paidWo", "VREF-", "recordedBy", "staffId", "Vendor B"} {
 			if strings.Contains(body, leak) {
 				t.Errorf("the home leaks %q: %s", leak, h)
 			}

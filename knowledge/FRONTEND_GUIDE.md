@@ -51,7 +51,16 @@ shaped like the existing `usePlatformAdminStore.ts` — **except** `platform-adm
 separate admin concerns that don't share state (`usePlatformAdminStore.ts` for tenants/plans/admins,
 `usePaymentGatewayStore.ts` for Fase 9's gateway config, `useAppsStore.ts` for Fase 10's external App
 registry): one store per *concern* within that module, not literally one file, when a module's admin
-surface covers genuinely unrelated resources.
+surface covers genuinely unrelated resources. `projects` likewise keeps "Tagihan vendor" (Paket WO Tahap 4: the bills
+of vendors the client pays directly and the couple's proofs of paying them) in its own `useSupplierBillStore`, because
+the WO Console and the Client Portal both use it; its verify/reject/term writes refresh `useProjectStore`'s supplier
+payments and suppliers through `getState()`.
+`offers` (Penawaran, Paket WO Tahap 5) keeps its quotations in `useQuotationStore`: the list and summary, one
+`QuotationDetail` at a time, revisions, activity, PDFs (fetched as blobs), "Jadikan proyek" (`previewConversion`,
+`convert` with an `Idempotency-Key`, `uploadConversionProof`) and the project's "Kesepakatan awal" (`fetchAgreement`).
+The quotation page feeds `modules/rincian`'s editors through `offers/lib/rincian-adapter.ts`, never through the project
+store, and `projects` reaches offers only by lazy-loading `offers/components/AgreementDrawer` with its own rows
+(`AgreementCurrent`).
 
 - State: the entity array(s) for that module, plus any `isLoading`/`error` flags the UI needs.
 - Actions: async functions that call `httpClient` against the module's endpoints
@@ -100,6 +109,10 @@ a background refresh may have replaced) and passes it as the last argument of th
 Inline edits (a status dropdown) send only the changed field. A 409 is handled in one place: the HTTP client opens the global "Data diubah orang lain" dialog
 (`useConflictStore`, `ConflictHost`, loaded on demand) and the page that owns the data registers how to reload it (`registerRevalidator`, e.g. `ProjectDetailLayout`), so "Muat ulang"
 rebuilds the page and any form still holding old values. State changes are explicit (`setProjectArchived(id, true)`), never a flip of whatever is current.
+An editor that keeps a long unsaved draft handles its own 409 instead: the request sets `ownConflict: true` (an Axios config flag the HTTP client
+reads), so the global dialog stays shut and the editor shows its own banner ([Lihat perbedaan] [Muat versi terbaru]) without losing the draft. The
+Rincian does this (`saveRincian`, If-Match = `linesVersion`, a single `PUT /projects/{id}/lines` with every line in screen order); its running
+total comes from `POST …/lines/preview` (debounced 500 ms, aborted when superseded), never from a price formula in the browser.
 
 ## Theme / tenant branding (ADR-0012, ADR-0039)
 

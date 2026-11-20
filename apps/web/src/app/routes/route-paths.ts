@@ -1,14 +1,16 @@
 /**
- * The project page's six tabs (RISET WO Console §3 #4): Ringkasan · Jadwal · Vendor & venue · Keuangan · Kendala ·
- * Dokumen. Keuangan has three ledgers; the clients and the history are panels on Ringkasan.
+ * The project page's seven tabs (paket WO DESAIN §3.2): Ringkasan · Acara & rincian · Jadwal · Vendor & venue ·
+ * Keuangan · Kendala · Dokumen. Keuangan has three books: the client's payments, the vendors and venues the WO pays
+ * (margin permission only), and what the client paid them directly. The clients and the history are panels on Ringkasan.
  */
 export type ProjectDetailTab =
   | "ringkasan"
+  | "acara-rincian"
   | "jadwal"
   | "vendor"
   | "keuangan/klien"
-  | "keuangan/vendor"
-  | "keuangan/venue"
+  | "keuangan/vendor-venue"
+  | "keuangan/dibayar-klien"
   | "kendala"
   | "dokumen";
 
@@ -20,8 +22,8 @@ export const LEGACY_PROJECT_TABS = {
   aktivitas: "ringkasan",
   pembayaran: "keuangan/klien",
   "pembayaran/client": "keuangan/klien",
-  "pembayaran/vendor": "keuangan/vendor",
-  "pembayaran/venue": "keuangan/venue",
+  "pembayaran/vendor": "keuangan/vendor-venue",
+  "pembayaran/venue": "keuangan/vendor-venue",
 } as const satisfies Record<string, ProjectDetailTab>;
 
 /** @deprecated An old tab name; `projectDetail` maps it to its new tab. Use a `ProjectDetailTab`. */
@@ -30,10 +32,10 @@ export type LegacyProjectDetailTab = keyof typeof LEGACY_PROJECT_TABS;
 function projectTabPath(tab: ProjectDetailTab | LegacyProjectDetailTab): ProjectDetailTab {
   return (LEGACY_PROJECT_TABS as Record<string, ProjectDetailTab>)[tab] ?? (tab as ProjectDetailTab);
 }
-// The Client Portal's own tab set (ClientPortalTab below) has no "ringkasan":
-// that content is its persistent header. Venue is a pinned card inside its
-// "vendor" tab, as it now is in the WO Console's "Vendor & venue" tab.
-export type ClientPortalTab = "beranda" | "lainnya" | "vendor" | "pembayaran" | "kendala" | "timeline" | "dokumen";
+// The Client Portal's own tab set (DESAIN §3.3): Beranda · Jadwal (timeline) ·
+// Pembayaran · Layanan · Lainnya; kendala and dokumen open from Lainnya.
+// Layanan holds the package and the vendors' progress; each event's venue is on Jadwal.
+export type ClientPortalTab = "beranda" | "lainnya" | "layanan" | "pembayaran" | "kendala" | "timeline" | "dokumen";
 
 export const ROUTE_PATHS = {
   home: "/",
@@ -54,6 +56,11 @@ export const ROUTE_PATHS = {
   homepageFaq: "/faq",
   homepageContact: "/kontak",
   dashboard: "/beranda",
+  // Penawaran (paket WO Tahap 5): a quotation before it becomes a project. `?baru=1` opens "Penawaran baru".
+  quotations: "/penawaran",
+  quotationNew: "/penawaran?baru=1",
+  quotationDetail: (id: string) => `/penawaran/${id}`,
+  quotationConvert: (id: string) => `/penawaran/${id}/jadikan-proyek`,
   projects: "/proyek",
   projectNew: "/proyek/baru",
   projectDetail: (id: string, tab: ProjectDetailTab | LegacyProjectDetailTab = "ringkasan") => `/proyek/${id}/${projectTabPath(tab)}`,
@@ -70,6 +77,11 @@ export const ROUTE_PATHS = {
   roles: "/peran-akses",
   businessProfile: "/profil-usaha",
   milestoneTemplates: "/jadwal-bawaan",
+  // Katalog (paket WO Tahap 1): the WO's own packages and event kinds.
+  packages: "/paket",
+  packageNew: "/paket/baru",
+  packageDetail: (id: string) => `/paket/${id}`,
+  eventKinds: "/jenis-acara",
   portal: (tab: ClientPortalTab = "beranda") => `/portal/${tab}`,
   platformDashboard: "/platform/dashboard",
   platformTenants: "/platform/tenant",

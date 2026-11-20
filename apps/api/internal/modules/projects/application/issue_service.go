@@ -23,27 +23,27 @@ type IssueRepository interface {
 type IssueService struct {
 	repo             IssueRepository
 	vendorMilestones VendorMilestoneRepository
-	engagements      VendorEngagementRepository
+	suppliers        SupplierRepository
 	activity         *ActivityService
 }
 
-func NewIssueService(repo IssueRepository, vendorMilestones VendorMilestoneRepository, engagements VendorEngagementRepository, activity *ActivityService) *IssueService {
-	return &IssueService{repo: repo, vendorMilestones: vendorMilestones, engagements: engagements, activity: activity}
+func NewIssueService(repo IssueRepository, vendorMilestones VendorMilestoneRepository, suppliers SupplierRepository, activity *ActivityService) *IssueService {
+	return &IssueService{repo: repo, vendorMilestones: vendorMilestones, suppliers: suppliers, activity: activity}
 }
 
-// validateEngagement rejects a vendor engagement that is not this project's:
-// the project in the path is already the caller's own, but the engagement id in
+// validateSupplier rejects a vendor or venue that is not this project's:
+// the project in the path is already the caller's own, but the supplier id in
 // the body is not, and an issue must never hang off another workspace's vendor.
-func (s *IssueService) validateEngagement(ctx context.Context, projectID, projectVendorID int64) error {
-	if projectVendorID == 0 {
+func (s *IssueService) validateSupplier(ctx context.Context, projectID, projectSupplierID int64) error {
+	if projectSupplierID == 0 {
 		return nil // a kendala about the event in general has no vendor
 	}
-	pv, err := s.engagements.FindByID(ctx, projectID, projectVendorID)
+	pv, err := s.suppliers.FindByID(ctx, projectID, projectSupplierID)
 	if err != nil {
 		return err
 	}
 	if pv == nil {
-		return apperror.Validation("Vendor tidak valid", map[string][]string{"projectVendorId": {"Vendor tidak ditemukan di proyek ini"}})
+		return apperror.Validation("Vendor atau venue tidak valid", map[string][]string{"projectSupplierId": {"Vendor atau venue tidak ditemukan di proyek ini"}})
 	}
 	return nil
 }
@@ -64,19 +64,19 @@ func (s *IssueService) Get(ctx context.Context, projectID, id int64) (*domain.Ve
 }
 
 // validateVendorMilestone rejects a milestone that doesn't belong to the
-// issue's own vendor engagement -- PLAN.md "Retire the standalone Kendala
+// issue's own vendor or venue -- PLAN.md "Retire the standalone Kendala
 // tab": the one rule that must never be skippable, otherwise a kendala could
 // be silently misattributed to a different vendor's milestone. A nil id
 // (general/not-tied-to-one-milestone kendala) always passes.
-func (s *IssueService) validateVendorMilestone(ctx context.Context, projectVendorID int64, vendorMilestoneID *int64) error {
+func (s *IssueService) validateVendorMilestone(ctx context.Context, projectSupplierID int64, vendorMilestoneID *int64) error {
 	if vendorMilestoneID == nil {
 		return nil
 	}
-	if projectVendorID == 0 {
+	if projectSupplierID == 0 {
 		// A deliverable belongs to a vendor: without one there is nothing to attach to.
 		return apperror.Validation("Tahapan vendor tidak valid", map[string][]string{"vendorMilestoneId": {"Pilih vendornya dulu untuk memilih tahapan vendor"}})
 	}
-	milestone, err := s.vendorMilestones.FindByID(ctx, projectVendorID, *vendorMilestoneID)
+	milestone, err := s.vendorMilestones.FindByID(ctx, projectSupplierID, *vendorMilestoneID)
 	if err != nil {
 		return err
 	}
@@ -87,10 +87,10 @@ func (s *IssueService) validateVendorMilestone(ctx context.Context, projectVendo
 }
 
 type IssueInput struct {
-	// ProjectVendorID is 0 for a kendala about the event in general.
-	ProjectVendorID int64
+	// ProjectSupplierID is 0 for a kendala about the event in general.
+	ProjectSupplierID int64
 	// VendorMilestoneID is nil when the kendala is general to the vendor
-	// engagement rather than about one specific deliverable.
+	// supplier rather than about one specific deliverable.
 	VendorMilestoneID    *int64
 	Title                string
 	Description          string
@@ -104,14 +104,14 @@ type IssueInput struct {
 }
 
 func (s *IssueService) Create(ctx context.Context, projectID int64, actorStaffID int64, input IssueInput) (*domain.VendorIssue, error) {
-	if err := s.validateEngagement(ctx, projectID, input.ProjectVendorID); err != nil {
+	if err := s.validateSupplier(ctx, projectID, input.ProjectSupplierID); err != nil {
 		return nil, err
 	}
-	if err := s.validateVendorMilestone(ctx, input.ProjectVendorID, input.VendorMilestoneID); err != nil {
+	if err := s.validateVendorMilestone(ctx, input.ProjectSupplierID, input.VendorMilestoneID); err != nil {
 		return nil, err
 	}
 	issue := &domain.VendorIssue{
-		ProjectID: projectID, ProjectVendorID: input.ProjectVendorID, VendorMilestoneID: input.VendorMilestoneID,
+		ProjectID: projectID, ProjectSupplierID: input.ProjectSupplierID, VendorMilestoneID: input.VendorMilestoneID,
 		Title: input.Title, Description: input.Description,
 		Impact: input.Impact, FoundDate: input.FoundDate, Status: domain.IssueOpen, ResolutionPlan: input.ResolutionPlan,
 		PICStaffID: input.PICStaffID, TargetResolutionDate: input.TargetResolutionDate,
@@ -126,16 +126,16 @@ func (s *IssueService) Create(ctx context.Context, projectID int64, actorStaffID
 }
 
 // IssuePatch is what PATCH /projects/{id}/issues/{iid} sent (ADR-0036).
-// ProjectVendorID null or 0 makes it a kendala about the event in general;
+// ProjectSupplierID null or 0 makes it a kendala about the event in general;
 // VendorMilestoneID, TargetResolutionDate may be null (clear); ResolutionPlan null
 // clears to "".
 type IssuePatch struct {
-	ProjectVendorID, VendorMilestoneID, PICStaffID Opt[int64]
-	Title, Description, ResolutionPlan             Opt[string]
-	Impact                                         Opt[domain.IssueImpact]
-	Status                                         Opt[domain.IssueStatus]
-	FoundDate, TargetResolutionDate                Opt[time.Time]
-	IsClientVisible                                Opt[bool]
+	ProjectSupplierID, VendorMilestoneID, PICStaffID Opt[int64]
+	Title, Description, ResolutionPlan               Opt[string]
+	Impact                                           Opt[domain.IssueImpact]
+	Status                                           Opt[domain.IssueStatus]
+	FoundDate, TargetResolutionDate                  Opt[time.Time]
+	IsClientVisible                                  Opt[bool]
 }
 
 func validImpact(i domain.IssueImpact) bool {
@@ -151,7 +151,7 @@ func validIssueStatus(s domain.IssueStatus) bool {
 }
 
 // Patch changes the fields of a kendala that were sent, and only those. The rules
-// are judged on the merged result: the vendor must be an engagement of this
+// are judged on the merged result: the vendor or venue must be one of this
 // project, and a vendor milestone must belong to the (merged) vendor, so moving a
 // kendala to another vendor without moving its milestone is refused. A status
 // change to Resolved/Closed stamps resolvedDate exactly once, never re-stamped.
@@ -178,11 +178,11 @@ func (s *IssueService) Patch(ctx context.Context, projectID, id int64, actorStaf
 
 	loaded := *issue
 	var ch changeSet
-	vendor := patch.ProjectVendorID
+	vendor := patch.ProjectSupplierID
 	if vendor.IsNull() {
 		vendor = Some(int64(0))
 	}
-	setVal(&ch, "projectVendorId", "vendor", &issue.ProjectVendorID, vendor)
+	setVal(&ch, "projectSupplierId", "vendor", &issue.ProjectSupplierID, vendor)
 	setNullable(&ch, "vendorMilestoneId", "tahapan vendor", &issue.VendorMilestoneID, patch.VendorMilestoneID)
 	setVal(&ch, "title", "judul", &issue.Title, patch.Title)
 	setVal(&ch, "description", "deskripsi", &issue.Description, patch.Description)
@@ -197,13 +197,13 @@ func (s *IssueService) Patch(ctx context.Context, projectID, id int64, actorStaf
 		return nil, err
 	}
 
-	if ch.has("projectVendorId") {
-		if err := s.validateEngagement(ctx, projectID, issue.ProjectVendorID); err != nil {
+	if ch.has("projectSupplierId") {
+		if err := s.validateSupplier(ctx, projectID, issue.ProjectSupplierID); err != nil {
 			return nil, err
 		}
 	}
-	if ch.has("projectVendorId") || ch.has("vendorMilestoneId") {
-		if err := s.validateVendorMilestone(ctx, issue.ProjectVendorID, issue.VendorMilestoneID); err != nil {
+	if ch.has("projectSupplierId") || ch.has("vendorMilestoneId") {
+		if err := s.validateVendorMilestone(ctx, issue.ProjectSupplierID, issue.VendorMilestoneID); err != nil {
 			return nil, err
 		}
 	}

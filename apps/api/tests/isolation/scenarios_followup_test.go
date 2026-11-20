@@ -192,10 +192,16 @@ func TestCreatedItemVersion(t *testing.T) {
 		return id
 	}
 
-	project := check("project", "/api/v1/projects", map[string]any{
-		"name": "Proyek " + o.marker, "brideName": "Bride", "groomName": "Groom", "eventDate": day(120), "venue": "Gedung",
-		"prepStartDate": day(1), "packageName": "Paket", "contractValue": 50_000_000, "status": "Preparation", "picStaffId": o.staffID,
-	}, func(id int64) string { return fmt.Sprintf("/api/v1/projects/%d", id) }, map[string]any{"description": "Diubah langsung"})
+	category := s.mustOK("category", s.do(o.token, "POST", "/api/v1/vendor-categories", map[string]any{
+		"name": "Kategori " + o.marker, "description": "Uji",
+	})).id("data", "id")
+	vendor := s.mustOK("vendor", s.do(o.token, "POST", "/api/v1/vendors", vendorBody(s, o, "Vendor "+o.marker, category))).id("data", "id")
+	venue := s.mustOK("venue", s.do(o.token, "POST", "/api/v1/venues", venueBody(o, "Venue "+o.marker))).id("data", "id")
+	kind := s.kind(o, "Akad")
+
+	project := check("project", "/api/v1/projects", s.projectBody(o, "Proyek "+o.marker, 120, eventOf(kind, day(120), 100, venue)),
+		func(id int64) string { return fmt.Sprintf("/api/v1/projects/%d", id) }, map[string]any{"description": "Diubah langsung"})
+	s.setContract(o, project, 50_000_000)
 	in := func(rest string) string { return fmt.Sprintf("/api/v1/projects/%d/%s", project, rest) }
 	item := func(kind string) func(int64) string {
 		return func(id int64) string { return in(fmt.Sprintf("%s/%d", kind, id)) }
@@ -205,31 +211,45 @@ func TestCreatedItemVersion(t *testing.T) {
 		"name": "Timeline tambahan", "targetDate": day(40),
 	}, item("milestones"), map[string]any{"targetDate": day(41)})
 
-	category := s.mustOK("category", s.do(o.token, "POST", "/api/v1/vendor-categories", map[string]any{
-		"name": "Kategori " + o.marker, "description": "Uji",
-	})).id("data", "id")
-	vendor := s.mustOK("vendor", s.do(o.token, "POST", "/api/v1/vendors", vendorBody(s, o, "Vendor "+o.marker, category))).id("data", "id")
-	engagement := check("project vendor", in("vendors"), map[string]any{
-		"vendorId": vendor, "categoryId": category, "scope": "Dekorasi", "contractValue": 5_000_000,
-		"pricingTier": "Akad", "engagementStatus": "Booked", "eventDate": day(120), "dpAmount": 1_000_000, "dueDate": day(60),
-		"picStaffId": o.staffID,
-	}, item("vendors"), map[string]any{"notes": "Diubah langsung"})
-	check("vendor milestone", in(fmt.Sprintf("vendors/%d/milestones", engagement)), map[string]any{
+	engagement := check("supplier", in("suppliers"), map[string]any{
+		"vendorId": vendor, "paidBy": "WO", "scope": "Dekorasi", "agreedCost": 5_000_000,
+		"engagementStatus": "Booked", "dueDate": day(60), "picStaffId": o.staffID,
+	}, item("suppliers"), map[string]any{"notes": "Diubah langsung"})
+	check("supplier milestone", in(fmt.Sprintf("suppliers/%d/milestones", engagement)), map[string]any{
 		"name": "Milestone vendor", "targetDate": day(30), "picStaffId": o.staffID,
-	}, item(fmt.Sprintf("vendors/%d/milestones", engagement)), map[string]any{"notes": "Diubah langsung"})
+	}, item(fmt.Sprintf("suppliers/%d/milestones", engagement)), map[string]any{"notes": "Diubah langsung"})
 	check("issue", in("issues"), map[string]any{
-		"projectVendorId": engagement, "title": "Kendala", "description": "Uji", "impact": "Medium", "foundDate": day(-1),
+		"projectSupplierId": engagement, "title": "Kendala", "description": "Uji", "impact": "Medium", "foundDate": day(-1),
 		"resolutionPlan": "Rencana", "picStaffId": o.staffID, "targetResolutionDate": day(10),
 	}, item("issues"), map[string]any{"description": "Diubah langsung"})
 	check("client payment", in("client-payments"), map[string]any{
 		"type": "DP", "amount": 4_000_000, "paymentDate": day(-2), "method": "Transfer",
 	}, item("client-payments"), map[string]any{"notes": "Diubah langsung"})
-	check("vendor payment", in("payments"), map[string]any{
-		"projectVendorId": engagement, "type": "DP", "amount": 1_000_000, "paymentDate": day(-2), "method": "Transfer",
-	}, item("payments"), map[string]any{"notes": "Diubah langsung"})
-	check("venue payment", in("venue-payments"), map[string]any{
-		"type": "DP", "amount": 700_000, "paymentDate": day(-2), "method": "Transfer",
-	}, item("venue-payments"), map[string]any{"notes": "Diubah langsung"})
+	check("vendor payment", in("supplier-payments"), map[string]any{
+		"projectSupplierId": engagement, "type": "DP", "amount": 1_000_000, "paymentDate": day(-2), "method": "Transfer",
+	}, item("supplier-payments"), map[string]any{"notes": "Diubah langsung"})
+	venueSupplier := s.venueSupplier(o, project, venue)
+	if venueSupplier == 0 {
+		t.Fatal("the event's venue did not join the project's suppliers")
+	}
+	check("venue payment", in("supplier-payments"), map[string]any{
+		"projectSupplierId": venueSupplier, "type": "DP", "amount": 700_000, "paymentDate": day(-2), "method": "Transfer",
+	}, item("supplier-payments"), map[string]any{"notes": "Diubah langsung"})
+
+	// An event is edited with PUT (the whole event), from the version its create answered.
+	created := s.mustOK("create event", s.do(o.token, "POST", in("events"), eventOf(kind, day(125), 80, 0)))
+	v, _ := created.dig("data", "updatedAt").(string)
+	path := item("events")(created.id("data", "id"))
+	if v == "" || strings.HasPrefix(v, "0001-") {
+		t.Errorf("event: create answered updatedAt %q, want the row's version", v)
+	} else {
+		if listed := s.versionOf(o.token, path); listed != v {
+			t.Errorf("event: create answered updatedAt %q, a read says %q", v, listed)
+		}
+		if r := s.putVersioned(o.token, path, eventOf(kind, day(126), 80, 0), quoted(v)); r.status != http.StatusOK {
+			t.Errorf("event: edit with the version from create: want 200, got %s", r)
+		}
+	}
 }
 
 // TestClientUnknownRelation: a client relation outside the three the product

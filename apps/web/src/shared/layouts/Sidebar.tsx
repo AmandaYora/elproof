@@ -1,8 +1,8 @@
 import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  BookUser, Briefcase, Building2, CalendarClock, CalendarDays, ChevronsUpDown, FolderKanban, LayoutDashboard, LayoutTemplate,
-  Settings, ShieldCheck, Sparkles, Store, Tags, UserCog, Users, Wallet,
+  BookUser, Briefcase, Building2, CalendarClock, CalendarDays, CalendarHeart, ChevronsUpDown, FolderKanban, LayoutDashboard, Library,
+  FileSignature, Package, Settings, ShieldCheck, Sparkles, Store, Tags, UserCog, Users, Wallet,
 } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { Avatar } from "@/shared/components/ui/Avatar";
@@ -29,13 +29,15 @@ interface WoSection extends Omit<NavSection, "items"> {
 const HELP_WHATSAPP = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent("Halo ElProof, saya butuh bantuan di WO Console.")}`;
 
 // The menu (RISET WO Console §4): daily work first (Beranda, Proyek, Kalender, Keuangan, Klien), then the directories,
-// the templates a new project is built from, and the workspace settings. Items follow the role's permissions
+// the catalog every offer and project is built from (paket WO DESAIN.md §3.1), and the workspace settings. Items follow the role's permissions
 // (ADR-0026), the same ones the pages and their API calls require.
 const SECTIONS: WoSection[] = [
   {
     id: "main",
     items: [
       { to: ROUTE_PATHS.dashboard, label: "Beranda", icon: LayoutDashboard },
+      // Penawaran comes before Proyek: an offer is where a project starts (paket WO DESAIN §3.1).
+      { to: ROUTE_PATHS.quotations, label: "Penawaran", icon: FileSignature, requires: ["quotation.view"] },
       { to: ROUTE_PATHS.projects, label: "Proyek", icon: FolderKanban },
       { to: ROUTE_PATHS.calendar, label: "Kalender", icon: CalendarDays },
       { to: ROUTE_PATHS.finance, label: "Keuangan", icon: Wallet, requires: ["finance.record"] },
@@ -51,9 +53,11 @@ const SECTIONS: WoSection[] = [
     ],
   },
   {
-    id: "templates",
-    collapsible: { label: "Templat", icon: LayoutTemplate },
+    id: "catalog",
+    collapsible: { label: "Katalog", icon: Library },
     items: [
+      { to: ROUTE_PATHS.packages, label: "Paket", icon: Package, requires: ["package.manage"] },
+      { to: ROUTE_PATHS.eventKinds, label: "Jenis acara", icon: CalendarHeart, requires: ["package.manage"] },
       { to: ROUTE_PATHS.milestoneTemplates, label: "Jadwal bawaan", icon: CalendarClock, requires: ["template.manage"] },
       { to: ROUTE_PATHS.vendorCategories, label: "Kategori vendor", icon: Tags, requires: ["vendor.category.manage"] },
     ],

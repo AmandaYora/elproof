@@ -58,6 +58,8 @@ type VenueRepository interface {
 	// convention (PLAN.md's hard-delete plan) -- reached only via
 	// VenueService.Delete's Owner-only, informed-consent flow.
 	Delete(ctx context.Context, tenantID, id int64) error
+	// NamesByIDs resolves several venue names in one query (absent = not this tenant's).
+	NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 }
 
 // VenueObjectStorage is the narrow slice of internal/shared/storage.Client
@@ -73,6 +75,24 @@ type VenueService struct {
 	repo     VenueRepository
 	storage  VenueObjectStorage
 	buildKey func(tenantID, projectID, category, filename string) string
+	offers   OfferReferences
+}
+
+// SetOfferReferences hands the service the check of packages and quotations
+// that still refer to a venue (see OfferReferences); nil means none do.
+func (s *VenueService) SetOfferReferences(r OfferReferences) { s.offers = r }
+
+// OfferReferenced reports whether a package or quotation still refers to the venue.
+func (s *VenueService) OfferReferenced(ctx context.Context, tenantID, id int64) (bool, error) {
+	if s.offers == nil {
+		return false, nil
+	}
+	return s.offers.VenueReferenced(ctx, tenantID, id)
+}
+
+// Names resolves several venues' names at once, scoped to the workspace.
+func (s *VenueService) Names(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return s.repo.NamesByIDs(ctx, tenantID, ids)
 }
 
 func NewVenueService(repo VenueRepository, storage VenueObjectStorage, buildKey func(string, string, string, string) string) *VenueService {
@@ -116,25 +136,28 @@ func (s *VenueService) Get(ctx context.Context, tenantID, id int64) (*domain.Ven
 }
 
 // VenueInput is shared by Create and Update, mirroring VendorInput's shape.
-// City/RentalPrice are enforced as required only by the frontend's create
-// schema (see ADR-0016). This layer requires Name and keeps text within its
-// column and numbers at 0 or more (validateVenueInput, QA EP-03).
+// City is enforced as required only by the frontend's create schema (see
+// ADR-0016). This layer requires Name and at least one capacity, keeps text
+// within its column and prices at 0 or more (validateVenueInput, QA EP-03).
 // It DOES validate City against domain.IsValidCity whenever non-empty,
 // since that's a fixed-enum correctness check, not a mere required-ness rule.
 type VenueInput struct {
-	Name        string
-	PICName     string
-	PhonePIC    string
-	PhoneVenue  string
-	Email       string
-	Address     string
-	City        string
-	RentalPrice *int64
-	Charge      *int64
-	Capacity    *int
-	Facilities  string
-	SocialMedia string
-	Notes       string
+	Name             string
+	PICName          string
+	PhonePIC         string
+	PhoneVenue       string
+	Email            string
+	Address          string
+	City             string
+	CapacityStanding *int
+	CapacitySeated   *int
+	PriceAkad        *int64
+	PriceResepsi     *int64
+	PriceAkadResepsi *int64
+	Charge           *int64
+	Facilities       string
+	SocialMedia      string
+	Notes            string
 }
 
 func stringPtrOrNil(s string) *string {
@@ -162,7 +185,9 @@ func (s *VenueService) Create(ctx context.Context, tenantID int64, input VenueIn
 		TenantID: tenantID, Name: input.Name, PICName: input.PICName, PhonePIC: input.PhonePIC,
 		PhoneVenue: stringPtrOrNil(input.PhoneVenue), Email: stringPtrOrNil(input.Email),
 		Address: stringPtrOrNil(input.Address), City: stringPtrOrNil(input.City),
-		RentalPrice: input.RentalPrice, Charge: input.Charge, Capacity: input.Capacity,
+		CapacityStanding: input.CapacityStanding, CapacitySeated: input.CapacitySeated,
+		PriceAkad: input.PriceAkad, PriceResepsi: input.PriceResepsi, PriceAkadResepsi: input.PriceAkadResepsi,
+		Charge:     input.Charge,
 		Facilities: stringPtrOrNil(input.Facilities), SocialMedia: stringPtrOrNil(input.SocialMedia),
 		Notes: input.Notes, IsActive: true,
 	}
@@ -190,9 +215,12 @@ func (s *VenueService) Update(ctx context.Context, tenantID, id int64, input Ven
 	venue.Email = stringPtrOrNil(input.Email)
 	venue.Address = stringPtrOrNil(input.Address)
 	venue.City = stringPtrOrNil(input.City)
-	venue.RentalPrice = input.RentalPrice
+	venue.CapacityStanding = input.CapacityStanding
+	venue.CapacitySeated = input.CapacitySeated
+	venue.PriceAkad = input.PriceAkad
+	venue.PriceResepsi = input.PriceResepsi
+	venue.PriceAkadResepsi = input.PriceAkadResepsi
 	venue.Charge = input.Charge
-	venue.Capacity = input.Capacity
 	venue.Facilities = stringPtrOrNil(input.Facilities)
 	venue.SocialMedia = stringPtrOrNil(input.SocialMedia)
 	venue.Notes = input.Notes
@@ -214,16 +242,28 @@ func (s *VenueService) SetActive(ctx context.Context, tenantID, id int64, isActi
 	return venue, nil
 }
 
+// MsgVenueInOffers is the 409 a permanent delete answers while a package or a
+// quotation still refers to the venue (PLAN paket-wo §3.3).
+const MsgVenueInOffers = "Venue ini dipakai di paket atau penawaran. Nonaktifkan saja agar tidak bisa dipilih lagi."
+
+// CodeVenueInOffers is that refusal's machine-readable code (errors.code).
+const CodeVenueInOffers = "venue_in_offers"
+
 // Delete permanently removes a venue -- an explicit, guarded exception to
 // this codebase's soft-state convention (PLAN.md's hard-delete plan).
-// Owner-only and informed-consent are enforced by the caller; this method
-// performs no reference check and never blocks. The venue's object-storage
-// attachment (if any) is deleted best-effort, after the row itself is gone,
-// mirroring ADR-0013's EvidenceService.DeleteStorageObjects.
+// Owner-only and the projects in-use refusal are the caller's; this method
+// refuses (409) while a package or quotation still refers to the venue. The
+// venue's object-storage attachment (if any) is deleted best-effort, after the
+// row itself is gone, mirroring ADR-0013's EvidenceService.DeleteStorageObjects.
 func (s *VenueService) Delete(ctx context.Context, tenantID, id int64) error {
 	venue, err := s.Get(ctx, tenantID, id)
 	if err != nil {
 		return err
+	}
+	if used, err := s.OfferReferenced(ctx, tenantID, id); err != nil {
+		return err
+	} else if used {
+		return apperror.Conflict(MsgVenueInOffers).WithCode(CodeVenueInOffers)
 	}
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
@@ -323,19 +363,22 @@ func sanitizeVenueFileName(name string) string {
 // agnostic, same separation as every other "presentation decodes, service
 // validates" upload in this codebase).
 type VenueImportRow struct {
-	Name        string
-	PICName     string
-	PhonePIC    string
-	PhoneVenue  string
-	Email       string
-	Address     string
-	City        string
-	RentalPrice *int64
-	Charge      *int64
-	Capacity    *int
-	Facilities  string
-	SocialMedia string
-	Notes       string
+	Name             string
+	PICName          string
+	PhonePIC         string
+	PhoneVenue       string
+	Email            string
+	Address          string
+	City             string
+	CapacityStanding *int
+	CapacitySeated   *int
+	PriceAkad        *int64
+	PriceResepsi     *int64
+	PriceAkadResepsi *int64
+	Charge           *int64
+	Facilities       string
+	SocialMedia      string
+	Notes            string
 	// NotNumber names the numeric columns (template headers) whose cell held
 	// text that is not a whole number; their value above is then nil.
 	NotNumber []string
@@ -414,7 +457,9 @@ func (s *VenueService) ImportVenues(ctx context.Context, tenantID int64, rows []
 			TenantID: tenantID, Name: row.Name, PICName: row.PICName, PhonePIC: row.PhonePIC,
 			PhoneVenue: stringPtrOrNil(row.PhoneVenue), Email: stringPtrOrNil(row.Email),
 			Address: stringPtrOrNil(row.Address), City: stringPtrOrNil(row.City),
-			RentalPrice: row.RentalPrice, Charge: row.Charge, Capacity: row.Capacity,
+			CapacityStanding: row.CapacityStanding, CapacitySeated: row.CapacitySeated,
+			PriceAkad: row.PriceAkad, PriceResepsi: row.PriceResepsi, PriceAkadResepsi: row.PriceAkadResepsi,
+			Charge:     row.Charge,
 			Facilities: stringPtrOrNil(row.Facilities), SocialMedia: stringPtrOrNil(row.SocialMedia),
 			Notes: row.Notes, IsActive: true,
 		}
@@ -475,21 +520,25 @@ func (s *VenueService) ImportVenues(ctx context.Context, tenantID int64, rows []
 
 // Columns of the venue import template the row check names (template headers).
 const (
-	colVenueName     = "Nama Venue"
-	colVenuePIC      = "Nama PIC"
-	colVenuePhonePIC = "No Tlp PIC"
-	colVenuePhone    = "No Tlp Venue"
-	colVenueEmail    = "Email"
-	colVenueAddress  = "Alamat"
-	colVenueCity     = "Kota"
-	colVenueRental   = "Harga Sewa"
-	colVenueCharge   = "Charge"
-	colVenueCapacity = "Kapasitas"
+	colVenueName             = "Nama Venue"
+	colVenuePIC              = "Nama PIC"
+	colVenuePhonePIC         = "No Tlp PIC"
+	colVenuePhone            = "No Tlp Venue"
+	colVenueEmail            = "Email"
+	colVenueAddress          = "Alamat"
+	colVenueCity             = "Kota"
+	colVenueCapacityStanding = "Kapasitas Berdiri"
+	colVenueCapacitySeated   = "Kapasitas Duduk"
+	colVenuePriceAkad        = "Harga Akad"
+	colVenuePriceResepsi     = "Harga Resepsi"
+	colVenuePriceAkadResepsi = "Harga Akad+Resepsi"
+	colVenueCharge           = "Charge"
 )
 
 // checkVenueImportRow judges every cell of one venue row, all problems at once
 // in column order. No Tlp PIC follows the form's rule (required, at least
-// minVenuePhonePICLen characters).
+// minVenuePhonePICLen characters); the capacities follow the form's too (each
+// filled one at least 1, and at least one of them filled).
 func checkVenueImportRow(row VenueImportRow) *rowCheck {
 	c := &rowCheck{}
 	c.required(colVenueName, row.Name, maxDirectoryNameLen)
@@ -504,13 +553,25 @@ func checkVenueImportRow(row VenueImportRow) *rowCheck {
 	} else if !domain.IsValidCity(row.City) {
 		c.add(colVenueCity, colVenueCity+" \""+row.City+"\" tidak ada di daftar kota. Pilih dari daftar di template.")
 	}
-	c.number(colVenueRental, row.RentalPrice, hasColumn(row.NotNumber, colVenueRental), numberRule{})
-	c.number(colVenueCharge, row.Charge, hasColumn(row.NotNumber, colVenueCharge), numberRule{})
-	var capacity *int64
-	if row.Capacity != nil {
-		v := int64(*row.Capacity)
-		capacity = &v
+	standingNotNumber := hasColumn(row.NotNumber, colVenueCapacityStanding)
+	seatedNotNumber := hasColumn(row.NotNumber, colVenueCapacitySeated)
+	capacityRule := numberRule{positive: true, max: maxVenueCapacity}
+	c.number(colVenueCapacityStanding, intToInt64Ptr(row.CapacityStanding), standingNotNumber, capacityRule)
+	c.number(colVenueCapacitySeated, intToInt64Ptr(row.CapacitySeated), seatedNotNumber, capacityRule)
+	if row.CapacityStanding == nil && row.CapacitySeated == nil && !standingNotNumber && !seatedNotNumber {
+		c.add(colVenueCapacityStanding, "Isi "+colVenueCapacityStanding+" atau "+colVenueCapacitySeated+", minimal satu")
 	}
-	c.number(colVenueCapacity, capacity, hasColumn(row.NotNumber, colVenueCapacity), numberRule{max: maxVenueCapacity})
+	c.number(colVenuePriceAkad, row.PriceAkad, hasColumn(row.NotNumber, colVenuePriceAkad), numberRule{})
+	c.number(colVenuePriceResepsi, row.PriceResepsi, hasColumn(row.NotNumber, colVenuePriceResepsi), numberRule{})
+	c.number(colVenuePriceAkadResepsi, row.PriceAkadResepsi, hasColumn(row.NotNumber, colVenuePriceAkadResepsi), numberRule{})
+	c.number(colVenueCharge, row.Charge, hasColumn(row.NotNumber, colVenueCharge), numberRule{})
 	return c
+}
+
+func intToInt64Ptr(v *int) *int64 {
+	if v == nil {
+		return nil
+	}
+	n := int64(*v)
+	return &n
 }

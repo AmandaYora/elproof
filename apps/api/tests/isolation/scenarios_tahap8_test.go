@@ -45,10 +45,11 @@ func removedRoute(t *testing.T, what string, r reply) {
 // updatedAt first and send it as If-Match" (what the web does). "" sends no header.
 const fresh = "\x00fresh"
 
-// editPathRE matches the item routes whose field edits need an If-Match (ADR-0036,
-// Tahap 9): project, milestone, project vendor, vendor milestone, kendala and the
-// three payments. Groups: 1 project path, 2 kind, 3 item id, 4 vendor milestone id.
-var editPathRE = regexp.MustCompile(`^(/api/v1/projects/\d+)(?:/(milestones|vendors|issues|payments|client-payments|venue-payments)/(\d+)(?:/milestones/(\d+))?)?$`)
+// editPathRE matches the item routes whose edits need an If-Match (ADR-0036):
+// project, milestone, supplier (vendor or venue), supplier milestone, kendala, the
+// two payments and an event (PUT). Groups: 1 project path, 2 kind, 3 item id,
+// 4 supplier milestone id.
+var editPathRE = regexp.MustCompile(`^(/api/v1/projects/\d+)(?:/(milestones|suppliers|issues|client-payments|supplier-payments|events)/(\d+)(?:/milestones/(\d+))?)?$`)
 
 // versionOf reads the current `updatedAt` of the item a PATCH path addresses, as
 // the caller sees it (a failed read fails the test: use it for the caller's own rows).
@@ -64,10 +65,10 @@ func (s *stack) versionOf(token, path string) string {
 	list, id := m[1]+"/"+m[2], m[3]
 	items := func(r reply) []map[string]any { return rows(r, "data") }
 	if m[4] != "" {
-		// A vendor milestone is read from the milestones[] embedded in GET /projects/{id}/vendors.
-		engagement, _ := strconv.ParseInt(m[3], 10, 64)
-		list, id = m[1]+"/vendors", m[4]
-		items = func(r reply) []map[string]any { return embeddedMilestones(r, engagement) }
+		// A supplier milestone is read from the milestones[] embedded in GET /projects/{id}/suppliers.
+		supplier, _ := strconv.ParseInt(m[3], 10, 64)
+		list, id = m[1]+"/suppliers", m[4]
+		items = func(r reply) []map[string]any { return embeddedMilestones(r, supplier) }
 	}
 	for _, it := range items(s.get(token, list)) {
 		if fmt.Sprint(int64(it["id"].(float64))) == id {
@@ -79,10 +80,18 @@ func (s *stack) versionOf(token, path string) string {
 	return ""
 }
 
-// needsVersion reports whether a PATCH to path with this body is a field edit that
-// must carry If-Match: an item route, and not a body that is only isArchived.
+// needsVersion reports whether a request to path with this body is an edit that
+// must carry If-Match: a PUT of an event, or a PATCH of an item route that is not
+// a body of only isArchived.
 func needsVersion(method, path string, body any) bool {
-	if method != "PATCH" || editPathRE.FindStringSubmatch(path) == nil {
+	m := editPathRE.FindStringSubmatch(path)
+	if m == nil {
+		return false
+	}
+	if method == "PUT" {
+		return m[2] == "events" && m[4] == ""
+	}
+	if method != "PATCH" {
 		return false
 	}
 	if m, ok := body.(map[string]any); ok && len(m) == 1 {
@@ -128,6 +137,19 @@ func (s *stack) patchRaw(token, path, raw, ifMatch string) reply {
 		h = map[string]string{"If-Match": ifMatch}
 	}
 	return s.send(token, "PATCH", path, strings.NewReader(raw), true, "application/json", h)
+}
+
+// put sends PUT with an optional If-Match (fresh: the item's current version).
+func (s *stack) putVersioned(token, path string, body any, ifMatch string) reply {
+	s.t.Helper()
+	if ifMatch == fresh {
+		ifMatch = quoted(s.versionOf(token, path))
+	}
+	var h map[string]string
+	if ifMatch != "" {
+		h = map[string]string{"If-Match": ifMatch}
+	}
+	return s.doWith(token, "PUT", path, body, h)
 }
 
 // version is the item's `updatedAt` as a response carries it.
@@ -185,12 +207,12 @@ func wantStatus(t *testing.T, what string, r reply, want int) {
 }
 
 // embeddedMilestones returns the milestones[] embedded in the item of a
-// GET /projects/{id}/vendors answer that belongs to the given engagement
-// (there is no GET on /vendors/{pv}/milestones any more, Tahap 9).
-func embeddedMilestones(r reply, engagement int64) []map[string]any {
+// GET /projects/{id}/suppliers answer that belongs to the given supplier
+// (there is no GET on /suppliers/{sid}/milestones).
+func embeddedMilestones(r reply, supplier int64) []map[string]any {
 	var out []map[string]any
 	for _, v := range rows(r, "data") {
-		if id, _ := v["id"].(float64); int64(id) != engagement {
+		if id, _ := v["id"].(float64); int64(id) != supplier {
 			continue
 		}
 		list, _ := v["milestones"].([]any)
@@ -206,6 +228,7 @@ func embeddedMilestones(r reply, engagement int64) []map[string]any {
 // t8 is what the scenario edits.
 type t8 struct {
 	project, venue, engagement, engagement2, vmile, pmile, issue int64
+	venueSupplier, event, kind                                   int64
 	clientPay, vendorPay, venuePay                               int64
 	vendor, category                                             int64
 }
@@ -213,29 +236,32 @@ type t8 struct {
 func (s *stack) t8Fixtures(x tenant) t8 {
 	s.t.Helper()
 	var f t8
-	f.project = s.createProject(x, "T8 Proyek "+x.marker, 100_000_000)
 	f.venue = s.mustOK("venue", s.do(x.token, "POST", "/api/v1/venues", venueBody(x, "Venue T8 "+x.marker))).id("data", "id")
-	// Attach the venue through the new partial PATCH (its snapshot comes with it).
-	s.mustOK("attach venue", s.patch(x.token, s.projectsPath(f.project, ""), map[string]any{"venueId": f.venue}, fresh))
+	// The project's (only) event takes place at the venue: it joins the suppliers, paid by the WO.
+	f.kind = s.kind(x, "Akad")
+	f.project = s.projectAt(x, "T8 Proyek "+x.marker, 100_000_000, 120, f.venue)
+	f.event = int64(rows(s.get(x.token, s.projectsPath(f.project, "/events")), "data")[0]["id"].(float64))
+	f.venueSupplier = s.venueSupplier(x, f.project, f.venue)
+	if f.venueSupplier == 0 {
+		s.t.Fatal("the event's venue did not join the project's suppliers")
+	}
+	// An agreed cost for the venue, so its payments have a ceiling too.
+	s.mustOK("venue agreed cost", s.patch(x.token, s.projectsPath(f.project, fmt.Sprintf("/suppliers/%d", f.venueSupplier)), map[string]any{"agreedCost": 10_500_000}, fresh))
 	f.vendor, f.category = s.newVendor(x, "Vendor T8 "+x.marker)
-	f.engagement = s.engage(x, f.project, f.vendor, f.category, "Dekorasi", 5_000_000, "Booked", nil)
-	f.engagement2 = s.engage(x, f.project, f.vendor, f.category, "Foto", 3_000_000, "Booked", nil)
-	f.vmile = s.mustOK("vendor milestone", s.do(x.token, "POST", s.projectsPath(f.project, fmt.Sprintf("/vendors/%d/milestones", f.engagement)), map[string]any{
+	f.engagement = s.engage(x, f.project, f.vendor, "Dekorasi", 5_000_000, "Booked", nil)
+	f.engagement2 = s.engage(x, f.project, f.vendor, "Foto", 3_000_000, "Booked", nil)
+	f.vmile = s.mustOK("supplier milestone", s.do(x.token, "POST", s.projectsPath(f.project, fmt.Sprintf("/suppliers/%d/milestones", f.engagement)), map[string]any{
 		"name": "Milestone T8", "description": "d", "targetDate": day(30), "picStaffId": x.staffID,
 	})).id("data", "id")
 	ms := s.get(x.token, s.projectsPath(f.project, "/milestones"))
 	f.pmile = int64(rows(ms, "data")[0]["id"].(float64))
 	f.issue = s.mustOK("issue", s.do(x.token, "POST", s.projectsPath(f.project, "/issues"), map[string]any{
-		"projectVendorId": f.engagement, "vendorMilestoneId": f.vmile, "title": "Kendala T8", "description": "deskripsi", "impact": "Medium",
+		"projectSupplierId": f.engagement, "vendorMilestoneId": f.vmile, "title": "Kendala T8", "description": "deskripsi", "impact": "Medium",
 		"foundDate": day(-1), "resolutionPlan": "rencana", "picStaffId": x.staffID, "targetResolutionDate": day(10),
 	})).id("data", "id")
 	f.clientPay = s.clientPay(x, f.project, "DP", 10_000_000, "REF-T8")
-	f.vendorPay = s.mustOK("vendor payment", s.do(x.token, "POST", s.projectsPath(f.project, "/payments"), map[string]any{
-		"projectVendorId": f.engagement, "type": "DP", "amount": 1_000_000, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VREF-T8",
-	})).id("data", "id")
-	f.venuePay = s.mustOK("venue payment", s.do(x.token, "POST", s.projectsPath(f.project, "/venue-payments"), map[string]any{
-		"type": "DP", "amount": 777_777, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VNREF-T8",
-	})).id("data", "id")
+	f.vendorPay = s.supplierPay(x, f.project, f.engagement, "DP", 1_000_000, "VREF-T8")
+	f.venuePay = s.supplierPay(x, f.project, f.venueSupplier, "DP", 777_777, "VNREF-T8")
 	return f
 }
 
@@ -303,7 +329,7 @@ func TestTahap8(t *testing.T) {
 
 	pp := func(rest string) string { return s.projectsPath(f.project, rest) }
 	projectFam := func() family {
-		return family{name: "project", path: pp(""), get: pp(""), notNullable: "name", badValue: map[string]any{"eventDate": "kemarin"}, badKey: "eventDate",
+		return family{name: "project", path: pp(""), get: pp(""), notNullable: "name", badValue: map[string]any{"prepStartDate": "kemarin"}, badKey: "prepStartDate",
 			vary: text("description"), varyField: "description"}
 	}
 	families := []family{
@@ -315,14 +341,16 @@ func TestTahap8(t *testing.T) {
 			vary: func(n int) map[string]any { return map[string]any{"targetDate": day(200 + n)} }, varyField: "targetDate",
 		},
 		{
-			name: "project vendor", path: pp(fmt.Sprintf("/vendors/%d", f.engagement)), get: pp("/vendors"), list: true,
+			name: "supplier", path: pp(fmt.Sprintf("/suppliers/%d", f.engagement)), get: pp("/suppliers"), list: true,
 			patch: map[string]any{"scope": "Dekorasi baru"}, field: "scope", want: "Dekorasi baru",
-			untouched: []string{"contractValue", "pricingTier", "engagementStatus", "dpAmount", "vendorId", "categoryId"}, notNullable: "scope",
-			badValue: map[string]any{"eventStartTime": "25:99"}, badKey: "eventStartTime",
+			untouched: []string{"agreedCost", "engagementStatus", "paidBy", "showName", "supplierId", "categoryId", "picStaffId"}, notNullable: "scope",
+			badValue: map[string]any{"engagementStatus": "Selesai banget"}, badKey: "engagementStatus",
+			// An agreed cost under what the WO already paid (1.000.000) while lowering it.
+			mergedBad: map[string]any{"agreedCost": 500_000}, mergedBadKey: "agreedCost",
 			vary: text("scope"), varyField: "scope",
 		},
 		{
-			name: "vendor milestone", path: pp(fmt.Sprintf("/vendors/%d/milestones/%d", f.engagement, f.vmile)), get: pp("/vendors"), list: true,
+			name: "supplier milestone", path: pp(fmt.Sprintf("/suppliers/%d/milestones/%d", f.engagement, f.vmile)), get: pp("/suppliers"), list: true,
 			items: func(r reply) []map[string]any { return embeddedMilestones(r, f.engagement) },
 			patch: map[string]any{"notes": "catatan baru"}, field: "notes", want: "catatan baru",
 			untouched: []string{"name", "description", "status", "targetDate", "picStaffId"}, notNullable: "status",
@@ -332,12 +360,12 @@ func TestTahap8(t *testing.T) {
 		{
 			name: "kendala", path: pp(fmt.Sprintf("/issues/%d", f.issue)), get: pp("/issues"), list: true,
 			patch: map[string]any{"impact": "High"}, field: "impact", want: "High",
-			untouched: []string{"title", "description", "status", "resolutionPlan", "vendorMilestoneId", "projectVendorId", "targetResolutionDate"}, notNullable: "title",
+			untouched: []string{"title", "description", "status", "resolutionPlan", "vendorMilestoneId", "projectSupplierId", "targetResolutionDate"}, notNullable: "title",
 			badValue: map[string]any{"impact": "Enormous"}, badKey: "impact",
-			// Moving the kendala to another vendor while its milestone stays on the first one.
-			mergedBad: map[string]any{"projectVendorId": f.engagement2}, mergedBadKey: "vendorMilestoneId",
+			// Moving the kendala to another supplier while its milestone stays on the first one.
+			mergedBad: map[string]any{"projectSupplierId": f.engagement2}, mergedBadKey: "vendorMilestoneId",
 			vary: text("description"), varyField: "description",
-			reset: map[string]any{"projectVendorId": f.engagement, "vendorMilestoneId": f.vmile},
+			reset: map[string]any{"projectSupplierId": f.engagement, "vendorMilestoneId": f.vmile},
 		},
 		{
 			name: "client payment", path: pp(fmt.Sprintf("/client-payments/%d", f.clientPay)), get: pp("/client-payments"), list: true,
@@ -348,17 +376,17 @@ func TestTahap8(t *testing.T) {
 			vary: text("notes"), varyField: "notes",
 		},
 		{
-			name: "vendor payment", path: pp(fmt.Sprintf("/payments/%d", f.vendorPay)), get: pp("/payments"), list: true,
+			name: "vendor payment", path: pp(fmt.Sprintf("/supplier-payments/%d", f.vendorPay)), get: pp("/supplier-payments"), list: true,
 			patch: map[string]any{"method": "Tunai"}, field: "method", want: "Tunai",
-			untouched: []string{"type", "amount", "paymentDate", "referenceNumber", "projectVendorId"}, notNullable: "type",
+			untouched: []string{"type", "amount", "paymentDate", "referenceNumber", "projectSupplierId", "payer"}, notNullable: "type",
 			badValue: map[string]any{"amount": 0}, badKey: "amount",
 			mergedBad: map[string]any{"amount": 5_000_001}, mergedBadKey: "amount",
 			vary: text("notes"), varyField: "notes",
 		},
 		{
-			name: "venue payment", path: pp(fmt.Sprintf("/venue-payments/%d", f.venuePay)), get: pp("/venue-payments"), list: true,
+			name: "venue payment", path: pp(fmt.Sprintf("/supplier-payments/%d", f.venuePay)), get: pp("/supplier-payments"), list: true,
 			patch: map[string]any{"referenceNumber": "VN-BARU"}, field: "referenceNumber", want: "VN-BARU",
-			untouched: []string{"type", "amount", "paymentDate", "method"}, notNullable: "method",
+			untouched: []string{"type", "amount", "paymentDate", "method", "projectSupplierId", "payer"}, notNullable: "method",
 			badValue: map[string]any{"paymentDate": "2026/01/01"}, badKey: "paymentDate",
 			mergedBad: map[string]any{"amount": 10_500_001}, mergedBadKey: "amount",
 			vary: text("notes"), varyField: "notes",
@@ -376,11 +404,11 @@ func TestTahap8(t *testing.T) {
 		}{
 			{"project list", "/api/v1/projects"},
 			{"milestones", pp("/milestones")},
-			{"vendors", pp("/vendors")},
-			{"payments", pp("/payments")},
+			{"suppliers", pp("/suppliers")},
+			{"supplier payments", pp("/supplier-payments")},
 			{"client payments", pp("/client-payments")},
-			{"venue payments", pp("/venue-payments")},
 			{"issues", pp("/issues")},
+			{"events", pp("/events")},
 		} {
 			items := rows(s.get(x.token, l.path), "data")
 			if len(items) == 0 {
@@ -392,17 +420,17 @@ func TestTahap8(t *testing.T) {
 				}
 			}
 		}
-		// Vendor milestones come nested in the vendor list (no route of their own to read them).
-		for _, v := range rows(s.get(x.token, pp("/vendors")), "data") {
+		// Supplier milestones come nested in the supplier list (no route of their own to read them).
+		for _, v := range rows(s.get(x.token, pp("/suppliers")), "data") {
 			ms, _ := v["milestones"].([]any)
 			for _, m := range ms {
 				if u, _ := m.(map[string]any)["updatedAt"].(string); !updatedAtRE.MatchString(u) {
-					t.Errorf("nested vendor milestone updatedAt = %q", u)
+					t.Errorf("nested supplier milestone updatedAt = %q", u)
 				}
 			}
 		}
-		if embedded := embeddedMilestones(s.get(x.token, pp("/vendors")), f.engagement); len(embedded) == 0 {
-			t.Errorf("the engagement's embedded milestones[] is empty")
+		if embedded := embeddedMilestones(s.get(x.token, pp("/suppliers")), f.engagement); len(embedded) == 0 {
+			t.Errorf("the supplier's embedded milestones[] is empty")
 		}
 		// The answer of a PATCH carries the new version in the body and in ETag.
 		for _, fam := range families {
@@ -500,15 +528,14 @@ func TestTahap8(t *testing.T) {
 				t.Errorf("%s: a refused patch changed the row: %v -> %v", fam.name, before, after)
 			}
 		}
-		// A note-only patch on a payment is not blocked by the overpayment rule, and
-		// the kendala's vendor and milestone can move together.
-		r := s.patch(x.token, pp(fmt.Sprintf("/issues/%d", f.issue)), map[string]any{"projectVendorId": nil, "vendorMilestoneId": nil}, fresh)
+		// The kendala's supplier and milestone can move together.
+		r := s.patch(x.token, pp(fmt.Sprintf("/issues/%d", f.issue)), map[string]any{"projectSupplierId": nil, "vendorMilestoneId": nil}, fresh)
 		wantStatus(t, "kendala to general", r, 200)
-		if r.dig("data", "projectVendorId") != nil || r.dig("data", "vendorMilestoneId") != nil {
+		if r.dig("data", "projectSupplierId") != nil || r.dig("data", "vendorMilestoneId") != nil {
 			t.Errorf("both must be cleared: %s", r)
 		}
-		r = s.patch(x.token, pp(fmt.Sprintf("/issues/%d", f.issue)), map[string]any{"projectVendorId": f.engagement2}, fresh)
-		wantStatus(t, "kendala to a vendor", r, 200)
+		r = s.patch(x.token, pp(fmt.Sprintf("/issues/%d", f.issue)), map[string]any{"projectSupplierId": f.engagement2}, fresh)
+		wantStatus(t, "kendala to a supplier", r, 200)
 		// Resolving stamps the date once.
 		r = s.patch(x.token, pp(fmt.Sprintf("/issues/%d", f.issue)), map[string]any{"status": "Resolved"}, fresh)
 		wantStatus(t, "resolve", r, 200)
@@ -530,17 +557,18 @@ func TestTahap8(t *testing.T) {
 		}
 	})
 
-	t.Run("project: dates, venue snapshot, PIC and the money fields", func(t *testing.T) {
+	t.Run("project: name, the event date it does not own, PIC and the money fields", func(t *testing.T) {
 		before := data(s.get(x.token, pp("")))
+		// The project's event date is its main event's: a PATCH that sends one leaves it alone.
 		r := s.patch(x.token, pp(""), map[string]any{"name": "Nama Baru T8", "eventDate": day(150)}, fresh)
 		wantStatus(t, "name + eventDate", r, 200)
 		after := data(s.get(x.token, pp("")))
-		for _, k := range []string{"brideName", "groomName", "venue", "prepStartDate", "packageName", "contractValue", "picStaffId", "description", "venueId", "venueRentalPrice", "venueCharge", "status", "isArchived"} {
+		for _, k := range []string{"brideName", "groomName", "eventDate", "location", "eventsLine", "prepStartDate", "packageNames", "contractValue", "linesVersion", "picStaffId", "description", "status", "isArchived"} {
 			if fmt.Sprint(before[k]) != fmt.Sprint(after[k]) {
 				t.Errorf("%s moved from %v to %v", k, before[k], after[k])
 			}
 		}
-		if after["name"] != "Nama Baru T8" || after["eventDate"] != day(150) {
+		if after["name"] != "Nama Baru T8" || after["eventDate"] != day(120) {
 			t.Errorf("sent fields: %v %v", after["name"], after["eventDate"])
 		}
 		// status cannot be patched: it is not a field here.
@@ -548,38 +576,12 @@ func TestTahap8(t *testing.T) {
 		if data(s.get(x.token, pp("")))["status"] != before["status"] {
 			t.Error("status must stay what it was")
 		}
-		// The venue was attached in the fixtures: its snapshot came from the venue.
-		if after["venueRentalPrice"] != float64(10_000_000) || after["venueCharge"] != float64(500_000) {
-			t.Errorf("venue snapshot: %v %v", after["venueRentalPrice"], after["venueCharge"])
+		// The contract value is not a project field any more (it is the Rincian's
+		// total): a body of only it edits nothing and is refused, the value stays.
+		wantStatus(t, "contract value is not a field", s.patch(x.token, pp(""), map[string]any{"contractValue": -1}, fresh), 422)
+		if fmt.Sprint(data(s.get(x.token, pp("")))["contractValue"]) != fmt.Sprint(before["contractValue"]) {
+			t.Error("the contract value changes only through the Rincian")
 		}
-		r = s.patch(x.token, pp(""), map[string]any{"venueCharge": 600_000}, fresh)
-		wantStatus(t, "snapshot charge", r, 200)
-		if r.dig("data", "venueCharge") != float64(600_000) || r.dig("data", "venueRentalPrice") != float64(10_000_000) {
-			t.Errorf("only the charge may change: %s", r)
-		}
-		// null detaches the venue and clears the snapshot with it.
-		r = s.patch(x.token, pp(""), map[string]any{"venueId": nil}, fresh)
-		wantStatus(t, "detach", r, 200)
-		if r.dig("data", "venueId") != nil || r.dig("data", "venueRentalPrice") != nil || r.dig("data", "venueCharge") != nil {
-			t.Errorf("detach must clear the snapshot: %s", r)
-		}
-		// A price with no venue is wrong against the merged row.
-		r = s.patch(x.token, pp(""), map[string]any{"venueRentalPrice": 1}, fresh)
-		wantStatus(t, "price without a venue", r, 422)
-		if !hasKey(r, "venueId") {
-			t.Errorf("want key venueId: %s", r)
-		}
-		// A venue of another workspace is refused; one's own re-attaches with its prices.
-		yVenue := s.mustOK("Y venue", s.do(y.token, "POST", "/api/v1/venues", venueBody(y, "Venue Y"))).id("data", "id")
-		r = s.patch(x.token, pp(""), map[string]any{"venueId": yVenue}, fresh)
-		wantStatus(t, "foreign venue", r, 422)
-		r = s.patch(x.token, pp(""), map[string]any{"venueId": f.venue}, fresh)
-		wantStatus(t, "reattach", r, 200)
-		if r.dig("data", "venueRentalPrice") != float64(10_000_000) || r.dig("data", "venue") != "Venue T8 "+x.marker {
-			t.Errorf("reattach: %s", r)
-		}
-		// Money fields.
-		wantStatus(t, "negative contract", s.patch(x.token, pp(""), map[string]any{"contractValue": -1}, fresh), 422)
 		// null clears the optional ones.
 		r = s.patch(x.token, pp(""), map[string]any{"description": nil}, fresh)
 		wantStatus(t, "description null", r, 200)
@@ -594,12 +596,75 @@ func TestTahap8(t *testing.T) {
 		}
 	})
 
+	t.Run("event: PUT needs the version, and a venue of another workspace is refused", func(t *testing.T) {
+		path := pp(fmt.Sprintf("/events/%d", f.event))
+		body := func(date string, venue int64) map[string]any { return eventOf(f.kind, date, 100, venue) }
+		cur := s.versionOf(x.token, path)
+		if !updatedAtRE.MatchString(cur) {
+			t.Fatalf("event updatedAt = %q", cur)
+		}
+		// No header: 428, nothing written.
+		r := s.putVersioned(x.token, path, body(day(121), f.venue), "")
+		wantStatus(t, "event without a header", r, http.StatusPreconditionRequired)
+		if got, _ := r.dig("errors", "If-Match").([]any); len(got) != 1 || got[0] != "wajib" {
+			t.Errorf("428 errors must be {\"If-Match\": [\"wajib\"]}: %s", r)
+		}
+		if s.versionOf(x.token, path) != cur {
+			t.Error("a 428 wrote the event")
+		}
+		// Malformed: 400.
+		wantStatus(t, "event with a malformed If-Match", s.putVersioned(x.token, path, body(day(121), f.venue), "banana"), 400)
+		// The current version: 200, a new version in the body and ETag, and the project follows its main event.
+		a := s.putVersioned(x.token, path, body(day(121), f.venue), quoted(cur))
+		wantStatus(t, "event with the current version", a, 200)
+		v2 := version(a)
+		if v2 == cur || !updatedAtRE.MatchString(v2) || a.header.Get("ETag") != quoted(v2) {
+			t.Errorf("event PUT: updatedAt %q (was %q), ETag %q", v2, cur, a.header.Get("ETag"))
+		}
+		if got := data(s.get(x.token, pp("")))["eventDate"]; got != day(121) {
+			t.Errorf("the project's event date must follow its main event: %v", got)
+		}
+		// Stale: 409 with the event as it is now, and nothing of it lands.
+		b := s.putVersioned(x.token, path, body(day(122), f.venue), quoted(cur))
+		wantStatus(t, "event stale", b, 409)
+		if c, _ := b.dig("errors", "_conflict").([]any); len(c) != 1 || c[0] != "stale" {
+			t.Errorf("errors._conflict = %v", b.dig("errors"))
+		}
+		if got := version(b, "current"); got != v2 {
+			t.Errorf("data.current.updatedAt = %q, want %q", got, v2)
+		}
+		if b.dig("data", "current", "eventDate") != day(121) {
+			t.Errorf("data.current must be the event as it is now: %s", b)
+		}
+		// A venue of another workspace is refused, keyed venueId.
+		yVenue := s.mustOK("Y venue", s.do(y.token, "POST", "/api/v1/venues", venueBody(y, "Venue Y"))).id("data", "id")
+		r = s.putVersioned(x.token, path, body(day(121), yVenue), fresh)
+		wantStatus(t, "foreign venue", r, 422)
+		if !hasKey(r, "venueId") {
+			t.Errorf("want key venueId: %s", r)
+		}
+		if s.versionOf(x.token, path) != v2 {
+			t.Error("a refused PUT wrote the event")
+		}
+		// Back to the fixture's date.
+		wantStatus(t, "event back", s.putVersioned(x.token, path, body(day(120), f.venue), fresh), 200)
+		// Another workspace: 404 with or without a version, also under its own project.
+		yProject := s.createProject(y, "T8 Y acara "+y.marker, 1_000_000)
+		for _, p := range []string{path, s.projectsPath(yProject, fmt.Sprintf("/events/%d", f.event))} {
+			wantStatus(t, "Y "+p+" without a header", s.putVersioned(y.token, p, body(day(130), 0), ""), 404)
+			wantStatus(t, "Y "+p+" with a header", s.putVersioned(y.token, p, body(day(130), 0), quoted(v2)), 404)
+		}
+		if got := data(s.get(x.token, pp("")))["eventDate"]; got != day(120) {
+			t.Errorf("Y moved X's event: %v", got)
+		}
+	})
+
 	t.Run("a patch that changes nothing writes nothing and logs nothing", func(t *testing.T) {
 		cur := data(s.get(x.token, pp("")))
 		w0 := s.writes("projects", f.project)
 		a0, _ := s.activity(f.project)
 		v0 := cur["updatedAt"].(string)
-		r := s.patch(x.token, pp(""), map[string]any{"name": cur["name"], "contractValue": cur["contractValue"], "eventDate": cur["eventDate"]}, fresh)
+		r := s.patch(x.token, pp(""), map[string]any{"name": cur["name"], "prepStartDate": cur["prepStartDate"], "eventDate": cur["eventDate"]}, fresh)
 		wantStatus(t, "no-op", r, 200)
 		if version(r) != v0 || s.writes("projects", f.project) != w0 {
 			t.Errorf("no-op wrote: version %s -> %s, writes %d -> %d", v0, version(r), w0, s.writes("projects", f.project))
@@ -622,12 +687,12 @@ func TestTahap8(t *testing.T) {
 
 	t.Run("one activity entry names only the fields that changed", func(t *testing.T) {
 		a0, _ := s.activity(f.project)
-		wantStatus(t, "patch", s.patch(x.token, pp(""), map[string]any{"name": "Nama Log T8", "packageName": "Paket Log"}, fresh), 200)
+		wantStatus(t, "patch", s.patch(x.token, pp(""), map[string]any{"name": "Nama Log T8", "prepStartDate": day(-25)}, fresh), 200)
 		a1, desc := s.activity(f.project)
 		if a1 != a0+1 {
 			t.Fatalf("a PATCH logs exactly one entry, got %d", a1-a0)
 		}
-		for _, want := range []string{"nama", "paket"} {
+		for _, want := range []string{"nama", "mulai persiapan"} {
 			if !strings.Contains(desc, want) {
 				t.Errorf("%q must name %q", desc, want)
 			}
@@ -638,13 +703,13 @@ func TestTahap8(t *testing.T) {
 			}
 		}
 		// Sending the same values again is a no-op: no entry.
-		wantStatus(t, "again", s.patch(x.token, pp(""), map[string]any{"name": "Nama Log T8", "packageName": "Paket Log"}, fresh), 200)
+		wantStatus(t, "again", s.patch(x.token, pp(""), map[string]any{"name": "Nama Log T8", "prepStartDate": day(-25)}, fresh), 200)
 		if a2, _ := s.activity(f.project); a2 != a1 {
 			t.Errorf("a no-op PATCH logged %d entries", a2-a1)
 		}
 		// A payment edit: one entry, naming the field.
 		a3, _ := s.activity(f.project)
-		wantStatus(t, "payment", s.patch(x.token, pp(fmt.Sprintf("/payments/%d", f.vendorPay)), map[string]any{"notes": "dicek"}, fresh), 200)
+		wantStatus(t, "payment", s.patch(x.token, pp(fmt.Sprintf("/supplier-payments/%d", f.vendorPay)), map[string]any{"notes": "dicek"}, fresh), 200)
 		a4, d4 := s.activity(f.project)
 		if a4 != a3+1 || !strings.Contains(d4, "catatan") || strings.Contains(d4, "nominal") {
 			t.Errorf("payment patch activity: %d new, %q", a4-a3, d4)
@@ -827,26 +892,26 @@ func TestTahap8(t *testing.T) {
 	t.Run("the 404 stays a 404 for a row that is gone, even with a stale version", func(t *testing.T) {
 		wantStatus(t, "unknown milestone", s.patch(x.token, pp("/milestones/99999999"), map[string]any{"status": "Blocked"}, quoted("2026-01-01T00:00:00.000000Z")), 404)
 		wantStatus(t, "unknown kendala", s.patch(x.token, pp("/issues/99999999"), map[string]any{"title": "x"}, quoted("2026-01-01T00:00:00.000000Z")), 404)
-		wantStatus(t, "unknown payment", s.patch(x.token, pp("/payments/99999999"), map[string]any{"notes": "x"}, quoted("2026-01-01T00:00:00.000000Z")), 404)
+		wantStatus(t, "unknown payment", s.patch(x.token, pp("/supplier-payments/99999999"), map[string]any{"notes": "x"}, quoted("2026-01-01T00:00:00.000000Z")), 404)
+		wantStatus(t, "unknown event", s.putVersioned(x.token, pp("/events/99999999"), eventOf(f.kind, day(120), 100, 0), quoted("2026-01-01T00:00:00.000000Z")), 404)
 		// ...and the same 404 with no header at all: a row that is not there is never a 428.
-		for _, rest := range []string{"/milestones/99999999", "/vendors/99999999", "/vendors/99999999/milestones/99999999", fmt.Sprintf("/vendors/%d/milestones/99999999", f.engagement),
-			"/issues/99999999", "/payments/99999999", "/client-payments/99999999", "/venue-payments/99999999"} {
+		for _, rest := range []string{"/milestones/99999999", "/suppliers/99999999", "/suppliers/99999999/milestones/99999999", fmt.Sprintf("/suppliers/%d/milestones/99999999", f.engagement),
+			"/issues/99999999", "/supplier-payments/99999999", "/client-payments/99999999"} {
 			wantStatus(t, "unknown "+rest+" without a header", s.patch(x.token, pp(rest), map[string]any{"notes": "x"}, ""), 404)
 		}
+		wantStatus(t, "unknown event without a header", s.putVersioned(x.token, pp("/events/99999999"), eventOf(f.kind, day(120), 100, 0), ""), 404)
 		// A soft-deleted payment is gone for PATCH (restore is its own call).
-		pay := s.mustOK("payment to delete", s.do(x.token, "POST", pp("/venue-payments"), map[string]any{
-			"type": "Termin", "amount": 1000, "paymentDate": day(-1), "method": "Tunai", "referenceNumber": "DEL",
-		})).id("data", "id")
-		cur := rows(s.get(x.token, pp("/venue-payments")), "data")
+		pay := s.supplierPay(x, f.project, f.venueSupplier, "Termin", 1000, "DEL")
+		cur := rows(s.get(x.token, pp("/supplier-payments")), "data")
 		var v string
 		for _, m := range cur {
 			if int64(m["id"].(float64)) == pay {
 				v, _ = m["updatedAt"].(string)
 			}
 		}
-		s.mustOK("delete", s.do(x.token, "DELETE", pp(fmt.Sprintf("/venue-payments/%d", pay)), nil))
-		wantStatus(t, "soft-deleted payment", s.patch(x.token, pp(fmt.Sprintf("/venue-payments/%d", pay)), map[string]any{"notes": "x"}, quoted(v)), 404)
-		wantStatus(t, "soft-deleted payment without a header", s.patch(x.token, pp(fmt.Sprintf("/venue-payments/%d", pay)), map[string]any{"notes": "x"}, ""), 404)
+		s.mustOK("delete", s.do(x.token, "DELETE", pp(fmt.Sprintf("/supplier-payments/%d", pay)), nil))
+		wantStatus(t, "soft-deleted payment", s.patch(x.token, pp(fmt.Sprintf("/supplier-payments/%d", pay)), map[string]any{"notes": "x"}, quoted(v)), 404)
+		wantStatus(t, "soft-deleted payment without a header", s.patch(x.token, pp(fmt.Sprintf("/supplier-payments/%d", pay)), map[string]any{"notes": "x"}, ""), 404)
 	})
 
 	// ------------------------------------------------------------------
@@ -866,7 +931,7 @@ func TestTahap8(t *testing.T) {
 			{"kendala", pp(fmt.Sprintf("/issues/%d", f.issue)), pp("/issues"), true, func(round, i int) map[string]any {
 				return map[string]any{"description": fmt.Sprintf("penulis-%d-%d", round, i)}
 			}, "description"},
-			{"vendor payment (project lock)", pp(fmt.Sprintf("/payments/%d", f.vendorPay)), pp("/payments"), true, func(round, i int) map[string]any {
+			{"vendor payment (project lock)", pp(fmt.Sprintf("/supplier-payments/%d", f.vendorPay)), pp("/supplier-payments"), true, func(round, i int) map[string]any {
 				return map[string]any{"notes": fmt.Sprintf("penulis-%d-%d", round, i)}
 			}, "notes"},
 			{"client payment (project lock)", pp(fmt.Sprintf("/client-payments/%d", f.clientPay)), pp("/client-payments"), true, func(round, i int) map[string]any {
@@ -1258,7 +1323,15 @@ func TestTahap8Migration(t *testing.T) {
 	s := startStack(t)
 	x := s.signUp("t8m")
 	P := s.createProject(x, "Proyek migrasi "+x.marker, 1_000_000)
-	tables := []string{"projects", "project_milestones", "project_vendors", "vendor_milestones", "vendor_issues", "client_payments", "vendor_payments", "venue_payments", "evidence"}
+	// The versioned tables of today. 000087 replaced project_vendors, vendor_payments
+	// and venue_payments with project_suppliers and supplier_payments (and added
+	// project_events); its down migration brings the old ones back, so at 000070
+	// the tables 000071 versioned are there again, all without updated_at.
+	tables := []string{"projects", "project_milestones", "project_suppliers", "vendor_milestones", "vendor_issues", "client_payments", "supplier_payments", "project_events", "evidence"}
+	at70 := []string{"projects", "project_milestones", "project_vendors", "vendor_milestones", "vendor_issues", "client_payments", "vendor_payments", "venue_payments", "evidence"}
+	tableExists := func(table string) bool {
+		return s.count(`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`, table) == 1
+	}
 
 	precision := func(table string) (exists bool, p int) {
 		var n *int
@@ -1303,7 +1376,11 @@ func TestTahap8Migration(t *testing.T) {
 		run("down")
 	}
 	// Down: the eight new columns go, projects keeps its column in whole seconds, data survives.
-	for _, tb := range tables {
+	for _, tb := range at70 {
+		if !tableExists(tb) {
+			t.Errorf("after down: table %s is missing", tb)
+			continue
+		}
 		ok, p := precision(tb)
 		if tb == "projects" {
 			if !ok || p != 0 {
@@ -1315,6 +1392,11 @@ func TestTahap8Migration(t *testing.T) {
 			t.Errorf("after down: %s still has updated_at", tb)
 		}
 	}
+	for _, tb := range []string{"project_suppliers", "supplier_payments", "project_events"} {
+		if tableExists(tb) {
+			t.Errorf("after down: %s (000087) is still there", tb)
+		}
+	}
 	if n := s.count(`SELECT COUNT(*) FROM projects WHERE id = ?`, P); n != 1 {
 		t.Errorf("the project row must survive a down migration, found %d", n)
 	}
@@ -1323,6 +1405,11 @@ func TestTahap8Migration(t *testing.T) {
 	for _, tb := range tables {
 		if ok, p := precision(tb); !ok || p != 6 {
 			t.Errorf("after up again: %s.updated_at exists=%v precision=%d", tb, ok, p)
+		}
+	}
+	for _, tb := range []string{"project_vendors", "vendor_payments", "venue_payments"} {
+		if tableExists(tb) {
+			t.Errorf("after up again: %s (dropped by 000087) is back", tb)
 		}
 	}
 	if n := s.count(`SELECT COUNT(*) FROM projects WHERE id = ? AND updated_at IS NOT NULL`, P); n != 1 {

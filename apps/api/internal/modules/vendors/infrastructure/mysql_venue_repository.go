@@ -19,7 +19,7 @@ func NewMySQLVenueRepository(db *sql.DB) *MySQLVenueRepository {
 }
 
 const venueColumns = `id, tenant_id, name, pic_name, phone_pic, phone_venue, email, address, city,
-	rental_price, charge, capacity, facilities, social_media, notes, attachment_path,
+	capacity_standing, capacity_seated, price_akad, price_resepsi, price_akad_resepsi, charge, facilities, social_media, notes, attachment_path,
 	attachment_mime_type, is_active, created_at, updated_at`
 
 // scanVenue is a direct nullable-column mapping, same style as scanVendor --
@@ -28,13 +28,13 @@ const venueColumns = `id, tenant_id, name, pic_name, phone_pic, phone_venue, ema
 func scanVenue(scan func(dest ...interface{}) error) (*domain.Venue, error) {
 	var v domain.Venue
 	var phoneVenue, email, address, city, notes sql.NullString
-	var rentalPrice, charge, capacity sql.NullInt64
+	var capacityStanding, capacitySeated, priceAkad, priceResepsi, priceAkadResepsi, charge sql.NullInt64
 	var facilities, socialMedia sql.NullString
 	var attachmentPath, attachmentMimeType sql.NullString
 
 	err := scan(
 		&v.ID, &v.TenantID, &v.Name, &v.PICName, &v.PhonePIC, &phoneVenue, &email, &address, &city,
-		&rentalPrice, &charge, &capacity, &facilities, &socialMedia, &notes, &attachmentPath,
+		&capacityStanding, &capacitySeated, &priceAkad, &priceResepsi, &priceAkadResepsi, &charge, &facilities, &socialMedia, &notes, &attachmentPath,
 		&attachmentMimeType, &v.IsActive, &v.CreatedAt, &v.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -48,9 +48,12 @@ func scanVenue(scan func(dest ...interface{}) error) (*domain.Venue, error) {
 	v.Email = nullStringPtr(email)
 	v.Address = nullStringPtr(address)
 	v.City = nullStringPtr(city)
-	v.RentalPrice = nullInt64Ptr(rentalPrice)
+	v.CapacityStanding = nullIntPtr(capacityStanding)
+	v.CapacitySeated = nullIntPtr(capacitySeated)
+	v.PriceAkad = nullInt64Ptr(priceAkad)
+	v.PriceResepsi = nullInt64Ptr(priceResepsi)
+	v.PriceAkadResepsi = nullInt64Ptr(priceAkadResepsi)
 	v.Charge = nullInt64Ptr(charge)
-	v.Capacity = nullIntPtr(capacity)
 	v.Facilities = nullStringPtr(facilities)
 	v.SocialMedia = nullStringPtr(socialMedia)
 	v.Notes = notes.String
@@ -101,12 +104,15 @@ func (r *MySQLVenueRepository) List(ctx context.Context, tenantID int64) ([]doma
 
 // venueSortColumns is the sort whitelist of GET /venues (ADR-0035).
 var venueSortColumns = map[string]pagination.SortColumn{
-	"name":        pagination.Col("name"),
-	"city":        pagination.NullableCol("city"),
-	"capacity":    pagination.NullableCol("capacity"),
-	"rentalPrice": pagination.NullableCol("rental_price"),
-	"isActive":    pagination.Col("is_active"),
-	"createdAt":   pagination.Col("created_at"),
+	"name":             pagination.Col("name"),
+	"city":             pagination.NullableCol("city"),
+	"capacityStanding": pagination.NullableCol("capacity_standing"),
+	"capacitySeated":   pagination.NullableCol("capacity_seated"),
+	"priceAkad":        pagination.NullableCol("price_akad"),
+	"priceResepsi":     pagination.NullableCol("price_resepsi"),
+	"priceAkadResepsi": pagination.NullableCol("price_akad_resepsi"),
+	"isActive":         pagination.Col("is_active"),
+	"createdAt":        pagination.Col("created_at"),
 }
 
 // ListSortSpec is the whitelist and the default order of GET /venues (today's:
@@ -200,10 +206,12 @@ func (r *MySQLVenueRepository) FindByID(ctx context.Context, tenantID, id int64)
 func (r *MySQLVenueRepository) Create(ctx context.Context, venue *domain.Venue) error {
 	result, err := r.db.ExecContext(ctx,
 		`INSERT INTO venues (tenant_id, name, pic_name, phone_pic, phone_venue, email, address, city,
-		 rental_price, charge, capacity, facilities, social_media, notes, is_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 capacity_standing, capacity_seated, price_akad, price_resepsi, price_akad_resepsi, charge,
+		 facilities, social_media, notes, is_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		venue.TenantID, venue.Name, venue.PICName, venue.PhonePIC, venue.PhoneVenue, venue.Email, venue.Address, venue.City,
-		venue.RentalPrice, venue.Charge, venue.Capacity, venue.Facilities, venue.SocialMedia, venue.Notes, venue.IsActive,
+		venue.CapacityStanding, venue.CapacitySeated, venue.PriceAkad, venue.PriceResepsi, venue.PriceAkadResepsi, venue.Charge,
+		venue.Facilities, venue.SocialMedia, venue.Notes, venue.IsActive,
 	)
 	if err != nil {
 		return err
@@ -227,15 +235,17 @@ func (r *MySQLVenueRepository) CreateBatch(ctx context.Context, venues []domain.
 	}
 	var sb strings.Builder
 	sb.WriteString(`INSERT INTO venues (tenant_id, name, pic_name, phone_pic, phone_venue, email, address, city,
-		 rental_price, charge, capacity, facilities, social_media, notes, is_active) VALUES `)
-	args := make([]interface{}, 0, len(venues)*15)
+		 capacity_standing, capacity_seated, price_akad, price_resepsi, price_akad_resepsi, charge,
+		 facilities, social_media, notes, is_active) VALUES `)
+	args := make([]interface{}, 0, len(venues)*18)
 	for i, v := range venues {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(`(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		sb.WriteString(`(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		args = append(args, v.TenantID, v.Name, v.PICName, v.PhonePIC, v.PhoneVenue, v.Email, v.Address, v.City,
-			v.RentalPrice, v.Charge, v.Capacity, v.Facilities, v.SocialMedia, v.Notes, v.IsActive)
+			v.CapacityStanding, v.CapacitySeated, v.PriceAkad, v.PriceResepsi, v.PriceAkadResepsi, v.Charge,
+			v.Facilities, v.SocialMedia, v.Notes, v.IsActive)
 	}
 	_, err := r.db.ExecContext(ctx, sb.String(), args...)
 	return err
@@ -244,10 +254,12 @@ func (r *MySQLVenueRepository) CreateBatch(ctx context.Context, venues []domain.
 func (r *MySQLVenueRepository) Update(ctx context.Context, venue *domain.Venue) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE venues SET name = ?, pic_name = ?, phone_pic = ?, phone_venue = ?, email = ?, address = ?, city = ?,
-		 rental_price = ?, charge = ?, capacity = ?, facilities = ?, social_media = ?, notes = ?
+		 capacity_standing = ?, capacity_seated = ?, price_akad = ?, price_resepsi = ?, price_akad_resepsi = ?,
+		 charge = ?, facilities = ?, social_media = ?, notes = ?
 		 WHERE tenant_id = ? AND id = ?`,
 		venue.Name, venue.PICName, venue.PhonePIC, venue.PhoneVenue, venue.Email, venue.Address, venue.City,
-		venue.RentalPrice, venue.Charge, venue.Capacity, venue.Facilities, venue.SocialMedia, venue.Notes,
+		venue.CapacityStanding, venue.CapacitySeated, venue.PriceAkad, venue.PriceResepsi, venue.PriceAkadResepsi,
+		venue.Charge, venue.Facilities, venue.SocialMedia, venue.Notes,
 		venue.TenantID, venue.ID,
 	)
 	return err
@@ -273,4 +285,9 @@ func (r *MySQLVenueRepository) UpdateAttachment(ctx context.Context, tenantID, i
 func (r *MySQLVenueRepository) Delete(ctx context.Context, tenantID, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM venues WHERE tenant_id = ? AND id = ?`, tenantID, id)
 	return err
+}
+
+// NamesByIDs resolves venue names for the given ids, tenant-scoped, in one query.
+func (r *MySQLVenueRepository) NamesByIDs(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return namesByIDs(ctx, r.db, "venues", tenantID, ids)
 }

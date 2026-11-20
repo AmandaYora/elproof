@@ -54,12 +54,16 @@ interface ComboboxProps {
   "aria-label"?: string;
 }
 
+/** The open panel's height at most: the search field plus the list (max-h-52), with the gap to the trigger. */
+const PANEL_HEIGHT = 264;
+
 export function Combobox({ value, onChange, children, className, disabled, placeholder = "Pilih...", "aria-label": ariaLabel }: ComboboxProps) {
   const options = useMemo(() => optionsFromChildren(children), [children]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  // Where the panel sits: under the trigger, or above it (`bottom`) when the window has no room below.
+  const [rect, setRect] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -74,7 +78,14 @@ export function Combobox({ value, onChange, children, className, disabled, place
   function openDropdown() {
     if (disabled) return;
     const r = triggerRef.current?.getBoundingClientRect();
-    if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    if (r) {
+      const below = window.innerHeight - r.bottom;
+      setRect(
+        below < PANEL_HEIGHT && r.top > below
+          ? { bottom: window.innerHeight - r.top + 4, left: r.left, width: r.width }
+          : { top: r.bottom + 4, left: r.left, width: r.width },
+      );
+    }
     setQuery("");
     setHighlighted(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
@@ -174,7 +185,7 @@ export function Combobox({ value, onChange, children, className, disabled, place
         createPortal(
           <div
             ref={panelRef}
-            style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width }}
+            style={{ position: "fixed", top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }}
             className="z-50 overflow-hidden rounded-md border border-border bg-card shadow-lg"
           >
             <div className="relative border-b border-border-light p-1.5">

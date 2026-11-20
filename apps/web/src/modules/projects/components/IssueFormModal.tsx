@@ -6,18 +6,13 @@ import { Input, Textarea, Select, Field } from "@/shared/components/ui/Input";
 import { issueSchema, ISSUE_IMPACT_OPTIONS, ISSUE_STATUS_OPTIONS, type IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import { useZodForm } from "@/shared/forms/useZodForm";
 import { FormErrorSummary } from "@/shared/forms/FormErrorSummary";
-import type { IssueImpact, IssueStatus, ProjectVendor, VendorMilestone } from "@/modules/projects/types";
+import type { IssueImpact, IssueStatus, ProjectSupplier, VendorMilestone } from "@/modules/projects/types";
+import { supplierKindLabel } from "@/modules/rincian";
 
 const FIELD_LABELS: Record<string, string> = {
-  title: "Judul kendala", description: "Deskripsi", projectVendorId: "Vendor", vendorMilestoneId: "Tahapan", impact: "Dampak", status: "Status",
+  title: "Judul kendala", description: "Deskripsi", projectSupplierId: "Vendor atau venue", vendorMilestoneId: "Tahapan", impact: "Dampak", status: "Status",
   foundDate: "Tanggal ditemukan", targetResolutionDate: "Target penyelesaian", picStaffId: "PIC", resolutionPlan: "Rencana penanganan",
 };
-
-interface VendorLookup {
-  id: string;
-  name: string;
-  city: string | null;
-}
 
 interface StaffLookup {
   id: string;
@@ -31,25 +26,25 @@ interface IssueFormModalProps {
   /** Saves, then closes the modal. Throw to keep it open: a 422 is shown on its fields, anything else inside the modal. */
   onSubmit: (values: IssueFormValues) => Promise<void>;
   initialValues: IssueFormValues;
-  // Edit mode allows reassigning the vendor entirely; create mode always
-  // opens from a specific vendor's context, so the vendor field is locked.
+  // Edit mode allows moving the kendala to another vendor or venue; create mode
+  // opened from one supplier's drawer keeps that supplier.
   mode: "create" | "edit";
   // Locked (create-from-milestone) means the milestone field is shown as
   // read-only text instead of a picker -- zero extra picking for the common
   // case (PLAN.md "Retire the standalone Kendala tab").
   milestoneLocked: boolean;
-  /** Opened from the Kendala tab: the vendor is a choice, including "Tidak terkait vendor" (an issue about the event itself). */
-  vendorChoice?: boolean;
-  vendorEngagements: ProjectVendor[];
-  vendors: VendorLookup[];
+  /** Opened from the Kendala tab: the vendor or venue is a choice, including "Umum" (an issue about the event itself). */
+  supplierChoice?: boolean;
+  /** The project's vendors and venues. */
+  suppliers: ProjectSupplier[];
   vendorMilestones: VendorMilestone[];
   staff: StaffLookup[];
 }
 
-function vendorLabel(pv: ProjectVendor, vendors: VendorLookup[]): string {
-  const vendor = vendors.find((v) => v.id === pv.vendorId);
-  if (!vendor) return "Vendor tidak diketahui";
-  return vendor.city ? `${vendor.name} — ${vendor.city}` : vendor.name;
+const GENERAL_LABEL = "Umum (tidak terkait vendor atau venue)";
+
+function supplierLabel(s: ProjectSupplier): string {
+  return `${s.name} (${supplierKindLabel(s)})`;
 }
 
 function milestoneLabel(m: VendorMilestone): string {
@@ -63,9 +58,8 @@ export function IssueFormModal({
   initialValues,
   mode,
   milestoneLocked,
-  vendorChoice = false,
-  vendorEngagements,
-  vendors,
+  supplierChoice = false,
+  suppliers,
   vendorMilestones,
   staff,
 }: IssueFormModalProps) {
@@ -73,17 +67,16 @@ export function IssueFormModal({
   const { values, errors, set, blur } = form;
   const formRef = useRef<HTMLFormElement>(null);
 
-  function handleVendorChange(projectVendorId: string) {
-    // Changing the vendor invalidates whatever milestone was picked --
-    // milestones belong to exactly one vendor engagement.
-    set("projectVendorId", projectVendorId);
+  function handleSupplierChange(projectSupplierId: string) {
+    // A step belongs to exactly one vendor or venue: another supplier clears it.
+    set("projectSupplierId", projectSupplierId);
     set("vendorMilestoneId", "");
   }
 
   const submit = form.handleSubmit(onSubmit, { root: () => formRef.current, fallback: "Kendala belum tersimpan. Periksa koneksi Anda, lalu coba lagi." });
 
-  const selectedVendor = vendorEngagements.find((pv) => pv.id === values.projectVendorId);
-  const milestoneOptions = vendorMilestones.filter((m) => m.projectVendorId === values.projectVendorId);
+  const selectedSupplier = suppliers.find((s) => s.id === values.projectSupplierId);
+  const milestoneOptions = vendorMilestones.filter((m) => m.projectSupplierId === values.projectSupplierId);
   const lockedMilestoneName = milestoneOptions.find((m) => m.id === values.vendorMilestoneId)?.name ?? "Umum";
 
   return (
@@ -91,7 +84,7 @@ export function IssueFormModal({
       open={open}
       onClose={onClose}
       title={mode === "create" ? "Tambah kendala" : "Ubah kendala"}
-      description="Catat kendala terkait vendor pada proyek ini."
+      description="Catat kendala proyek ini, umum atau terkait vendor atau venue tertentu."
       size="lg"
       busy={form.submitting}
       footer={
@@ -117,24 +110,24 @@ export function IssueFormModal({
           </Field>
         </div>
 
-        {mode === "edit" || vendorChoice ? (
-          <Field label="Vendor" name="projectVendorId" error={errors.projectVendorId}>
-            <Select value={values.projectVendorId} onChange={(e) => handleVendorChange(e.target.value)}>
-              <option value="">Tidak terkait vendor</option>
-              {vendorEngagements.map((pv) => (
-                <option key={pv.id} value={pv.id}>{vendorLabel(pv, vendors)}</option>
+        {mode === "edit" || supplierChoice ? (
+          <Field label="Vendor atau venue" name="projectSupplierId" error={errors.projectSupplierId}>
+            <Select aria-label="Vendor atau venue" value={values.projectSupplierId} onChange={(e) => handleSupplierChange(e.target.value)}>
+              <option value="">{suppliers.length === 0 ? "Umum" : GENERAL_LABEL}</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{supplierLabel(s)}</option>
               ))}
             </Select>
           </Field>
         ) : (
-          <Field label="Vendor">
+          <Field label="Vendor atau venue">
             <p className="flex h-9 items-center text-[13px] font-medium text-text-primary">
-              {selectedVendor ? vendorLabel(selectedVendor, vendors) : "Tidak terkait vendor"}
+              {selectedSupplier ? supplierLabel(selectedSupplier) : "Umum"}
             </p>
           </Field>
         )}
 
-        {!values.projectVendorId ? null : milestoneLocked ? (
+        {!values.projectSupplierId ? null : milestoneLocked ? (
           <Field label="Tahapan">
             <p className="flex h-9 items-center text-[13px] font-medium text-text-primary">{lockedMilestoneName}</p>
           </Field>

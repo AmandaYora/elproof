@@ -23,7 +23,7 @@ type fakeCalendarRepo struct {
 func (f *fakeCalendarRepo) ListEventDays(_ context.Context, q application.CalendarQuery) ([]domain.CalendarItem, error) {
 	f.got, f.calls = append(f.got, q), append(f.calls, "event")
 	d, _ := time.Parse(dateLayout, "2026-11-21")
-	return []domain.CalendarItem{{Date: d, Kind: domain.CalendarEvent, ProjectID: 1, ProjectName: "Citra & Bima", Title: "Hari H", Status: "Preparation"}}, nil
+	return []domain.CalendarItem{{Date: d, Kind: domain.CalendarEvent, ProjectID: 1, ProjectName: "Citra & Bima", RefID: 7, Title: "Resepsi di Gedung Melati", Status: "Preparation"}}, nil
 }
 
 func (f *fakeCalendarRepo) ListOpenMilestones(_ context.Context, q application.CalendarQuery) ([]domain.CalendarItem, error) {

@@ -2,6 +2,8 @@
 // pre-integration mock's project-related types. IDs are stringified to match
 // the convention already used by `useVendorStore`/`useStaffStore` (Fase 3).
 
+import type { EngagementStatus, SupplierKind, SupplierPayer } from "@/modules/rincian";
+
 export type ProjectStatus = "Draft" | "Preparation" | "Ready" | "Completed" | "Cancelled";
 
 /** One explicit step in a project's life; the API refuses any that does not fit the current status. */
@@ -23,36 +25,22 @@ export interface ClosingChecklist {
 
 export type MilestoneStatus = "Not Started" | "In Progress" | "Completed" | "Blocked" | "Cancelled";
 
-export type EngagementStatus =
-  | "Planned"
-  | "Negotiation"
-  | "Booked"
-  | "DP Paid"
-  | "In Progress"
-  | "Fully Paid"
-  | "Ready"
-  | "Completed"
-  | "Cancelled";
-
 export type IssueImpact = "Low" | "Medium" | "High" | "Critical";
 
-// Public-safe subset backing GET /projects/{id}/venue (ADR-0016) — shared by
-// the WO Console's own summary card and Client Portal's Venue tab. Never
-// carries rental price/charge/PIC contact (staff-only, fetched directly from
-// the venues module instead — see ProjectVenueTabPage.tsx). facilities/
-// socialMedia are free text now, not arrays/structured lists; there's no
-// more photo gallery, just hasVisibleAttachment (true only when an
-// attachment exists and it's an image — see ADR-0016's Revisi).
-export interface ProjectVenueSummary {
-  id: string;
-  name: string;
-  address: string | null;
-  city: string | null;
-  capacity: number | null;
-  facilities: string | null;
-  socialMedia: string | null;
-  hasVisibleAttachment: boolean;
-}
+export type {
+  EngagementStatus,
+  EventLayout,
+  SupplierPayer,
+  SupplierKind,
+  EventSession,
+  EventVenue,
+  EventInput,
+  RincianEvent as ProjectEvent,
+  Rincian,
+  RincianLine,
+  LineDraft,
+  LineKind,
+} from "@/modules/rincian";
 
 export type IssueStatus = "Open" | "In Review" | "In Resolution" | "Resolved" | "Closed";
 
@@ -74,11 +62,10 @@ export type EvidenceType =
 
 export type EvidenceRelatedKind =
   | "vendorMilestone"
-  | "payment"
-  | "projectVendor"
+  | "supplierPayment"
+  | "projectSupplier"
   | "issue"
   | "clientPayment"
-  | "venuePayment"
   | "general"
   | "projectMilestone";
 
@@ -114,20 +101,17 @@ export interface Project {
   brideName: string;
   groomName: string;
   eventDate: string;
-  venue: string;
-  // Cross-module reference into the vendors module's Venue directory
-  // (ADR-0016) — null means no structured venue attached yet; `venue`
-  // (free text) stays the fallback display in that case.
-  venueId: string | null;
-  // Per-project cost SNAPSHOT captured at attach time (freely editable
-  // afterward, same lifecycle as a vendor engagement's own contractValue)
-  // — never the venue's live master-data price. Both null whenever
-  // venueId is null. See PLAN.md "Financial Calculation Correctness".
-  venueRentalPrice: number | null;
-  venueCharge: number | null;
   prepStartDate: string;
-  packageName: string;
+  /** Names of the packages in the rincian, in order ([] = "Tanpa paket"). */
+  packageNames: string[];
+  /** Nilai kontrak: the rincian's subtotal plus PPN (when the WO is PKP). */
   contractValue: number;
+  contractSubtotal: number;
+  contractTax: number;
+  /** The WO collects PPN on this project's contract. */
+  isPkp: boolean;
+  /** Version of the rincian, sent as `If-Match` when it is saved. */
+  linesVersion: string;
   status: ProjectStatus;
   // "" means "belum ditugaskan" (0 on the wire) — a project created by Sales
   // may have no Wedding Planner assigned yet, until handover (PLAN.md
@@ -148,6 +132,19 @@ export interface Project {
   progress?: ProjectProgress;
   /** Where the Client Portal hero photo streams from (`/api/v1/projects/{id}/cover?v=...`, needs the session); null = none (ADR-0047). */
   coverUrl: string | null;
+  /** Where the events happen ("Masjid Al-Ikhlas · Gedung Melati"); "" before a venue is chosen. */
+  location: string;
+  /** The project's events in one line ("Akad, Resepsi"). */
+  eventsLine: string;
+  /** The accepted quotation this project was made from ("Jadikan proyek"); null for a project made by hand. */
+  quotation: ProjectQuotationRef | null;
+}
+
+/** "Dari KODE-PNW-… Revisi n": the quotation revision a project was made from (its Kesepakatan awal). */
+export interface ProjectQuotationRef {
+  id: string;
+  number: string;
+  revisionN: number;
 }
 
 /** A row of the project list: the project plus two columns the server derives from its payment schedule. */
@@ -188,35 +185,39 @@ export interface ProjectMilestone {
   evidence: EvidenceRef[];
 }
 
-export type VendorPricingTier = "Akad" | "AkadResepsi" | "Resepsi";
-
-export interface ProjectVendor {
+/** One vendor or venue of a project ("Vendor & venue"). */
+export interface ProjectSupplier {
   /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
   updatedAt: string;
   id: string;
-  vendorId: string;
+  kind: SupplierKind;
+  /** The directory vendor or venue it was chosen from. */
+  supplierId: string;
+  name: string;
   categoryId: string;
-  scope: string;
-  contractValue: number;
-  pricingTier: VendorPricingTier;
+  categoryName: string;
+  paidBy: SupplierPayer;
+  /** Whether the client sees the name (a vendor the WO pays may be shown by its service only). */
+  showName: boolean;
+  capacityStanding: number | null;
+  capacitySeated: number | null;
+  /** "Biaya rekanan" and what the WO paid: null without finance.margin.view. */
+  agreedCost: number | null;
+  paidWo: number | null;
+  /** What the client paid this supplier directly. */
+  paidClient: number | null;
   engagementStatus: EngagementStatus;
   bookingDate: string | null;
-  eventDate: string;
-  // "HH:MM", optional (PLAN.md revisi-timeline-vendor-role-sales) — 5 fixed
-  // presets or free custom input on the frontend.
-  eventStartTime: string | null;
-  eventEndTime: string | null;
-  dpAmount: number;
-  paidAmount: number;
   dueDate: string | null;
   picStaffId: string;
-  notes: string;
-  /** Resolved by the server (E6); "" when it could not be. */
-  vendorName: string;
-  categoryName: string;
-  /** Staff name of the engagement's PIC, resolved by the server (E2); "" when unresolved. */
   picName: string;
-  /** How many files back this engagement, its steps and its payments (what the caller may see). */
+  scope: string;
+  notes: string;
+  /** Why "Dibayar oleh" can no longer change; "" when it can. */
+  paidByLocked: string;
+  /** How many events take place at this venue (0 = "Tidak dipakai acara mana pun"; always 0 for a vendor). */
+  usedByEvents: number;
+  /** How many files back this supplier, its steps and its payments (what the caller may see). */
   evidenceCount: number;
 }
 
@@ -224,7 +225,7 @@ export interface VendorMilestone {
   /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
   updatedAt: string;
   id: string;
-  projectVendorId: string;
+  projectSupplierId: string;
   order: number;
   name: string;
   description: string;
@@ -236,11 +237,13 @@ export interface VendorMilestone {
   evidence: EvidenceRef[];
 }
 
-export interface VendorPayment {
+/** A payment to a vendor or venue of the project, by the WO or straight from the client (the supplier's "Dibayar oleh"). */
+export interface SupplierPayment {
   /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
   updatedAt: string;
   id: string;
-  projectVendorId: string;
+  projectSupplierId: string;
+  payer: SupplierPayer;
   type: PaymentType;
   amount: number;
   paymentDate: string;
@@ -250,12 +253,62 @@ export interface VendorPayment {
   evidenceComplete: boolean;
   /** The payment's own proof files (invoice and/or transfer proof), as the API embeds them. */
   evidence: EvidenceRef[];
+  /** The bill of a vendor the client pays that a proof from the portal pays; null otherwise (Paket WO Tahap 4). */
+  billTermId: string | null;
+  /** "client" when the couple sent the proof from the portal, "staff" when the WO recorded it. */
+  source: PaymentSource;
+  /** recorded (staff, counts) · pending (the couple's proof, not checked: not counted) · verified (counts) · rejected (not counted). */
+  status: SupplierPaymentStatus;
+  verifiedAt: string | null;
+  /** Who checked the couple's proof (staff view only; the portal never names the WO's staff). */
+  verifiedBy: string | null;
+  rejectedAt: string | null;
+  rejectedBy: string | null;
+  /** Why the WO refused the couple's proof; the couple reads it. "" when not refused. */
+  rejectionReason: string;
+}
+
+export type SupplierPaymentStatus = "recorded" | "pending" | "verified" | "rejected";
+
+/**
+ * One bill of a vendor or venue the client pays directly ("Tagihan vendor", Paket WO Tahap 4): what it asks for and by
+ * when, with how much of it the counted payments cover (earliest due date first) and what the couple sent that the WO
+ * has not checked yet.
+ */
+export interface SupplierBillTerm {
+  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
+  updatedAt: string;
+  id: string;
+  projectSupplierId: string;
+  label: string;
+  amount: number;
+  dueDate: string;
+  paid: number;
+  remaining: number;
+  /** The couple's proofs for this bill the WO has not checked yet (not counted as paid). */
+  pending: number;
+  status: PaymentTermStatus;
+}
+
+/** One vendor or venue the client pays directly, always by its real name: its bills, the payments to it and the totals. */
+export interface SupplierBill {
+  projectSupplierId: string;
+  name: string;
+  kind: SupplierKind;
+  /** Sum of the bills. */
+  total: number;
+  /** What the counted payments cover (staff-recorded and verified proofs). */
+  paid: number;
+  remaining: number;
+  /** The couple's proofs to this vendor the WO has not checked yet. */
+  pending: number;
+  terms: SupplierBillTerm[];
+  payments: SupplierPayment[];
 }
 
 // Money coming IN from the client against the project's own contractValue —
-// the opposite accounting direction from VendorPayment, and structurally
-// simpler: no projectVendorId (it belongs to the project itself, not any
-// vendor), and only one evidence slot (a transfer proof), so evidenceComplete
+// the opposite accounting direction from SupplierPayment, and structurally
+// simpler: it belongs to the project itself, not to a supplier, and only one evidence slot (a transfer proof), so evidenceComplete
 // here is a plain existence check, not a two-field rule.
 export interface ClientPayment {
   /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
@@ -280,31 +333,12 @@ export interface ClientPayment {
 
 export type PaymentSource = "client" | "staff";
 
-// Money going OUT to the project's venue -- same accounting direction and
-// same two-slot evidence rule (Invoice + Transfer Proof) as VendorPayment,
-// but structurally simpler like ClientPayment: no projectVendorId-equivalent
-// field, since a project has at most one venue.
-export interface VenuePayment {
-  /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
-  updatedAt: string;
-  id: string;
-  type: PaymentType;
-  amount: number;
-  paymentDate: string;
-  method: string;
-  referenceNumber: string;
-  notes: string;
-  evidenceComplete: boolean;
-  /** The payment's own proof files (invoice and/or transfer proof), as the API embeds them. */
-  evidence: EvidenceRef[];
-}
-
 export interface VendorIssue {
   /** Version of this item as the API gave it; sent back as `If-Match` when saving (ADR-0036). */
   updatedAt: string;
   id: string;
-  /** "" = a kendala about the event in general, not tied to a vendor. */
-  projectVendorId: string;
+  /** "" = a kendala about the event in general, not tied to a vendor or venue. */
+  projectSupplierId: string;
   // Null when the kendala is general to the vendor engagement, not tied to
   // one specific deliverable.
   vendorMilestoneId: string | null;
@@ -318,8 +352,8 @@ export interface VendorIssue {
   targetResolutionDate: string | null;
   resolvedDate: string | null;
   resolutionNotes: string;
-  /** Names resolved by the server so the Portal needs no vendor lists (E6). */
-  vendorName: string;
+  /** Resolved by the server; the Portal gets the service instead of a hidden vendor's name. */
+  supplierName: string;
   vendorMilestoneName: string;
   /** The WO's PIC for this kendala (never sent to the Portal). */
   picName: string;
@@ -362,7 +396,10 @@ export type ActivityType =
   | "payment_deleted"
   | "evidence_uploaded"
   | "issue_created"
-  | "issue_updated";
+  | "issue_updated"
+  | "line_added"
+  | "line_updated"
+  | "line_deleted";
 
 export interface ActivityLogEntry {
   id: string;
@@ -404,7 +441,13 @@ export interface PaymentTermInput {
  */
 export interface ProjectOverview {
   finance: {
+    /** Nilai kontrak: subtotal of the rincian plus PPN. */
     contractValue: number;
+    contractSubtotal: number;
+    contractTax: number;
+    /** What the payment schedule adds up to; termsMismatch when that is not the contract value. */
+    termsTotal: number;
+    termsMismatch: boolean;
     /** Applied to the contract: DP + Termin + Pelunasan - Refund. */
     paid: number;
     /** Never negative. */
@@ -412,14 +455,16 @@ export interface ProjectOverview {
     overdueTotal: number;
     nextTerm: { id: string; label: string; amount: number; dueDate: string; status: PaymentTermStatus; remaining: number } | null;
     terms: PaymentTerm[];
-    vendorCost: number;
-    venueCost: number;
-    /** Only present for roles with finance.margin.view. */
+    /** What the WO agreed to pay its vendors and venues; only with finance.margin.view. */
+    supplierCost?: number;
+    /** How many vendors the WO pays have no "Biaya rekanan" yet (the margin is incomplete); only with margin. */
+    missingCost?: number;
+    /** Contract value minus supplierCost; only with finance.margin.view. */
     margin?: number;
   };
   actions: OverviewAction[];
   nextMilestones: Array<{ id: string; name: string; status: MilestoneStatus; targetDate: string }>;
-  unconfirmedVendors: Array<{ id: string; vendorName: string; engagementStatus: string }>;
+  unconfirmedSuppliers: Array<{ id: string; kind: SupplierKind; name: string; engagementStatus: string }>;
   openIssueCount: number;
   team: { picStaffId: string; picName: string; picSalesStaffId: string; picSalesName: string };
   clients: Array<{ id: string; name: string; role: string; hasLogin: boolean }>;

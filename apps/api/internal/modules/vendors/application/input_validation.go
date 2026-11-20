@@ -81,10 +81,38 @@ func validateVendorInput(in *VendorInput) error {
 	return f.err(vendorFieldOrder, "Data vendor belum lengkap atau tidak sesuai")
 }
 
-var venueFieldOrder = []string{"name", "picName", "phonePic", "phoneVenue", "email", "city", "address", "rentalPrice", "charge", "capacity"}
+var venueFieldOrder = []string{"name", "picName", "phonePic", "phoneVenue", "email", "city", "address", "capacityStanding", "capacitySeated", "priceAkad", "priceResepsi", "priceAkadResepsi", "charge"}
+
+// MsgVenueCapacityRequired is the message both capacity fields carry when
+// neither is filled (PLAN paket-wo §3.3: at least one of them, at least 1).
+const MsgVenueCapacityRequired = "Isi kapasitas berdiri atau duduk, minimal satu"
+
+// venueCapacityProblems judges the two capacities of a venue: each filled one
+// is at least 1 and fits INT UNSIGNED, and at least one is filled. The result is
+// keyed by JSON field name; a missing pair names both fields.
+func venueCapacityProblems(standing, seated *int) map[string]string {
+	out := map[string]string{}
+	check := func(key, label string, v *int) {
+		switch {
+		case v == nil:
+		case *v < 1:
+			out[key] = "Kapasitas " + label + " minimal 1 orang. Kosongkan bila tidak ada."
+		case int64(*v) > maxVenueCapacity:
+			out[key] = "Kapasitas " + label + " terlalu besar. Periksa lagi angkanya."
+		}
+	}
+	check("capacityStanding", "berdiri", standing)
+	check("capacitySeated", "duduk", seated)
+	if standing == nil && seated == nil {
+		out["capacityStanding"] = MsgVenueCapacityRequired
+		out["capacitySeated"] = MsgVenueCapacityRequired
+	}
+	return out
+}
 
 // validateVenueInput is validateVendorInput's twin for venues: name required,
-// column widths, and rental price, charge and capacity never negative.
+// column widths, a capacity per layout (at least one), and prices and charge
+// never negative.
 func validateVenueInput(in *VenueInput) error {
 	f := fieldErrors{}
 	in.Name = strings.TrimSpace(in.Name)
@@ -105,14 +133,15 @@ func validateVenueInput(in *VenueInput) error {
 	f.maxLen("phoneVenue", in.PhoneVenue, "No. telepon venue", maxDirectoryPhoneLen)
 	f.maxLen("email", in.Email, "Email", maxDirectoryEmailLen)
 	f.maxLen("address", in.Address, "Alamat", maxDirectoryAddressLen)
-	f.nonNegative("rentalPrice", in.RentalPrice, "Harga sewa")
-	f.nonNegative("charge", in.Charge, "Charge")
-	if in.Capacity != nil {
-		if *in.Capacity < 0 {
-			f.add("capacity", "Kapasitas tidak boleh kurang dari 0. Isi 0 atau lebih, atau kosongkan.")
-		} else if int64(*in.Capacity) > maxVenueCapacity {
-			f.add("capacity", "Kapasitas terlalu besar. Periksa lagi angkanya.")
+	capacity := venueCapacityProblems(in.CapacityStanding, in.CapacitySeated)
+	for _, key := range []string{"capacityStanding", "capacitySeated"} {
+		if msg, ok := capacity[key]; ok {
+			f.add(key, msg)
 		}
 	}
+	f.nonNegative("priceAkad", in.PriceAkad, "Harga Akad")
+	f.nonNegative("priceResepsi", in.PriceResepsi, "Harga Resepsi")
+	f.nonNegative("priceAkadResepsi", in.PriceAkadResepsi, "Harga Akad + Resepsi")
+	f.nonNegative("charge", in.Charge, "Charge tambahan")
 	return f.err(venueFieldOrder, "Data venue belum lengkap atau tidak sesuai")
 }

@@ -19,9 +19,17 @@ interface UploadSlot {
  * request commits, so a failure here leaves nothing behind.
  */
 export async function uploadFile(projectId: string, file: File): Promise<string> {
+  return uploadFileVia(API.projects.uploads(projectId), file);
+}
+
+/**
+ * The same, through another endpoint that grants an upload slot (e.g. the down payment of "Jadikan proyek", before the
+ * project exists: `API.projects.fromQuotationUploads(quotationId)`).
+ */
+export async function uploadFileVia(grantUrl: string, file: File): Promise<string> {
   const { blob, fileName, mimeType } = await compressFileToBlob(file);
   const slot = (
-    await httpClient.post(API.projects.uploads(projectId), { fileName, mimeType, size: blob.size })
+    await httpClient.post(grantUrl, { fileName, mimeType, size: blob.size })
   ).data.data as UploadSlot;
 
   if (slot.direct) {

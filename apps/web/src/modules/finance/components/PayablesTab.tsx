@@ -19,9 +19,9 @@ import type { Payable, PayableStatus } from "@/modules/finance/types";
 
 const FILTERS = { status: "open", kind: "", picStaffId: "" };
 
-const STATUS_TONE: Record<PayableStatus, BadgeTone> = { paid: "success", unpaid: "neutral", overdue: "danger" };
+const STATUS_TONE: Record<PayableStatus, BadgeTone> = { paid: "success", unpaid: "neutral", overdue: "danger", incomplete: "warning" };
 
-/** Money going out: every vendor engagement with a price and every venue cost, with what is still owed. */
+/** Money going out: every vendor and venue the WO pays, its "Biaya rekanan" and what is still owed. */
 export function PayablesTab() {
   const navigate = useNavigate();
   const list = useListState({ filters: FILTERS });
@@ -63,7 +63,7 @@ export function PayablesTab() {
       className: "w-[20%]",
       cell: (p) => <span title={coupleOf(p)}>{p.projectName}</span>,
     },
-    { id: "contractValue", header: "Nilai kontrak", sortKey: "contractValue", align: "right", cell: (p) => formatCurrency(p.contractValue) },
+    { id: "agreedCost", header: "Biaya rekanan", sortKey: "agreedCost", align: "right", cell: (p) => (p.incomplete ? <span className="text-warning-text">Belum diisi</span> : formatCurrency(p.agreedCost)) },
     { id: "paid", header: "Dibayar", align: "right", cell: (p) => (p.paid > 0 ? formatCurrency(p.paid) : <span className="text-muted-foreground">-</span>) },
     {
       id: "remaining",
@@ -94,11 +94,12 @@ export function PayablesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ListToolbar search={{ value: list.q, onChange: list.setQ, placeholder: "Cari proyek, pasangan, atau venue..." }}>
+      <ListToolbar search={{ value: list.q, onChange: list.setQ, placeholder: "Cari proyek, pasangan, vendor, atau venue..." }}>
         <Select className="w-40" aria-label="Status pembayaran" value={list.filters.status} onChange={(e) => list.setFilter("status", e.target.value)}>
           <option value="open">Belum lunas</option>
           <option value="overdue">Terlambat</option>
           <option value="paid">Lunas</option>
+          <option value="incomplete">Belum lengkap</option>
           <option value="all">Semua status</option>
         </Select>
         <Select className="w-36" aria-label="Jenis" value={list.filters.kind || "Semua"} onChange={(e) => list.setFilter("kind", e.target.value === "Semua" ? "" : e.target.value)}>
@@ -121,7 +122,7 @@ export function PayablesTab() {
         columns={columns}
         rows={rows}
         rowId={(p) => `${p.kind}-${p.id}`}
-        rowHref={(p) => projectFinanceHref(p.projectId, p.kind)}
+        rowHref={(p) => projectFinanceHref(p.projectId, "vendor-venue")}
         status={status}
         onRetry={retry}
         meta={meta}
@@ -132,12 +133,12 @@ export function PayablesTab() {
         onResetFilters={() => list.applyQueryString("tab=keluar")}
         empty={{
           title: "Tidak ada yang perlu dibayar",
-          description: "Vendor dengan nilai kontrak dan biaya venue dari semua proyek muncul di sini sampai lunas.",
+          description: "Vendor dan venue yang dibayar WO dengan biaya rekanan dari semua proyek muncul di sini sampai lunas.",
         }}
         actions={(p) => (
           <RowActions
             rowLabel={`${p.payeeName || PAYABLE_KIND_LABELS[p.kind]} ${p.projectName}`}
-            primary={{ label: "Catat pembayaran", icon: <HandCoins aria-hidden />, onClick: () => navigate(projectFinanceHref(p.projectId, p.kind)), hidden: p.remaining <= 0 }}
+            primary={{ label: "Catat pembayaran", icon: <HandCoins aria-hidden />, onClick: () => navigate(projectFinanceHref(p.projectId, "vendor-venue")), hidden: p.remaining <= 0 }}
             items={[{ label: "Buka proyek", icon: <FolderOpen aria-hidden />, onSelect: () => navigate(ROUTE_PATHS.projectDetail(p.projectId)) }]}
           />
         )}

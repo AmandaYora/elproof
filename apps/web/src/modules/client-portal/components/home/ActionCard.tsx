@@ -8,9 +8,9 @@ import { CompleteTaskButton, taskDueText } from "@/modules/client-portal/compone
 import { askMessage, type PortalContact } from "@/modules/client-portal/lib/usePortalContact";
 import type { ClientTask, PortalAction } from "@/modules/client-portal/types";
 
-/** The server hands over a due date for payments: past it is red, within a week amber. */
+/** The server hands over a due date for payments (the WO's terms and the vendors' bills): past it is red, within a week amber. */
 function urgency(a: PortalAction): "late" | "soon" | "info" {
-  if (a.kind !== "pay_term" || !a.dueDate) return "info";
+  if ((a.kind !== "pay_term" && a.kind !== "pay_supplier") || !a.dueDate) return "info";
   return daysUntil(a.dueDate) < 0 ? "late" : "soon";
 }
 
@@ -23,6 +23,13 @@ const STYLE = {
 /** What the WhatsApp message asks about: "pembayaran Termin 2 Rp40.000.000", "kendala yang sedang ditangani". */
 function subjectOf(a: PortalAction): string {
   if (a.kind === "open_issues") return "kendala yang sedang ditangani";
+  if (a.kind === "pay_supplier") {
+    // "Bayar Foto Abadi Rp5.000.000 sebelum 20 Nov" / "Tagihan Foto Abadi sudah lewat jatuh tempo" (Paket WO Tahap 4).
+    const name = /^(?:Bayar (.+?) Rp|Tagihan (.+?) sudah lewat jatuh tempo)/.exec(a.title);
+    const vendor = name?.[1] ?? name?.[2];
+    const what = vendor ? `tagihan ${vendor}` : a.title.charAt(0).toLowerCase() + a.title.slice(1);
+    return a.amount ? `${what} ${formatCurrency(a.amount)}` : what;
+  }
   const term = /^Pembayaran (.+?) (?:sudah lewat jatuh tempo|jatuh tempo)/.exec(a.title)?.[1];
   const what = term ? `pembayaran ${term}` : a.title.charAt(0).toLowerCase() + a.title.slice(1);
   return a.amount ? `${what} ${formatCurrency(a.amount)}` : what;

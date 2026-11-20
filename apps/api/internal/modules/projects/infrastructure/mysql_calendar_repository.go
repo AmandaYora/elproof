@@ -39,23 +39,32 @@ func calendarProjectFilter(q application.CalendarQuery) (string, []any) {
 	return b.String(), args
 }
 
+// ListEventDays is every event of the projects in scope that falls in the
+// range (Akad, Resepsi, ...), not only the main one: the title is the kind and,
+// when it has one, its venue ("Resepsi di Gedung Melati").
 func (r *MySQLCalendarRepository) ListEventDays(ctx context.Context, q application.CalendarQuery) ([]domain.CalendarItem, error) {
 	where, args := calendarProjectFilter(q)
-	args = append(args, q.From.Format(calendarDay), q.To.Format(calendarDay))
+	args = append(args, q.TenantID, q.From.Format(calendarDay), q.To.Format(calendarDay))
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT p.id, p.name, p.event_date, p.status
-		FROM projects p
-		WHERE `+where+` AND p.event_date BETWEEN ? AND ?
-		ORDER BY p.event_date, p.id`, args...)
+		SELECT e.id, p.id, p.name, e.event_date, p.status, e.kind_name, COALESCE(ps.supplier_name, '')
+		FROM project_events e
+		JOIN projects p ON p.id = e.project_id
+		LEFT JOIN project_suppliers ps ON ps.id = e.venue_supplier_id AND ps.deleted_at IS NULL
+		WHERE `+where+` AND e.tenant_id = ? AND e.event_date BETWEEN ? AND ?
+		ORDER BY e.event_date, e.start_time IS NULL, e.start_time, p.id, e.sort_order, e.id`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var list []domain.CalendarItem
 	for rows.Next() {
-		item := domain.CalendarItem{Kind: domain.CalendarEvent, Title: "Hari H"}
-		if err := rows.Scan(&item.ProjectID, &item.ProjectName, &item.Date, &item.Status); err != nil {
+		item := domain.CalendarItem{Kind: domain.CalendarEvent}
+		var venue string
+		if err := rows.Scan(&item.RefID, &item.ProjectID, &item.ProjectName, &item.Date, &item.Status, &item.Title, &venue); err != nil {
 			return nil, err
+		}
+		if venue != "" {
+			item.Title += " di " + venue
 		}
 		list = append(list, item)
 	}

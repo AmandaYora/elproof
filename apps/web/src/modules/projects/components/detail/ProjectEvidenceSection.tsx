@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Eye, EyeOff } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/shared/components/ui/Card";
@@ -10,11 +10,8 @@ import { CardList, CardListField } from "@/shared/components/ui/CardList";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
-import { EvidenceViewerModal } from "@/shared/components/ui/EvidenceViewerModal";
-import { EvidenceUploadModal } from "@/shared/components/ui/EvidenceUploadModal";
 import { IconActionButton } from "@/shared/components/ui/IconActionButton";
 import { useProjectStore } from "@/modules/projects/stores/useProjectStore";
-import { useVendorStore } from "@/modules/vendors/stores/useVendorStore";
 import { useStaffStore } from "@/modules/users/stores/useStaffStore";
 import { EVIDENCE_TYPE_OPTIONS, type EvidenceUploadFormValues } from "@/modules/projects/schemas/evidence.schema";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
@@ -23,6 +20,13 @@ import type { Evidence, EvidenceRelatedKind, EvidenceType } from "@/modules/proj
 import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 import { evidenceTypeLabel } from "@/shared/lib/labels";
 
+// Opened by a click only: the upload form and the viewer load then.
+const EvidenceUploadModal = lazy(() => import("@/shared/components/ui/EvidenceUploadModal").then((m) => ({ default: m.EvidenceUploadModal })));
+const EvidenceViewerModal = lazy(() => import("@/shared/components/ui/EvidenceViewerModal").then((m) => ({ default: m.EvidenceViewerModal })));
+
+/** The kinds of file the client may be shown (the API refuses the flag on the others). */
+const SHAREABLE_KINDS = new Set<EvidenceRelatedKind>(["general", "projectMilestone", "vendorMilestone"]);
+
 export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   // Proofs may be added by whoever edits the project or records finance;
   // sharing a document with the client is a project decision (ADR-0026).
@@ -30,23 +34,19 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   const canRecordFinance = useCan("finance.record");
   const evidence = useProjectStore((s) => s.evidence);
   const milestones = useProjectStore((s) => s.milestones);
-  const vendorEngagements = useProjectStore((s) => s.vendorEngagements);
+  const suppliers = useProjectStore((s) => s.suppliers);
   const vendorMilestones = useProjectStore((s) => s.vendorMilestones);
-  const payments = useProjectStore((s) => s.payments);
+  const supplierPayments = useProjectStore((s) => s.supplierPayments);
   const clientPayments = useProjectStore((s) => s.clientPayments);
-  const venuePayments = useProjectStore((s) => s.venuePayments);
   const issues = useProjectStore((s) => s.issues);
   const fetchEvidence = useProjectStore((s) => s.fetchEvidence);
   const fetchMilestones = useProjectStore((s) => s.fetchMilestones);
-  const fetchVendorSection = useProjectStore((s) => s.fetchVendorSection);
-  const fetchPayments = useProjectStore((s) => s.fetchPayments);
+  const fetchSuppliers = useProjectStore((s) => s.fetchSuppliers);
+  const fetchSupplierPayments = useProjectStore((s) => s.fetchSupplierPayments);
   const fetchClientPayments = useProjectStore((s) => s.fetchClientPayments);
-  const fetchVenuePayments = useProjectStore((s) => s.fetchVenuePayments);
   const fetchIssues = useProjectStore((s) => s.fetchIssues);
   const uploadEvidence = useProjectStore((s) => s.uploadEvidence);
   const setEvidenceClientVisible = useProjectStore((s) => s.setEvidenceClientVisible);
-  const vendors = useVendorStore((s) => s.vendors);
-  const fetchVendors = useVendorStore((s) => s.fetchVendors);
   const staff = useStaffStore((s) => s.staffSummaries);
   const fetchStaff = useStaffStore((s) => s.fetchStaffSummaries);
 
@@ -58,21 +58,18 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   useEffect(() => {
     void fetchEvidence(projectId);
     void fetchMilestones(projectId);
-    void fetchVendorSection(projectId);
-    void fetchPayments(projectId);
+    void fetchSuppliers(projectId);
+    void fetchSupplierPayments(projectId);
     void fetchClientPayments(projectId);
-    void fetchVenuePayments(projectId);
     void fetchIssues(projectId);
-    void fetchVendors();
     void fetchStaff();
-  }, [projectId, fetchEvidence, fetchMilestones, fetchVendorSection, fetchPayments, fetchClientPayments, fetchVenuePayments, fetchIssues, fetchVendors, fetchStaff]);
+  }, [projectId, fetchEvidence, fetchMilestones, fetchSuppliers, fetchSupplierPayments, fetchClientPayments, fetchIssues, fetchStaff]);
 
   const filteredEvidence = typeFilter === "Semua" ? evidence : evidence.filter((e) => e.type === typeFilter);
   const { page, setPage, totalPages, totalItems, pageSize, pageItems } = usePagination(filteredEvidence);
 
-  function vendorNameFor(pvId: string): string {
-    const pv = vendorEngagements.find((v) => v.id === pvId);
-    return pv ? vendors.find((v) => v.id === pv.vendorId)?.name ?? "Vendor tidak diketahui" : "Vendor tidak diketahui";
+  function supplierNameFor(supplierId: string): string {
+    return suppliers.find((s) => s.id === supplierId)?.name || "vendor atau venue terhapus";
   }
 
   // Who uploaded a file: the staff member (from the team list, or the name the API sent), or for a proof the couple
@@ -85,26 +82,25 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
   function contextLabel(item: Evidence): string {
     if (item.relatedKind === "vendorMilestone") {
       const milestone = vendorMilestones.find((m) => m.id === item.relatedId);
-      return milestone ? `Tahapan: ${milestone.name} — ${vendorNameFor(milestone.projectVendorId)}` : "Tahapan";
+      return milestone ? `Tahapan ${supplierNameFor(milestone.projectSupplierId)}: ${milestone.name}` : "Tahapan vendor & venue";
     }
-    if (item.relatedKind === "payment") {
-      const payment = payments.find((p) => p.id === item.relatedId);
-      return payment ? `Pembayaran ${payment.type} — ${vendorNameFor(payment.projectVendorId)}` : "Pembayaran";
+    if (item.relatedKind === "supplierPayment") {
+      const payment = supplierPayments.find((p) => p.id === item.relatedId);
+      return payment
+        ? `Pembayaran ${payment.type} ke ${supplierNameFor(payment.projectSupplierId)} (dibayar ${payment.payer === "WO" ? "WO" : "klien langsung"})`
+        : "Pembayaran vendor & venue";
     }
-    if (item.relatedKind === "projectVendor") {
-      return `Kerja sama: ${vendorNameFor(item.relatedId)}`;
+    if (item.relatedKind === "projectSupplier") {
+      return `Vendor & venue: ${supplierNameFor(item.relatedId)}`;
     }
     if (item.relatedKind === "issue") {
       const issue = issues.find((i) => i.id === item.relatedId);
-      return issue ? `Kendala: ${issue.title} — ${vendorNameFor(issue.projectVendorId)}` : "Kendala";
+      if (!issue) return "Kendala";
+      return issue.projectSupplierId ? `Kendala ${issue.supplierName || supplierNameFor(issue.projectSupplierId)}: ${issue.title}` : `Kendala: ${issue.title}`;
     }
     if (item.relatedKind === "clientPayment") {
       const payment = clientPayments.find((p) => p.id === item.relatedId);
       return payment ? `Pembayaran klien ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran klien";
-    }
-    if (item.relatedKind === "venuePayment") {
-      const payment = venuePayments.find((p) => p.id === item.relatedId);
-      return payment ? `Pembayaran venue ${payment.type} (${formatDate(payment.paymentDate)})` : "Pembayaran venue";
     }
     if (item.relatedKind === "general") {
       return "Dokumen umum";
@@ -121,24 +117,24 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       return [];
     }
     if (kind === "vendorMilestone") {
-      return vendorMilestones.map((m) => ({ id: m.id, label: `${vendorNameFor(m.projectVendorId)} — ${m.name}` }));
+      return vendorMilestones.map((m) => ({ id: m.id, label: `${supplierNameFor(m.projectSupplierId)}: ${m.name}` }));
     }
-    if (kind === "payment") {
-      return payments.map((p) => ({ id: p.id, label: `${vendorNameFor(p.projectVendorId)} — ${p.type} (${formatDate(p.paymentDate)})` }));
+    if (kind === "supplierPayment") {
+      return supplierPayments.map((p) => ({
+        id: p.id,
+        label: `${supplierNameFor(p.projectSupplierId)}: ${p.type} ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})`,
+      }));
     }
-    if (kind === "projectVendor") {
-      return vendorEngagements.map((pv) => ({ id: pv.id, label: vendorNameFor(pv.id) }));
+    if (kind === "projectSupplier") {
+      return suppliers.map((s) => ({ id: s.id, label: s.name }));
     }
     if (kind === "clientPayment") {
       return clientPayments.map((p) => ({ id: p.id, label: `${p.type} — ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})` }));
     }
-    if (kind === "venuePayment") {
-      return venuePayments.map((p) => ({ id: p.id, label: `${p.type} — ${formatCurrency(p.amount)} (${formatDate(p.paymentDate)})` }));
-    }
     if (kind === "projectMilestone") {
       return milestones.map((m) => ({ id: m.id, label: m.name }));
     }
-    return issues.map((i) => ({ id: i.id, label: `${i.title} — ${vendorNameFor(i.projectVendorId)}` }));
+    return issues.map((i) => ({ id: i.id, label: i.projectSupplierId ? `${i.title} (${i.supplierName || supplierNameFor(i.projectSupplierId)})` : i.title }));
   }
 
   async function handleAddEvidence(file: File, values: EvidenceUploadFormValues) {
@@ -166,7 +162,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       <Card>
         <CardHeader
           title="Dokumen dan bukti"
-          subtitle="Seluruh dokumen dan bukti pendukung jadwal, pembayaran, kerja sama vendor, dan kendala pada proyek ini."
+          subtitle="Seluruh dokumen dan bukti pendukung jadwal, pembayaran, vendor & venue, dan kendala pada proyek ini."
           action={
             (canEdit || canRecordFinance) && (
               <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
@@ -192,7 +188,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
           {evidence.length === 0 ? (
             <EmptyState
               title="Belum ada dokumen"
-              description="Dokumen dan bukti muncul di sini setelah diunggah untuk jadwal, pembayaran, kerja sama vendor, atau kendala pada proyek ini."
+              description="Dokumen dan bukti muncul di sini setelah diunggah untuk jadwal, pembayaran, vendor & venue, atau kendala pada proyek ini."
             />
           ) : filteredEvidence.length === 0 ? (
             <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-[13px] text-text-secondary">
@@ -214,7 +210,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <CardListField label="Tanggal dokumen" value={formatDate(item.documentDate)} />
                     <CardListField label="Diunggah oleh" value={uploaderLabel(item)} />
                     <CardListField label="Konteks" value={contextLabel(item)} />
-                    {canEdit && item.relatedKind === "general" && (
+                    {canEdit && SHAREABLE_KINDS.has(item.relatedKind) && (
                       <CardListField
                         label="Terlihat klien"
                         value={item.isClientVisible ? "Ya" : "Tidak"}
@@ -223,7 +219,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex items-center gap-2 pt-1">
                     <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidence(item)} />
-                    {canEdit && item.relatedKind === "general" && (
+                    {canEdit && SHAREABLE_KINDS.has(item.relatedKind) && (
                       <IconActionButton
                         icon={item.isClientVisible ? EyeOff : Eye}
                         label={item.isClientVisible ? "Sembunyikan dari klien" : "Tampilkan ke klien"}
@@ -257,7 +253,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <TD className="text-text-secondary">
                       <div className="flex items-center gap-2">
                         <span>{contextLabel(item)}</span>
-                        {canEdit && item.relatedKind === "general" && (
+                        {canEdit && SHAREABLE_KINDS.has(item.relatedKind) && (
                           <Badge tone={item.isClientVisible ? "success" : "neutral"}>
                             {item.isClientVisible ? "Terlihat klien" : "Tersembunyi"}
                           </Badge>
@@ -267,7 +263,7 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
                     <TD>
                       <div className="flex items-center gap-2">
                         <IconActionButton icon={Eye} readOnly label="Lihat bukti" tone="info" onClick={() => setViewingEvidence(item)} />
-                        {canEdit && item.relatedKind === "general" && (
+                        {canEdit && SHAREABLE_KINDS.has(item.relatedKind) && (
                           <IconActionButton
                             icon={item.isClientVisible ? EyeOff : Eye}
                             label={item.isClientVisible ? "Sembunyikan dari klien" : "Tampilkan ke klien"}
@@ -296,24 +292,28 @@ export function ProjectEvidenceSection({ projectId }: { projectId: string }) {
       </Card>
 
       {modalOpen && (
-        <EvidenceUploadModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          onSubmit={handleAddEvidence}
-          error={modalError}
-          relatedOptionsFor={relatedOptionsFor}
-          canShareWithClient={canEdit}
-        />
+        <Suspense fallback={null}>
+          <EvidenceUploadModal
+            open
+            onClose={() => setModalOpen(false)}
+            onSubmit={handleAddEvidence}
+            error={modalError}
+            relatedOptionsFor={relatedOptionsFor}
+            canShareWithClient={canEdit}
+          />
+        </Suspense>
       )}
 
       {viewingEvidence && (
-        <EvidenceViewerModal
-          open={Boolean(viewingEvidence)}
-          onClose={() => setViewingEvidence(null)}
-          projectId={projectId}
-          evidence={viewingEvidence}
-          contextLabel={contextLabel(viewingEvidence)}
-        />
+        <Suspense fallback={null}>
+          <EvidenceViewerModal
+            open
+            onClose={() => setViewingEvidence(null)}
+            projectId={projectId}
+            evidence={viewingEvidence}
+            contextLabel={contextLabel(viewingEvidence)}
+          />
+        </Suspense>
       )}
     </div>
   );

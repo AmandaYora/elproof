@@ -3,8 +3,6 @@ package presentation
 import (
 	"net/http"
 	"strconv"
-
-	"elproof/internal/modules/projects/domain"
 )
 
 // Client Portal data boundary (docs/plan/registrasi-wo-self-service/PLAN.md
@@ -20,14 +18,23 @@ import (
 // principal may GET. Anything not listed here — notably "payments" (vendor
 // payments), "venue-payments" and "activity" — is internal to the WO.
 var clientReadableSubresources = map[string]bool{
-	"milestones":      true,
-	"vendors":         true,
+	"milestones": true,
+	"events":     true,
+	"suppliers":  true,
+	// The Rincian ("Layanan › Paket & rincian", PortalPolicy.Line).
+	"lines":           true,
 	"client-payments": true,
 	"payment-terms":   true,
 	"issues":          true,
 	"evidence":        true,
 	"documents":       true,
-	"venue":           true,
+	// Payments the client made straight to a supplier they pay (Tahap 4 adds
+	// the submission); the WO's own supplier payments are filtered out by
+	// PortalPolicy.SupplierPayment.
+	"supplier-payments": true,
+	// The bills of the vendors the client pays directly, what is paid and left
+	// and the proofs sent (Paket WO Tahap 4, PortalPolicy.BillTerm).
+	"supplier-bills": true,
 	// The hero photo of the portal (ADR-0047).
 	"cover": true,
 }
@@ -43,7 +50,7 @@ func clientCanRead(rest []string) bool {
 	case 3:
 		// /projects/{id}/evidence/{evidenceId}/file (streamed) and /link (a
 		// direct two-minute link) — per-file visibility is checked again in
-		// downloadEvidence and linkEvidence via clientCanSeeEvidence.
+		// downloadEvidence and linkEvidence via canSeeEvidence.
 		return rest[0] == "evidence" && (rest[2] == "file" || rest[2] == "link")
 	default:
 		return false
@@ -59,7 +66,8 @@ const (
 // clientWritePermission is the complete list of non-GET requests a client
 // principal may make under /projects/{id}/ and the portal permission each
 // needs (ADR-0047): the signed upload of a transfer proof (both halves), the
-// proof submission itself, and marking a task done. ok is false for anything
+// proof submission itself (to the WO, or to a vendor the client pays), and
+// marking a task done. ok is false for anything
 // else. Keep in step with cmd/server/client_scope.go.
 func clientWritePermission(method string, rest []string) (perm string, ok bool) {
 	switch {
@@ -68,6 +76,9 @@ func clientWritePermission(method string, rest []string) (perm string, ok bool) 
 	case method == http.MethodPut && len(rest) == 2 && rest[0] == "uploads" && rest[1] != "":
 		return permPortalFinanceSubmit, true
 	case method == http.MethodPost && len(rest) == 2 && rest[0] == "client-payments" && rest[1] == "submissions":
+		return permPortalFinanceSubmit, true
+	// The proof of a payment to a vendor the client pays directly (Paket WO Tahap 4).
+	case method == http.MethodPost && len(rest) == 2 && rest[0] == "supplier-bills" && rest[1] == "submissions":
 		return permPortalFinanceSubmit, true
 	case method == http.MethodPost && len(rest) == 3 && rest[0] == "milestones" && isPositiveID(rest[1]) && rest[2] == "complete":
 		return permPortalTasksComplete, true
@@ -80,35 +91,35 @@ func isPositiveID(s string) bool {
 	return err == nil && n > 0
 }
 
-// clientCanSeeEvidence is the per-document visibility rule for a client
-// principal; the rule itself lives in domain.ClientCanSeeEvidence so the
-// Client Portal home (application layer) applies the very same one.
-func clientCanSeeEvidence(e domain.Evidence, can func(string) bool) bool {
-	return domain.ClientCanSeeEvidence(e, can)
-}
-
 // redactProjectForClient removes fields that are internal to the WO: the
-// venue's commercial terms, the booking date and the Sales PIC.
+// preparation start and the Sales PIC.
 func redactProjectForClient(p *projectResponse) {
-	p.VenueRentalPrice = nil
-	p.VenueCharge = nil
 	p.PrepStartDate = ""
 	p.PICSalesStaffID = 0
+	p.Quotation = nil
 }
 
-// redactVendorForClient keeps what the portal's Vendor tab renders (which
-// vendor, category, scope, status, schedule and deliverables) and drops the
-// WO's commercial relationship with the vendor and staff-only notes.
-func redactVendorForClient(v *projectVendorResponse) {
-	v.ContractValue = 0
-	v.DPAmount = 0
-	v.PaidAmount = 0
+// redactSupplierForClient keeps what the portal's Layanan tab renders (the
+// service, who provides it when the client may know, its status and steps)
+// and drops the WO's commercial relationship and staff-only notes. name is
+// what PortalPolicy.SupplierName allows.
+func redactSupplierForClient(v *supplierResponse, name string) {
+	v.Name = name
+	v.SupplierID = 0
+	v.AgreedCost = nil
+	v.PaidWO = nil
 	v.DueDate = nil
 	v.BookingDate = nil
-	v.PricingTier = ""
 	v.Notes = ""
+	v.PICStaffID = 0
+	v.PICName = ""
+	v.ShowName = false
+	v.CapacityStanding, v.CapacitySeated = nil, nil
+	v.PaidByLocked = ""
+	v.UsedByEvents = 0
 	for i := range v.Milestones {
 		v.Milestones[i].Notes = ""
+		v.Milestones[i].PICStaffID = 0
 	}
 }
 

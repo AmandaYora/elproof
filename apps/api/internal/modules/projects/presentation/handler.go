@@ -27,35 +27,38 @@ type ClientAccessResolver interface {
 }
 
 type Handler struct {
-	projects       *application.ProjectService
-	vendors        *application.VendorEngagementService
-	payments       *application.PaymentService
-	clientPayments *application.ClientPaymentService
-	venuePayments  *application.VenuePaymentService
-	issues         *application.IssueService
-	evidence       *application.EvidenceService
-	activity       *application.ActivityService
-	dashboard      *application.DashboardService
-	closing        *application.ClosingChecklistService
-	terms          *application.PaymentTermService
-	myProjects     *application.MyProjectsService
-	clientAccess   ClientAccessResolver
-	refs           *application.References
-	clientHome     *application.ClientHomeService
-	overview       *application.OverviewService
-	uploads        *application.UploadService
-	idem           *application.IdempotencyService
-	calendar       *application.CalendarService
-	finance        FinanceReader
-	covers         *application.CoverService
+	projects         *application.ProjectService
+	suppliers        *application.SupplierService
+	supplierPayments *application.SupplierPaymentService
+	events           *application.EventService
+	clientPayments   *application.ClientPaymentService
+	issues           *application.IssueService
+	evidence         *application.EvidenceService
+	activity         *application.ActivityService
+	dashboard        *application.DashboardService
+	closing          *application.ClosingChecklistService
+	terms            *application.PaymentTermService
+	myProjects       *application.MyProjectsService
+	clientAccess     ClientAccessResolver
+	refs             *application.References
+	clientHome       *application.ClientHomeService
+	overview         *application.OverviewService
+	uploads          *application.UploadService
+	idem             *application.IdempotencyService
+	calendar         *application.CalendarService
+	finance          FinanceReader
+	covers           *application.CoverService
+	lines            *application.LineService
+	supplierBills    *application.SupplierBillService
+	conversion       *application.ConversionService
 }
 
 func NewHandler(
 	projects *application.ProjectService,
-	vendors *application.VendorEngagementService,
-	payments *application.PaymentService,
+	suppliers *application.SupplierService,
+	supplierPayments *application.SupplierPaymentService,
+	events *application.EventService,
 	clientPayments *application.ClientPaymentService,
-	venuePayments *application.VenuePaymentService,
 	issues *application.IssueService,
 	evidence *application.EvidenceService,
 	activity *application.ActivityService,
@@ -65,7 +68,7 @@ func NewHandler(
 	myProjects *application.MyProjectsService,
 ) *Handler {
 	return &Handler{
-		projects: projects, vendors: vendors, payments: payments, clientPayments: clientPayments, venuePayments: venuePayments,
+		projects: projects, suppliers: suppliers, supplierPayments: supplierPayments, events: events, clientPayments: clientPayments,
 		issues: issues, evidence: evidence, activity: activity, dashboard: dashboard, closing: closing, terms: terms, myProjects: myProjects,
 	}
 }
@@ -73,8 +76,16 @@ func NewHandler(
 // SetClientHome gives the handler the Client Portal home assembler (E5).
 func (h *Handler) SetClientHome(s *application.ClientHomeService) { h.clientHome = s }
 
+// SetSupplierBills gives the handler the bills of client-paid suppliers
+// (Paket WO Tahap 4).
+func (h *Handler) SetSupplierBills(s *application.SupplierBillService) { h.supplierBills = s }
+
 // SetOverview gives the handler the project overview assembler (E1).
 func (h *Handler) SetOverview(s *application.OverviewService) { h.overview = s }
+
+// SetConversion gives the handler "Jadikan proyek" and "Kesepakatan awal"
+// (PLAN §5.4).
+func (h *Handler) SetConversion(s *application.ConversionService) { h.conversion = s }
 
 // SetUploads gives the handler the signed-upload service (E3).
 func (h *Handler) SetUploads(s *application.UploadService) { h.uploads = s }
@@ -131,6 +142,12 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// "Jadikan proyek" (PLAN §5.4): the project does not exist yet.
+	if segments[0] == "from-quotation" {
+		h.routeConversion(w, r, segments[1:])
+		return
+	}
+
 	projectID, err := strconv.ParseInt(segments[0], 10, 64)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "ID proyek tidak valid", nil)
@@ -164,6 +181,8 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.recalculatePaymentTerms(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "closing-checklist" && r.Method == http.MethodGet:
 		h.closingChecklist(w, r, claims, projectID)
+	case len(rest) == 1 && rest[0] == "agreement" && r.Method == http.MethodGet:
+		h.getAgreement(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "duplicate" && r.Method == http.MethodPost:
 		h.duplicateProject(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "milestones" && r.Method == http.MethodGet:
@@ -174,32 +193,16 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.reorderMilestones(w, r, claims, projectID)
 	case len(rest) == 2 && rest[0] == "milestones" && r.Method == http.MethodPatch:
 		h.updateMilestone(w, r, claims, projectID, rest[1])
-	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodGet:
-		h.listVendorEngagements(w, r, claims, projectID)
-	case len(rest) == 1 && rest[0] == "vendors" && r.Method == http.MethodPost:
-		h.createVendorEngagement(w, r, claims, projectID)
-	case len(rest) == 2 && rest[0] == "vendors" && r.Method == http.MethodPatch:
-		h.updateVendorEngagement(w, r, claims, projectID, rest[1])
-	case len(rest) == 2 && rest[0] == "vendors" && r.Method == http.MethodDelete:
-		h.deleteVendorEngagement(w, r, claims, projectID, rest[1])
-	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "restore" && r.Method == http.MethodPost:
-		h.restoreVendorEngagement(w, r, claims, projectID, rest[1])
-	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "cancel" && r.Method == http.MethodPost:
-		h.cancelVendorEngagement(w, r, claims, projectID, rest[1])
-	case len(rest) == 3 && rest[0] == "vendors" && rest[2] == "milestones" && r.Method == http.MethodPost:
-		h.createVendorMilestone(w, r, claims, projectID, rest[1])
-	case len(rest) == 4 && rest[0] == "vendors" && rest[2] == "milestones" && r.Method == http.MethodPatch:
-		h.updateVendorMilestone(w, r, claims, projectID, rest[1], rest[3])
-	case len(rest) == 1 && rest[0] == "payments" && r.Method == http.MethodGet:
-		h.listPayments(w, r, projectID)
-	case len(rest) == 1 && rest[0] == "payments" && r.Method == http.MethodPost:
-		h.createPayment(w, r, claims, projectID)
-	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodPatch:
-		h.updatePayment(w, r, claims, projectID, rest[1])
-	case len(rest) == 2 && rest[0] == "payments" && r.Method == http.MethodDelete:
-		h.deletePayment(w, r, claims, projectID, rest[1])
-	case len(rest) == 3 && rest[0] == "payments" && rest[2] == "restore" && r.Method == http.MethodPost:
-		h.restorePayment(w, r, claims, projectID, rest[1])
+	case len(rest) >= 1 && rest[0] == "events":
+		h.routeEvents(w, r, claims, projectID, rest[1:])
+	case len(rest) >= 1 && rest[0] == "lines":
+		h.routeLines(w, r, claims, projectID, rest[1:])
+	case len(rest) >= 1 && rest[0] == "suppliers":
+		h.routeSuppliers(w, r, claims, projectID, rest[1:])
+	case len(rest) >= 1 && rest[0] == "supplier-payments":
+		h.routeSupplierPayments(w, r, claims, projectID, rest[1:])
+	case len(rest) >= 1 && rest[0] == "supplier-bills":
+		h.routeSupplierBills(w, r, claims, projectID, rest[1:])
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodGet:
 		h.listClientPayments(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "client-payments" && r.Method == http.MethodPost:
@@ -212,16 +215,6 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.deleteClientPayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 3 && rest[0] == "client-payments" && rest[2] == "restore" && r.Method == http.MethodPost:
 		h.restoreClientPayment(w, r, claims, projectID, rest[1])
-	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodGet:
-		h.listVenuePayments(w, r, projectID)
-	case len(rest) == 1 && rest[0] == "venue-payments" && r.Method == http.MethodPost:
-		h.createVenuePayment(w, r, claims, projectID)
-	case len(rest) == 2 && rest[0] == "venue-payments" && r.Method == http.MethodPatch:
-		h.updateVenuePayment(w, r, claims, projectID, rest[1])
-	case len(rest) == 2 && rest[0] == "venue-payments" && r.Method == http.MethodDelete:
-		h.deleteVenuePayment(w, r, claims, projectID, rest[1])
-	case len(rest) == 3 && rest[0] == "venue-payments" && rest[2] == "restore" && r.Method == http.MethodPost:
-		h.restoreVenuePayment(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodGet:
 		h.listIssues(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "issues" && r.Method == http.MethodPost:
@@ -229,13 +222,13 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "issues" && r.Method == http.MethodPatch:
 		h.updateIssue(w, r, claims, projectID, rest[1])
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodGet:
-		h.listEvidence(w, r, claims.tenantID, projectID, claims.isClient)
+		h.listEvidence(w, r, claims, projectID)
 	case len(rest) == 1 && rest[0] == "evidence" && r.Method == http.MethodPost:
 		h.uploadEvidence(w, r, claims, projectID)
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "file" && r.Method == http.MethodGet:
-		h.downloadEvidence(w, r, projectID, rest[1], claims.isClient)
+		h.downloadEvidence(w, r, claims, projectID, rest[1])
 	case len(rest) == 3 && rest[0] == "evidence" && rest[2] == "link" && r.Method == http.MethodGet:
-		h.linkEvidence(w, r, projectID, rest[1], claims.isClient)
+		h.linkEvidence(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "evidence" && r.Method == http.MethodPatch:
 		h.updateEvidence(w, r, claims, projectID, rest[1])
 	case len(rest) == 2 && rest[0] == "evidence" && r.Method == http.MethodDelete:
@@ -248,8 +241,6 @@ func (h *Handler) Item(w http.ResponseWriter, r *http.Request) {
 		h.listDocuments(w, r, projectID)
 	case len(rest) == 1 && rest[0] == "activity" && r.Method == http.MethodGet:
 		h.listActivity(w, r, claims, projectID)
-	case len(rest) == 1 && rest[0] == "venue" && r.Method == http.MethodGet:
-		h.getProjectVenue(w, r, claims.tenantID, projectID)
 	// Client Portal additions (ADR-0047): the cover photo, the couple's proof
 	// submission and their tasks.
 	case len(rest) == 1 && rest[0] == "cover" && r.Method == http.MethodGet:
@@ -347,7 +338,26 @@ func staffWritePermission(method string, rest []string) (perm string, alt string
 	switch rest[0] {
 	case "duplicate":
 		return "project.duplicate", ""
-	case "payments", "client-payments", "venue-payments", "payment-terms":
+	case "supplier-payments":
+		// Who may record depends on who pays the supplier (WO: finance.margin.view,
+		// client: finance.record); the handler checks that once it knows the
+		// supplier. Delete and restore are one decision, as for client payments.
+		if method == http.MethodDelete || rest[len(rest)-1] == "restore" {
+			return "finance.payment.delete", ""
+		}
+		// Checking the client's proof to a vendor they pay is the finance
+		// verification queue's decision (Paket WO Tahap 4).
+		if last := rest[len(rest)-1]; len(rest) == 3 && (last == "verify" || last == "reject") {
+			return "finance.record", ""
+		}
+		return "finance.record", "finance.margin.view"
+	case "supplier-bills":
+		// The bills of vendors the client pays directly (Paket WO Tahap 4):
+		// recording what the client owes them is finance.record, like the
+		// client's own schedule. POST .../submissions is the client's; a staff
+		// member is refused by the handler.
+		return "finance.record", ""
+	case "client-payments", "payment-terms":
 		// Deleting a payment and bringing it back ("Urungkan") are the same
 		// decision: both need finance.payment.delete.
 		if method == http.MethodDelete || rest[len(rest)-1] == "restore" {
@@ -377,11 +387,13 @@ func clientReadPermission(rest []string) string {
 		return ""
 	}
 	switch rest[0] {
-	case "milestones":
+	case "milestones", "events":
 		return "portal.timeline.view"
-	case "vendors", "venue":
+	case "suppliers", "lines":
+		// The Rincian ("Layanan › Paket & rincian"): its amounts need
+		// portal.finance.view on top (PortalPolicy.Line).
 		return "portal.vendor.view"
-	case "client-payments", "payment-terms":
+	case "client-payments", "payment-terms", "supplier-payments", "supplier-bills":
 		return "portal.finance.view"
 	case "issues":
 		return "portal.issues.view"
@@ -409,17 +421,17 @@ func clientReadPermission(rest []string) string {
 // ("Staff" role) is additionally scoped to only the project they're PIC of,
 // and a Sales staff member is likewise scoped to only the project they're
 // PIC Sales of (PICSalesStaffID) — checked once here, since every
-// sub-resource under /projects/{id}/... (milestones, vendor engagements,
-// issues, evidence, payments, client-payments, venue-payments, activity,
-// venue) already funnels through this same function, so none of these
+// sub-resource under /projects/{id}/... (milestones, events, suppliers,
+// issues, evidence, supplier and client payments, activity) already funnels through this same function, so none of these
 // roles can reach another tenant's — or another project's — data by
 // guessing its numeric ID. A client principal only ever gets a synthetic
 // staffClaims with staffID/role left zero-valued and isClient/clientID set —
 // safe because this function rejects, for clients, every GET path not in
-// clientCanRead's allowlist and every non-GET request except the four portal
-// writes of clientWritePermission (client_view.go, ADR-0047), each behind its
-// own portal permission, before the big switch is ever reached. Those four
-// handlers check isClient themselves; no staff write ever sees a client claim.
+// clientCanRead's allowlist and every non-GET request except the portal
+// writes of clientWritePermission (client_view.go, ADR-0047; Paket WO Tahap 4
+// adds the proof to a vendor the client pays), each behind its own portal
+// permission, before the big switch is ever reached. Those handlers check
+// isClient themselves; no staff write ever sees a client claim.
 func (h *Handler) resolveProjectAccess(w http.ResponseWriter, r *http.Request, projectID int64, rest []string) (staffClaims, bool) {
 	claims, ok := middleware.FromContext(r.Context())
 	if !ok {

@@ -5,7 +5,7 @@ import { API } from "@/shared/services/api-endpoints";
 import { onSessionReset } from "@/shared/lib/session-reset";
 import { todayISO } from "@/shared/lib/formatters";
 import type { EvidenceType } from "@/modules/projects/types";
-import type { ClientTask, PortalHome } from "@/modules/client-portal/types";
+import type { ClientTask, NextSupplierBill, PortalHome } from "@/modules/client-portal/types";
 
 export type HomeLoad = "idle" | "loading" | "ready" | "no-project" | "error";
 
@@ -22,8 +22,11 @@ interface ClientHomeState {
   reset: () => void;
 }
 
-interface RawHome extends Omit<PortalHome, "project" | "recentUpdates" | "actions" | "clientTasks"> {
+type RawNextSupplierBill = Omit<NextSupplierBill, "billTermId" | "projectSupplierId"> & { billTermId: number; projectSupplierId: number };
+
+interface RawHome extends Omit<PortalHome, "project" | "recentUpdates" | "actions" | "clientTasks" | "finance"> {
   project: Omit<PortalHome["project"], "id"> & { id: number };
+  finance?: Omit<NonNullable<PortalHome["finance"]>, "nextSupplierBill"> & { nextSupplierBill?: RawNextSupplierBill | null };
   actions?: PortalHome["actions"] | null;
   recentUpdates?: Array<Omit<PortalHome["recentUpdates"][number], "proof"> & { proof: { evidenceId: number; type: string; fileName: string } | null }> | null;
   clientTasks?: Array<Omit<ClientTask, "id"> & { id: number | string }> | null;
@@ -33,6 +36,18 @@ function toHome(raw: RawHome): PortalHome {
   return {
     ...raw,
     project: { ...raw.project, id: String(raw.project.id) },
+    finance: raw.finance
+      ? {
+          ...raw.finance,
+          nextSupplierBill: raw.finance.nextSupplierBill
+            ? {
+                ...raw.finance.nextSupplierBill,
+                billTermId: String(raw.finance.nextSupplierBill.billTermId),
+                projectSupplierId: String(raw.finance.nextSupplierBill.projectSupplierId),
+              }
+            : null,
+        }
+      : undefined,
     actions: raw.actions ?? [],
     recentUpdates: (raw.recentUpdates ?? []).map((u) => ({
       ...u,

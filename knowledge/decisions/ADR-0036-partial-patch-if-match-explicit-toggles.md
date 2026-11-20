@@ -1,5 +1,7 @@
 # ADR-0036: Partial PATCH, optimistic concurrency with `If-Match`, and explicit state instead of toggles
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): `If-Match` juga wajib untuk `PUT …/events/{eid}`, `PATCH …/suppliers/{sid}` dan `PATCH …/supplier-payments/{pid}`; baris untuk vendor proyek, pembayaran vendor dan venue, serta `venue`/`venueId`/`eventDate` pada proyek tidak berlaku lagi.
+
 ## Status
 Accepted — 2026-11-10 (docs/plan/revamp-ui-shadcn/PLAN.md Tahap 8, backend half: endpoint E9).
 

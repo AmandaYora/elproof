@@ -90,6 +90,8 @@ export const API = {
     tenantMeBranding: "/api/v1/tenants/me/branding",
     tenantMeLogo: "/api/v1/tenants/me/logo",
     tenantMeBusinessDetails: "/api/v1/tenants/me/business-details",
+    // Profil usaha › Penawaran: document code, PKP, default validity and terms (paket WO Tahap 1).
+    tenantMeQuoteSettings: "/api/v1/tenants/me/quote-settings",
     tenantMeContact: "/api/v1/tenants/me/contact",
     // Owner-only self-service (Fase 2): "Lengkapi Profil" and the
     // "Mulai di sini" checklist with trial usage.
@@ -183,6 +185,12 @@ export const API = {
     closingChecklist: (id: string) => `/api/v1/projects/${id}/closing-checklist`,
     paymentTerms: (id: string) => `/api/v1/projects/${id}/payment-terms`,
     paymentTermsRecalculate: (id: string) => `/api/v1/projects/${id}/payment-terms/recalculate`,
+    // Rincian (Tahap 3): the lines that make up the contract value.
+    lines: (id: string) => `/api/v1/projects/${id}/lines`,
+    linesPreview: (id: string) => `/api/v1/projects/${id}/lines/preview`,
+    linesReorder: (id: string) => `/api/v1/projects/${id}/lines/reorder`,
+    line: (id: string, lineId: string) => `/api/v1/projects/${id}/lines/${lineId}`,
+    lineRestore: (id: string, lineId: string) => `/api/v1/projects/${id}/lines/${lineId}/restore`,
     duplicate: (id: string) => `/api/v1/projects/${id}/duplicate`,
     milestones: (id: string) => `/api/v1/projects/${id}/milestones`,
     milestone: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}`,
@@ -190,15 +198,33 @@ export const API = {
     milestoneComplete: (id: string, milestoneId: string) => `/api/v1/projects/${id}/milestones/${milestoneId}/complete`,
     // The Client Portal hero photo: PUT/DELETE by staff (project.edit), GET streams it (ADR-0047).
     cover: (id: string) => `/api/v1/projects/${id}/cover`,
-    vendors: (id: string) => `/api/v1/projects/${id}/vendors`,
-    vendor: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}`,
-    vendorCancel: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}/cancel`,
-    vendorMilestones: (id: string, pvId: string) => `/api/v1/projects/${id}/vendors/${pvId}/milestones`,
-    vendorMilestone: (id: string, pvId: string, milestoneId: string) =>
-      `/api/v1/projects/${id}/vendors/${pvId}/milestones/${milestoneId}`,
-    payments: (id: string) => `/api/v1/projects/${id}/payments`,
-    payment: (id: string, paymentId: string) => `/api/v1/projects/${id}/payments/${paymentId}`,
-    paymentRestore: (id: string, paymentId: string) => `/api/v1/projects/${id}/payments/${paymentId}/restore`,
+    // Acara (Tahap 2): each with its sessions and venue; the main one carries the project date (Hari H).
+    events: (id: string) => `/api/v1/projects/${id}/events`,
+    event: (id: string, eventId: string) => `/api/v1/projects/${id}/events/${eventId}`,
+    eventSetMain: (id: string, eventId: string) => `/api/v1/projects/${id}/events/${eventId}/set-main`,
+    eventMove: (id: string, eventId: string) => `/api/v1/projects/${id}/events/${eventId}/move`,
+    eventDuplicate: (id: string, eventId: string) => `/api/v1/projects/${id}/events/${eventId}/duplicate`,
+    // Vendor & venue: venues come in through events, vendors are added here.
+    suppliers: (id: string) => `/api/v1/projects/${id}/suppliers`,
+    supplier: (id: string, supplierId: string) => `/api/v1/projects/${id}/suppliers/${supplierId}`,
+    supplierRestore: (id: string, supplierId: string) => `/api/v1/projects/${id}/suppliers/${supplierId}/restore`,
+    supplierRefreshCapacity: (id: string, supplierId: string) => `/api/v1/projects/${id}/suppliers/${supplierId}/refresh-capacity`,
+    supplierMilestones: (id: string, supplierId: string) => `/api/v1/projects/${id}/suppliers/${supplierId}/milestones`,
+    supplierMilestone: (id: string, supplierId: string, milestoneId: string) =>
+      `/api/v1/projects/${id}/suppliers/${supplierId}/milestones/${milestoneId}`,
+    // Payments to a vendor or venue, by the WO or straight from the client (the supplier's "Dibayar oleh").
+    supplierPayments: (id: string) => `/api/v1/projects/${id}/supplier-payments`,
+    supplierPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/supplier-payments/${paymentId}`,
+    supplierPaymentRestore: (id: string, paymentId: string) => `/api/v1/projects/${id}/supplier-payments/${paymentId}/restore`,
+    supplierPaymentVerify: (id: string, paymentId: string) => `/api/v1/projects/${id}/supplier-payments/${paymentId}/verify`,
+    supplierPaymentReject: (id: string, paymentId: string) => `/api/v1/projects/${id}/supplier-payments/${paymentId}/reject`,
+    /** Vendors and venues the client pays directly, with their bills ("Tagihan vendor", Paket WO Tahap 4). */
+    supplierBills: (id: string) => `/api/v1/projects/${id}/supplier-bills`,
+    supplierBillTerms: (id: string) => `/api/v1/projects/${id}/supplier-bills/terms`,
+    supplierBillTerm: (id: string, termId: string) => `/api/v1/projects/${id}/supplier-bills/terms/${termId}`,
+    supplierBillTermRestore: (id: string, termId: string) => `/api/v1/projects/${id}/supplier-bills/terms/${termId}/restore`,
+    /** The couple's proof of a payment to a vendor they pay directly (portal, `portal.finance.submit`). */
+    supplierBillSubmissions: (id: string) => `/api/v1/projects/${id}/supplier-bills/submissions`,
     clientPayments: (id: string) => `/api/v1/projects/${id}/client-payments`,
     clientPayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}`,
     clientPaymentRestore: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/restore`,
@@ -206,9 +232,6 @@ export const API = {
     // Client Portal: the couple sends a transfer proof (portal.finance.submit, ADR-0047).
     clientPaymentSubmissions: (id: string) => `/api/v1/projects/${id}/client-payments/submissions`,
     clientPaymentVerify: (id: string, paymentId: string) => `/api/v1/projects/${id}/client-payments/${paymentId}/verify`,
-    venuePayments: (id: string) => `/api/v1/projects/${id}/venue-payments`,
-    venuePayment: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}`,
-    venuePaymentRestore: (id: string, paymentId: string) => `/api/v1/projects/${id}/venue-payments/${paymentId}/restore`,
     issues: (id: string) => `/api/v1/projects/${id}/issues`,
     issue: (id: string, issueId: string) => `/api/v1/projects/${id}/issues/${issueId}`,
     evidence: (id: string) => `/api/v1/projects/${id}/evidence`,
@@ -220,11 +243,54 @@ export const API = {
     // client-visible documents, unconditionally (see backend listDocuments).
     documents: (id: string) => `/api/v1/projects/${id}/documents`,
     activity: (id: string) => `/api/v1/projects/${id}/activity`,
-    venue: (id: string) => `/api/v1/projects/${id}/venue`,
+    // Jadikan proyek (paket WO Tahap 5): an accepted quotation becomes a project (POST with Idempotency-Key).
+    fromQuotation: (quotationId: string) => `/api/v1/projects/from-quotation/${quotationId}`,
+    fromQuotationPreview: (quotationId: string) => `/api/v1/projects/from-quotation/${quotationId}/preview`,
+    fromQuotationUploads: (quotationId: string) => `/api/v1/projects/from-quotation/${quotationId}/uploads`,
+    // Kesepakatan awal: the accepted revision the project was made from (404 for a project made by hand).
+    agreement: (id: string) => `/api/v1/projects/${id}/agreement`,
   },
   // Timeline Default Template (PLAN.md) -- a tenant's own configurable
   // checklist seeded into every new project's Timeline tab, managed from
   // Pengaturan -> Timeline Default. Un-paginated, so no page/search params.
+  // `offers` (ADR-0049): the catalog of event kinds and packages. Reads are open to every staff role, writes need
+  // package.manage; `packagePreview` prices a rule as typed, so the formula lives only on the server.
+  offers: {
+    eventKinds: "/api/v1/event-kinds",
+    eventKind: (id: string) => `/api/v1/event-kinds/${id}`,
+    packages: "/api/v1/packages",
+    package: (id: string) => `/api/v1/packages/${id}`,
+    packagePreview: "/api/v1/packages/preview",
+  },
+  // Penawaran (paket WO Tahap 5, ADR-0050): reads need quotation.view, writes quotation.manage. Every write answers
+  // the full detail; versioned writes send If-Match (header: updatedAt, lines: linesUpdatedAt, terms: termsUpdatedAt).
+  quotations: {
+    base: "/api/v1/quotations",
+    summary: "/api/v1/quotations/summary",
+    item: (id: string) => `/api/v1/quotations/${id}`,
+    termsText: (id: string) => `/api/v1/quotations/${id}/terms-text`,
+    terms: (id: string) => `/api/v1/quotations/${id}/terms`,
+    events: (id: string) => `/api/v1/quotations/${id}/events`,
+    eventsOrder: (id: string) => `/api/v1/quotations/${id}/events/order`,
+    event: (id: string, eventId: string) => `/api/v1/quotations/${id}/events/${eventId}`,
+    suppliers: (id: string) => `/api/v1/quotations/${id}/suppliers`,
+    supplier: (id: string, supplierId: string) => `/api/v1/quotations/${id}/suppliers/${supplierId}`,
+    supplierRefresh: (id: string, supplierId: string) => `/api/v1/quotations/${id}/suppliers/${supplierId}/refresh`,
+    lines: (id: string) => `/api/v1/quotations/${id}/lines`,
+    linesPreview: (id: string) => `/api/v1/quotations/${id}/lines/preview`,
+    revisions: (id: string) => `/api/v1/quotations/${id}/revisions`,
+    revision: (id: string, n: number) => `/api/v1/quotations/${id}/revisions/${n}`,
+    revisionPdf: (id: string, n: number) => `/api/v1/quotations/${id}/revisions/${n}/pdf`,
+    revisionShare: (id: string, n: number) => `/api/v1/quotations/${id}/revisions/${n}/share`,
+    compare: (id: string) => `/api/v1/quotations/${id}/compare`,
+    previewPdf: (id: string) => `/api/v1/quotations/${id}/preview.pdf`,
+    status: (id: string) => `/api/v1/quotations/${id}/status`,
+    copy: (id: string) => `/api/v1/quotations/${id}/copy`,
+    alternatives: (id: string) => `/api/v1/quotations/${id}/alternatives`,
+    extend: (id: string) => `/api/v1/quotations/${id}/extend`,
+    acceptanceAttachment: (id: string) => `/api/v1/quotations/${id}/acceptance-attachment`,
+    activity: (id: string) => `/api/v1/quotations/${id}/activity`,
+  },
   milestoneTemplates: {
     base: "/api/v1/milestone-templates",
     item: (id: string) => `/api/v1/milestone-templates/${id}`,

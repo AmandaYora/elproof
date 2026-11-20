@@ -172,6 +172,53 @@ func (h *TenantHandler) updateMyBusinessDetails(w http.ResponseWriter, r *http.R
 	response.OK(w, "Data usaha tersimpan", toBusinessDetailsResponse(d))
 }
 
+type quoteSettingsBody struct {
+	DocumentCode        string `json:"documentCode"`
+	IsPKP               bool   `json:"isPkp"`
+	DefaultValidityDays int    `json:"defaultValidityDays"`
+	DefaultTermsText    string `json:"defaultTermsText"`
+}
+
+func toQuoteSettingsResponse(q domain.QuoteSettings) quoteSettingsBody {
+	return quoteSettingsBody{DocumentCode: q.DocumentCode, IsPKP: q.IsPKP, DefaultValidityDays: q.DefaultValidityDays, DefaultTermsText: q.DefaultTermsText}
+}
+
+// myQuoteSettings is GET /tenants/me/quote-settings (business_profile.manage):
+// Profil usaha › Penawaran.
+func (h *TenantHandler) myQuoteSettings(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := ownerTenantID(w, r)
+	if !ok {
+		return
+	}
+	q, err := h.tenants.GetQuoteSettings(r.Context(), tenantID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "ok", toQuoteSettingsResponse(q))
+}
+
+// updateMyQuoteSettings is PUT /tenants/me/quote-settings (business_profile.manage).
+func (h *TenantHandler) updateMyQuoteSettings(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := ownerTenantID(w, r)
+	if !ok {
+		return
+	}
+	var body quoteSettingsBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Body permintaan tidak valid", nil)
+		return
+	}
+	q, err := h.tenants.SaveQuoteSettings(r.Context(), tenantID, application.QuoteSettingsInput{
+		DocumentCode: body.DocumentCode, IsPKP: body.IsPKP, DefaultValidityDays: body.DefaultValidityDays, DefaultTermsText: body.DefaultTermsText,
+	})
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	response.OK(w, "Pengaturan penawaran tersimpan", toQuoteSettingsResponse(q))
+}
+
 type contactResponse struct {
 	BusinessName string `json:"businessName"`
 	// WhatsApp is the business number, digits with the country code (62812…).

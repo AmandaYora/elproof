@@ -20,6 +20,7 @@ import (
 	"elproof/internal/modules/clients"
 	clientscontracts "elproof/internal/modules/clients/contracts"
 	"elproof/internal/modules/identity"
+	"elproof/internal/modules/offers"
 	"elproof/internal/modules/payment"
 	paymentcontracts "elproof/internal/modules/payment/contracts"
 	"elproof/internal/modules/platform"
@@ -90,6 +91,19 @@ func (d clientDirectory) ListProjectClients(ctx context.Context, tenantID, proje
 		out = append(out, projectsapp.ProjectClientInfo{ID: c.ID, Name: c.Name, Role: c.Role, HasLogin: c.HasLogin})
 	}
 	return out, nil
+}
+
+// workspaceProfile adapts platform's Penawaran settings to the projects
+// module's WorkspaceProfileSource (is_pkp is copied onto a new project).
+type workspaceProfile struct {
+	platform interface {
+		IsPKP(ctx context.Context, tenantID int64) (bool, error)
+	}
+}
+
+func (w workspaceProfile) WorkspaceProfile(ctx context.Context, tenantID int64) (projectsapp.WorkspaceProfile, error) {
+	pkp, err := w.platform.IsPKP(ctx, tenantID)
+	return projectsapp.WorkspaceProfile{IsPKP: pkp}, err
 }
 
 // staffRoles / clientRoles adapt the access module's contract to the narrow
@@ -377,8 +391,8 @@ func serve(cfg config.Config) {
 		log.Printf("subscription policy: using defaults (%v)", err)
 	}
 	// projects is built before vendors — vendors' "Lihat Project" resolves a
-	// vendor's cross-project engagement history through projects.Contracts()
-	// (project_vendors is owned by projects, not vendors).
+	// vendor's or venue's cross-project history through projects.Contracts()
+	// (project_suppliers is owned by projects, not vendors).
 	projectsModule := projects.NewModule(db, storageClient, staffNameResolver{contracts: staffModule.Contracts()}, cfg.JWTSecret)
 	// Two-phase wiring: platform needs projects' contract (seed a newly
 	// registered tenant's Timeline Default template, PLAN.md) but
@@ -395,15 +409,37 @@ func serve(cfg config.Config) {
 	// before vendorsModule exists — same bridging pattern as the
 	// SetClientAccessResolver call below.
 	platformModule.SetVendors(vendorsModule.Contracts())
-	// Same bridge, the new reciprocal direction (ADR-0016): projects needs to
-	// resolve a project's attached venue_id into venue details for its own
-	// Project Detail tab and Client Portal's Venue tab, but projectsModule is
-	// built above, before vendorsModule exists.
-	projectsModule.SetVenueResolver(vendorsModule.Contracts())
+	// Same bridge, the reciprocal direction: projects copies a vendor's or
+	// venue's name, category and capacities from the directory when it is
+	// added to a project (Vendor & venue, an event's venue), but projectsModule
+	// is built above, before vendorsModule exists.
 	projectsModule.SetVendorDirectory(vendorsModule.Contracts())
+	projectsModule.SetEventVenues(vendorsModule.Contracts())
+	// offers (catalog of event kinds and packages, ADR-0049) uses vendors'
+	// contract directly and is built after it. The modules that need offers get
+	// its contract through a setter: vendors refuses a permanent delete of a row
+	// a package refers to, and platform seeds the built-in event kinds of a WO
+	// that signs up.
+	offersModule := offers.NewModule(db, vendorsModule.Contracts())
+	vendorsModule.SetOfferReferences(offersModule.Contracts())
+	platformModule.SetEventKinds(offersModule.Contracts())
+	// A project's events name their kind from the offers catalog.
+	projectsModule.SetEventCatalog(offersModule.Contracts())
+	// The Rincian copies a package (rule and components) from the catalog and
+	// prices with the same functions a quotation uses (Tahap 3).
+	projectsModule.SetOffers(offersModule.Contracts())
+	// Quotations (Tahap 5) number and print with the workspace's profile,
+	// name their PIC from staff, and keep the logo and the evidence of
+	// acceptance in the object storage.
+	offersModule.SetQuotationPorts(quotationProfile{platformModule}, staffNameResolver{contracts: staffModule.Contracts()}, storageClient)
+	// "Jadikan proyek" (Tahap 5) is owned by projects: it reads the accepted
+	// revision and marks the quotation converted (or its project deleted).
+	projectsModule.SetQuotations(offersModule.Quotations())
 	// The Client Portal home shows the WO's WhatsApp number and bank account,
 	// which live in platform's business profile.
 	projectsModule.SetTenantContact(platformModule)
+	// A new project copies whether the workspace is PKP (Penawaran settings).
+	projectsModule.SetWorkspaceProfile(workspaceProfile{platformModule})
 	clientsModule := clients.NewModule(db, projectsModule.Contracts(), identityModule.Contracts())
 	// Two-phase wiring: projects needs clients' contract (Fase 6 client-portal
 	// scoping) but clients.NewModule already needs projects.Contracts() to
@@ -459,6 +495,7 @@ func serve(cfg config.Config) {
 	platformModule.RegisterRoutes(mux, func(h http.Handler) http.Handler { return authed(auditStaff(h)) })
 	staffModule.RegisterRoutes(mux, authed)
 	vendorsModule.RegisterRoutes(mux, authed)
+	offersModule.RegisterRoutes(mux, authed)
 	projectsModule.RegisterRoutes(mux, authed)
 	clientsModule.RegisterRoutes(mux, authed)
 

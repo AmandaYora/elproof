@@ -1,5 +1,7 @@
 # ADR-0034: Project overview, names in responses, fresh progress on every mutation, soft delete with restore and purge, kendala without a vendor, dashboard sections
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): soft delete berlaku untuk `client_payments`, `supplier_payments` dan `project_suppliers` (kendala memakai `project_supplier_id`); dashboard memakai `supplierPaymentsDue`/`unconfirmedSuppliers`, dan margin, uang keluar serta pembayaran WO hanya untuk `finance.margin.view`.
+
 ## Status
 Accepted — implemented 2026-11-10 (docs/plan/revamp-ui-shadcn/PLAN.md Tahap 5, backend half: endpoints E1, E2, E8, E12, E13).
 

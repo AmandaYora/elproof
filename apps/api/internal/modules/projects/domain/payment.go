@@ -37,7 +37,7 @@ type Ledger struct {
 }
 
 // ComputeLedger summarises the payments of one owed amount (a client, one
-// vendor engagement, the venue) against what is owed. Paid is what counts
+// supplier) against what is owed. Paid is what counts
 // toward the contract (AppliedToContract: DP + Termin + Pelunasan - Refund; a
 // Tambahan is outside the contract) and is never negative; Remaining is never
 // negative either: an overpaid account (possible only by data that predates the
@@ -54,44 +54,45 @@ func ComputeLedger(lines []PaymentLine, contractValue int64) Ledger {
 	return Ledger{ContractValue: contractValue, Paid: paid, Remaining: remaining}
 }
 
-// VendorPayment deliberately has no stored evidence-completeness field --
-// unlike the direct invoice_evidence_id/proof_evidence_id columns this
-// struct originally carried (dropped, migration 000029: confirmed no code
-// path had ever written a non-null value to either), completeness is
-// computed on demand via PaymentEvidenceStatus/IsPaymentEvidenceComplete
-// below, cross-referencing the polymorphic evidence table (related_kind =
-// "payment", distinguished by evidence.type Invoice vs Transfer Proof) --
-// see PLAN.md "Payment evidence (Invoice/Bukti Transfer)...". A Refund only
-// ever needs proof; every other type needs both invoice and proof, same
-// rule as before, just finally collectible.
-type VendorPayment struct {
-	ID              int64
-	ProjectID       int64
-	ProjectVendorID int64
-	Type            PaymentType
-	Amount          int64
-	PaymentDate     time.Time
-	Method          string
-	ReferenceNumber string
-	Notes           string
-	DeletedAt       *time.Time
-
-	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
-	// the ETag / `updatedAt` of ADR-0036.
-	UpdatedAt time.Time
+// SupplierPayment is money paid to one vendor or venue of the project. Payer
+// is the payment's own (PLAN §3.2): the WO paying out of the contract, or the
+// client paying the supplier directly, outside it. Cash, debt and dashboard
+// queries filter on it, never on the supplier's current paid_by, so an old
+// payment never changes meaning. Evidence completeness is computed from the
+// evidence table (related_kind supplierPayment): Invoice + Transfer Proof, a
+// Refund needs only the proof.
+type SupplierPayment struct {
+	ID                int64
+	ProjectID         int64
+	ProjectSupplierID int64
+	// BillTermID is the bill (supplier_bill_terms) a client's proof pays; 0 when
+	// none (every payment the WO records, a bill since deleted).
+	BillTermID        int64
+	Payer             Payer
+	Type              PaymentType
+	Amount            int64
+	PaymentDate       time.Time
+	Method            string
+	ReferenceNumber   string
+	Notes             string
+	RecordedByStaffID int64
+	// SubmittedByClientID is the client who sent the proof from the portal
+	// (ADR-0047, Paket WO Tahap 4); 0 = staff recorded it. Such a payment counts
+	// as paid only once verified (CountsAsPaid). A primitive id into clients.
+	SubmittedByClientID int64
+	VerifiedAt          *time.Time
+	VerifiedByStaffID   int64
+	// RejectedAt/RejectedByStaffID/RejectionReason: the WO refused the proof.
+	RejectedAt        *time.Time
+	RejectedByStaffID int64
+	RejectionReason   string
+	DeletedAt         *time.Time
+	UpdatedAt         time.Time
 }
 
-// PaymentEvidenceStatus cross-references a project's (or, for the
-// dashboard, several projects') evidence rows into two lookup sets keyed by
-// the paying entity's id (vendor_payments.id or venue_payments.id -- two
-// independent AUTO_INCREMENT sequences that can collide in value, which is
-// exactly why `kind` is required: it scopes the lookup to one relatedKind at
-// a time so a vendor payment's evidence can never leak into a venue
-// payment's completeness check, or vice versa), split by evidence.type --
-// Invoice vs Transfer Proof. A pure function (no I/O) so every caller (the
-// payments list endpoints, ComputeProgress, the dashboard's
-// incomplete-payments widget, for both vendor and venue payments) shares one
-// definition instead of separate copies of the same loop.
+// PaymentEvidenceStatus indexes evidence rows of one related kind by the
+// payment they belong to, split by type (Invoice, Transfer Proof). The kind is
+// required because ids of different payment tables collide.
 func PaymentEvidenceStatus(evidences []Evidence, kind EvidenceRelatedKind) (hasInvoice, hasProof map[int64]bool) {
 	hasInvoice = make(map[int64]bool, len(evidences))
 	hasProof = make(map[int64]bool, len(evidences))
@@ -109,12 +110,9 @@ func PaymentEvidenceStatus(evidences []Evidence, kind EvidenceRelatedKind) (hasI
 	return hasInvoice, hasProof
 }
 
-// IsPaymentEvidenceComplete applies the same Refund-only-needs-proof rule
-// VendorPayment (and now VenuePayment) always had, against the lookup sets
-// PaymentEvidenceStatus built. Takes the payment's type/id directly rather
-// than the struct itself -- VendorPayment and VenuePayment are distinct Go
-// types with no shared interface, and both only ever need these two fields
-// here.
+// IsPaymentEvidenceComplete applies the supplier payment rule (a Refund needs
+// only the proof, every other type an invoice and a proof) against the lookup
+// sets PaymentEvidenceStatus built.
 func IsPaymentEvidenceComplete(paymentType PaymentType, paymentID int64, hasInvoice, hasProof map[int64]bool) bool {
 	if paymentType == PaymentRefund {
 		return hasProof[paymentID]
@@ -124,9 +122,8 @@ func IsPaymentEvidenceComplete(paymentType PaymentType, paymentID int64, hasInvo
 
 // ClientPayment tracks money coming IN from the client against the
 // project's own ContractValue (PLAN.md "Uang Masuk dari Client") -- the
-// opposite accounting direction from VendorPayment, and structurally
-// simpler: no ProjectVendorID (it belongs to the project itself, not any
-// vendor) and no evidence-completeness dual condition, since it only ever
+// opposite accounting direction from SupplierPayment, and structurally
+// simpler: it belongs to the project itself, not to a supplier, and no evidence-completeness dual condition, since it only ever
 // has one evidence slot (a transfer proof, checked via the polymorphic
 // evidence table's related_kind/related_id, not a direct FK column).
 type ClientPayment struct {
@@ -231,31 +228,8 @@ func (p *ClientPayment) ApplyEdit(t PaymentType, amount int64, date time.Time, m
 	return false
 }
 
-// VenuePayment tracks money going OUT to the project's venue -- same
-// accounting direction and same two-slot evidence rule (Invoice + Transfer
-// Proof, via PaymentEvidenceStatus/IsPaymentEvidenceComplete above scoped to
-// RelatedVenuePayment) as VendorPayment, but structurally simpler like
-// ClientPayment: no ProjectVendorID-equivalent column, since a project has
-// at most one venue (Project.VenueID) and this ties directly to ProjectID.
-// See PLAN.md "Venue Payments + Pembayaran tab restructuring".
-type VenuePayment struct {
-	ID              int64
-	ProjectID       int64
-	Type            PaymentType
-	Amount          int64
-	PaymentDate     time.Time
-	Method          string
-	ReferenceNumber string
-	Notes           string
-	DeletedAt       *time.Time
-
-	// UpdatedAt is the row's version (TIMESTAMP(6), bumped by MySQL on any change):
-	// the ETag / `updatedAt` of ADR-0036.
-	UpdatedAt time.Time
-}
-
 // PaymentLine is the part of a payment the overpayment rule needs, shared by
-// client, vendor and venue payments (three distinct Go types, one rule).
+// client and supplier payments (two distinct Go types, one rule).
 type PaymentLine struct {
 	Type   PaymentType
 	Amount int64
@@ -289,7 +263,7 @@ const MaxMoney int64 = 1_000_000_000_000_000
 
 // ExcessAfterChange is how far a change to the payment list pushes the paid
 // total past what is owed: 0 when the change is fine. `before` and `after` are
-// the payments of one owed amount (a client, one vendor engagement, the venue)
+// the payments of one owed amount (a client, one supplier)
 // before and after the change (add, edit or delete).
 //
 // A change is refused only when it BOTH makes the applied total exceed

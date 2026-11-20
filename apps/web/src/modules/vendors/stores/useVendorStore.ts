@@ -6,7 +6,7 @@ import type { VendorFormValues, VendorCreateFormValues } from "@/modules/vendors
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { compressFileForUpload } from "@/shared/lib/image-compression";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
-import { toAffectedProjects, type AffectedProject, type RawDeleteImpact } from "@/shared/types/delete-impact";
+import { toDeleteImpact, type DeleteImpact, type RawDeleteImpact } from "@/shared/types/delete-impact";
 
 interface RawVendor {
   id: number;
@@ -93,17 +93,16 @@ interface VendorState {
   // same column order as the import template, plus a Status column, so the
   // file round-trips through Import unmodified.
   exportVendors: (filter: { q: string; categoryId: string; city: string; isActive: string }) => Promise<Blob>;
-  // Hard delete (PLAN.md) — informed-consent, not a blocking precondition:
-  // fetchVendorDeleteImpact names every project that would lose this
-  // vendor's data source, for the confirmation dialog; deleteVendor performs
-  // the actual (unconditional, Owner-only) delete.
-  fetchVendorDeleteImpact: (id: string) => Promise<AffectedProject[]>;
+  // Hard delete (PLAN.md): fetchVendorDeleteImpact names the projects still
+  // using the vendor and says whether a package or quotation refers to it, for
+  // the confirmation dialog; deleteVendor is refused (409) while either holds.
+  fetchVendorDeleteImpact: (id: string) => Promise<DeleteImpact>;
   deleteVendor: (id: string) => Promise<void>;
 }
 
 // Backed by the real `vendors` module (Fase 3) — tenant-scoped. Also the
 // single source of truth for vendor pickers elsewhere (e.g. `projects`'
-// ProjectVendorFormModal). `GET /vendors` is staff-only (ADR-0016-style
+// AddVendorModal in Vendor & venue). `GET /vendors` is staff-only (ADR-0016-style
 // split): a client sees vendor names only inside its own project's responses (ADR-0032).
 export const useVendorStore = create<VendorState>((set, get) => ({
   vendors: [],
@@ -179,7 +178,7 @@ export const useVendorStore = create<VendorState>((set, get) => ({
 
   fetchVendorDeleteImpact: async (id) => {
     const res = await httpClient.get(API.vendors.deleteImpact(id));
-    return toAffectedProjects(res.data.data as RawDeleteImpact);
+    return toDeleteImpact(res.data.data as RawDeleteImpact);
   },
 
   deleteVendor: async (id) => {

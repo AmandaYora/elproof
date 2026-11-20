@@ -1,6 +1,8 @@
 package presentation
 
 import (
+	"context"
+
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
 )
@@ -37,17 +39,56 @@ type evidenceIndex struct {
 	any map[evidenceKey]bool
 }
 
-// indexEvidence builds the index. For a client principal only files that
-// domain.ClientCanSeeEvidence allows are embedded; staff get every file. Files
-// are listed oldest first, so the first one is the original proof.
-func indexEvidence(list []domain.Evidence, isClient bool, can func(string) bool) evidenceIndex {
+// portalView is who may see which file of a project. For a client principal it
+// is the portal policy for their permissions (PLAN §4.4); for staff without
+// finance.margin.view (staff=true) it only hides the files of payments the WO
+// makes to its suppliers. nil stands for staff who see everything.
+type portalView struct {
+	staff  bool
+	policy domain.PortalPolicy
+	owners domain.EvidenceOwners
+}
+
+// canSee is the per-file rule.
+// forClient: the view is the Client Portal's (staff without margin see every
+// field, only the WO's supplier payments and their files are hidden from them).
+func (v *portalView) forClient() bool { return v != nil && !v.staff }
+
+func (v *portalView) canSee(e domain.Evidence) bool {
+	switch {
+	case v == nil:
+		return true
+	case v.staff:
+		return e.RelatedKind != domain.RelatedSupplierPayment || v.owners.PaymentPayer[e.RelatedID] != domain.PayerWO
+	}
+	return v.policy.CanSee(e, v.owners)
+}
+
+// portalViewFor builds the caller's view; nil for staff who see every file.
+func (h *Handler) portalViewFor(ctx context.Context, claims staffClaims, projectID int64) (*portalView, error) {
+	if !claims.isClient && claims.can("finance.margin.view") {
+		return nil, nil
+	}
+	owners, err := h.suppliers.EvidenceOwners(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if !claims.isClient {
+		return &portalView{staff: true, owners: owners}, nil
+	}
+	return &portalView{policy: domain.NewPortalPolicy(claims.can), owners: owners}, nil
+}
+
+// indexEvidence builds the index: only the files the view allows are embedded. Files are listed
+// oldest first, so the first one is the original proof.
+func indexEvidence(list []domain.Evidence, view *portalView) evidenceIndex {
 	ix := evidenceIndex{visible: map[evidenceKey][]evidenceRefResponse{}, any: map[evidenceKey]bool{}}
 	// The repository lists newest first; walk backwards for oldest first.
 	for i := len(list) - 1; i >= 0; i-- {
 		e := list[i]
 		k := evidenceKey{e.RelatedKind, e.RelatedID}
 		ix.any[k] = true
-		if isClient && !domain.ClientCanSeeEvidence(e, can) {
+		if !view.canSee(e) {
 			continue
 		}
 		ix.visible[k] = append(ix.visible[k], toEvidenceRef(e))

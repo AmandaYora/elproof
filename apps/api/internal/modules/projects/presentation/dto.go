@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/domain"
-	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/etag"
 )
 
@@ -20,20 +19,30 @@ func formatDatePtr(t *time.Time) *string {
 }
 
 type projectResponse struct {
-	ID               int64  `json:"id"`
-	Name             string `json:"name"`
-	BrideName        string `json:"brideName"`
-	GroomName        string `json:"groomName"`
-	EventDate        string `json:"eventDate"`
-	Venue            string `json:"venue"`
-	VenueID          *int64 `json:"venueId"`
-	VenueRentalPrice *int64 `json:"venueRentalPrice"`
-	VenueCharge      *int64 `json:"venueCharge"`
-	PrepStartDate    string `json:"prepStartDate"`
-	PackageName      string `json:"packageName"`
-	ContractValue    int64  `json:"contractValue"`
-	Status           string `json:"status"`
-	PICStaffID       int64  `json:"picStaffId"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	BrideName string `json:"brideName"`
+	GroomName string `json:"groomName"`
+	// EventDate is the main event's date (Hari H).
+	EventDate     string `json:"eventDate"`
+	PrepStartDate string `json:"prepStartDate"`
+	// The contract (paket WO Tahap 3): the cache of the live Rincian lines,
+	// read-only. ContractValue is the total (subtotal + PPN). A client without
+	// portal.finance.view gets none of the three (PortalPolicy.Project).
+	ContractValue    *int64 `json:"contractValue,omitempty"`
+	ContractSubtotal *int64 `json:"contractSubtotal,omitempty"`
+	ContractTax      *int64 `json:"contractTax,omitempty"`
+	// IsPKP: the workspace was PKP when the project was created, so its
+	// contract carries PPN.
+	IsPKP bool `json:"isPkp"`
+	// LinesVersion is the Rincian's own version (If-Match of line writes);
+	// staff only.
+	LinesVersion string `json:"linesVersion,omitempty"`
+	// PackageNames are the names of the project's packages (Rincian), in
+	// screen order. A client needs portal.vendor.view to see them.
+	PackageNames []string `json:"packageNames"`
+	Status       string   `json:"status"`
+	PICStaffID   int64    `json:"picStaffId"`
 	// PICSalesStaffID is the "PIC Sales" slot -- see
 	// domain.Project.PICSalesStaffID's doc comment. 0 means "belum
 	// ditugaskan", same sentinel convention as PICStaffID.
@@ -53,21 +62,60 @@ type projectResponse struct {
 	// (/api/v1/projects/{id}/cover?v=<unix of the last change>); null when the
 	// project has no cover (ADR-0047).
 	CoverURL *string `json:"coverUrl"`
+	// Location is where the events happen ("Masjid Al-Azhar · Gedung Graha"),
+	// "" before a venue is chosen. Filled by the project read and list.
+	Location string `json:"location"`
+	// EventsLine names the events ("Akad, Resepsi"). Filled with Location.
+	EventsLine string `json:"eventsLine"`
+	// Quotation is the Accepted quotation the project was made from ("Dibuat
+	// dari MO-PNW-261119-001 Revisi 2", the "Kesepakatan awal" link: GET
+	// /projects/{id}/agreement); null for a project made by hand or
+	// duplicated. Staff only.
+	Quotation *projectQuotationResponse `json:"quotation"`
 	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
 	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
 	UpdatedAt string `json:"updatedAt"`
 }
 
+// projectQuotationResponse is the quotation a project was made from.
+type projectQuotationResponse struct {
+	ID        int64  `json:"id"`
+	Number    string `json:"number"`
+	RevisionN int    `json:"revisionN"`
+}
+
+func toProjectQuotation(p domain.Project) *projectQuotationResponse {
+	if p.QuotationID == nil {
+		return nil
+	}
+	return &projectQuotationResponse{ID: *p.QuotationID, Number: p.QuotationNumber, RevisionN: p.QuotationRevisionN}
+}
+
 func toProjectResponse(p domain.Project) projectResponse {
 	return projectResponse{
 		ID: p.ID, Name: p.Name, BrideName: p.BrideName, GroomName: p.GroomName,
-		EventDate: p.EventDate.Format(dateLayout), Venue: p.Venue, VenueID: p.VenueID,
-		VenueRentalPrice: p.VenueRentalPrice, VenueCharge: p.VenueCharge,
-		PrepStartDate: p.PrepStartDate.Format(dateLayout),
-		PackageName:   p.PackageName, ContractValue: p.ContractValue, Status: string(p.Status),
+		EventDate: p.EventDate.Format(dateLayout), PrepStartDate: p.PrepStartDate.Format(dateLayout),
+		ContractValue: money(p.ContractTotal), ContractSubtotal: money(p.ContractSubtotal), ContractTax: money(p.ContractTax),
+		IsPKP: p.IsPKP, LinesVersion: etag.Format(p.LinesVersion), Status: string(p.Status),
 		PICStaffID: p.PICStaffID, PICSalesStaffID: p.PICSalesStaffID, Description: p.Description, IsArchived: p.IsArchived,
-		CoverURL: coverURL(p), UpdatedAt: etag.Format(p.UpdatedAt),
+		CoverURL: coverURL(p), Quotation: toProjectQuotation(p), UpdatedAt: etag.Format(p.UpdatedAt),
 	}
+}
+
+func money(v int64) *int64 { return &v }
+
+// toPortalProjectResponse is a project as the Client Portal shows it
+// (PortalPolicy.Project): no preparation start, no Sales PIC, no lines'
+// version, and no money without portal.finance.view.
+func toPortalProjectResponse(pp domain.PortalProject) projectResponse {
+	resp := toProjectResponse(pp.Project)
+	resp.PrepStartDate = ""
+	resp.LinesVersion = ""
+	resp.Quotation = nil
+	if !pp.ShowMoney {
+		resp.ContractValue, resp.ContractSubtotal, resp.ContractTax = nil, nil, nil
+	}
+	return resp
 }
 
 // coverURL is the cover photo's address, versioned by when it last changed so a
@@ -84,25 +132,56 @@ func coverURL(p domain.Project) *string {
 	return &u
 }
 
-// venueSummaryResponse is the public-safe subset backing GET
-// /projects/{id}/venue (ADR-0016) -- shared verbatim by the WO Console
-// Project Detail tab and Client Portal's Venue tab; the former additionally
-// fetches GET /venues/{id} directly (staff-only) for commercial fields.
-type venueSummaryResponse struct {
-	ID                   int64   `json:"id"`
-	Name                 string  `json:"name"`
-	Address              *string `json:"address"`
-	City                 *string `json:"city"`
-	Capacity             *int    `json:"capacity"`
-	Facilities           *string `json:"facilities"`
-	SocialMedia          *string `json:"socialMedia"`
-	HasVisibleAttachment bool    `json:"hasVisibleAttachment"`
+// eventSessionResponse is one session of an event.
+type eventSessionResponse struct {
+	ID        int64   `json:"id"`
+	Label     string  `json:"label"`
+	StartTime *string `json:"startTime"`
+	EndTime   *string `json:"endTime"`
+	Guests    int     `json:"guests"`
 }
 
-func toVenueSummaryResponse(v vendorscontracts.VenueSummary) venueSummaryResponse {
-	return venueSummaryResponse{
-		ID: v.ID, Name: v.Name, Address: v.Address, City: v.City, Capacity: v.Capacity,
-		Facilities: v.Facilities, SocialMedia: v.SocialMedia, HasVisibleAttachment: v.HasVisibleAttachment,
+// eventVenueResponse is the venue an event takes place at. Staff get the
+// project supplier, the directory venue and the capacities copied when it was
+// chosen; a client gets the name, address and city only.
+type eventVenueResponse struct {
+	SupplierID       int64   `json:"supplierId,omitempty"`
+	VenueID          int64   `json:"venueId,omitempty"`
+	Name             string  `json:"name"`
+	CapacityStanding *int    `json:"capacityStanding,omitempty"`
+	CapacitySeated   *int    `json:"capacitySeated,omitempty"`
+	Address          *string `json:"address"`
+	City             *string `json:"city"`
+}
+
+// eventResponse is one event of a project ("Acara & rincian", portal Jadwal).
+type eventResponse struct {
+	ID          int64                  `json:"id"`
+	EventKindID int64                  `json:"eventKindId"`
+	KindName    string                 `json:"kindName"`
+	EventDate   string                 `json:"eventDate"`
+	StartTime   *string                `json:"startTime"`
+	EndTime     *string                `json:"endTime"`
+	Venue       *eventVenueResponse    `json:"venue"`
+	Layout      string                 `json:"layout"`
+	IsMain      bool                   `json:"isMain"`
+	SortOrder   int                    `json:"order"`
+	Sessions    []eventSessionResponse `json:"sessions"`
+	TotalGuests int                    `json:"totalGuests"`
+	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
+	// ETag of the item and what a PUT sends back as If-Match (ADR-0036).
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func toEventResponse(e domain.ProjectEvent) eventResponse {
+	sessions := make([]eventSessionResponse, 0, len(e.Sessions))
+	for _, ss := range e.Sessions {
+		sessions = append(sessions, eventSessionResponse{ID: ss.ID, Label: ss.Label, StartTime: ss.StartTime, EndTime: ss.EndTime, Guests: ss.Guests})
+	}
+	return eventResponse{
+		ID: e.ID, EventKindID: e.EventKindID, KindName: e.KindName, EventDate: e.EventDate.Format(dateLayout),
+		StartTime: e.StartTime, EndTime: e.EndTime, Layout: string(e.Layout), IsMain: e.IsMain, SortOrder: e.SortOrder,
+		Sessions: sessions, TotalGuests: e.TotalGuests(), UpdatedAt: etag.Format(e.UpdatedAt),
 	}
 }
 
@@ -176,58 +255,54 @@ func toMilestoneResponse(m domain.ProjectMilestone) milestoneResponse {
 	}
 }
 
-type projectVendorResponse struct {
-	ID         int64 `json:"id"`
-	VendorID   int64 `json:"vendorId"`
-	CategoryID int64 `json:"categoryId"`
-	// VendorName/CategoryName are filled by GET /projects/{id}/vendors from
-	// this workspace's directory, for this project's own vendors only ("" when
-	// unresolved or on mutation responses).
-	VendorName       string  `json:"vendorName"`
-	CategoryName     string  `json:"categoryName"`
-	Scope            string  `json:"scope"`
-	ContractValue    int64   `json:"contractValue"`
-	PricingTier      string  `json:"pricingTier"`
+// supplierResponse is one vendor or venue of a project ("Vendor & venue").
+type supplierResponse struct {
+	ID   int64  `json:"id"`
+	Kind string `json:"kind"`
+	// SupplierID is the directory vendor or venue it was chosen from.
+	SupplierID   int64  `json:"supplierId,omitempty"`
+	Name         string `json:"name"`
+	CategoryID   int64  `json:"categoryId"`
+	CategoryName string `json:"categoryName"`
+	PaidBy       string `json:"paidBy"`
+	ShowName     bool   `json:"showName"`
+	// CapacityStanding/CapacitySeated: a venue's capacities, copied when chosen.
+	CapacityStanding *int `json:"capacityStanding,omitempty"`
+	CapacitySeated   *int `json:"capacitySeated,omitempty"`
+	// AgreedCost ("Biaya rekanan") and PaidWO (what the WO paid it) are only
+	// sent with finance.margin.view; null otherwise.
+	AgreedCost *int64 `json:"agreedCost"`
+	PaidWO     *int64 `json:"paidWo"`
+	// PaidClient is what the client paid this supplier directly.
+	PaidClient       *int64  `json:"paidClient"`
 	EngagementStatus string  `json:"engagementStatus"`
 	BookingDate      *string `json:"bookingDate"`
-	EventDate        string  `json:"eventDate"`
-	EventStartTime   *string `json:"eventStartTime"`
-	EventEndTime     *string `json:"eventEndTime"`
-	DPAmount         int64   `json:"dpAmount"`
-	PaidAmount       int64   `json:"paidAmount"`
 	DueDate          *string `json:"dueDate"`
 	PICStaffID       int64   `json:"picStaffId"`
-	// PICName is the engagement PIC's name ("" when unresolved, and always ""
-	// for a client). Filled by GET /projects/{id}/vendors and the restore answer.
-	PICName string `json:"picName"`
-	// EvidenceCount counts every proof file of the engagement itself, of its
-	// milestones and of its payments that the caller may see (staff: all).
-	// Filled by GET /projects/{id}/vendors; 0 on the other answers.
-	EvidenceCount int    `json:"evidenceCount"`
-	Notes         string `json:"notes"`
-	// Milestones is only populated by listVendorEngagements (PLAN.md
-	// "Performance remediation" Phase E) — omitted (nil) from
-	// create/update/cancel responses, which have no batch to draw from and
-	// whose callers already re-fetch the vendor section afterward anyway.
-	Milestones []vendorMilestoneResponse `json:"milestones,omitempty"`
+	PICName          string  `json:"picName"`
+	Scope            string  `json:"scope"`
+	Notes            string  `json:"notes"`
+	// PaidByLocked explains why "Dibayar oleh" can no longer change ("" when it can).
+	PaidByLocked string `json:"paidByLocked"`
+	// UsedByEvents is how many events take place at this venue (0 for a vendor;
+	// a venue at 0 shows "Tidak dipakai acara mana pun").
+	UsedByEvents int `json:"usedByEvents"`
+	// EvidenceCount counts the files of the supplier, its steps and its payments
+	// that the caller may see.
+	EvidenceCount int                       `json:"evidenceCount"`
+	Milestones    []vendorMilestoneResponse `json:"milestones"`
 	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
 	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// toProjectVendorResponse takes paidAmount explicitly rather than reading it
-// off domain.ProjectVendor -- there is no such stored field anymore. The
-// caller (listVendorEngagements) computes it by summing this engagement's
-// own vendor_payments rows (Refund netted as a subtraction), the same
-// derivation Client Payments' own "Total Diterima" already uses correctly —
-// see PLAN.md "Financial Calculation Correctness".
-func toProjectVendorResponse(pv domain.ProjectVendor, paidAmount int64) projectVendorResponse {
-	return projectVendorResponse{
-		ID: pv.ID, VendorID: pv.VendorID, CategoryID: pv.CategoryID, Scope: pv.Scope, ContractValue: pv.ContractValue,
-		PricingTier: string(pv.PricingTier), EngagementStatus: string(pv.EngagementStatus), BookingDate: formatDatePtr(pv.BookingDate),
-		EventDate: pv.EventDate.Format(dateLayout), EventStartTime: pv.EventStartTime, EventEndTime: pv.EventEndTime,
-		DPAmount: pv.DPAmount, PaidAmount: paidAmount,
-		DueDate: formatDatePtr(pv.DueDate), PICStaffID: pv.PICStaffID, Notes: pv.Notes, UpdatedAt: etag.Format(pv.UpdatedAt),
+func toSupplierResponse(s domain.ProjectSupplier) supplierResponse {
+	return supplierResponse{
+		ID: s.ID, Kind: string(s.Kind), SupplierID: s.SupplierID, Name: s.Name, CategoryID: s.CategoryID,
+		PaidBy: string(s.PaidBy), ShowName: s.ShowName, CapacityStanding: s.CapacityStanding, CapacitySeated: s.CapacitySeated,
+		AgreedCost: s.AgreedCost, EngagementStatus: string(s.EngagementStatus), BookingDate: formatDatePtr(s.BookingDate),
+		DueDate: formatDatePtr(s.DueDate), PICStaffID: s.PICStaffID, Scope: s.Scope, Notes: s.Notes,
+		Milestones: []vendorMilestoneResponse{}, UpdatedAt: etag.Format(s.UpdatedAt),
 	}
 }
 
@@ -257,16 +332,34 @@ func toVendorMilestoneResponse(m domain.VendorMilestone) vendorMilestoneResponse
 	}
 }
 
-type paymentResponse struct {
-	ID               int64  `json:"id"`
-	ProjectVendorID  int64  `json:"projectVendorId"`
-	Type             string `json:"type"`
-	Amount           int64  `json:"amount"`
-	PaymentDate      string `json:"paymentDate"`
-	Method           string `json:"method"`
-	ReferenceNumber  string `json:"referenceNumber"`
-	Notes            string `json:"notes"`
-	EvidenceComplete bool   `json:"evidenceComplete"`
+// supplierPaymentResponse is one payment to a vendor or venue of the project,
+// by the WO or straight from the client (payer).
+type supplierPaymentResponse struct {
+	ID                int64  `json:"id"`
+	ProjectSupplierID int64  `json:"projectSupplierId"`
+	Payer             string `json:"payer"`
+	Type              string `json:"type"`
+	Amount            int64  `json:"amount"`
+	PaymentDate       string `json:"paymentDate"`
+	Method            string `json:"method"`
+	ReferenceNumber   string `json:"referenceNumber"`
+	Notes             string `json:"notes"`
+	EvidenceComplete  bool   `json:"evidenceComplete"`
+	// BillTermID is the bill of a vendor the client pays that a client's proof
+	// pays (Paket WO Tahap 4); null when none.
+	BillTermID *int64 `json:"billTermId"`
+	// Source is "client" when the couple sent it from the portal, "staff" when
+	// the WO recorded it.
+	Source string `json:"source"`
+	// Status: "recorded" (staff recorded it, counts as paid), "pending" (the
+	// client's proof, not checked yet: not counted), "verified" (checked,
+	// counted), "rejected" (refused, not counted; see rejectionReason).
+	Status          string     `json:"status"`
+	VerifiedAt      *string    `json:"verifiedAt"`
+	VerifiedBy      *personRef `json:"verifiedBy"`
+	RejectedAt      *string    `json:"rejectedAt"`
+	RejectedBy      *personRef `json:"rejectedBy"`
+	RejectionReason string     `json:"rejectionReason"`
 	// Evidence: the payment's proof files (invoice and/or transfer proof).
 	Evidence []evidenceRefResponse `json:"evidence"`
 	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
@@ -274,19 +367,30 @@ type paymentResponse struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// toPaymentResponse takes evidenceComplete explicitly rather than reading
-// it off domain.VendorPayment -- there is no such stored field/method
-// anymore. The caller (listPayments) computes it by cross-referencing this
-// payment's own evidence rows (Invoice/Transfer Proof), the same
-// presentation-layer derivation already used for Client Payments'
-// evidenceComplete and the vendor paid-amount fix. See PLAN.md "Payment
-// evidence (Invoice/Bukti Transfer)...".
-func toPaymentResponse(p domain.VendorPayment, evidenceComplete bool) paymentResponse {
-	return paymentResponse{
-		ID: p.ID, ProjectVendorID: p.ProjectVendorID, Type: string(p.Type), Amount: p.Amount,
+func toSupplierPaymentResponse(p domain.SupplierPayment, evidenceComplete bool) supplierPaymentResponse {
+	return supplierPaymentResponse{
+		ID: p.ID, ProjectSupplierID: p.ProjectSupplierID, Payer: string(p.Payer), Type: string(p.Type), Amount: p.Amount,
 		PaymentDate: p.PaymentDate.Format(dateLayout), Method: p.Method, ReferenceNumber: p.ReferenceNumber,
 		Notes: p.Notes, EvidenceComplete: evidenceComplete, Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(p.UpdatedAt),
+		BillTermID: optionalID(p.BillTermID), Source: paymentSource(p.IsClientSubmission()), Status: string(p.Status()),
+		VerifiedAt: formatTimePtr(p.VerifiedAt), RejectedAt: formatTimePtr(p.RejectedAt), RejectionReason: p.RejectionReason,
 	}
+}
+
+// optionalID is null for the "none" sentinel 0.
+func optionalID(id int64) *int64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
+}
+
+// paymentSource is "client" for a proof the couple sent, "staff" otherwise.
+func paymentSource(fromClient bool) string {
+	if fromClient {
+		return "client"
+	}
+	return "staff"
 }
 
 // personRef names a person without exposing an id.
@@ -329,33 +433,6 @@ func toClientPaymentResponse(p domain.ClientPayment, evidenceComplete bool) clie
 	}
 }
 
-type venuePaymentResponse struct {
-	ID               int64  `json:"id"`
-	Type             string `json:"type"`
-	Amount           int64  `json:"amount"`
-	PaymentDate      string `json:"paymentDate"`
-	Method           string `json:"method"`
-	ReferenceNumber  string `json:"referenceNumber"`
-	Notes            string `json:"notes"`
-	EvidenceComplete bool   `json:"evidenceComplete"`
-	// Evidence: the payment's proof files (invoice and/or transfer proof).
-	Evidence []evidenceRefResponse `json:"evidence"`
-	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
-	// ETag of the item and what a PATCH sends back as If-Match (ADR-0036).
-	UpdatedAt string `json:"updatedAt"`
-}
-
-// toVenuePaymentResponse takes evidenceComplete explicitly for the same
-// reason toPaymentResponse does -- see PLAN.md "Venue Payments + Pembayaran
-// tab restructuring".
-func toVenuePaymentResponse(p domain.VenuePayment, evidenceComplete bool) venuePaymentResponse {
-	return venuePaymentResponse{
-		ID: p.ID, Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout),
-		Method: p.Method, ReferenceNumber: p.ReferenceNumber, Notes: p.Notes, EvidenceComplete: evidenceComplete,
-		Evidence: []evidenceRefResponse{}, UpdatedAt: etag.Format(p.UpdatedAt),
-	}
-}
-
 // ledgerSummaryResponse is where one owed amount stands after a payment was
 // recorded: what is owed, what the payments cover (DP + Termin + Pelunasan -
 // Refund; Tambahan is outside the contract) and what is left (never negative).
@@ -387,8 +464,8 @@ func evidenceRefs(list []domain.Evidence) []evidenceRefResponse {
 
 type issueResponse struct {
 	ID int64 `json:"id"`
-	// ProjectVendorID is null for a kendala about the event in general.
-	ProjectVendorID *int64 `json:"projectVendorId"`
+	// ProjectSupplierID is null for a kendala about the event in general.
+	ProjectSupplierID *int64 `json:"projectSupplierId"`
 	// VendorMilestoneID is null when the kendala is general to the vendor
 	// engagement, not tied to one specific deliverable (PLAN.md "Retire the
 	// standalone Kendala tab").
@@ -408,10 +485,11 @@ type issueResponse struct {
 	ResolutionNotes      string  `json:"resolutionNotes"`
 	// IsClientVisible: whether the couple sees this kendala in the Client Portal.
 	IsClientVisible bool `json:"isClientVisible"`
-	// VendorName/VendorMilestoneName/Evidence are filled by GET
-	// /projects/{id}/issues (names from this project's own engagements; "" when
-	// there is none; client: only the proof portal.issues.view allows).
-	VendorName          string                `json:"vendorName"`
+	// SupplierName/VendorMilestoneName/Evidence are filled by GET
+	// /projects/{id}/issues ("" when there is none). A client gets the name
+	// PortalPolicy.SupplierName allows (the service for a hidden vendor) and
+	// only the proof portal.issues.view allows.
+	SupplierName        string                `json:"supplierName"`
 	VendorMilestoneName string                `json:"vendorMilestoneName"`
 	Evidence            []evidenceRefResponse `json:"evidence"`
 	// UpdatedAt is the row's version: RFC 3339, microseconds, UTC. It is also the
@@ -420,13 +498,13 @@ type issueResponse struct {
 }
 
 func toIssueResponse(i domain.VendorIssue) issueResponse {
-	var vendorID *int64
-	if i.HasVendor() {
-		id := i.ProjectVendorID
-		vendorID = &id
+	var supplierID *int64
+	if i.ProjectSupplierID != 0 {
+		id := i.ProjectSupplierID
+		supplierID = &id
 	}
 	return issueResponse{Evidence: []evidenceRefResponse{}, IsClientVisible: i.IsClientVisible,
-		ID: i.ID, ProjectVendorID: vendorID, VendorMilestoneID: i.VendorMilestoneID, Title: i.Title, Description: i.Description,
+		ID: i.ID, ProjectSupplierID: supplierID, VendorMilestoneID: i.VendorMilestoneID, Title: i.Title, Description: i.Description,
 		Impact: string(i.Impact), FoundDate: i.FoundDate.Format(dateLayout), Status: string(i.Status),
 		ResolutionPlan: i.ResolutionPlan, PICStaffID: i.PICStaffID,
 		TargetResolutionDate: formatDatePtr(i.TargetResolutionDate), ResolvedDate: formatDatePtr(i.ResolvedDate),
@@ -534,10 +612,10 @@ func quotedVersion(updatedAt string) string {
 
 func (r projectResponse) ETag() string         { return quotedVersion(r.UpdatedAt) }
 func (r milestoneResponse) ETag() string       { return quotedVersion(r.UpdatedAt) }
-func (r projectVendorResponse) ETag() string   { return quotedVersion(r.UpdatedAt) }
+func (r supplierResponse) ETag() string        { return quotedVersion(r.UpdatedAt) }
+func (r eventResponse) ETag() string           { return quotedVersion(r.UpdatedAt) }
 func (r vendorMilestoneResponse) ETag() string { return quotedVersion(r.UpdatedAt) }
-func (r paymentResponse) ETag() string         { return quotedVersion(r.UpdatedAt) }
+func (r supplierPaymentResponse) ETag() string { return quotedVersion(r.UpdatedAt) }
 func (r clientPaymentResponse) ETag() string   { return quotedVersion(r.UpdatedAt) }
-func (r venuePaymentResponse) ETag() string    { return quotedVersion(r.UpdatedAt) }
 func (r issueResponse) ETag() string           { return quotedVersion(r.UpdatedAt) }
 func (r evidenceResponse) ETag() string        { return quotedVersion(r.UpdatedAt) }

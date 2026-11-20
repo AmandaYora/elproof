@@ -48,6 +48,10 @@ type TenantRepository interface {
 	UpdateProfile(ctx context.Context, id int64, businessName, phone, city string) error
 	GetBusinessDetails(ctx context.Context, tenantID int64) (domain.BusinessDetails, error)
 	SaveBusinessDetails(ctx context.Context, tenantID int64, d domain.BusinessDetails) error
+	// GetQuoteSettings returns the Penawaran settings; found is false when the
+	// tenant has no business-details row or no document code yet.
+	GetQuoteSettings(ctx context.Context, tenantID int64) (s domain.QuoteSettings, found bool, err error)
+	SaveQuoteSettings(ctx context.Context, tenantID int64, s domain.QuoteSettings) error
 	SetOnboardingDismissed(ctx context.Context, id int64, when time.Time) error
 	CreateForSignup(ctx context.Context, tenant *domain.Tenant, signupID int64) (bool, error)
 	UpdateUsername(ctx context.Context, id int64, username string) error
@@ -108,6 +112,32 @@ type TenantService struct {
 	trialLimits TrialLimitsRepository
 	clients     clientscontracts.Contracts
 	roles       accesscontracts.Contracts
+	eventKinds  EventKindSeeder
+}
+
+// EventKindSeeder gives a new workspace its default event kinds (Lamaran,
+// Akad, Resepsi, …). The offers module implements it; main.go wires it with
+// SetEventKinds so platform never imports offers (paket-wo PLAN §2.1).
+type EventKindSeeder interface {
+	SeedDefaultEventKinds(ctx context.Context, tenantID int64) error
+}
+
+// SetEventKinds completes two-phase wiring with the offers module.
+func (s *TenantService) SetEventKinds(k EventKindSeeder) {
+	s.eventKinds = k
+}
+
+// seedCatalogDefaults gives a workspace what quoting needs from day one: the
+// default event kinds and its Penawaran settings (document code from the
+// business name, default validity and terms). Idempotent.
+func (s *TenantService) seedCatalogDefaults(ctx context.Context, tenantID int64) error {
+	if s.eventKinds != nil {
+		if err := s.eventKinds.SeedDefaultEventKinds(ctx, tenantID); err != nil {
+			return err
+		}
+	}
+	_, err := s.GetQuoteSettings(ctx, tenantID)
+	return err
 }
 
 // SetAccess completes two-phase wiring with the access module: every new
@@ -310,6 +340,9 @@ func (s *TenantService) provisionInvitedOwner(ctx context.Context, tenant *domai
 		return nil, err
 	}
 	if err := s.projects.SeedDefaultMilestoneTemplate(ctx, tenant.ID); err != nil {
+		return nil, err
+	}
+	if err := s.seedCatalogDefaults(ctx, tenant.ID); err != nil {
 		return nil, err
 	}
 	ownerID, err := s.staff.FindOwner(ctx, tenant.ID)

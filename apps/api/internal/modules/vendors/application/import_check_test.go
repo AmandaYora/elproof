@@ -70,22 +70,31 @@ func TestCheckVendorImportRow(t *testing.T) {
 
 func TestCheckVenueImportRow(t *testing.T) {
 	valid := func() VenueImportRow {
-		return VenueImportRow{Name: "Gedung", PICName: "Budi", PhonePIC: "081234567", City: "Kota Bandung", RentalPrice: i64(0), Capacity: iptr(300)}
+		return VenueImportRow{Name: "Gedung", PICName: "Budi", PhonePIC: "081234567", City: "Kota Bandung", PriceAkadResepsi: i64(0), CapacityStanding: iptr(300)}
 	}
 	if c := checkVenueImportRow(valid()); c.failed() {
 		t.Fatalf("valid row refused: %+v", c.errs)
 	}
+	// Only a seated capacity is enough too.
 	row := valid()
+	row.CapacityStanding, row.CapacitySeated = nil, iptr(200)
+	if c := checkVenueImportRow(row); c.failed() {
+		t.Fatalf("seated-only row refused: %+v", c.errs)
+	}
+	row = valid()
 	row.PhonePIC = "123"
 	row.Charge = i64(-1)
-	row.Capacity = iptr(maxVenueCapacity + 1)
-	row.NotNumber = []string{"Harga Sewa"}
-	row.RentalPrice = nil
+	row.CapacityStanding = iptr(maxVenueCapacity + 1)
+	row.CapacitySeated = iptr(0)
+	row.NotNumber = []string{"Harga Resepsi"}
+	row.PriceAkadResepsi = i64(-5)
 	want := []ImportCellError{
 		{"No Tlp PIC", "No Tlp PIC minimal 6 karakter"},
-		{"Harga Sewa", "Harga Sewa harus berupa angka bulat"},
+		{"Kapasitas Berdiri", "Kapasitas Berdiri terlalu besar. Periksa lagi angkanya."},
+		{"Kapasitas Duduk", "Kapasitas Duduk harus lebih dari 0"},
+		{"Harga Resepsi", "Harga Resepsi harus berupa angka bulat"},
+		{"Harga Akad+Resepsi", "Harga Akad+Resepsi tidak boleh negatif"},
 		{"Charge", "Charge tidak boleh negatif"},
-		{"Kapasitas", "Kapasitas terlalu besar. Periksa lagi angkanya."},
 	}
 	if c := checkVenueImportRow(row); !reflect.DeepEqual(c.errs, want) {
 		t.Fatalf("errors = %+v", c.errs)
@@ -94,5 +103,12 @@ func TestCheckVenueImportRow(t *testing.T) {
 	row.PhonePIC, row.Name = "", ""
 	if c := checkVenueImportRow(row); len(c.errs) != 2 || c.errs[0].Column != "Nama Venue" || c.errs[1].Message != "No Tlp PIC wajib diisi" {
 		t.Errorf("empty name and phone: %+v", c.errs)
+	}
+	// Neither capacity: one problem, named on Kapasitas Berdiri.
+	row = valid()
+	row.CapacityStanding = nil
+	want = []ImportCellError{{"Kapasitas Berdiri", "Isi Kapasitas Berdiri atau Kapasitas Duduk, minimal satu"}}
+	if c := checkVenueImportRow(row); !reflect.DeepEqual(c.errs, want) {
+		t.Errorf("no capacity: %+v", c.errs)
 	}
 }

@@ -11,6 +11,16 @@ import { useConflictStore } from "@/shared/stores/useConflictStore";
 import { isStaleConflict } from "@/shared/lib/concurrency";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /**
+     * The screen that made this save shows its own "changed by someone else" state (the rincian editor keeps the
+     * person's edits and offers the newer version), so the global conflict dialog stays closed.
+     */
+    ownConflict?: boolean;
+  }
+}
+
 /** Codes the API attaches to a 403 when access depends on account state. */
 type AccessErrorCode =
   | "subscription_read_only"
@@ -181,8 +191,10 @@ httpClient.interceptors.response.use(
   (response) => {
     const method = response.config.method?.toLowerCase();
     if (method && method !== "get") {
-      const match = PROJECT_PATH.exec((response.config.url ?? "").split("?")[0]);
-      if (match) {
+      const path = (response.config.url ?? "").split("?")[0];
+      const match = PROJECT_PATH.exec(path);
+      // A preview computes and writes nothing: nothing on screen needs reloading.
+      if (match && !path.endsWith("/preview")) {
         const data = (response.data as { data?: unknown } | undefined)?.data;
         projectWriteListeners.forEach((listen) => listen(match[1], data));
       }
@@ -194,7 +206,7 @@ httpClient.interceptors.response.use(
 
     handleAccessError(accessErrorCode(error));
     // Saved over someone else's change: say so once, here, whichever form made the save (ADR-0036).
-    if (isStaleConflict(error)) useConflictStore.getState().show();
+    if (isStaleConflict(error) && !error.config?.ownConflict) useConflictStore.getState().show();
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint(originalRequest.url)) {
       originalRequest._retried = true;

@@ -6,28 +6,27 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/domain"
+	"elproof/internal/shared/apperror"
 )
 
 // ---- a tiny in-memory "database" with real rollback ----
 
 type memDB struct {
-	clientPays []domain.ClientPayment
-	vendorPays []domain.VendorPayment
-	venuePays  []domain.VenuePayment
-	files      *proofFiles
-	activity   *memActivity
-	nextPay    int64
+	clientPays   []domain.ClientPayment
+	supplierPays []domain.SupplierPayment
+	files        *proofFiles
+	activity     *memActivity
+	nextPay      int64
 }
 
 // snapshot returns the function that puts everything back as it is now.
 func (d *memDB) snapshot() func() {
 	cp := append([]domain.ClientPayment(nil), d.clientPays...)
-	vp := append([]domain.VendorPayment(nil), d.vendorPays...)
-	np := append([]domain.VenuePayment(nil), d.venuePays...)
+	sp := append([]domain.SupplierPayment(nil), d.supplierPays...)
 	ev := append([]domain.Evidence(nil), d.files.rows...)
 	act := append([]domain.ActivityLogEntry(nil), d.activity.entries...)
 	return func() {
-		d.clientPays, d.vendorPays, d.venuePays = cp, vp, np
+		d.clientPays, d.supplierPays = cp, sp
 		d.files.rows, d.activity.entries = ev, act
 	}
 }
@@ -69,33 +68,18 @@ func (r dbClientPayments) Create(_ context.Context, p *domain.ClientPayment) err
 	return nil
 }
 
-type dbVendorPayments struct {
-	PaymentRepository
+type dbSupplierPayments struct {
+	SupplierPaymentRepository
 	db *memDB
 }
 
-func (r dbVendorPayments) ListByProject(context.Context, int64) ([]domain.VendorPayment, error) {
-	return r.db.vendorPays, nil
+func (r dbSupplierPayments) ListByProject(context.Context, int64) ([]domain.SupplierPayment, error) {
+	return r.db.supplierPays, nil
 }
-func (r dbVendorPayments) Create(_ context.Context, p *domain.VendorPayment) error {
+func (r dbSupplierPayments) Create(_ context.Context, p *domain.SupplierPayment) error {
 	r.db.nextPay++
 	p.ID = r.db.nextPay
-	r.db.vendorPays = append(r.db.vendorPays, *p)
-	return nil
-}
-
-type dbVenuePayments struct {
-	VenuePaymentRepository
-	db *memDB
-}
-
-func (r dbVenuePayments) ListByProject(context.Context, int64) ([]domain.VenuePayment, error) {
-	return r.db.venuePays, nil
-}
-func (r dbVenuePayments) Create(_ context.Context, p *domain.VenuePayment) error {
-	r.db.nextPay++
-	p.ID = r.db.nextPay
-	r.db.venuePays = append(r.db.venuePays, *p)
+	r.db.supplierPays = append(r.db.supplierPays, *p)
 	return nil
 }
 
@@ -107,13 +91,12 @@ func (m memTerms) ListByProject(context.Context, int64) ([]domain.PaymentTerm, e
 func (m memTerms) ReplaceAll(context.Context, int64, []domain.PaymentTerm) error { return nil }
 
 type atomicFixture struct {
-	db      *memDB
-	tx      *memTx
-	store   *objStorage
-	uploads *UploadService
-	client  *ClientPaymentService
-	vendor  *PaymentService
-	venue   *VenuePaymentService
+	db       *memDB
+	tx       *memTx
+	store    *objStorage
+	uploads  *UploadService
+	client   *ClientPaymentService
+	supplier *SupplierPaymentService
 }
 
 var payDay = time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
@@ -129,11 +112,9 @@ func newAtomicFixture(contracts fakeContracts, terms []domain.PaymentTerm) *atom
 
 	client := NewClientPaymentService(dbClientPayments{db: db}, ev, activity, contracts)
 	client.SetAtomicSupport(proof, memTerms{terms})
-	vendor := NewPaymentService(dbVendorPayments{db: db}, ev, activity, contracts)
-	vendor.SetProofSupport(proof)
-	venue := NewVenuePaymentService(dbVenuePayments{db: db}, ev, activity, contracts)
-	venue.SetProofSupport(proof)
-	return &atomicFixture{db: db, tx: tx, store: store, uploads: uploads, client: client, vendor: vendor, venue: venue}
+	supplier := NewSupplierPaymentService(dbSupplierPayments{db: db}, ev, activity, contracts)
+	supplier.SetProofSupport(proof)
+	return &atomicFixture{db: db, tx: tx, store: store, uploads: uploads, client: client, supplier: supplier}
 }
 
 func (f *atomicFixture) token(t *testing.T, project int64, name string) string {
@@ -291,51 +272,85 @@ func TestOverpaymentRollsBackAndKeepsTheUpload(t *testing.T) {
 	}
 }
 
-func TestVendorAndVenuePaymentsWithProof(t *testing.T) {
+// The suppliers of project 10: a vendor and a venue the WO pays with an agreed
+// cost, a vendor the WO pays without one yet, and a vendor the client pays.
+var atomicSuppliers = []domain.ProjectSupplier{
+	{ID: 3, ProjectID: 10, Kind: domain.SupplierVendor, Name: "Dekor Indah", PaidBy: domain.PayerWO, AgreedCost: i64p(5_000_000)},
+	{ID: 4, ProjectID: 10, Kind: domain.SupplierVendor, Name: "Rias Ayu", PaidBy: domain.PayerWO},
+	{ID: 5, ProjectID: 10, Kind: domain.SupplierVenue, Name: "Gedung Melati", PaidBy: domain.PayerWO, AgreedCost: i64p(8_000_000)},
+	{ID: 6, ProjectID: 10, Kind: domain.SupplierVendor, Name: "Foto Kita", PaidBy: domain.PayerClient},
+}
+
+func supplierPay(supplierID int64, typ domain.PaymentType, amount int64, ref string) SupplierPaymentInput {
+	return SupplierPaymentInput{ProjectSupplierID: supplierID, Type: typ, Amount: amount, PaymentDate: payDay, ReferenceNumber: ref}
+}
+
+func TestSupplierPaymentsWithProof(t *testing.T) {
 	ctx := context.Background()
-	f := newAtomicFixture(fakeContracts{engagement: 5_000_000, venue: 8_000_000}, nil)
+	f := newAtomicFixture(fakeContracts{suppliers: atomicSuppliers}, nil)
 	inv, proof := f.token(t, 10, "inv"), f.token(t, 10, "proof")
 	items := []ProofItem{{UploadToken: inv, Type: domain.EvidenceInvoice}, {UploadToken: proof, Type: domain.EvidenceTransferProof, Name: "Bukti DP dekor"}}
 
-	v, err := f.vendor.CreateWithProof(ctx, 1, 10, 77, PaymentInput{ProjectVendorID: 3, Type: domain.PaymentDP, Amount: 2_000_000, PaymentDate: payDay, ReferenceNumber: "V-1"}, items)
+	v, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(3, domain.PaymentDP, 2_000_000, "V-1"), items)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.Ledger != (domain.Ledger{ContractValue: 5_000_000, Paid: 2_000_000, Remaining: 3_000_000}) || len(v.Evidence) != 2 {
 		t.Errorf("vendor result: %+v", v)
 	}
+	if v.Payment.Payer != domain.PayerWO || v.Payment.ProjectSupplierID != 3 || v.Payment.RecordedByStaffID != 77 {
+		t.Errorf("the payment takes the supplier's payer: %+v", v.Payment)
+	}
 	names := map[domain.EvidenceType]string{}
 	for _, e := range v.Evidence {
 		names[e.Type] = e.Name
-		if e.RelatedKind != domain.RelatedPayment || e.RelatedID != v.Payment.ID {
-			t.Errorf("proof attaches to the vendor payment: %+v", e)
+		if e.RelatedKind != domain.RelatedSupplierPayment || e.RelatedID != v.Payment.ID {
+			t.Errorf("proof attaches to the supplier payment: %+v", e)
 		}
 	}
 	if names[domain.EvidenceInvoice] != "Invoice - V-1" || names[domain.EvidenceTransferProof] != "Bukti DP dekor" {
 		t.Errorf("names: %v", names)
 	}
-	// A second engagement's payments do not count toward the first.
-	if _, err := f.vendor.CreateWithProof(ctx, 1, 10, 77, PaymentInput{ProjectVendorID: 4, Type: domain.PaymentDP, Amount: 1_000_000, PaymentDate: payDay}, nil); err != nil {
+	if len(f.tx.locked) != 1 || f.tx.locked[0] != 10 {
+		t.Errorf("the project is locked while money is recorded: %v", f.tx.locked)
+	}
+	// Another supplier's payments do not count toward the first; a supplier
+	// without an agreed cost limits nothing.
+	if _, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(4, domain.PaymentDP, 90_000_000, ""), nil); err != nil {
 		t.Fatal(err)
 	}
-	v2, _ := f.vendor.CreateWithProof(ctx, 1, 10, 77, PaymentInput{ProjectVendorID: 3, Type: domain.PaymentTermin, Amount: 1_000_000, PaymentDate: payDay}, nil)
-	if v2.Ledger.Paid != 3_000_000 || v2.Ledger.Remaining != 2_000_000 {
-		t.Errorf("ledger is per engagement: %+v", v2.Ledger)
+	v2, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(3, domain.PaymentTermin, 1_000_000, ""), nil)
+	if err != nil || v2.Ledger.Paid != 3_000_000 || v2.Ledger.Remaining != 2_000_000 {
+		t.Errorf("ledger is per supplier: %+v %v", v2, err)
 	}
 
-	n, err := f.venue.CreateWithProof(ctx, 1, 10, 77, VenuePaymentInput{Type: domain.PaymentDP, Amount: 3_000_000, PaymentDate: payDay},
+	n, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(5, domain.PaymentDP, 3_000_000, ""),
 		[]ProofItem{{UploadToken: f.token(t, 10, "vp"), Type: domain.EvidenceTransferProof}})
-	if err != nil || n.Ledger != (domain.Ledger{ContractValue: 8_000_000, Paid: 3_000_000, Remaining: 5_000_000}) || n.Evidence[0].RelatedKind != domain.RelatedVenuePayment {
+	if err != nil || n.Ledger != (domain.Ledger{ContractValue: 8_000_000, Paid: 3_000_000, Remaining: 5_000_000}) || n.Evidence[0].RelatedKind != domain.RelatedSupplierPayment {
 		t.Errorf("venue result: %+v %v", n, err)
 	}
 	// Overpaying the venue rolls back with its proof.
-	before := len(f.db.files.rows)
-	if _, err := f.venue.CreateWithProof(ctx, 1, 10, 77, VenuePaymentInput{Type: domain.PaymentPelunasan, Amount: 9_000_000, PaymentDate: payDay},
+	beforePays, beforeFiles := len(f.db.supplierPays), len(f.db.files.rows)
+	if _, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(5, domain.PaymentPelunasan, 9_000_000, ""),
 		[]ProofItem{{UploadToken: f.token(t, 10, "vp2"), Type: domain.EvidenceTransferProof}}); codeOf(err) != "payment_exceeds_contract" {
 		t.Errorf("venue overpayment: %v", err)
 	}
-	if len(f.db.venuePays) != 1 || len(f.db.files.rows) != before {
-		t.Errorf("the refused venue payment left rows behind: %d payments, %d proofs", len(f.db.venuePays), len(f.db.files.rows)-before)
+	if len(f.db.supplierPays) != beforePays || len(f.db.files.rows) != beforeFiles {
+		t.Errorf("the refused venue payment left rows behind: %d payments, %d proofs", len(f.db.supplierPays)-beforePays, len(f.db.files.rows)-beforeFiles)
+	}
+
+	// What the client pays a supplier directly is outside the contract: no limit.
+	c, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(6, domain.PaymentPelunasan, 50_000_000, ""), nil)
+	if err != nil || c.Payment.Payer != domain.PayerClient || c.Ledger.ContractValue != 0 {
+		t.Errorf("client-paid supplier: %+v %v", c, err)
+	}
+	// A supplier that is not the project's (or was deleted) is a 404, nothing written.
+	before := len(f.db.supplierPays)
+	if _, err := f.supplier.CreateWithProof(ctx, 1, 10, 77, supplierPay(99, domain.PaymentDP, 1, ""), nil); apperror.HTTPStatus(err) != 404 {
+		t.Errorf("unknown supplier: %v", err)
+	}
+	if len(f.db.supplierPays) != before {
+		t.Error("no payment for an unknown supplier")
 	}
 }
 

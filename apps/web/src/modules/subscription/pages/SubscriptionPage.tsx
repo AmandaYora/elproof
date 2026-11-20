@@ -308,7 +308,7 @@ export default function SubscriptionPage() {
   if (!isOwner) {
     return (
       <div className="flex flex-col gap-5">
-        <PageHeader className="mb-1" title="Langganan" description={`Paket ${APP_NAME} untuk tim ${businessName}, pembayaran, dan kuitansinya.`} />
+        <PageHeader className="mb-1" title="Langganan" description={`Paket langganan ${APP_NAME} untuk tim ${businessName}, pembayaran, dan kuitansinya.`} />
         <Card className="max-w-md">
           <CardContent className="py-5">
             <EmptyState
@@ -375,7 +375,7 @@ export default function SubscriptionPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader className="mb-1" title="Langganan" description={`Paket ${APP_NAME} untuk tim ${businessName}, pembayaran, dan kuitansinya.`} />
+      <PageHeader className="mb-1" title="Langganan" description={`Paket langganan ${APP_NAME} untuk tim ${businessName}, pembayaran, dan kuitansinya.`} />
 
       {actionError && (
         <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-danger-text">
@@ -393,7 +393,7 @@ export default function SubscriptionPage() {
               <div>{tenant ? <TenantStatusBadge status={tenant.subscriptionStatus} /> : <span className="text-[13px] text-muted-foreground">Memuat...</span>}</div>
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-[12.5px] text-muted-foreground">Paket</span>
+              <span className="text-[12.5px] text-muted-foreground">Paket langganan</span>
               <span className="text-[14px] font-medium text-foreground">
                 {currentPlan?.name ?? (lifecycle?.status === "trialing" ? "Masa coba" : "Belum ada paket")}
               </span>
@@ -410,7 +410,7 @@ export default function SubscriptionPage() {
             )}
             {pendingCharge && (
               <p className="rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] text-muted-foreground">
-                Ada pembayaran yang belum selesai. Selesaikan atau batalkan di riwayat transaksi sebelum memilih paket lagi.
+                Ada pembayaran yang belum selesai. Selesaikan atau batalkan di riwayat transaksi sebelum memilih paket langganan lagi.
               </p>
             )}
             <p className="flex items-start gap-1.5 border-t border-border-light pt-4 text-[12.5px] text-muted-foreground">
@@ -422,12 +422,12 @@ export default function SubscriptionPage() {
 
         <section aria-labelledby="pilih-paket" className="flex min-w-0 flex-col gap-3">
           <h2 id="pilih-paket" className="text-[16px] font-semibold text-foreground">
-            Pilih paket
+            Pilih paket langganan
           </h2>
           {activePlans.length === 0 ? (
             <Card>
               <CardContent className="py-5">
-                <EmptyState title="Belum ada paket tersedia" description={`Hubungi ${APP_NAME} untuk informasi paket langganan.`} />
+                <EmptyState title="Belum ada paket langganan tersedia" description={`Hubungi ${APP_NAME} untuk informasi paket langganan.`} />
               </CardContent>
             </Card>
           ) : (
@@ -444,7 +444,7 @@ export default function SubscriptionPage() {
                           <AppLogoMark className="size-10 shrink-0" />
                           <p className="text-[16px] font-semibold break-words text-foreground">{p.name}</p>
                         </div>
-                        {isCurrentPlan && <Badge tone="success">Paket Anda</Badge>}
+                        {isCurrentPlan && <Badge tone="success">Paket langganan Anda</Badge>}
                       </div>
 
                       <div className="flex items-baseline gap-1.5">
@@ -575,7 +575,7 @@ export default function SubscriptionPage() {
       >
         <div className="flex flex-col gap-3 text-[13px]">
           <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Paket</span>
+            <span className="text-text-secondary">Paket langganan</span>
             <span className="font-semibold text-text-primary">
               Langganan {APP_NAME} — {selectedPlan?.name ?? "-"}
             </span>

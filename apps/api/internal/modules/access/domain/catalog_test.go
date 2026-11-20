@@ -43,6 +43,8 @@ func TestMigrationMatchesTemplates(t *testing.T) {
 		"000058_create_tenant_roles.up.sql",
 		"000078_client_payment_submissions.up.sql",
 		"000079_milestone_for_client.up.sql",
+		"000086_offers_catalog.up.sql",
+		"000090_quotations.up.sql",
 	} {
 		raw, err := os.ReadFile("../../../../migrations/" + name)
 		if err != nil {

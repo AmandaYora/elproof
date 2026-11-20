@@ -1,5 +1,7 @@
 # ADR-0013: Project archive (soft, reversible) and hard delete (permanent, guarded)
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): `project_vendors`, `vendor_payments` dan `venue_payments` tidak ada lagi; hapus permanen mengosongkan `supplier_payments`, `project_suppliers`, `project_events` dan `project_event_sessions` juga (urutan di `projectOwnedTables`).
+
 ## Status
 Accepted
 

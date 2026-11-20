@@ -101,16 +101,21 @@ test.describe("vendor rows", () => {
   test("a row's actions are named buttons beside the toggle, not inside it", async ({ browser }, info) => {
     const { page, close } = await open(browser, info, "owner");
     await visit(page, "/proyek/1/vendor");
-    const toggle = page.getByRole("button", { name: /Katering Rasa Nusantara/ }).first();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(await toggle.locator("button, [role=button]").count()).toBe(0);
-    const edit = page.getByRole("button", { name: "Ubah Katering Rasa Nusantara" });
-    await edit.focus();
+    const table = page.getByRole("table", { name: "Vendor & venue" });
+    const row = table.getByRole("row").filter({ hasText: "Katering Rasa Nusantara" });
+    const opener = row.getByRole("link", { name: /Katering Rasa Nusantara/ });
+    expect(await opener.locator("a, button, [role=button]").count()).toBe(0);
+    const actions = row.getByRole("button", { name: "Aksi lain untuk Katering Rasa Nusantara" });
+    await actions.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("dialog", { name: "Ubah vendor di proyek" })).toBeVisible();
-    // Using an action does not also open or close the row.
+    await expect(page.getByRole("menu")).toBeVisible();
+    // Using the actions does not also open the vendor's drawer.
     await page.keyboard.press("Escape");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // The name opens it.
+    await opener.click();
+    await expect(page.getByRole("dialog", { name: /Katering Rasa Nusantara/ })).toBeVisible();
     await close();
   });
 });

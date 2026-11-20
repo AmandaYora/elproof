@@ -62,3 +62,11 @@ export function overpaymentMessage(
   const remaining = remainingToPay(contractValue, others);
   return `Melebihi ${owed} (${formatMoney(Math.max(remaining, 0))}). Kurangi nominalnya, atau pilih jenis Tambahan untuk biaya di luar kontrak.`;
 }
+
+/**
+ * Whether a payment to a vendor or venue counts as paid (Paket WO Tahap 4): one the WO recorded does at once; a proof
+ * the couple sent from the portal only once the WO marked it as matching. A waiting or refused proof does not.
+ */
+export function countsAsPaidToSupplier(p: { status: "recorded" | "pending" | "verified" | "rejected" }): boolean {
+  return p.status === "recorded" || p.status === "verified";
+}

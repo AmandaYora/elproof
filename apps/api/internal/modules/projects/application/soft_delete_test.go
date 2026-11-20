@@ -103,79 +103,29 @@ func TestRestoreRechecksOverpayment(t *testing.T) {
 	}
 }
 
-// ---- vendor payments ----
+// ---- supplier payments ----
 
-type fakeVendorPayments struct {
-	PaymentRepository
-	rows []domain.VendorPayment
-}
+// costOf100 is a vendor the WO pays with an agreed cost of 100.
+var costOf100 = fakeContracts{suppliers: []domain.ProjectSupplier{
+	{ID: 7, ProjectID: 10, Kind: domain.SupplierVendor, Name: "Dekor Indah", PaidBy: domain.PayerWO, AgreedCost: i64p(100)},
+}}
 
-func (f *fakeVendorPayments) ListByProject(context.Context, int64) ([]domain.VendorPayment, error) {
-	var out []domain.VendorPayment
-	for _, r := range f.rows {
-		if r.DeletedAt == nil {
-			out = append(out, r)
-		}
-	}
-	return out, nil
-}
-func (f *fakeVendorPayments) FindByID(_ context.Context, _, id int64) (*domain.VendorPayment, error) {
-	for _, r := range f.rows {
-		if r.ID == id && r.DeletedAt == nil {
-			p := r
-			return &p, nil
-		}
-	}
-	return nil, nil
-}
-func (f *fakeVendorPayments) FindDeletedByID(_ context.Context, _, id int64) (*domain.VendorPayment, error) {
-	for _, r := range f.rows {
-		if r.ID == id && r.DeletedAt != nil {
-			p := r
-			return &p, nil
-		}
-	}
-	return nil, nil
-}
-func (f *fakeVendorPayments) SoftDelete(_ context.Context, _, id int64, at time.Time) (bool, error) {
-	for i := range f.rows {
-		if f.rows[i].ID == id && f.rows[i].DeletedAt == nil {
-			f.rows[i].DeletedAt = &at
-			return true, nil
-		}
-	}
-	return false, nil
-}
-func (f *fakeVendorPayments) Restore(_ context.Context, _, id int64, notBefore time.Time) (bool, error) {
-	for i := range f.rows {
-		if f.rows[i].ID == id && f.rows[i].DeletedAt != nil && f.rows[i].DeletedAt.After(notBefore) {
-			f.rows[i].DeletedAt = nil
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// goneEngagement is a contract reader for a vendor engagement that is deleted.
-type goneEngagement struct{ fakeContracts }
-
-func (goneEngagement) EngagementContractValue(context.Context, int64, int64) (int64, error) {
-	return 0, apperror.NotFound("Kerja sama vendor tidak ditemukan")
-}
-
-func TestVendorPaymentDeleteReturnsItsEngagementAndLedgerExcludesIt(t *testing.T) {
-	repo := &fakeVendorPayments{rows: []domain.VendorPayment{
-		{ID: 1, ProjectVendorID: 7, Type: domain.PaymentDP, Amount: 30},
-		{ID: 2, ProjectVendorID: 7, Type: domain.PaymentTermin, Amount: 20},
+func TestSupplierPaymentDeleteReturnsItsSupplierAndLedgerExcludesIt(t *testing.T) {
+	repo := &memSupplierPayments{rows: []domain.SupplierPayment{
+		{ID: 1, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentDP, Amount: 30},
+		{ID: 2, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentTermin, Amount: 20},
 	}}
-	svc := NewPaymentService(repo, nil, nil, fakeContracts{engagement: 100})
+	svc := NewSupplierPaymentService(repo, nil, nil, costOf100)
 	p, until, err := svc.Delete(context.Background(), 10, 2, 5, delNow)
-	if err != nil || p.ProjectVendorID != 7 || !until.Equal(delNow.Add(24*time.Hour)) {
+	if err != nil || p.ProjectSupplierID != 7 || !until.Equal(delNow.Add(24*time.Hour)) {
 		t.Fatalf("delete: %+v %v %v", p, until, err)
 	}
 	l, err := svc.LedgerSummary(context.Background(), 10, 7)
 	if err != nil || l.Paid != 30 || l.Remaining != 70 || l.ContractValue != 100 {
 		t.Errorf("the deleted payment must not count: %+v %v", l, err)
+	}
+	if _, err := svc.Get(context.Background(), 10, 2); apperror.HTTPStatus(err) != 404 {
+		t.Errorf("a deleted payment is not found: %v", err)
 	}
 	if _, err := svc.Restore(context.Background(), 10, 2, 5, delNow.Add(time.Minute)); err != nil {
 		t.Fatalf("restore: %v", err)
@@ -184,66 +134,63 @@ func TestVendorPaymentDeleteReturnsItsEngagementAndLedgerExcludesIt(t *testing.T
 	if l.Paid != 50 || l.Remaining != 50 {
 		t.Errorf("after restore the payment counts again: %+v", l)
 	}
+	if _, err := svc.Restore(context.Background(), 10, 2, 5, delNow.Add(time.Minute)); apperror.HTTPStatus(err) != 404 {
+		t.Errorf("restoring a live payment: want 404, got %v", err)
+	}
 }
 
-func TestVendorPaymentRestoreNeedsItsEngagement(t *testing.T) {
+func TestSupplierPaymentRestoreNeedsItsSupplier(t *testing.T) {
 	gone := delNow.Add(-time.Minute)
-	repo := &fakeVendorPayments{rows: []domain.VendorPayment{{ID: 2, ProjectVendorID: 7, Type: domain.PaymentDP, Amount: 20, DeletedAt: &gone}}}
-	svc := NewPaymentService(repo, nil, nil, goneEngagement{})
+	repo := &memSupplierPayments{rows: []domain.SupplierPayment{{ID: 2, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentDP, Amount: 20, DeletedAt: &gone}}}
+	svc := NewSupplierPaymentService(repo, nil, nil, fakeContracts{}) // supplier 7 is deleted
 	_, err := svc.Restore(context.Background(), 10, 2, 5, delNow)
 	ae, ok := apperror.As(err)
-	if !ok || ae.Kind != apperror.KindValidation || len(ae.Fields["projectVendorId"]) == 0 {
-		t.Fatalf("want 422 on projectVendorId, got %v", err)
+	if !ok || ae.Kind != apperror.KindValidation || len(ae.Fields["projectSupplierId"]) == 0 {
+		t.Fatalf("want 422 on projectSupplierId, got %v", err)
+	}
+	if got, _ := repo.FindDeletedByID(context.Background(), 10, 2); got == nil {
+		t.Error("a refused restore leaves it deleted")
 	}
 }
 
-// ---- vendor engagements ----
-
-type fakeEngagements struct {
-	VendorEngagementRepository
-	rows []domain.ProjectVendor
-}
-
-func (f *fakeEngagements) FindByID(_ context.Context, _, id int64) (*domain.ProjectVendor, error) {
-	for _, r := range f.rows {
-		if r.ID == id && r.DeletedAt == nil {
-			p := r
-			return &p, nil
-		}
+// Restoring re-checks the agreed cost: while a payment was deleted another one
+// may have used up the room it needs. What the client pays is never limited.
+func TestSupplierPaymentRestoreRechecksTheAgreedCost(t *testing.T) {
+	gone := delNow.Add(-time.Minute)
+	repo := &memSupplierPayments{rows: []domain.SupplierPayment{
+		{ID: 1, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentDP, Amount: 60},
+		{ID: 2, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentTermin, Amount: 40, DeletedAt: &gone},
+		{ID: 3, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentPelunasan, Amount: 30}, // recorded after the deletion
+	}}
+	svc := NewSupplierPaymentService(repo, nil, nil, costOf100)
+	_, err := svc.Restore(context.Background(), 10, 2, 5, delNow)
+	if codeOf(err) != "payment_exceeds_contract" || len(moneyFields(t, err)["amount"]) == 0 {
+		t.Fatalf("want 422 payment_exceeds_contract on amount, got %v", err)
 	}
-	return nil, nil
-}
-func (f *fakeEngagements) FindDeletedByID(_ context.Context, _, id int64) (*domain.ProjectVendor, error) {
-	for _, r := range f.rows {
-		if r.ID == id && r.DeletedAt != nil {
-			p := r
-			return &p, nil
-		}
+	if got, _ := repo.FindDeletedByID(context.Background(), 10, 2); got == nil {
+		t.Error("a refused restore must leave the payment deleted")
 	}
-	return nil, nil
-}
-func (f *fakeEngagements) SoftDelete(_ context.Context, _, id int64, at time.Time) (bool, error) {
-	for i := range f.rows {
-		if f.rows[i].ID == id && f.rows[i].DeletedAt == nil {
-			f.rows[i].DeletedAt = &at
-			return true, nil
-		}
+	// Deleting a refund that keeps the WO under the cost is refused the same way.
+	repo.rows = append(repo.rows, domain.SupplierPayment{ID: 4, ProjectID: 10, ProjectSupplierID: 7, Payer: domain.PayerWO, Type: domain.PaymentRefund, Amount: 50})
+	repo.rows[2].Amount = 80 // 60 + 80 - 50 = 90 paid
+	if _, _, err := svc.Delete(context.Background(), 10, 4, 5, delNow); codeOf(err) != "payment_exceeds_contract" {
+		t.Errorf("deleting the refund must be refused, got %v", err)
 	}
-	return false, nil
-}
-func (f *fakeEngagements) Restore(_ context.Context, _, id int64, notBefore time.Time) (bool, error) {
-	for i := range f.rows {
-		if f.rows[i].ID == id && f.rows[i].DeletedAt != nil && f.rows[i].DeletedAt.After(notBefore) {
-			f.rows[i].DeletedAt = nil
-			return true, nil
-		}
+	// The same supplier paid by the client: nothing to exceed.
+	client := fakeContracts{suppliers: []domain.ProjectSupplier{{ID: 7, ProjectID: 10, PaidBy: domain.PayerClient}}}
+	for i := range repo.rows {
+		repo.rows[i].Payer = domain.PayerClient
 	}
-	return false, nil
+	if _, err := NewSupplierPaymentService(repo, nil, nil, client).Restore(context.Background(), 10, 2, 5, delNow); err != nil {
+		t.Errorf("a client-paid supplier has no limit: %v", err)
+	}
 }
 
-func TestEngagementSoftDeleteAndRestoreWithCheck(t *testing.T) {
-	repo := &fakeEngagements{rows: []domain.ProjectVendor{{ID: 1, VendorID: 5, Scope: "Dekor"}}}
-	svc := NewVendorEngagementService(repo, nil, nil, nil)
+// ---- suppliers ----
+
+func TestSupplierSoftDeleteAndRestore(t *testing.T) {
+	repo := &memSuppliers{rows: []domain.ProjectSupplier{{ID: 1, ProjectID: 10, Kind: domain.SupplierVendor, Name: "Dekor Indah", PaidBy: domain.PayerWO}}}
+	svc := NewSupplierService(repo, nil, &memEvents{}, nil, nil)
 	ctx := context.Background()
 	if _, err := svc.Get(ctx, 10, 1); err != nil {
 		t.Fatal(err)
@@ -253,26 +200,37 @@ func TestEngagementSoftDeleteAndRestoreWithCheck(t *testing.T) {
 		t.Fatalf("delete: %v %v", until, err)
 	}
 	if _, err := svc.Get(ctx, 10, 1); apperror.HTTPStatus(err) != 404 {
-		t.Errorf("a deleted engagement is not found: %v", err)
+		t.Errorf("a deleted supplier is not found: %v", err)
 	}
-	// The check can refuse (vendor hard-deleted meanwhile): 422 and it stays deleted.
-	refuse := func(context.Context, *domain.ProjectVendor) error {
-		return apperror.Validation("x", map[string][]string{"vendorId": {"Vendor tidak ditemukan"}})
+	if list, _ := svc.List(ctx, 10); len(list) != 0 {
+		t.Errorf("a deleted supplier leaves the list: %+v", list)
 	}
-	if _, err := svc.Restore(ctx, 10, 1, 5, delNow, refuse); apperror.HTTPStatus(err) != 422 {
-		t.Errorf("want 422, got %v", err)
-	}
-	if got, _ := repo.FindDeletedByID(ctx, 10, 1); got == nil {
-		t.Error("a refused restore leaves it deleted")
-	}
-	if _, err := svc.Restore(ctx, 10, 1, 5, delNow.Add(25*time.Hour), nil); apperror.HTTPStatus(err) != 404 {
+	if _, err := svc.Restore(ctx, 10, 1, 5, delNow.Add(25*time.Hour)); apperror.HTTPStatus(err) != 404 {
 		t.Errorf("past the retention: want 404, got %v", err)
 	}
-	if _, err := svc.Restore(ctx, 10, 1, 5, delNow.Add(time.Hour), nil); err != nil {
+	if _, err := svc.Restore(ctx, 10, 1, 5, delNow.Add(time.Hour)); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	if _, err := svc.Restore(ctx, 10, 1, 5, delNow.Add(time.Hour), nil); apperror.HTTPStatus(err) != 404 {
-		t.Errorf("restoring a live engagement: want 404, got %v", err)
+	if _, err := svc.Restore(ctx, 10, 1, 5, delNow.Add(time.Hour)); apperror.HTTPStatus(err) != 404 {
+		t.Errorf("restoring a live supplier: want 404, got %v", err)
+	}
+}
+
+func TestAVenueAnEventUsesCannotBeDeleted(t *testing.T) {
+	venue := int64(2)
+	repo := &memSuppliers{rows: []domain.ProjectSupplier{{ID: 2, ProjectID: 10, Kind: domain.SupplierVenue, Name: "Gedung Melati", PaidBy: domain.PayerWO}}}
+	events := &memEvents{rows: []domain.ProjectEvent{{ID: 1, ProjectID: 10, KindName: "Resepsi", VenueSupplierID: &venue, IsMain: true}}}
+	svc := NewSupplierService(repo, nil, events, nil, nil)
+	_, _, err := svc.Delete(context.Background(), 10, 2, 5, delNow)
+	if codeOf(err) != "venue_in_use" || apperror.HTTPStatus(err) != 422 {
+		t.Fatalf("want 422 venue_in_use, got %v", err)
+	}
+	if got, _ := svc.Get(context.Background(), 10, 2); got == nil {
+		t.Error("the venue stays")
+	}
+	events.rows = nil
+	if _, _, err := svc.Delete(context.Background(), 10, 2, 5, delNow); err != nil {
+		t.Errorf("a venue no event uses can be deleted: %v", err)
 	}
 }
 
@@ -314,7 +272,7 @@ func TestPurgeRunsUntilNothingIsLeftAndDeletesObjects(t *testing.T) {
 		store.objs[k] = []byte("x")
 	}
 	repo := &fakePurgeRepo{
-		batches: []domain.PurgeReport{{ClientPayments: 2, Evidence: 2}, {Engagements: 1, Evidence: 1}},
+		batches: []domain.PurgeReport{{ClientPayments: 2, Evidence: 2}, {Suppliers: 1, SupplierOwnedPayments: 2, Evidence: 1}},
 		keys:    [][]string{{"a", "b"}, {"c"}},
 	}
 	svc := NewPurgeService(repo, NewEvidenceService(&memEvidence{}, store, buildKeyForTests, nil))
@@ -322,7 +280,7 @@ func TestPurgeRunsUntilNothingIsLeftAndDeletesObjects(t *testing.T) {
 	if err != nil || !ran {
 		t.Fatalf("run: %v %v", ran, err)
 	}
-	if report.ClientPayments != 2 || report.Engagements != 1 || report.Evidence != 3 || report.Objects != 3 {
+	if report.ClientPayments != 2 || report.Suppliers != 1 || report.SupplierOwnedPayments != 2 || report.Evidence != 3 || report.Objects != 3 {
 		t.Errorf("report = %+v", report)
 	}
 	if len(store.objs) != 0 {

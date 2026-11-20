@@ -5,6 +5,7 @@ export interface CashFlowWeek {
   /** Monday of the week, YYYY-MM-DD. */
   weekStart: string;
   expectedIn: number;
+  /** What the WO still owes its vendors and venues; always 0 without finance.margin.view (summary.payables absent). */
   expectedOut: number;
 }
 
@@ -20,7 +21,8 @@ export interface FinanceSummary {
   overdue: MoneyCount;
   dueSoon: MoneyCount;
   received: MoneyCount;
-  payables: { amount: number; count: number; overdueAmount: number; overdueCount: number };
+  /** What the WO still owes its vendors and venues; absent without finance.margin.view. */
+  payables?: { amount: number; count: number; overdueAmount: number; overdueCount: number; incompleteCount: number };
   pendingVerification: MoneyCount;
   cashFlow: CashFlowWeek[];
 }
@@ -43,9 +45,10 @@ export interface Receivable {
 }
 
 export type PayableKind = "vendor" | "venue";
-export type PayableStatus = "paid" | "unpaid" | "overdue";
+/** "incomplete": the WO pays it but no "Biaya rekanan" is filled in yet, so what is owed is unknown. */
+export type PayableStatus = "paid" | "unpaid" | "overdue" | "incomplete";
 
-/** One amount the WO owes a vendor or a venue (GET /finance/payables). */
+/** One vendor or venue the WO pays, with what it still owes (GET /finance/payables, finance.margin.view only). */
 export interface Payable {
   kind: PayableKind;
   id: string;
@@ -55,12 +58,15 @@ export interface Payable {
   groomName: string;
   payeeName: string;
   categoryName: string;
-  contractValue: number;
+  /** "Biaya rekanan": what the WO agreed to pay. */
+  agreedCost: number;
   paid: number;
   remaining: number;
   dueDate: string | null;
   status: PayableStatus;
   daysLate: number;
+  /** No "Biaya rekanan" yet: agreedCost and remaining are 0 and mean nothing. */
+  incomplete: boolean;
 }
 
 /** A client payment with proof that nobody verified yet (GET /finance/verifications). */
@@ -78,6 +84,16 @@ export interface PendingVerification {
   recordedByName: string;
   /** "client" when the couple sent the proof from the portal (ADR-0047). */
   source: "client" | "staff";
+  /**
+   * What is waiting: a client payment toward the contract, or the couple's proof of paying a vendor they pay directly
+   * (Paket WO Tahap 4). Ids of the two can be the same number, so a row is keyed by both (`verificationRowId`).
+   */
+  kind: "clientPayment" | "supplierPayment";
+  /** A supplierPayment row only: the vendor or venue and the bill it pays (null for a clientPayment row). */
+  projectSupplierId: string | null;
+  supplierName: string | null;
+  billTermId: string | null;
+  billTermLabel: string | null;
 }
 
 /** The status tabs above the installment list; each is a `status` view of the API. */

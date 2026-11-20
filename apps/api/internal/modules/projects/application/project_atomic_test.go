@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"elproof/internal/modules/projects/domain"
-	vendorscontracts "elproof/internal/modules/vendors/contracts"
 	"elproof/internal/shared/apperror"
 )
 
@@ -17,14 +16,23 @@ type e7DB struct {
 	projects   []domain.Project
 	milestones int
 	terms      []domain.PaymentTerm
+	events     *memEvents
+	suppliers  *memSuppliers
 	activity   *memActivity
-	failTerms  bool
+	// failMilestones makes the default steps' write fail (after the project
+	// and its events are written).
+	failMilestones bool
 }
 
 func (d *e7DB) snapshot() func() {
 	p, m, tm := append([]domain.Project(nil), d.projects...), d.milestones, append([]domain.PaymentTerm(nil), d.terms...)
 	act := append([]domain.ActivityLogEntry(nil), d.activity.entries...)
-	return func() { d.projects, d.milestones, d.terms, d.activity.entries = p, m, tm, act }
+	undoEvents, undoSuppliers := d.events.snapshot(), d.suppliers.snapshot()
+	return func() {
+		d.projects, d.milestones, d.terms, d.activity.entries = p, m, tm, act
+		undoEvents()
+		undoSuppliers()
+	}
 }
 
 type e7Tx struct{ db *e7DB }
@@ -56,6 +64,9 @@ type e7Milestones struct {
 }
 
 func (r e7Milestones) Create(context.Context, *domain.ProjectMilestone) error {
+	if r.db.failMilestones {
+		return apperror.Internal("disk full")
+	}
 	r.db.milestones++
 	return nil
 }
@@ -72,169 +83,184 @@ type e7Terms struct {
 }
 
 func (r e7Terms) ReplaceAll(_ context.Context, _ int64, terms []domain.PaymentTerm) error {
-	if r.db.failTerms {
-		return apperror.Internal("disk full")
-	}
 	r.db.terms = terms
 	return nil
 }
 
-// e7Venues knows the venues of each workspace.
-type e7Venues struct {
-	byTenant map[int64]map[int64]vendorscontracts.VenueAttachInfo
-}
-
-func (v e7Venues) GetVenueSummary(context.Context, int64, int64) (vendorscontracts.VenueSummary, error) {
-	return vendorscontracts.VenueSummary{}, nil
-}
-func (v e7Venues) GetVenueForAttach(_ context.Context, tenantID, id int64) (vendorscontracts.VenueAttachInfo, error) {
-	if info, ok := v.byTenant[tenantID][id]; ok {
-		return info, nil
-	}
-	return vendorscontracts.VenueAttachInfo{}, apperror.NotFound("Venue tidak ditemukan")
-}
-
 func newE7() (*ProjectService, *e7DB) {
-	db := &e7DB{activity: &memActivity{}}
+	db := &e7DB{activity: &memActivity{}, events: &memEvents{}, suppliers: &memSuppliers{}}
 	act := NewActivityService(activityRepoAdapter{db.activity})
 	svc := NewProjectService(e7Projects{db: db}, e7Milestones{db: db}, e7Templates{}, nil, nil, nil, nil, nil, nil, act,
 		staffByTenant{1: {10: "Ani"}, 2: {20: "Budi"}})
-	svc.SetVenueResolver(e7Venues{byTenant: map[int64]map[int64]vendorscontracts.VenueAttachInfo{
-		1: {5: {ID: 5, Name: "Gedung Sabuga", RentalPrice: 10_000_000, Charge: 500_000}},
-		2: {6: {ID: 6, Name: "Venue lawan"}},
-	}})
-	svc.SetAtomicSupport(e7Tx{db: db}, e7Terms{db: db})
+	tx := e7Tx{db: db}
+	svc.SetAtomicSupport(tx, e7Terms{db: db})
+	wireEventsWith(svc, db.events, db.suppliers, tx, act)
 	return svc, db
 }
 
-func p64(n int64) *int64 { return &n }
-
 func baseInput() ProjectInput {
 	return ProjectInput{
-		Name: "Pernikahan A & B", EventDate: time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC), Venue: "-",
-		PrepStartDate: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), ContractValue: 100_000_000, PICStaffID: 10,
+		Name: "Pernikahan A & B", PrepStartDate: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), PICStaffID: 10,
 	}
+}
+
+var (
+	akadDay    = time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	resepsiDay = time.Date(2027, 3, 2, 0, 0, 0, 0, time.UTC)
+)
+
+// twoEvents is the acceptance example: Akad at a mosque, Resepsi at a hall.
+func twoEvents() []EventInput {
+	return []EventInput{akadAtMasjid(akadDay), resepsiAtGedung(resepsiDay, 550, 550)}
 }
 
 func day7(d int) time.Time { return time.Date(2026, 12, d, 0, 0, 0, 0, time.UTC) }
 
-func TestCreateAtomicMakesProjectVenueAndScheduleTogether(t *testing.T) {
+func TestCreateAtomicMakesProjectEventsAndVenuesTogether(t *testing.T) {
 	svc, db := newE7()
-	in := baseInput()
-	in.VenueID = p64(5) // prices omitted: the venue's current prices
-	p, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, in, ProjectSetup{Terms: []PaymentTermInput{
-		{Label: "DP", Amount: 30_000_000, DueDate: day7(1)}, {Label: "Pelunasan", Amount: 70_000_000, DueDate: day7(20)},
-	}})
+	p, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, baseInput(), ProjectSetup{
+		Events: twoEvents(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(db.projects) != 1 || db.milestones != 2 || len(db.terms) != 2 {
-		t.Fatalf("project, default milestones and schedule: %d/%d/%d", len(db.projects), db.milestones, len(db.terms))
+	// The schedule comes after the Rincian (Tahap 3): none at creation.
+	if len(db.projects) != 1 || db.milestones != 2 || len(db.terms) != 0 || len(db.events.rows) != 2 || len(db.suppliers.rows) != 2 {
+		t.Fatalf("project, default milestones, no schedule, events and venues: %d/%d/%d/%d/%d",
+			len(db.projects), db.milestones, len(db.terms), len(db.events.rows), len(db.suppliers.rows))
 	}
-	if p.VenueID == nil || *p.VenueID != 5 || *p.VenueRentalPrice != 10_000_000 || *p.VenueCharge != 500_000 || p.Venue != "Gedung Sabuga" || p.Status != domain.StatusDraft {
-		t.Errorf("venue attached with its prices and name: %+v", p)
+	if !p.EventDate.Equal(akadDay) || p.Status != domain.StatusDraft {
+		t.Errorf("the project's date is the first (main) event's: %+v", p)
 	}
-	for _, tm := range db.terms {
-		if tm.ProjectID != p.ID {
-			t.Errorf("terms belong to the new project: %+v", tm)
+	main := domain.MainEvent(db.events.rows)
+	if main == nil || main.KindName != "Akad" || main.ProjectID != p.ID || db.events.rows[1].IsMain {
+		t.Errorf("the first event is the one main event: %+v", db.events.rows)
+	}
+	for _, sup := range db.suppliers.rows {
+		if sup.Kind != domain.SupplierVenue || sup.ProjectID != p.ID || sup.PaidBy != domain.PayerWO {
+			t.Errorf("each chosen venue becomes a venue supplier the WO pays: %+v", sup)
 		}
 	}
-	// Prices that are sent win over the venue's (0 included).
-	in.VenueRentalPrice, in.VenueCharge = p64(9_000_000), p64(0)
-	p, err = svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, in, ProjectSetup{})
-	if err != nil || *p.VenueRentalPrice != 9_000_000 || *p.VenueCharge != 0 {
-		t.Errorf("explicit prices: %+v %v", p, err)
+	// Two events at the same venue share one venue supplier.
+	_, err = svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, baseInput(), ProjectSetup{
+		Events: []EventInput{resepsiAtGedung(akadDay, 300), resepsiAtGedung(resepsiDay, 400)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(db.suppliers.rows) != 3 || len(db.events.rows) != 4 {
+		t.Fatalf("one venue supplier for both events: %d suppliers, %d events", len(db.suppliers.rows), len(db.events.rows))
+	}
+	if a, b := db.events.rows[2].VenueSupplierID, db.events.rows[3].VenueSupplierID; a == nil || b == nil || *a != *b || *a != db.suppliers.rows[2].ID {
+		t.Errorf("both events point at the same venue supplier: %v %v", a, b)
 	}
 }
 
 func TestCreateAtomicReportsEveryProblemAtOnceAndCreatesNothing(t *testing.T) {
 	svc, db := newE7()
 	in := baseInput()
-	in.PICStaffID = 20  // another workspace's staff
-	in.VenueID = p64(6) // another workspace's venue
-	in.ContractValue = 50_000_000
+	in.PICStaffID = 20 // another workspace's staff
+	events := twoEvents()
+	events[0].VenueID = i64p(venueOtherTeam)       // another workspace's venue
+	events[1].Sessions[1] = session("Sesi 2", 650) // above the hall
 	_, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, in, ProjectSetup{
-		FieldErrors: map[string][]string{"eventDate": {"Gunakan format YYYY-MM-DD"}, "terms[1].dueDate": {"Gunakan format YYYY-MM-DD"}},
-		Terms: []PaymentTermInput{
-			{Label: "DP", Amount: 30_000_000, DueDate: day7(1)},
-			{Label: "", Amount: 30_000_000, DueDate: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)},
-			{Label: "Pelunasan", Amount: 0, DueDate: day7(20)},
-		},
+		Events:      events,
+		FieldErrors: map[string][]string{"events.1.eventDate": {"Gunakan format YYYY-MM-DD"}},
 	})
 	f := fieldsOf(t, err)
-	want := "eventDate,picStaffId,terms[1].dueDate,terms[1].label,terms[2].amount,venueId"
+	want := "events.0.venueId,events.1.eventDate,events.1.sessions.1.guests,picStaffId"
 	if got := strings.Join(sortedKeys(f), ","); got != want {
 		t.Errorf("keys: got %s\nwant %s", got, want)
 	}
 	if ae, _ := apperror.As(err); !strings.Contains(ae.Message, "isian lain") {
 		t.Errorf("the message says how many more there are: %q", ae.Message)
 	}
-	if len(db.projects) != 0 || db.milestones != 0 || len(db.terms) != 0 || len(db.activity.entries) != 0 {
-		t.Errorf("nothing may be created: %d/%d/%d", len(db.projects), db.milestones, len(db.terms))
+	if len(db.projects) != 0 || db.milestones != 0 || len(db.terms) != 0 || len(db.activity.entries) != 0 ||
+		len(db.events.rows) != 0 || len(db.suppliers.rows) != 0 {
+		t.Errorf("nothing may be created: %d/%d/%d/%d/%d", len(db.projects), db.milestones, len(db.terms), len(db.events.rows), len(db.suppliers.rows))
 	}
 }
 
-func TestCreateAtomicScheduleRules(t *testing.T) {
+func TestCreateAtomicEventRules(t *testing.T) {
 	svc, db := newE7()
 	actor := ProjectActor{StaffID: 10, CanAssignPIC: true}
-	// Sum above the contract value.
-	_, err := svc.CreateAtomic(context.Background(), 1, actor, baseInput(), ProjectSetup{Terms: []PaymentTermInput{
-		{Label: "a", Amount: 60_000_000, DueDate: day7(1)}, {Label: "b", Amount: 60_000_000, DueDate: day7(2)},
-	}})
-	if f := fieldsOf(t, err); len(f["terms"]) == 0 {
-		t.Errorf("sum above contract: %v", f)
+	// At least one event.
+	_, err := svc.CreateAtomic(context.Background(), 1, actor, baseInput(), ProjectSetup{})
+	if f := fieldsOf(t, err); len(f["events"]) == 0 {
+		t.Errorf("no event: %v", f)
 	}
-	// More than 20.
-	many := make([]PaymentTermInput, 21)
-	for i := range many {
-		many[i] = PaymentTermInput{Label: "t", Amount: 1, DueDate: day7(1)}
+	// An event kind of another workspace, a missing date, no session, an inactive venue.
+	bad := []EventInput{
+		{EventKindID: 9, EventDate: akadDay, Sessions: []SessionInput{session("", 10)}},
+		{EventKindID: kindResepsi, VenueID: i64p(venueNonaktif)},
 	}
-	_, err = svc.CreateAtomic(context.Background(), 1, actor, baseInput(), ProjectSetup{Terms: many})
-	if f := fieldsOf(t, err); len(f["terms"]) == 0 {
-		t.Errorf("more than 20: %v", f)
+	_, err = svc.CreateAtomic(context.Background(), 1, actor, baseInput(), ProjectSetup{Events: bad})
+	want := "events.0.eventKindId,events.1.eventDate,events.1.sessions,events.1.venueId"
+	if got := strings.Join(sortedKeys(fieldsOf(t, err)), ","); got != want {
+		t.Errorf("keys: got %s\nwant %s", got, want)
 	}
-	// Negative price and a venue that does not exist, with no schedule.
-	in := baseInput()
-	in.VenueID, in.VenueRentalPrice, in.VenueCharge = p64(5), p64(-1), p64(-5)
-	_, err = svc.CreateAtomic(context.Background(), 1, actor, in, ProjectSetup{})
-	if got := strings.Join(sortedKeys(fieldsOf(t, err)), ","); got != "venueCharge,venueRentalPrice" {
-		t.Errorf("prices: %s", got)
-	}
-	if len(db.projects) != 0 {
+	if len(db.projects) != 0 || len(db.events.rows) != 0 {
 		t.Error("nothing created")
 	}
-	// Contract value 0 means "not set": the schedule is not capped.
-	in = baseInput()
-	in.ContractValue = 0
-	if _, err := svc.CreateAtomic(context.Background(), 1, actor, in, ProjectSetup{Terms: []PaymentTermInput{{Label: "a", Amount: 5, DueDate: day7(1)}}}); err != nil {
-		t.Errorf("no contract value, no cap: %v", err)
+}
+
+// Tahap 3: a project is created without a contract: its value comes from the
+// Rincian added afterwards. Whether the workspace is PKP is copied at creation,
+// so a later change of the workspace setting does not reprice it.
+func TestCreateAtomicCopiesIsPKPAndStartsWithoutAContract(t *testing.T) {
+	svc, db := newE7()
+	svc.SetWorkspaceProfile(fixedProfile{pkp: true})
+	p, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, baseInput(), ProjectSetup{Events: twoEvents()})
+	if err != nil {
+		t.Fatal(err)
 	}
+	if !p.IsPKP || !db.projects[0].IsPKP {
+		t.Errorf("is_pkp copied from the workspace: %+v", p)
+	}
+	if p.ContractSubtotal != 0 || p.ContractTax != 0 || p.ContractTotal != 0 || len(db.terms) != 0 {
+		t.Errorf("no contract and no schedule before the Rincian: %+v, %d terms", p, len(db.terms))
+	}
+	svc.SetWorkspaceProfile(fixedProfile{pkp: false})
+	p, err = svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, baseInput(), ProjectSetup{Events: twoEvents()})
+	if err != nil || p.IsPKP {
+		t.Errorf("a workspace that is not PKP: %+v %v", p, err)
+	}
+}
+
+type fixedProfile struct{ pkp bool }
+
+func (f fixedProfile) WorkspaceProfile(context.Context, int64) (WorkspaceProfile, error) {
+	return WorkspaceProfile{IsPKP: f.pkp}, nil
 }
 
 func TestCreateAtomicRollsBackWhenAWriteFails(t *testing.T) {
 	svc, db := newE7()
-	db.failTerms = true
-	_, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, baseInput(), ProjectSetup{Terms: []PaymentTermInput{
-		{Label: "DP", Amount: 1_000, DueDate: day7(1)},
-	}})
+	db.failMilestones = true
+	_, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, CanAssignPIC: true}, baseInput(), ProjectSetup{
+		Events: twoEvents(),
+	})
 	if err == nil {
 		t.Fatal("must fail")
 	}
-	if len(db.projects) != 0 || db.milestones != 0 || len(db.activity.entries) != 0 {
-		t.Errorf("a failed schedule write must take the project and its milestones with it: %d/%d", len(db.projects), db.milestones)
+	if len(db.projects) != 0 || db.milestones != 0 || len(db.activity.entries) != 0 || len(db.events.rows) != 0 || len(db.suppliers.rows) != 0 {
+		t.Errorf("a failed write must take the project, its milestones, events and venues with it: %d/%d/%d/%d",
+			len(db.projects), db.milestones, len(db.events.rows), len(db.suppliers.rows))
 	}
 }
 
-func TestCreateWithoutSetupIsUnchanged(t *testing.T) {
+func TestCreateNeedsAnEventAndKeepsThePICRules(t *testing.T) {
 	svc, db := newE7()
-	p, err := svc.Create(context.Background(), 1, ProjectActor{StaffID: 10}, baseInput())
-	if err != nil || p.VenueID != nil || p.VenueRentalPrice != nil || len(db.projects) != 1 || len(db.terms) != 0 {
-		t.Errorf("plain create: %+v %v", p, err)
+	if _, err := svc.Create(context.Background(), 1, ProjectActor{StaffID: 10}, baseInput()); len(fieldsOf(t, err)["events"]) == 0 {
+		t.Errorf("a project without an event is refused: %v", err)
+	}
+	p, err := svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10}, baseInput(), ProjectSetup{Events: twoEvents()})
+	if err != nil || len(db.projects) != 1 || len(db.terms) != 0 {
+		t.Errorf("no schedule: %+v %v", p, err)
 	}
 	// A person limited to their own projects still becomes PIC Sales.
 	in := baseInput()
 	in.PICStaffID = 0
-	p, _ = svc.Create(context.Background(), 1, ProjectActor{StaffID: 10, AssignedOnly: true}, in)
+	p, _ = svc.CreateAtomic(context.Background(), 1, ProjectActor{StaffID: 10, AssignedOnly: true}, in, ProjectSetup{Events: twoEvents()})
 	if p.PICSalesStaffID != 10 {
 		t.Errorf("assigned-only creator becomes PIC Sales: %+v", p)
 	}

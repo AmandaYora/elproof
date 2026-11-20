@@ -12,6 +12,7 @@ import { useClientHomeStore } from "@/modules/client-portal/stores/useClientHome
 import { useProofViewer } from "@/modules/client-portal/components/useProofViewer";
 import { PageIntro } from "@/modules/client-portal/components/PageIntro";
 import { PaymentSummaryCard } from "@/modules/client-portal/components/payments/PaymentSummaryCard";
+import { VendorBillsSection } from "@/modules/client-portal/components/payments/VendorBillsSection";
 import { useLoad } from "@/modules/client-portal/lib/useLoad";
 import { usePortalContact } from "@/modules/client-portal/lib/usePortalContact";
 import { verifiedLabel } from "@/modules/projects/lib/proof";
@@ -29,7 +30,8 @@ const TERM_TONE: Record<PaymentTermStatus, BadgeTone> = { paid: "success", overd
 /**
  * The client's own money: one summary card (paid of contract, a bar per term, what is next), the schedule, and each
  * payment with its proof. A payment the WO has verified carries a stamp that opens the receipt; one the couple sent
- * themselves waits as "Menunggu verifikasi WO" until then.
+ * themselves waits as "Menunggu verifikasi WO" until then. Below, "Tagihan vendor": the vendors the couple pays
+ * directly, their bills and "Kirim bukti bayar" (Paket WO Tahap 4).
  */
 export default function PembayaranTabPage() {
   const { projectId } = useOutletContext<ClientPortalContext>();
@@ -151,6 +153,8 @@ export default function PembayaranTabPage() {
           </section>
         </>
       )}
+      {/* The vendors the couple pays directly: its own load, so a failure here never hides the payments above. */}
+      <VendorBillsSection projectId={projectId} canSubmit={canSubmit} onOpenProof={viewer.open} />
       {viewer.element}
       {drawer !== "unopened" && (
         <Suspense fallback={null}>

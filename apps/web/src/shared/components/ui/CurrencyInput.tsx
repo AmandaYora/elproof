@@ -16,6 +16,8 @@ interface CurrencyInputProps {
    * holds whole rupiah of zero or more.
    */
   signed?: boolean;
+  /** An optional amount: zero shows as an empty field (its placeholder), so "not filled in" does not read as Rp0. */
+  optional?: boolean;
 }
 
 function countDigits(s: string): number {
@@ -47,7 +49,7 @@ function cursorForDigitCount(formatted: string, digitsBeforeCursor: number): num
 // `<Input type="number" value={n} onChange={(e) => set(Number(e.target.value))} />`
 // at every call site.
 export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(function CurrencyInput(
-  { value, onChange, className, signed = false, ...props },
+  { value, onChange, className, signed = false, optional = false, ...props },
   forwardedRef
 ) {
   const innerRef = useRef<HTMLInputElement | null>(null);
@@ -61,7 +63,10 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(fu
   const negative = signed && value < 0;
   const digits = String(Math.abs(Math.trunc(signed ? value : Math.max(0, value))));
   const showMinus = negative || (signed && minusOnly && value === 0);
-  const formatted = (showMinus ? "-" : "") + (showMinus && value === 0 ? "" : Number(digits).toLocaleString("id-ID"));
+  const formatted =
+    optional && value === 0 && !showMinus
+      ? ""
+      : (showMinus ? "-" : "") + (showMinus && value === 0 ? "" : Number(digits).toLocaleString("id-ID"));
 
   useLayoutEffect(() => {
     if (pendingCursor.current !== null && innerRef.current) {

@@ -1,12 +1,11 @@
-import type { ActivityLogEntry, IssueImpact, IssueStatus, PaymentType, Project } from "@/modules/projects/types";
+import type { ActivityLogEntry, IssueImpact, IssueStatus, PaymentTermStatus, PaymentType, Project, SupplierKind, SupplierPayer } from "@/modules/projects/types";
 
 export interface DashboardIssueRow {
   id: string;
   projectId: string;
   projectName: string;
-  vendorId: string;
-  /** Resolved by the server; "" for a kendala about the event itself. */
-  vendorName: string;
+  /** The vendor or venue it is about; "" for a kendala about the event itself. */
+  supplierName: string;
   title: string;
   impact: IssueImpact;
   foundDate: string;
@@ -17,30 +16,21 @@ export interface DashboardMilestoneRow {
   id: string;
   projectId: string;
   projectName: string;
-  vendorId: string;
-  vendorName: string;
+  /** The vendor or venue whose step it is. */
+  supplierName: string;
   name: string;
   targetDate: string;
 }
 
+/** A payment to a vendor or venue that still lacks its invoice or transfer proof. */
 export interface DashboardPaymentRow {
   id: string;
   projectId: string;
   projectName: string;
-  vendorId: string;
-  vendorName: string;
-  type: PaymentType;
-  amount: number;
-  paymentDate: string;
-}
-
-// No vendorId -- a venue payment isn't tied to any vendor. Kept as its own
-// type/list (see DashboardStats.incompleteVenuePayments) rather than
-// reshaping DashboardPaymentRow into a source-discriminated union.
-export interface DashboardVenuePaymentRow {
-  id: string;
-  projectId: string;
-  projectName: string;
+  supplierKind: SupplierKind;
+  supplierName: string;
+  /** Who paid it: the WO, or the client straight to the supplier. */
+  payer: SupplierPayer;
   type: PaymentType;
   amount: number;
   paymentDate: string;
@@ -86,7 +76,7 @@ export interface DashboardTaskRow {
   targetDate: string;
 }
 
-/** One week of expected money: what clients still owe (in) and what vendors are still owed (out). */
+/** One week of expected money: what clients still owe (in) and what the WO still owes its vendors and venues (out). */
 export interface CashFlowWeek {
   /** Monday of the week, YYYY-MM-DD. */
   weekStart: string;
@@ -94,22 +84,59 @@ export interface CashFlowWeek {
   expectedOut: number;
 }
 
-/** A vendor payment that is due within 30 days or already late. */
-export interface VendorDueRow {
+/** What the WO still owes a vendor or venue, due within 30 days or already late. */
+export interface SupplierDueRow {
   projectId: string;
   projectName: string;
-  vendorName: string;
+  supplierKind: SupplierKind;
+  supplierName: string;
   dueDate: string;
   remaining: number;
 }
 
-/** A vendor still only planned or negotiated although the event is within 30 days. */
-export interface UnconfirmedVendorRow {
+/** A vendor or venue still only planned or negotiated although the event is within 30 days. */
+export interface UnconfirmedSupplierRow {
   projectId: string;
   projectName: string;
-  vendorName: string;
+  supplierKind: SupplierKind;
+  supplierName: string;
   engagementStatus: string;
   eventDate: string;
+}
+
+/**
+ * A bill of a vendor or venue the client pays directly that is overdue or due within 7 days (Paket WO Tahap 4): the
+ * couple pays it, the WO reminds them. Never WO cash.
+ */
+export interface ClientBillDueRow {
+  billTermId: string;
+  projectSupplierId: string;
+  projectId: string;
+  projectName: string;
+  supplierKind: SupplierKind;
+  supplierName: string;
+  label: string;
+  dueDate: string;
+  remaining: number;
+  /** The couple's proofs for it the WO has not checked yet. */
+  pending: number;
+  status: PaymentTermStatus;
+}
+
+/** A proof the couple sent of paying a vendor they pay directly, waiting for "Periksa bukti" (Paket WO Tahap 4). */
+export interface SupplierProofPendingRow {
+  supplierPaymentId: string;
+  projectId: string;
+  projectName: string;
+  projectSupplierId: string;
+  supplierKind: SupplierKind;
+  supplierName: string;
+  billTermId: string | null;
+  billTermLabel: string;
+  type: PaymentType;
+  amount: number;
+  paymentDate: string;
+  submittedAt: string;
 }
 
 export interface StageCounts {
@@ -125,7 +152,6 @@ export interface DashboardStats {
   openIssues: DashboardIssueRow[];
   overdueVendorMilestones: DashboardMilestoneRow[];
   incompletePayments: DashboardPaymentRow[];
-  incompleteVenuePayments: DashboardVenuePaymentRow[];
   nearDDayProjects: Project[];
   laggingProjects: LaggingProjectRow[];
   upcomingProjects: Project[];
@@ -140,6 +166,11 @@ export interface DashboardStats {
   revenueTrend: RevenueTrendPoint[];
   /** Only for roles that may see money (dashboard.revenue.view). */
   cashFlow?: CashFlowWeek[];
-  vendorPaymentsDue?: VendorDueRow[];
-  unconfirmedVendors: UnconfirmedVendorRow[];
+  supplierPaymentsDue?: SupplierDueRow[];
+  unconfirmedSuppliers: UnconfirmedSupplierRow[];
+  /** Only for roles that record finance (finance.record): bills the couple pays a vendor directly, due soon or late. */
+  clientBillsDue?: ClientBillDueRow[];
+  /** Only for finance.record: the couple's proofs of paying a vendor, waiting to be checked. */
+  supplierProofsPending?: SupplierProofPendingRow[];
+  supplierProofsPendingCount?: number;
 }

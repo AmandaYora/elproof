@@ -94,7 +94,7 @@ func columnWidthFor(header string) float64 {
 		return 22
 	case "No Tlp Vendor", "No Tlp PIC", "No Tlp Venue":
 		return 16
-	case "Harga Akad", "Harga Akad+Resepsi", "Harga Sewa", "Charge", "Kapasitas":
+	case "Harga Akad", "Harga Resepsi", "Harga Akad+Resepsi", "Charge", "Kapasitas Berdiri", "Kapasitas Duduk":
 		return 16
 	default:
 		if width := float64(len(header)) + 6; width >= 14 {

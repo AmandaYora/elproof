@@ -70,9 +70,11 @@ func appliedFromPayments(payments []domain.ClientPayment) int64 {
 	return domain.AppliedToContract(domain.ContractLines(payments))
 }
 
-// Replace saves the whole schedule. The installments together may not exceed
-// the contract value (when one is set): a schedule that bills more than the
-// contract would make every later payment look overdue for no reason.
+// Replace saves the whole schedule. A schedule is made after the Rincian is
+// saved (PLAN §9.1): with no contract value yet there is nothing to divide.
+// The installments together may not exceed the contract value: a schedule that
+// bills more than the contract would make every later payment look overdue for
+// no reason. An empty schedule (removing it) is always allowed.
 func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, actorStaffID int64, inputs []PaymentTermInput, today time.Time) ([]domain.TermProgress, error) {
 	p, err := s.projects.Get(ctx, tenantID, projectID)
 	if err != nil {
@@ -87,8 +89,12 @@ func (s *PaymentTermService) Replace(ctx context.Context, tenantID, projectID, a
 	if err != nil {
 		return nil, err
 	}
-	if p.ContractValue > 0 && total > p.ContractValue {
-		msg := "Jumlah termin " + formatRupiah(total) + " melebihi nilai kontrak " + formatRupiah(p.ContractValue) + ". Kurangi nominal salah satu termin."
+	if len(terms) > 0 && p.ContractTotal <= 0 {
+		msg := "Susun rincian dulu agar termin bisa dihitung."
+		return nil, apperror.Validation(msg, map[string][]string{"terms": {msg}}).WithCode("no_contract")
+	}
+	if total > p.ContractTotal {
+		msg := "Jumlah termin " + formatRupiah(total) + " melebihi nilai kontrak " + formatRupiah(p.ContractTotal) + ". Kurangi nominal salah satu termin."
 		return nil, apperror.Validation(msg, map[string][]string{"terms": {msg}})
 	}
 	if err := s.repo.ReplaceAll(ctx, projectID, terms); err != nil {
@@ -120,7 +126,7 @@ func (s *PaymentTermService) Recalculate(ctx context.Context, tenantID, projectI
 	if err != nil {
 		return nil, err
 	}
-	next, err := domain.RecalculateTerms(terms, appliedFromPayments(payments), p.ContractValue)
+	next, err := domain.RecalculateTerms(terms, appliedFromPayments(payments), p.ContractTotal)
 	if err != nil {
 		msg := recalcRefusal(err)
 		return nil, apperror.Validation(msg, map[string][]string{"terms": {msg}})
@@ -133,7 +139,8 @@ func (s *PaymentTermService) Recalculate(ctx context.Context, tenantID, projectI
 		return nil, err
 	}
 	s.activity.Record(ctx, &projectID, domain.ActivityProjectUpdated, actorStaffID, "payment_terms", formatID(projectID), p.Name,
-		"Jadwal termin klien dihitung ulang mengikuti nilai kontrak "+formatRupiah(p.ContractValue))
+		"Jadwal termin klien dihitung ulang mengikuti nilai kontrak "+formatRupiah(p.ContractTotal)+
+			" (sebelumnya "+formatRupiah(domain.TermsTotal(terms))+")")
 	return s.progressWith(ctx, projectID, payments, today)
 }
 
@@ -142,13 +149,13 @@ func (s *PaymentTermService) Recalculate(ctx context.Context, tenantID, projectI
 func recalcRefusal(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrRecalcNoContract):
-		return "Isi nilai kontrak proyek dulu, lalu hitung ulang termin."
+		return "Susun rincian dulu agar termin bisa dihitung."
 	case errors.Is(err, domain.ErrRecalcNoTerms):
 		return "Belum ada jadwal termin untuk dihitung ulang."
 	case errors.Is(err, domain.ErrRecalcAllPaid):
 		return "Semua termin sudah ada pembayarannya, jadi tidak ada yang bisa dihitung ulang. Ubah jadwal termin secara manual."
 	default:
-		return "Nilai kontrak lebih kecil dari termin yang sudah dibayar. Periksa nilai kontrak atau ubah jadwal termin secara manual."
+		return "Nilai kontrak lebih kecil dari termin yang sudah dibayar. Periksa rincian atau ubah jadwal termin secara manual."
 	}
 }
 

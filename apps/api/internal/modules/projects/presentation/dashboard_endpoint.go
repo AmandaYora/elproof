@@ -1,7 +1,9 @@
 package presentation
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"elproof/internal/modules/projects/application"
 	"elproof/internal/modules/projects/domain"
@@ -12,47 +14,35 @@ type dashboardIssueResponse struct {
 	ID          int64  `json:"id"`
 	ProjectID   int64  `json:"projectId"`
 	ProjectName string `json:"projectName"`
-	// VendorID is 0 and VendorName "" for a kendala about the event in general.
-	VendorID   int64  `json:"vendorId"`
-	VendorName string `json:"vendorName"`
-	Title      string `json:"title"`
-	Impact     string `json:"impact"`
-	FoundDate  string `json:"foundDate"`
-	Status     string `json:"status"`
+	// SupplierName is "" for a kendala about the event in general.
+	SupplierName string `json:"supplierName"`
+	Title        string `json:"title"`
+	Impact       string `json:"impact"`
+	FoundDate    string `json:"foundDate"`
+	Status       string `json:"status"`
 }
 
 type dashboardMilestoneResponse struct {
-	ID          int64  `json:"id"`
-	ProjectID   int64  `json:"projectId"`
-	ProjectName string `json:"projectName"`
-	VendorID    int64  `json:"vendorId"`
-	VendorName  string `json:"vendorName"`
-	Name        string `json:"name"`
-	TargetDate  string `json:"targetDate"`
+	ID           int64  `json:"id"`
+	ProjectID    int64  `json:"projectId"`
+	ProjectName  string `json:"projectName"`
+	SupplierName string `json:"supplierName"`
+	Name         string `json:"name"`
+	TargetDate   string `json:"targetDate"`
 }
 
+// dashboardPaymentResponse is a payment to a vendor or venue that still lacks
+// its invoice or transfer proof.
 type dashboardPaymentResponse struct {
-	ID          int64  `json:"id"`
-	ProjectID   int64  `json:"projectId"`
-	ProjectName string `json:"projectName"`
-	VendorID    int64  `json:"vendorId"`
-	VendorName  string `json:"vendorName"`
-	Type        string `json:"type"`
-	Amount      int64  `json:"amount"`
-	PaymentDate string `json:"paymentDate"`
-}
-
-// dashboardVenuePaymentResponse has no VendorID -- a venue payment isn't
-// tied to any vendor. Kept as its own response type/field (see
-// domain.DashboardVenuePaymentRow's doc comment) rather than reshaping
-// dashboardPaymentResponse into a source-discriminated union.
-type dashboardVenuePaymentResponse struct {
-	ID          int64  `json:"id"`
-	ProjectID   int64  `json:"projectId"`
-	ProjectName string `json:"projectName"`
-	Type        string `json:"type"`
-	Amount      int64  `json:"amount"`
-	PaymentDate string `json:"paymentDate"`
+	ID           int64  `json:"id"`
+	ProjectID    int64  `json:"projectId"`
+	ProjectName  string `json:"projectName"`
+	SupplierKind string `json:"supplierKind"`
+	SupplierName string `json:"supplierName"`
+	Payer        string `json:"payer"`
+	Type         string `json:"type"`
+	Amount       int64  `json:"amount"`
+	PaymentDate  string `json:"paymentDate"`
 }
 
 type dashboardTermResponse struct {
@@ -107,52 +97,96 @@ type cashFlowWeekResponse struct {
 	ExpectedOut int64  `json:"expectedOut"`
 }
 
-type vendorPaymentDueResponse struct {
-	ProjectID   int64  `json:"projectId"`
-	ProjectName string `json:"projectName"`
-	VendorName  string `json:"vendorName"`
-	DueDate     string `json:"dueDate"`
-	Remaining   int64  `json:"remaining"`
+type supplierPaymentDueResponse struct {
+	ProjectID    int64  `json:"projectId"`
+	ProjectName  string `json:"projectName"`
+	SupplierKind string `json:"supplierKind"`
+	SupplierName string `json:"supplierName"`
+	DueDate      string `json:"dueDate"`
+	Remaining    int64  `json:"remaining"`
 }
 
-type unconfirmedVendorResponse struct {
+type unconfirmedSupplierResponse struct {
 	ProjectID        int64  `json:"projectId"`
 	ProjectName      string `json:"projectName"`
-	VendorName       string `json:"vendorName"`
+	SupplierKind     string `json:"supplierKind"`
+	SupplierName     string `json:"supplierName"`
 	EngagementStatus string `json:"engagementStatus"`
 	EventDate        string `json:"eventDate"`
 }
 
-type dashboardResponse struct {
-	TotalProjects           int                             `json:"totalProjects"`
-	ActiveProjects          int                             `json:"activeProjects"`
-	ActiveVendorCount       int                             `json:"activeVendorCount"`
-	OpenIssues              []dashboardIssueResponse        `json:"openIssues"`
-	OverdueVendorMilestones []dashboardMilestoneResponse    `json:"overdueVendorMilestones"`
-	IncompletePayments      []dashboardPaymentResponse      `json:"incompletePayments"`
-	IncompleteVenuePayments []dashboardVenuePaymentResponse `json:"incompleteVenuePayments"`
-	NearDDayProjects        []projectResponse               `json:"nearDDayProjects"`
-	LaggingProjects         []laggingProjectResponse        `json:"laggingProjects"`
-	UpcomingProjects        []projectResponse               `json:"upcomingProjects"`
-	OverdueTerms            []dashboardTermResponse         `json:"overdueTerms"`
-	OverdueTermsTotal       int64                           `json:"overdueTermsTotal"`
-	DueSoonTerms            []dashboardTermResponse         `json:"dueSoonTerms"`
-	TasksDueThisWeek        []dashboardTaskResponse         `json:"tasksDueThisWeek"`
-	StageCounts             stageCountsResponse             `json:"stageCounts"`
-	RecentActivity          []activityResponse              `json:"recentActivity"`
-	Revenue                 revenueSummaryResponse          `json:"revenue"`
-	ProjectTrend            []projectTrendPointResponse     `json:"projectTrend"`
-	RevenueTrend            []revenueTrendPointResponse     `json:"revenueTrend"`
-	// CashFlow and VendorPaymentsDue are money: absent (the keys are not even
-	// there) without dashboard.revenue.view. UnconfirmedVendors is always present.
-	CashFlow           *[]cashFlowWeekResponse     `json:"cashFlow,omitempty"`
-	VendorPaymentsDue  *[]vendorPaymentDueResponse `json:"vendorPaymentsDue,omitempty"`
-	UnconfirmedVendors []unconfirmedVendorResponse `json:"unconfirmedVendors"`
+// clientBillDueResponse is one bill of a vendor or venue the client pays
+// directly that is overdue or due within 7 days (Paket WO Tahap 4). The
+// supplier is always named: the client pays it.
+type clientBillDueResponse struct {
+	BillTermID        int64  `json:"billTermId"`
+	ProjectSupplierID int64  `json:"projectSupplierId"`
+	ProjectID         int64  `json:"projectId"`
+	ProjectName       string `json:"projectName"`
+	SupplierKind      string `json:"supplierKind"`
+	SupplierName      string `json:"supplierName"`
+	Label             string `json:"label"`
+	DueDate           string `json:"dueDate"`
+	Remaining         int64  `json:"remaining"`
+	// Pending is what the client sent for this bill that the WO has not checked.
+	Pending int64  `json:"pending"`
+	Status  string `json:"status"`
 }
 
-// vendorNames/actorNames name the vendors and actors of the rows (ids that do not
-// resolve show an empty name).
-func toDashboardResponse(s domain.DashboardStats, vendorNames, actorNames map[int64]string) dashboardResponse {
+// supplierProofPendingResponse is one proof the client sent to a vendor it
+// pays directly that waits for the WO's check.
+type supplierProofPendingResponse struct {
+	SupplierPaymentID int64  `json:"supplierPaymentId"`
+	ProjectID         int64  `json:"projectId"`
+	ProjectName       string `json:"projectName"`
+	ProjectSupplierID int64  `json:"projectSupplierId"`
+	SupplierKind      string `json:"supplierKind"`
+	SupplierName      string `json:"supplierName"`
+	BillTermID        *int64 `json:"billTermId"`
+	BillTermLabel     string `json:"billTermLabel"`
+	Type              string `json:"type"`
+	Amount            int64  `json:"amount"`
+	PaymentDate       string `json:"paymentDate"`
+	SubmittedAt       string `json:"submittedAt"`
+}
+
+type dashboardResponse struct {
+	TotalProjects           int                          `json:"totalProjects"`
+	ActiveProjects          int                          `json:"activeProjects"`
+	ActiveVendorCount       int                          `json:"activeVendorCount"`
+	OpenIssues              []dashboardIssueResponse     `json:"openIssues"`
+	OverdueVendorMilestones []dashboardMilestoneResponse `json:"overdueVendorMilestones"`
+	IncompletePayments      []dashboardPaymentResponse   `json:"incompletePayments"`
+	NearDDayProjects        []projectResponse            `json:"nearDDayProjects"`
+	LaggingProjects         []laggingProjectResponse     `json:"laggingProjects"`
+	UpcomingProjects        []projectResponse            `json:"upcomingProjects"`
+	OverdueTerms            []dashboardTermResponse      `json:"overdueTerms"`
+	OverdueTermsTotal       int64                        `json:"overdueTermsTotal"`
+	DueSoonTerms            []dashboardTermResponse      `json:"dueSoonTerms"`
+	TasksDueThisWeek        []dashboardTaskResponse      `json:"tasksDueThisWeek"`
+	StageCounts             stageCountsResponse          `json:"stageCounts"`
+	RecentActivity          []activityResponse           `json:"recentActivity"`
+	Revenue                 revenueSummaryResponse       `json:"revenue"`
+	ProjectTrend            []projectTrendPointResponse  `json:"projectTrend"`
+	RevenueTrend            []revenueTrendPointResponse  `json:"revenueTrend"`
+	// CashFlow and SupplierPaymentsDue are money: absent (the keys are not even
+	// there) without dashboard.revenue.view; without finance.margin.view the
+	// cash flow has no money out and SupplierPaymentsDue is absent. UnconfirmedSuppliers is always present.
+	CashFlow             *[]cashFlowWeekResponse       `json:"cashFlow,omitempty"`
+	SupplierPaymentsDue  *[]supplierPaymentDueResponse `json:"supplierPaymentsDue,omitempty"`
+	UnconfirmedSuppliers []unconfirmedSupplierResponse `json:"unconfirmedSuppliers"`
+	// ClientBillsDue, SupplierProofsPending and SupplierProofsPendingCount are
+	// the client-paid vendors' attention items: absent (the keys are not there)
+	// without finance.record. The client's own money, so they stay without
+	// finance.margin.view (PLAN §9.15).
+	ClientBillsDue             *[]clientBillDueResponse        `json:"clientBillsDue,omitempty"`
+	SupplierProofsPending      *[]supplierProofPendingResponse `json:"supplierProofsPending,omitempty"`
+	SupplierProofsPendingCount *int                            `json:"supplierProofsPendingCount,omitempty"`
+}
+
+// actorNames names the actors of the activity rows (ids that do not resolve
+// show an empty name).
+func toDashboardResponse(s domain.DashboardStats, actorNames map[int64]string) dashboardResponse {
 	resp := dashboardResponse{
 		TotalProjects:     s.TotalProjects,
 		ActiveProjects:    s.ActiveProjects,
@@ -164,7 +198,6 @@ func toDashboardResponse(s domain.DashboardStats, vendorNames, actorNames map[in
 		OpenIssues:              make([]dashboardIssueResponse, 0, len(s.OpenIssues)),
 		OverdueVendorMilestones: make([]dashboardMilestoneResponse, 0, len(s.OverdueVendorMilestones)),
 		IncompletePayments:      make([]dashboardPaymentResponse, 0, len(s.IncompletePayments)),
-		IncompleteVenuePayments: make([]dashboardVenuePaymentResponse, 0, len(s.IncompleteVenuePayments)),
 		NearDDayProjects:        make([]projectResponse, 0, len(s.NearDDayProjects)),
 		LaggingProjects:         make([]laggingProjectResponse, 0, len(s.LaggingProjects)),
 		UpcomingProjects:        make([]projectResponse, 0, len(s.UpcomingProjects)),
@@ -176,31 +209,25 @@ func toDashboardResponse(s domain.DashboardStats, vendorNames, actorNames map[in
 		RecentActivity:          make([]activityResponse, 0, len(s.RecentActivity)),
 		ProjectTrend:            make([]projectTrendPointResponse, 0, len(s.ProjectTrend)),
 		RevenueTrend:            make([]revenueTrendPointResponse, 0, len(s.RevenueTrend)),
-		UnconfirmedVendors:      make([]unconfirmedVendorResponse, 0, len(s.UnconfirmedVendors)),
+		UnconfirmedSuppliers:    make([]unconfirmedSupplierResponse, 0, len(s.UnconfirmedSuppliers)),
 	}
 	for _, row := range s.OpenIssues {
 		resp.OpenIssues = append(resp.OpenIssues, dashboardIssueResponse{
-			ID: row.Issue.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID, VendorName: vendorNames[row.VendorID],
+			ID: row.Issue.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, SupplierName: row.SupplierName,
 			Title: row.Issue.Title, Impact: string(row.Issue.Impact), FoundDate: row.Issue.FoundDate.Format(dateLayout),
 			Status: string(row.Issue.Status),
 		})
 	}
 	for _, row := range s.OverdueVendorMilestones {
 		resp.OverdueVendorMilestones = append(resp.OverdueVendorMilestones, dashboardMilestoneResponse{
-			ID: row.Milestone.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID, VendorName: vendorNames[row.VendorID],
+			ID: row.Milestone.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, SupplierName: row.SupplierName,
 			Name: row.Milestone.Name, TargetDate: row.Milestone.TargetDate.Format(dateLayout),
 		})
 	}
 	for _, row := range s.IncompletePayments {
 		resp.IncompletePayments = append(resp.IncompletePayments, dashboardPaymentResponse{
-			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName, VendorID: row.VendorID, VendorName: vendorNames[row.VendorID],
-			Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
-		})
-	}
-	for _, row := range s.IncompleteVenuePayments {
-		resp.IncompleteVenuePayments = append(resp.IncompleteVenuePayments, dashboardVenuePaymentResponse{
-			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName,
-			Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
+			ID: row.Payment.ID, ProjectID: row.Payment.ProjectID, ProjectName: row.ProjectName, SupplierKind: string(row.SupplierKind), SupplierName: row.SupplierName,
+			Payer: string(row.Payment.Payer), Type: string(row.Payment.Type), Amount: row.Payment.Amount, PaymentDate: row.Payment.PaymentDate.Format(dateLayout),
 		})
 	}
 	for _, row := range s.OverdueTerms {
@@ -237,20 +264,40 @@ func toDashboardResponse(s domain.DashboardStats, vendorNames, actorNames map[in
 		for _, w := range s.CashFlow {
 			weeks = append(weeks, cashFlowWeekResponse{WeekStart: w.WeekStart.Format(dateLayout), ExpectedIn: w.ExpectedIn, ExpectedOut: w.ExpectedOut})
 		}
-		due := make([]vendorPaymentDueResponse, 0, len(s.VendorPaymentsDue))
-		for _, d := range s.VendorPaymentsDue {
-			due = append(due, vendorPaymentDueResponse{
-				ProjectID: d.ProjectID, ProjectName: d.ProjectName, VendorName: vendorNames[d.VendorID],
+		due := make([]supplierPaymentDueResponse, 0, len(s.SupplierPaymentsDue))
+		for _, d := range s.SupplierPaymentsDue {
+			due = append(due, supplierPaymentDueResponse{
+				ProjectID: d.ProjectID, ProjectName: d.ProjectName, SupplierKind: string(d.SupplierKind), SupplierName: d.SupplierName,
 				DueDate: d.DueDate.Format(dateLayout), Remaining: d.Remaining,
 			})
 		}
-		resp.CashFlow, resp.VendorPaymentsDue = &weeks, &due
+		resp.CashFlow, resp.SupplierPaymentsDue = &weeks, &due
 	}
-	for _, u := range s.UnconfirmedVendors {
-		resp.UnconfirmedVendors = append(resp.UnconfirmedVendors, unconfirmedVendorResponse{
-			ProjectID: u.ProjectID, ProjectName: u.ProjectName, VendorName: vendorNames[u.VendorID],
+	for _, u := range s.UnconfirmedSuppliers {
+		resp.UnconfirmedSuppliers = append(resp.UnconfirmedSuppliers, unconfirmedSupplierResponse{
+			ProjectID: u.ProjectID, ProjectName: u.ProjectName, SupplierKind: string(u.SupplierKind), SupplierName: u.SupplierName,
 			EngagementStatus: string(u.EngagementStatus), EventDate: u.EventDate.Format(dateLayout),
 		})
+	}
+	if s.ClientBillSections {
+		bills := make([]clientBillDueResponse, 0, len(s.ClientBillsDue))
+		for _, b := range s.ClientBillsDue {
+			bills = append(bills, clientBillDueResponse{
+				BillTermID: b.BillTermID, ProjectSupplierID: b.ProjectSupplierID, ProjectID: b.ProjectID, ProjectName: b.ProjectName,
+				SupplierKind: string(b.SupplierKind), SupplierName: b.SupplierName, Label: b.Label, DueDate: b.DueDate.Format(dateLayout),
+				Remaining: b.Remaining, Pending: b.Pending, Status: string(b.Status),
+			})
+		}
+		proofs := make([]supplierProofPendingResponse, 0, len(s.SupplierProofsPending))
+		for _, p := range s.SupplierProofsPending {
+			proofs = append(proofs, supplierProofPendingResponse{
+				SupplierPaymentID: p.SupplierPaymentID, ProjectID: p.ProjectID, ProjectName: p.ProjectName, ProjectSupplierID: p.ProjectSupplierID,
+				SupplierKind: string(p.SupplierKind), SupplierName: p.SupplierName, BillTermID: optionalID(p.BillTermID), BillTermLabel: p.BillTermLabel,
+				Type: string(p.Type), Amount: p.Amount, PaymentDate: p.PaymentDate.Format(dateLayout), SubmittedAt: p.SubmittedAt.In(wib).Format(time.RFC3339),
+			})
+		}
+		count := s.SupplierProofsPendingCount
+		resp.ClientBillsDue, resp.SupplierProofsPending, resp.SupplierProofsPendingCount = &bills, &proofs, &count
 	}
 	for _, pt := range s.ProjectTrend {
 		resp.ProjectTrend = append(resp.ProjectTrend, projectTrendPointResponse{Key: pt.Key, Label: pt.Label, Count: pt.Count})
@@ -283,38 +330,62 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	canRevenue := claims.can("dashboard.revenue.view")
-	stats, err := h.dashboard.Get(r.Context(), claims.tenantID, nowWIB(), application.DashboardOptions{IncludeMoney: canRevenue})
+	stats, err := h.dashboard.Get(r.Context(), claims.tenantID, nowWIB(), application.DashboardOptions{
+		IncludeMoney: canRevenue, IncludeClientBills: claims.can("finance.record"),
+	})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	// One lookup each for the vendors and the actors named in the rows.
-	var vendorIDs, actorIDs []int64
-	for _, r := range stats.OpenIssues {
-		vendorIDs = append(vendorIDs, r.VendorID)
-	}
-	for _, r := range stats.OverdueVendorMilestones {
-		vendorIDs = append(vendorIDs, r.VendorID)
-	}
-	for _, r := range stats.IncompletePayments {
-		vendorIDs = append(vendorIDs, r.VendorID)
-	}
-	for _, r := range stats.VendorPaymentsDue {
-		vendorIDs = append(vendorIDs, r.VendorID)
-	}
-	for _, r := range stats.UnconfirmedVendors {
-		vendorIDs = append(vendorIDs, r.VendorID)
-	}
+	actorIDs := make([]int64, 0, len(stats.RecentActivity))
 	for _, a := range stats.RecentActivity {
 		actorIDs = append(actorIDs, a.ActorStaffID)
 	}
-	resp := toDashboardResponse(*stats,
-		h.dashboard.VendorNames(r.Context(), claims.tenantID, vendorIDs), h.dashboard.StaffNames(r.Context(), claims.tenantID, actorIDs))
+	resp := toDashboardResponse(*stats, h.dashboard.StaffNames(r.Context(), claims.tenantID, actorIDs))
+	h.describeDashboardProjects(r.Context(), claims.tenantID, &resp)
+	if !claims.can("finance.margin.view") {
+		hideSupplierCosts(&resp)
+	}
 	if !canRevenue {
 		resp.Revenue = revenueSummaryResponse{}
 		resp.RevenueTrend = []revenueTrendPointResponse{}
 	}
 	response.OK(w, "ok", resp)
+}
+
+// describeDashboardProjects fills each listed project's location and events
+// line ("2 acara: Akad 13 Mar · Resepsi 14 Mar"), as the project list does.
+func (h *Handler) describeDashboardProjects(ctx context.Context, tenantID int64, resp *dashboardResponse) {
+	list := make([]*projectResponse, 0, len(resp.NearDDayProjects)+len(resp.LaggingProjects)+len(resp.UpcomingProjects))
+	for i := range resp.NearDDayProjects {
+		list = append(list, &resp.NearDDayProjects[i])
+	}
+	for i := range resp.LaggingProjects {
+		list = append(list, &resp.LaggingProjects[i].Project)
+	}
+	for i := range resp.UpcomingProjects {
+		list = append(list, &resp.UpcomingProjects[i])
+	}
+	h.describeProjects(ctx, tenantID, list)
+}
+
+// hideSupplierCosts removes what the WO pays its vendors and venues from a
+// dashboard read without finance.margin.view: the money out of the cash flow,
+// the supplier payments due, and WO-paid payments still missing their proof.
+func hideSupplierCosts(resp *dashboardResponse) {
+	if resp.CashFlow != nil {
+		for i := range *resp.CashFlow {
+			(*resp.CashFlow)[i].ExpectedOut = 0
+		}
+	}
+	resp.SupplierPaymentsDue = nil
+	kept := resp.IncompletePayments[:0]
+	for _, p := range resp.IncompletePayments {
+		if p.Payer != string(domain.PayerWO) {
+			kept = append(kept, p)
+		}
+	}
+	resp.IncompletePayments = kept
 }
 
 type myProjectTaskResponse struct {

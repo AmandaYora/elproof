@@ -1,13 +1,20 @@
 {
   "generatedBy": "e2e/tests/axe.spec.ts (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa)",
-  "pagesScanned": 80,
+  "pagesScanned": 88,
   "violationsByImpact": {
     "critical": 0,
-    "serious": 0,
+    "serious": 2,
     "moderate": 0,
     "minor": 0
   },
-  "byRule": {},
+  "byRule": {
+    "definition-list": {
+      "impact": "serious",
+      "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
+      "pages": 2,
+      "nodes": 2
+    }
+  },
   "pages": [
     {
       "page": "marketing/beranda",
@@ -210,22 +217,22 @@
       "violations": []
     },
     {
-      "page": "portal/pembayaran",
+      "page": "portal/layanan",
       "viewport": "desktop",
       "violations": []
     },
     {
-      "page": "portal/pembayaran",
+      "page": "portal/layanan",
       "viewport": "mobile",
       "violations": []
     },
     {
-      "page": "portal/vendor",
+      "page": "portal/pembayaran",
       "viewport": "desktop",
       "violations": []
     },
     {
-      "page": "portal/vendor",
+      "page": "portal/pembayaran",
       "viewport": "mobile",
       "violations": []
     },
@@ -260,6 +267,16 @@
       "violations": []
     },
     {
+      "page": "wo/penawaran",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/penawaran",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
       "page": "wo/peran-akses",
       "viewport": "desktop",
       "violations": []
@@ -278,6 +295,32 @@
       "page": "wo/profil-usaha",
       "viewport": "mobile",
       "violations": []
+    },
+    {
+      "page": "wo/proyek-acara",
+      "viewport": "desktop",
+      "violations": [
+        {
+          "rule": "definition-list",
+          "impact": "serious",
+          "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
+          "nodes": 1,
+          "sample": "dl:nth-child(4)"
+        }
+      ]
+    },
+    {
+      "page": "wo/proyek-acara",
+      "viewport": "mobile",
+      "violations": [
+        {
+          "rule": "definition-list",
+          "impact": "serious",
+          "help": "<dl> elements must only directly contain properly-ordered <dt> and <dd> groups, <script>, <template> or <div> elements",
+          "nodes": 1,
+          "sample": "dl:nth-child(4)"
+        }
+      ]
     },
     {
       "page": "wo/proyek-dokumen",
@@ -310,12 +353,22 @@
       "violations": []
     },
     {
-      "page": "wo/proyek-keuangan-vendor",
+      "page": "wo/proyek-keuangan-dibayar-klien",
       "viewport": "desktop",
       "violations": []
     },
     {
-      "page": "wo/proyek-keuangan-vendor",
+      "page": "wo/proyek-keuangan-dibayar-klien",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-keuangan-vendor-venue",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/proyek-keuangan-vendor-venue",
       "viewport": "mobile",
       "violations": []
     },
@@ -386,6 +439,16 @@
     },
     {
       "page": "wo/tim",
+      "viewport": "mobile",
+      "violations": []
+    },
+    {
+      "page": "wo/ubah-acara (dialog)",
+      "viewport": "desktop",
+      "violations": []
+    },
+    {
+      "page": "wo/ubah-acara (dialog)",
       "viewport": "mobile",
       "violations": []
     },

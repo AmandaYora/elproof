@@ -38,6 +38,8 @@ export default function VendorCategoryListPage() {
   const [editingCategory, setEditingCategory] = useState<VendorCategory | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VendorCategory | null>(null);
+  // Why the server refused the delete (e.g. 409: a package or quotation still refers to it), shown inside the dialog.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -102,16 +104,22 @@ export default function VendorCategoryListPage() {
   // dialog: a category still assigned to any vendor is a hard block (real
   // same-module SQL FK), so the vendor count already loaded for this page's
   // own "Jumlah Vendor" column doubles as the pre-check here too.
+  function closeDeleteDialog() {
+    setDeleteTarget(null);
+    setDeleteError(null);
+  }
+
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     setIsDeleting(true);
+    setDeleteError(null);
     try {
       await deleteCategory(deleteTarget.id);
       setDeleteTarget(null);
       await fetchCategoryPage(page, query);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Gagal menghapus kategori vendor"));
-      setDeleteTarget(null);
+      // The dialog stays open with the server's reason (still used by vendors, or by a package or quotation).
+      setDeleteError(getApiErrorMessage(err, "Kategori belum bisa dihapus. Periksa koneksi Anda, lalu coba lagi."));
     } finally {
       setIsDeleting(false);
     }
@@ -224,9 +232,11 @@ export default function VendorCategoryListPage() {
 
       <Modal
         open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={closeDeleteDialog}
         title={deleteTarget ? `Hapus kategori — ${deleteTarget.name}` : "Hapus kategori"}
         size="sm"
+        busy={isDeleting}
+        error={deleteError}
       >
         {deleteTarget &&
           (() => {
@@ -242,7 +252,7 @@ export default function VendorCategoryListPage() {
                     </span>
                   </p>
                   <div className="flex justify-end">
-                    <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+                    <Button variant="secondary" onClick={closeDeleteDialog}>
                       Tutup
                     </Button>
                   </div>
@@ -256,7 +266,7 @@ export default function VendorCategoryListPage() {
                   <span>Data ini akan dihapus secara permanen dan tidak dapat dikembalikan. Apakah Anda yakin?</span>
                 </p>
                 <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+                  <Button variant="secondary" onClick={closeDeleteDialog} disabled={isDeleting}>
                     Batal
                   </Button>
                   <Button variant="danger" onClick={() => void handleConfirmDelete()} disabled={isDeleting}>

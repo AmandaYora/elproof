@@ -17,12 +17,11 @@ func TestProjectActionsFollowTheRulesTheWebHadInTheBrowser(t *testing.T) {
 			{ID: 2, Title: "Genset mati", Impact: ImpactCritical, Status: IssueInReview},
 			{ID: 3, Title: "Sudah beres", Impact: ImpactCritical, Status: IssueResolved},
 		},
-		Engagement: []ProjectVendor{
-			{ID: 10, EngagementStatus: EngagementPlanned},
-			{ID: 11, EngagementStatus: EngagementNegotiation},
-			{ID: 12, EngagementStatus: EngagementBooked},
+		Suppliers: []ProjectSupplier{
+			{ID: 10, Name: "Bunga Indah", EngagementStatus: EngagementPlanned},
+			{ID: 11, Name: "Gedung Melati", Kind: SupplierVenue, EngagementStatus: EngagementNegotiation},
+			{ID: 12, Name: "Katering", EngagementStatus: EngagementBooked},
 		},
-		VendorName: map[int64]string{10: "Bunga Indah"},
 		Milestones: []ProjectMilestone{
 			{ID: 20, Name: "Fitting", Status: MilestoneNotStarted, TargetDate: d("2026-11-09")},
 			{ID: 21, Name: "Undangan", Status: MilestoneCompleted, TargetDate: d("2026-11-01")},
@@ -64,8 +63,8 @@ func TestProjectActionsFollowTheRulesTheWebHadInTheBrowser(t *testing.T) {
 	if a := byID["vendor-10"]; a.Title != "Bunga Indah belum terkonfirmasi" || a.Detail != "Acara H-15, status masih belum dipesan" || a.Tab != "vendor" || a.Kind != ActionVendorUnconfirm {
 		t.Errorf("vendor action: %+v", a)
 	}
-	if byID["vendor-11"].Title != "Vendor belum terkonfirmasi" {
-		t.Errorf("an unresolved vendor name falls back to \"Vendor\": %q", byID["vendor-11"].Title)
+	if byID["vendor-11"].Title != "Gedung Melati belum terkonfirmasi" {
+		t.Errorf("a venue is named by its copied name: %q", byID["vendor-11"].Title)
 	}
 	if a := byID["ms-20"]; a.Title != `Tahapan "Fitting" lewat tenggat` || a.Detail != "Target 9 Nov 2026" || a.Tab != "jadwal" || a.Kind != ActionMilestoneLate {
 		t.Errorf("milestone action: %+v", a)
@@ -73,12 +72,12 @@ func TestProjectActionsFollowTheRulesTheWebHadInTheBrowser(t *testing.T) {
 }
 
 func TestVendorActionOnlyWithinThirtyDaysOfTheEvent(t *testing.T) {
-	engagement := []ProjectVendor{{ID: 1, EngagementStatus: EngagementPlanned}}
+	engagement := []ProjectSupplier{{ID: 1, Name: "Bunga", EngagementStatus: EngagementPlanned}}
 	for _, c := range []struct {
 		event string
 		want  int
 	}{{"2026-12-10", 1}, {"2026-12-11", 0}, {"2026-11-10", 1}, {"2026-11-09", 0}} {
-		got := BuildProjectActions(ActionInput{Today: d("2026-11-10"), EventDate: d(c.event), Engagement: engagement})
+		got := BuildProjectActions(ActionInput{Today: d("2026-11-10"), EventDate: d(c.event), Suppliers: engagement})
 		if len(got) != c.want {
 			t.Errorf("event %s: %d actions, want %d", c.event, len(got), c.want)
 		}
@@ -124,28 +123,67 @@ func TestFinanceOverview(t *testing.T) {
 	terms := []TermProgress{
 		{Status: TermOverdue, Remaining: 15}, {Status: TermOverdue, Remaining: 5}, {Status: TermUpcoming, Remaining: 40}, {Status: TermPaid},
 	}
-	engagements := []ProjectVendor{
-		{ContractValue: 25, EngagementStatus: EngagementBooked},
-		{ContractValue: 1000, EngagementStatus: EngagementCancelled},
-		{ContractValue: 15, EngagementStatus: EngagementPlanned},
+	cost := func(n int64) *int64 { return &n }
+	gone := d("2026-11-01")
+	suppliers := []ProjectSupplier{
+		{AgreedCost: cost(25), PaidBy: PayerWO, EngagementStatus: EngagementBooked},
+		{AgreedCost: cost(1000), PaidBy: PayerWO, EngagementStatus: EngagementCancelled},
+		{AgreedCost: cost(15), PaidBy: PayerWO, Kind: SupplierVenue, EngagementStatus: EngagementPlanned},
+		{AgreedCost: cost(500), PaidBy: PayerClient, EngagementStatus: EngagementBooked},
+		{AgreedCost: cost(70), PaidBy: PayerWO, EngagementStatus: EngagementBooked, DeletedAt: &gone},
+		{PaidBy: PayerWO, EngagementStatus: EngagementBooked},
 	}
-	f := ComputeFinanceOverview(100, lines, terms, engagements, ptr(12), ptr(3))
+	f := ComputeFinanceOverview(contractOf(100), lines, terms, suppliers)
 	if f.Paid != 40 || f.Remaining != 60 {
 		t.Errorf("paid/remaining = %d/%d, want 40/60 (Tambahan outside the contract, Refund subtracts)", f.Paid, f.Remaining)
 	}
 	if f.OverdueTotal != 20 {
 		t.Errorf("overdue total = %d", f.OverdueTotal)
 	}
-	if f.VendorCost != 40 || f.VenueCost != 15 {
-		t.Errorf("costs = %d/%d, want 40/15 (a cancelled engagement costs nothing)", f.VendorCost, f.VenueCost)
+	// Cancelled, deleted and client-paid suppliers cost the WO nothing; one
+	// without a cost leaves the margin incomplete.
+	if f.SupplierCost != 40 || f.MissingCost != 1 || f.Margin != 60 {
+		t.Errorf("cost/missing/margin = %d/%d/%d, want 40/1/60", f.SupplierCost, f.MissingCost, f.Margin)
 	}
-	if f.Margin != 100-40-15 {
-		t.Errorf("margin = %d", f.Margin)
-	}
-	// Overpaid: remaining never negative. No venue: cost 0. Costs above the contract: negative margin.
-	f = ComputeFinanceOverview(10, []PaymentLine{{PaymentDP, 50}}, nil, []ProjectVendor{{ContractValue: 30, EngagementStatus: EngagementBooked}}, nil, nil)
-	if f.Remaining != 0 || f.Paid != 50 || f.VenueCost != 0 || f.Margin != -20 {
+	// Overpaid: remaining never negative. Costs above the contract: negative margin.
+	f = ComputeFinanceOverview(contractOf(10), []PaymentLine{{PaymentDP, 50}}, nil, []ProjectSupplier{{AgreedCost: cost(30), PaidBy: PayerWO, EngagementStatus: EngagementBooked}})
+	if f.Remaining != 0 || f.Paid != 50 || f.Margin != -20 {
 		t.Errorf("edge: %+v", f)
+	}
+}
+
+// contractOf is a project without PPN whose lines add up to total.
+func contractOf(total int64) Project {
+	return Project{ContractSubtotal: total, ContractTotal: total}
+}
+
+// Tahap 3: the client owes the total (subtotal + PPN); the margin is taken from
+// the subtotal (PPN is the state's); a schedule that no longer adds up to the
+// total is flagged, a missing one is not.
+func TestFinanceOverviewWithPPNAndTermsMismatch(t *testing.T) {
+	p := Project{IsPKP: true, ContractSubtotal: 100_000_000, ContractTax: 11_000_000, ContractTotal: 111_000_000}
+	cost := int64(60_000_000)
+	suppliers := []ProjectSupplier{{AgreedCost: &cost, PaidBy: PayerWO, EngagementStatus: EngagementBooked}}
+	terms := []TermProgress{{Term: PaymentTerm{Amount: 50_000_000}}, {Term: PaymentTerm{Amount: 50_000_000}}}
+	f := ComputeFinanceOverview(p, []PaymentLine{{PaymentDP, 11_000_000}}, terms, suppliers)
+	if f.ContractValue != 111_000_000 || f.ContractSubtotal != 100_000_000 || f.ContractTax != 11_000_000 {
+		t.Errorf("contract = %d (%d + %d)", f.ContractValue, f.ContractSubtotal, f.ContractTax)
+	}
+	if f.Remaining != 100_000_000 {
+		t.Errorf("remaining = %d, want the total minus what was paid", f.Remaining)
+	}
+	if f.Margin != 40_000_000 {
+		t.Errorf("margin = %d, want subtotal - cost (PPN left out)", f.Margin)
+	}
+	if f.TermsTotal != 100_000_000 || !f.TermsMismatch {
+		t.Errorf("terms %d mismatch=%v, want 100M and a mismatch against 111M", f.TermsTotal, f.TermsMismatch)
+	}
+	terms[1].Term.Amount = 61_000_000
+	if f = ComputeFinanceOverview(p, nil, terms, nil); f.TermsMismatch {
+		t.Error("a schedule equal to the total is not a mismatch")
+	}
+	if f = ComputeFinanceOverview(p, nil, nil, nil); f.TermsMismatch {
+		t.Error("no schedule is never a mismatch")
 	}
 }
 
@@ -153,7 +191,7 @@ func TestOpenIssueCountAndUnconfirmed(t *testing.T) {
 	if n := OpenIssueCount([]VendorIssue{{Status: IssueOpen}, {Status: IssueResolved}, {Status: IssueInResolution}, {Status: IssueClosed}}); n != 2 {
 		t.Errorf("open = %d", n)
 	}
-	got := UnconfirmedEngagements([]ProjectVendor{{ID: 1, EngagementStatus: EngagementBooked}, {ID: 2, EngagementStatus: EngagementNegotiation}, {ID: 3, EngagementStatus: EngagementPlanned}})
+	got := UnconfirmedSuppliers([]ProjectSupplier{{ID: 1, EngagementStatus: EngagementBooked}, {ID: 2, EngagementStatus: EngagementNegotiation}, {ID: 3, EngagementStatus: EngagementPlanned}})
 	if len(got) != 2 || got[0].ID != 2 || got[1].ID != 3 {
 		t.Errorf("unconfirmed: %+v", got)
 	}

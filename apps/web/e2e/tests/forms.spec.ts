@@ -94,7 +94,11 @@ test.describe("Tab order", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 40; i++) {
       await page.keyboard.press("Tab");
-      seen.add(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.id ?? document.activeElement?.tagName ?? ""));
+      // A control's own name: its label, id or text (an element without an id has id "", so `||`, not `??`).
+      seen.add(await page.evaluate(() => {
+        const e = document.activeElement;
+        return e?.getAttribute("aria-label") || e?.id || (e?.textContent ?? "").trim().slice(0, 40) || e?.tagName || "";
+      }));
     }
     expect(seen.size, "focus moves through many different controls").toBeGreaterThan(8);
     await close();

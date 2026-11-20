@@ -24,11 +24,11 @@ const (
 type VendorIssue struct {
 	ID        int64
 	ProjectID int64
-	// ProjectVendorID is 0 ("none") for a kendala about the event in general
+	// ProjectSupplierID is 0 ("none") for a kendala about the event in general
 	// (stored as NULL), the same sentinel convention as Project.PICStaffID.
-	ProjectVendorID int64
-	// VendorMilestoneID is nil when the issue is general to the vendor
-	// engagement rather than about one specific deliverable.
+	ProjectSupplierID int64
+	// VendorMilestoneID is nil when the issue is general to the supplier
+	// rather than about one specific step.
 	VendorMilestoneID    *int64
 	Title                string
 	Description          string
@@ -50,8 +50,8 @@ type VendorIssue struct {
 	UpdatedAt time.Time
 }
 
-// HasVendor reports whether the kendala is about one vendor engagement.
-func (i VendorIssue) HasVendor() bool { return i.ProjectVendorID != 0 }
+// HasSupplier reports whether the kendala is about one vendor or venue.
+func (i VendorIssue) HasSupplier() bool { return i.ProjectSupplierID != 0 }
 
 // ClientVisibleIssues keeps only the kendala a client may see.
 func ClientVisibleIssues(list []VendorIssue) []VendorIssue {

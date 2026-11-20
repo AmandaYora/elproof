@@ -13,6 +13,11 @@ var ErrStoragePathTaken = errors.New("an evidence row already points at this sto
 
 // ErrProjectDeleteBlocked: the database still refuses to delete a project (a
 // foreign key from a table the hard delete does not empty yet).
+// ErrQuotationConverted is returned by ProjectRepository.Create when another
+// project of the workspace already carries the same quotation_id (the unique
+// key of a conversion race).
+var ErrQuotationConverted = errors.New("a project already exists for this quotation")
+
 var ErrProjectDeleteBlocked = errors.New("a foreign key still references the project")
 
 type EvidenceType string
@@ -29,8 +34,7 @@ const (
 	EvidenceScreenshot       EvidenceType = "Screenshot"
 	EvidenceMinutesOfMeeting EvidenceType = "Minutes of Meeting"
 	EvidenceOther            EvidenceType = "Other"
-	// EvidenceBookingProof is bukti booked on a project_vendors engagement --
-	// see PLAN.md revisi-timeline-vendor-role-sales.
+	// EvidenceBookingProof is the booking proof of a project supplier.
 	EvidenceBookingProof EvidenceType = "Booking Proof"
 )
 
@@ -55,11 +59,10 @@ type EvidenceRelatedKind string
 
 const (
 	RelatedVendorMilestone EvidenceRelatedKind = "vendorMilestone"
-	RelatedPayment         EvidenceRelatedKind = "payment"
-	RelatedProjectVendor   EvidenceRelatedKind = "projectVendor"
+	RelatedSupplierPayment EvidenceRelatedKind = "supplierPayment"
+	RelatedProjectSupplier EvidenceRelatedKind = "projectSupplier"
 	RelatedIssue           EvidenceRelatedKind = "issue"
 	RelatedClientPayment   EvidenceRelatedKind = "clientPayment"
-	RelatedVenuePayment    EvidenceRelatedKind = "venuePayment"
 	// RelatedGeneral is a project-level document with no specific
 	// vendor/payment/vendor-engagement/issue to attach to (rundown, buku
 	// acara, teks juru bicara, banquet order, rekap order, rekap dekor,
@@ -110,43 +113,20 @@ type Evidence struct {
 	UpdatedAt time.Time
 }
 
-// ClientCanSeeEvidence is the per-document visibility rule for a `client`
-// principal (Client Portal). Only evidence that backs something the portal
-// already shows is visible: proof of the client's own payments, documents
-// attached to a kendala or a vendor deliverable, and project-level documents or
-// timeline attachments a staff member explicitly opted in. Vendor/venue payment
-// proofs and booking proofs stay internal.
-//
-// can is the client's portal permission check (ADR-0026): a payment receipt is
-// finance data, so a role without portal.finance.view (Keluarga by default)
-// never sees it; issue, vendor and timeline attachments follow their own tabs.
-// A timeline attachment additionally needs IsClientVisible (ADR-0032): staff
-// decide which photos of a step the couple sees.
-func ClientCanSeeEvidence(e Evidence, can func(string) bool) bool {
-	if e.ClientHidden {
-		return false
-	}
-	switch e.RelatedKind {
-	case RelatedClientPayment:
-		return can("portal.finance.view")
-	case RelatedIssue:
-		return can("portal.issues.view")
-	case RelatedVendorMilestone:
-		return can("portal.vendor.view")
-	case RelatedProjectMilestone:
-		return can("portal.timeline.view") && e.IsClientVisible
-	case RelatedGeneral:
-		// The Dokumen tab: shared documents also need portal.documents.view
-		// (the per-file routes no longer ask for it up front, see
-		// clientReadPermission, so this rule is the only gate for a file).
-		return e.IsClientVisible && can("portal.documents.view")
-	default:
-		return false
-	}
+// SupportsClientVisibility: only these kinds carry the opt-in IsClientVisible
+// flag ("tampilkan ke klien"); for every other kind the flag is meaningless
+// and stored false. A supplier step's file needs it when the WO pays the
+// supplier (PortalPolicy.Evidence).
+func (k EvidenceRelatedKind) SupportsClientVisibility() bool {
+	return k == RelatedGeneral || k == RelatedProjectMilestone || k == RelatedVendorMilestone
 }
 
-// SupportsClientVisibility: only these kinds carry the opt-in IsClientVisible
-// flag; for every other kind the flag is meaningless and stored false.
-func (k EvidenceRelatedKind) SupportsClientVisibility() bool {
-	return k == RelatedGeneral || k == RelatedProjectMilestone
+// IsValidRelatedKind reports whether k is a known related kind (the column is an enum).
+func IsValidRelatedKind(k EvidenceRelatedKind) bool {
+	switch k {
+	case RelatedVendorMilestone, RelatedSupplierPayment, RelatedProjectSupplier, RelatedIssue,
+		RelatedClientPayment, RelatedGeneral, RelatedProjectMilestone:
+		return true
+	}
+	return false
 }

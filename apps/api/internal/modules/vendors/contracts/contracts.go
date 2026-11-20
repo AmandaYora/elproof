@@ -10,7 +10,7 @@ import (
 )
 
 // VenueSummary is the public-safe subset of a venue's data (ADR-0016) --
-// deliberately excludes RentalPrice/Charge/PIC contact, which stay
+// deliberately excludes prices/Charge/PIC contact, which stay
 // staff-only (read directly via GET /venues/{id}, never through this
 // cross-module contract). Consumed by `projects` to resolve a project's
 // attached venue_id for both its own Project Detail tab and Client Portal's
@@ -20,7 +20,8 @@ type VenueSummary struct {
 	Name                 string
 	Address              *string
 	City                 *string
-	Capacity             *int
+	CapacityStanding     *int
+	CapacitySeated       *int
 	Facilities           *string
 	SocialMedia          *string
 	HasVisibleAttachment bool
@@ -30,11 +31,35 @@ type VenueSummary struct {
 // name (shown as the project's venue) and its current prices (the starting
 // point of the project's own cost snapshot). Kept apart from VenueSummary,
 // which is public-safe and reaches clients: prices stay staff-only.
+// RentalPrice is the first price the venue has of akad + resepsi, resepsi,
+// akad (0 when none is set).
 type VenueAttachInfo struct {
 	ID          int64
 	Name        string
 	RentalPrice int64
 	Charge      int64
+}
+
+// VenueRef is what `offers` needs to validate a venue picked for a package or a
+// quotation event: whether it is this workspace's and active, and its capacity
+// per layout (nil = the venue has no number for that layout).
+type VenueRef struct {
+	ID               int64
+	Name             string
+	CapacityStanding *int
+	CapacitySeated   *int
+	IsActive         bool
+}
+
+// VendorRef is what `offers` needs to validate a vendor picked as a supplier:
+// its category, whether it is active, and its partner reference prices per
+// kind of event (staff-only, never shown to a client).
+type VendorRef struct {
+	ID                                        int64
+	Name                                      string
+	CategoryID                                int64
+	IsActive                                  bool
+	PriceAkad, PriceResepsi, PriceAkadResepsi *int64
 }
 
 // Contracts is what other modules depend on to trigger vendors-owned
@@ -59,6 +84,13 @@ type Contracts interface {
 	// absent from the map, so a name can never cross a tenant boundary.
 	VendorNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 	CategoryNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
+	// GetVenueRef and GetVendorRef read one venue or vendor of the workspace for
+	// `offers`; another workspace's id is NotFound, like a missing one.
+	GetVenueRef(ctx context.Context, tenantID, venueID int64) (VenueRef, error)
+	GetVendorRef(ctx context.Context, tenantID, vendorID int64) (VendorRef, error)
+	// VenueNames resolves venue names like VendorNames: tenant-scoped, an id of
+	// another workspace is absent from the map.
+	VenueNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error)
 }
 
 type impl struct {
@@ -114,7 +146,8 @@ func (c *impl) GetVenueSummary(ctx context.Context, tenantID, venueID int64) (Ve
 	}
 	hasVisibleAttachment := venue.AttachmentPath != nil && venue.AttachmentMimeType != nil && strings.HasPrefix(*venue.AttachmentMimeType, "image/")
 	return VenueSummary{
-		ID: venue.ID, Name: venue.Name, Address: venue.Address, City: venue.City, Capacity: venue.Capacity,
+		ID: venue.ID, Name: venue.Name, Address: venue.Address, City: venue.City,
+		CapacityStanding: venue.CapacityStanding, CapacitySeated: venue.CapacitySeated,
 		Facilities: venue.Facilities, SocialMedia: venue.SocialMedia, HasVisibleAttachment: hasVisibleAttachment,
 	}, nil
 }
@@ -126,8 +159,11 @@ func (c *impl) GetVenueForAttach(ctx context.Context, tenantID, venueID int64) (
 		return VenueAttachInfo{}, err
 	}
 	info := VenueAttachInfo{ID: venue.ID, Name: venue.Name}
-	if venue.RentalPrice != nil {
-		info.RentalPrice = *venue.RentalPrice
+	for _, p := range []*int64{venue.PriceAkadResepsi, venue.PriceResepsi, venue.PriceAkad} {
+		if p != nil {
+			info.RentalPrice = *p
+			break
+		}
 	}
 	if venue.Charge != nil {
 		info.Charge = *venue.Charge
@@ -141,4 +177,30 @@ func (c *impl) VendorCategoryID(ctx context.Context, tenantID, vendorID int64) (
 		return 0, err
 	}
 	return vendor.CategoryID, nil
+}
+
+func (c *impl) GetVenueRef(ctx context.Context, tenantID, venueID int64) (VenueRef, error) {
+	venue, err := c.venues.Get(ctx, tenantID, venueID)
+	if err != nil {
+		return VenueRef{}, err
+	}
+	return VenueRef{
+		ID: venue.ID, Name: venue.Name, CapacityStanding: venue.CapacityStanding,
+		CapacitySeated: venue.CapacitySeated, IsActive: venue.IsActive,
+	}, nil
+}
+
+func (c *impl) GetVendorRef(ctx context.Context, tenantID, vendorID int64) (VendorRef, error) {
+	vendor, err := c.vendors.Get(ctx, tenantID, vendorID)
+	if err != nil {
+		return VendorRef{}, err
+	}
+	return VendorRef{
+		ID: vendor.ID, Name: vendor.Name, CategoryID: vendor.CategoryID, IsActive: vendor.IsActive,
+		PriceAkad: vendor.PriceAkad, PriceResepsi: vendor.PriceResepsi, PriceAkadResepsi: vendor.PriceAkadResepsi,
+	}, nil
+}
+
+func (c *impl) VenueNames(ctx context.Context, tenantID int64, ids []int64) (map[int64]string, error) {
+	return c.venues.Names(ctx, tenantID, ids)
 }

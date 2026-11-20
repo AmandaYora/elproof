@@ -15,15 +15,15 @@ export const EVIDENCE_TYPE_OPTIONS = [
   "Booking Proof",
 ] as const;
 
+// What a file hangs off (EvidenceRelatedKind); the order is the "Terkait dengan" picker's.
 export const EVIDENCE_RELATED_KIND_OPTIONS = [
-  "vendorMilestone",
-  "payment",
-  "projectVendor",
-  "issue",
-  "clientPayment",
-  "venuePayment",
   "general",
   "projectMilestone",
+  "projectSupplier",
+  "vendorMilestone",
+  "supplierPayment",
+  "clientPayment",
+  "issue",
 ] as const;
 
 export const evidenceUploadSchema = z

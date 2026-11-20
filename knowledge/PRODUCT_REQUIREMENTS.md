@@ -70,10 +70,26 @@ role's permissions, and the API refuses the same things (`403 forbidden_permissi
   `project.create`, `finance.record` or `dashboard.view`), because the project's vendor form needs
   the prices.
 - **Venues** (ADR-0016; same permissions as Vendors): its own directory, separate from Vendors —
-  rental price, a separate charge, capacity, facilities, a single attachment; filterable by Kota;
-  bulk Excel import/export and permanent delete, same shape as Vendors above (ADR-0018); attaches
-  to a Project 1:1 from the Project's own Venue tab. Single venues are looked up by whoever works on
-  projects, like the vendor picker.
+  two capacities (Kapasitas berdiri, Kapasitas duduk; at least one is required), three prices (Harga
+  Akad, Harga Resepsi, Harga Akad + Resepsi) and an optional Charge tambahan (paket WO Tahap 1,
+  ADR-0048), facilities, a single attachment; filterable by Kota; bulk Excel import/export with the
+  same columns, and permanent delete, same shape as Vendors above (ADR-0018) — refused while a
+  project uses the venue or a package names it as its default venue; attaches to a Project 1:1 from
+  the Project's own Venue tab. Single venues are looked up by whoever works on projects, like the
+  vendor picker.
+- **Katalog › Paket, Jenis acara** (paket WO Tahap 1, ADR-0049; managing needs `package.manage` —
+  Owner, Admin; every staff role can read and pick them): the WO's event kinds (six built-in —
+  Lamaran, Pengajian, Siraman, Akad, Resepsi, Ngunduh mantu — plus its own; rename, deactivate,
+  delete only when no package covers one) and its packages (price, covered event kinds, Tamu
+  termasuk with a Tambahan per … tamu rule and a server-priced "Contoh hitung", an optional default
+  venue checked against its largest capacity, and Isi paket rows with an optional category, vendor
+  and Perkiraan biaya visible only with `finance.margin.view`). A vendor, venue or vendor category a
+  package refers to cannot be deleted permanently, only deactivated. The Katalog menu also holds
+  Jadwal bawaan and Kategori vendor.
+- **Profil usaha › Penawaran** (`business_profile.manage`, Owner by default): Kode usaha (2–5
+  letters or digits, filled from the business name — Melati Organizer → `MO`), PKP, the default
+  validity of a new offer (14 days) and the default terms (Syarat & ketentuan) — the settings offers
+  will use; created at sign-up, or on first open for an existing WO.
 - **Pengguna / Tim** (`team.manage`, Owner by default): invite staff by email — each person accepts
   the invitation with their own Google account (ADR-0024/0025), no username or password is handed
   out — edit, re-invite, deactivate and permanently delete members (informed-consent dialog, same

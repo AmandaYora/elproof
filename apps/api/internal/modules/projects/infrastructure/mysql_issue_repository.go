@@ -17,7 +17,7 @@ func NewMySQLIssueRepository(db *sql.DB) *MySQLIssueRepository {
 	return &MySQLIssueRepository{db: db}
 }
 
-const issueColumns = `id, project_id, IFNULL(project_vendor_id, 0), vendor_milestone_id, title, description, impact, found_date, status,
+const issueColumns = `id, project_id, IFNULL(project_supplier_id, 0), vendor_milestone_id, title, description, impact, found_date, status,
 	resolution_plan, pic_staff_id, target_resolution_date, resolved_date, resolution_notes, is_client_visible, updated_at`
 
 func scanIssue(scan func(dest ...interface{}) error) (*domain.VendorIssue, error) {
@@ -26,7 +26,7 @@ func scanIssue(scan func(dest ...interface{}) error) (*domain.VendorIssue, error
 	var vendorMilestoneID sql.NullInt64
 	var resolutionPlan, resolutionNotes sql.NullString
 	var targetResolutionDate, resolvedDate sql.NullTime
-	err := scan(&i.ID, &i.ProjectID, &i.ProjectVendorID, &vendorMilestoneID, &i.Title, &i.Description, &impact, &i.FoundDate, &status,
+	err := scan(&i.ID, &i.ProjectID, &i.ProjectSupplierID, &vendorMilestoneID, &i.Title, &i.Description, &impact, &i.FoundDate, &status,
 		&resolutionPlan, &i.PICStaffID, &targetResolutionDate, &resolvedDate, &resolutionNotes, &i.IsClientVisible, &i.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -100,10 +100,10 @@ func (r *MySQLIssueRepository) FindByID(ctx context.Context, projectID, id int64
 
 func (r *MySQLIssueRepository) Create(ctx context.Context, issue *domain.VendorIssue) error {
 	result, err := conn(ctx, r.db).ExecContext(ctx,
-		`INSERT INTO vendor_issues (project_id, project_vendor_id, vendor_milestone_id, title, description, impact, found_date, status,
+		`INSERT INTO vendor_issues (project_id, project_supplier_id, vendor_milestone_id, title, description, impact, found_date, status,
 		 resolution_plan, pic_staff_id, target_resolution_date, is_client_visible)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		issue.ProjectID, nullableID(issue.ProjectVendorID), issue.VendorMilestoneID, issue.Title, issue.Description, string(issue.Impact), issue.FoundDate,
+		issue.ProjectID, nullableID(issue.ProjectSupplierID), issue.VendorMilestoneID, issue.Title, issue.Description, string(issue.Impact), issue.FoundDate,
 		string(issue.Status), issue.ResolutionPlan, issue.PICStaffID, issue.TargetResolutionDate, issue.IsClientVisible,
 	)
 	if err != nil {
@@ -118,7 +118,7 @@ func (r *MySQLIssueRepository) Create(ctx context.Context, issue *domain.VendorI
 }
 
 var issuePatchColumns = map[string]column[domain.VendorIssue]{
-	"projectVendorId":      col("project_vendor_id", func(i *domain.VendorIssue) any { return nullableID(i.ProjectVendorID) }),
+	"projectSupplierId":    col("project_supplier_id", func(i *domain.VendorIssue) any { return nullableID(i.ProjectSupplierID) }),
 	"vendorMilestoneId":    col("vendor_milestone_id", func(i *domain.VendorIssue) any { return i.VendorMilestoneID }),
 	"title":                col("title", func(i *domain.VendorIssue) any { return i.Title }),
 	"description":          col("description", func(i *domain.VendorIssue) any { return i.Description }),

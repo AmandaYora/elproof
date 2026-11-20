@@ -64,12 +64,12 @@ func TestWithExtrasWithoutAnItemIsJustTheExtras(t *testing.T) {
 
 func TestWithExtrasKeepsRealResponseShape(t *testing.T) {
 	// A real response type (embedded struct with its own extra key) keeps every key.
-	resp := paymentCreatedResponse{
-		paymentResponse: toPaymentResponse(domain.VendorPayment{ID: 4, Type: domain.PaymentDP, Amount: 10, PaymentDate: time.Now()}, false),
-		LedgerSummary:   ledgerSummaryResponse{ContractValue: 100, Paid: 10, Remaining: 90},
+	resp := supplierPaymentCreatedResponse{
+		supplierPaymentResponse: toSupplierPaymentResponse(domain.SupplierPayment{ID: 4, Payer: domain.PayerWO, Type: domain.PaymentDP, Amount: 10, PaymentDate: time.Now()}, false),
+		LedgerSummary:           ledgerSummaryResponse{ContractValue: 100, Paid: 10, Remaining: 90},
 	}
 	got := asMap(t, withExtras{item: resp, extras: []extra{{"projectProgress", progressResponse{OverallPercent: 7}}}})
-	for _, k := range []string{"id", "type", "amount", "evidence", "ledgerSummary", "projectProgress"} {
+	for _, k := range []string{"id", "payer", "type", "amount", "evidence", "ledgerSummary", "projectProgress"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("missing %q in %v", k, got)
 		}
@@ -94,9 +94,10 @@ func TestDeletedResponseCarriesRFC3339RestorableUntil(t *testing.T) {
 func overviewFixture() *application.ProjectOverview {
 	next := domain.TermProgress{Term: domain.PaymentTerm{ID: 1, Label: "DP", Amount: 10, DueDate: time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)}, Remaining: 10, Status: domain.TermUpcoming}
 	return &application.ProjectOverview{
-		Project:  domain.Project{ID: 5, Name: "Akad", EventDate: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), PrepStartDate: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), ContractValue: 100},
-		PICName:  "Sari",
-		Finance:  domain.FinanceOverview{ContractValue: 100, Paid: 20, Remaining: 80, VendorCost: 30, VenueCost: 10, Margin: 60},
+		Project: domain.Project{ID: 5, Name: "Akad", EventDate: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), PrepStartDate: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), ContractSubtotal: 100, ContractTotal: 100},
+		PICName: "Sari",
+		Finance: domain.FinanceOverview{ContractValue: 100, ContractSubtotal: 100, Paid: 20, Remaining: 80, TermsTotal: 10, TermsMismatch: true,
+			SupplierCost: 40, MissingCost: 1, Margin: 60},
 		NextTerm: &next, Terms: []domain.TermProgress{next},
 		Team:    application.OverviewTeam{PICStaffID: 1, PICName: "Sari", PICSalesStaffID: 0, PICSalesName: ""},
 		Clients: []application.ProjectClientInfo{{ID: 3, Name: "Rina", Role: "Bride", HasLogin: true}},
@@ -105,14 +106,16 @@ func overviewFixture() *application.ProjectOverview {
 
 func TestOverviewMarginOnlyWithThePermission(t *testing.T) {
 	with := asMap(t, toOverviewResponse(overviewFixture(), true))["finance"].(map[string]any)
-	if with["margin"] != float64(60) {
-		t.Errorf("finance.margin.view sees the margin: %v", with)
+	if with["margin"] != float64(60) || with["supplierCost"] != float64(40) || with["missingCost"] != float64(1) {
+		t.Errorf("finance.margin.view sees the margin and the supplier cost: %v", with)
 	}
 	without := asMap(t, toOverviewResponse(overviewFixture(), false))["finance"].(map[string]any)
-	if _, present := without["margin"]; present {
-		t.Errorf("without finance.margin.view the key must be absent, not zero or null: %v", without)
+	for _, k := range []string{"margin", "supplierCost", "missingCost"} {
+		if _, present := without[k]; present {
+			t.Errorf("without finance.margin.view %s must be absent, not zero or null: %v", k, without)
+		}
 	}
-	for _, k := range []string{"contractValue", "paid", "remaining", "overdueTotal", "nextTerm", "terms", "vendorCost", "venueCost"} {
+	for _, k := range []string{"contractValue", "contractSubtotal", "contractTax", "termsTotal", "termsMismatch", "paid", "remaining", "overdueTotal", "nextTerm", "terms"} {
 		if _, ok := without[k]; !ok {
 			t.Errorf("finance.%s is missing: %v", k, without)
 		}
@@ -121,7 +124,7 @@ func TestOverviewMarginOnlyWithThePermission(t *testing.T) {
 
 func TestOverviewShape(t *testing.T) {
 	got := asMap(t, toOverviewResponse(overviewFixture(), false))
-	for _, k := range []string{"project", "finance", "actions", "nextMilestones", "unconfirmedVendors", "openIssueCount", "team", "clients"} {
+	for _, k := range []string{"project", "finance", "actions", "nextMilestones", "unconfirmedSuppliers", "openIssueCount", "team", "clients"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("missing %q", k)
 		}
@@ -130,7 +133,7 @@ func TestOverviewShape(t *testing.T) {
 	if project["picName"] != "Sari" || project["progress"] == nil {
 		t.Errorf("project is what GET /projects/{id} answers (picName, progress): %v", project)
 	}
-	for _, k := range []string{"actions", "nextMilestones", "unconfirmedVendors"} {
+	for _, k := range []string{"actions", "nextMilestones", "unconfirmedSuppliers"} {
 		if arr, ok := got[k].([]any); !ok || len(arr) != 0 {
 			t.Errorf("%s must be an empty array, not null: %v", k, got[k])
 		}
@@ -163,66 +166,67 @@ func TestOverviewIsNotReadableByAClient(t *testing.T) {
 	}
 }
 
-func TestIssueResponseWithoutAVendorIsNullAndCarriesVisibility(t *testing.T) {
+func TestIssueResponseWithoutASupplierIsNullAndCarriesVisibility(t *testing.T) {
 	none := asMap(t, toIssueResponse(domain.VendorIssue{ID: 1, IsClientVisible: false, FoundDate: time.Now()}))
-	if v, present := none["projectVendorId"]; !present || v != nil {
-		t.Errorf("projectVendorId must be null when there is no vendor: %v", none)
+	if v, present := none["projectSupplierId"]; !present || v != nil {
+		t.Errorf("projectSupplierId must be null when there is no vendor or venue: %v", none)
 	}
-	if none["isClientVisible"] != false || none["vendorName"] != "" || none["vendorMilestoneName"] != "" || none["picName"] != "" {
+	if none["isClientVisible"] != false || none["supplierName"] != "" || none["vendorMilestoneName"] != "" || none["picName"] != "" {
 		t.Errorf("shape: %v", none)
 	}
-	some := asMap(t, toIssueResponse(domain.VendorIssue{ID: 2, ProjectVendorID: 7, IsClientVisible: true, FoundDate: time.Now()}))
-	if some["projectVendorId"] != float64(7) || some["isClientVisible"] != true {
+	some := asMap(t, toIssueResponse(domain.VendorIssue{ID: 2, ProjectSupplierID: 7, IsClientVisible: true, FoundDate: time.Now()}))
+	if some["projectSupplierId"] != float64(7) || some["isClientVisible"] != true {
 		t.Errorf("with a vendor: %v", some)
 	}
 }
 
 func TestDashboardMoneySectionsAreAbsentWithoutRevenuePermission(t *testing.T) {
 	stats := domain.DashboardStats{
-		MoneySections:      true,
-		CashFlow:           []domain.CashFlowWeek{{WeekStart: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), ExpectedIn: 5, ExpectedOut: 3}},
-		VendorPaymentsDue:  []domain.VendorDue{{ProjectID: 1, ProjectName: "P", VendorID: 4, DueDate: time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC), Remaining: 9}},
-		UnconfirmedVendors: []domain.UnconfirmedVendorRow{{ProjectID: 1, ProjectName: "P", VendorID: 4, EngagementStatus: domain.EngagementPlanned, EventDate: time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)}},
+		MoneySections: true,
+		CashFlow:      []domain.CashFlowWeek{{WeekStart: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), ExpectedIn: 5, ExpectedOut: 3}},
+		SupplierPaymentsDue: []domain.SupplierDue{{ProjectID: 1, ProjectName: "P", SupplierKind: domain.SupplierVendor, SupplierName: "Bunga",
+			DueDate: time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC), Remaining: 9}},
+		UnconfirmedSuppliers: []domain.UnconfirmedSupplierRow{{ProjectID: 1, ProjectName: "P", SupplierKind: domain.SupplierVenue, SupplierName: "Graha",
+			EngagementStatus: domain.EngagementPlanned, EventDate: time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)}},
 	}
-	names := map[int64]string{4: "Bunga"}
-	with := asMap(t, toDashboardResponse(stats, names, nil))
+	with := asMap(t, toDashboardResponse(stats, nil))
 	week := with["cashFlow"].([]any)[0].(map[string]any)
 	if week["weekStart"] != "2026-11-09" || week["expectedIn"] != float64(5) || week["expectedOut"] != float64(3) {
 		t.Errorf("cashFlow: %v", week)
 	}
-	due := with["vendorPaymentsDue"].([]any)[0].(map[string]any)
-	if due["vendorName"] != "Bunga" || due["dueDate"] != "2026-11-20" || due["remaining"] != float64(9) || due["projectName"] != "P" {
-		t.Errorf("vendorPaymentsDue: %v", due)
+	due := with["supplierPaymentsDue"].([]any)[0].(map[string]any)
+	if due["supplierName"] != "Bunga" || due["supplierKind"] != "vendor" || due["dueDate"] != "2026-11-20" || due["remaining"] != float64(9) || due["projectName"] != "P" {
+		t.Errorf("supplierPaymentsDue: %v", due)
 	}
-	un := with["unconfirmedVendors"].([]any)[0].(map[string]any)
-	if un["vendorName"] != "Bunga" || un["engagementStatus"] != "Planned" || un["eventDate"] != "2026-11-30" {
-		t.Errorf("unconfirmedVendors: %v", un)
+	un := with["unconfirmedSuppliers"].([]any)[0].(map[string]any)
+	if un["supplierName"] != "Graha" || un["supplierKind"] != "venue" || un["engagementStatus"] != "Planned" || un["eventDate"] != "2026-11-30" {
+		t.Errorf("unconfirmedSuppliers: %v", un)
 	}
 	// Money allowed but nothing to show: the keys exist with [].
-	empty := asMap(t, toDashboardResponse(domain.DashboardStats{MoneySections: true}, nil, nil))
+	empty := asMap(t, toDashboardResponse(domain.DashboardStats{MoneySections: true}, nil))
 	if a, ok := empty["cashFlow"].([]any); !ok || len(a) != 0 {
 		t.Errorf("cashFlow with permission but no data is []: %v", empty["cashFlow"])
 	}
 	// No revenue permission: the service never computed them; the keys are not there.
-	denied := asMap(t, toDashboardResponse(domain.DashboardStats{UnconfirmedVendors: stats.UnconfirmedVendors}, names, nil))
-	for _, k := range []string{"cashFlow", "vendorPaymentsDue"} {
+	denied := asMap(t, toDashboardResponse(domain.DashboardStats{UnconfirmedSuppliers: stats.UnconfirmedSuppliers}, nil))
+	for _, k := range []string{"cashFlow", "supplierPaymentsDue"} {
 		if _, present := denied[k]; present {
 			t.Errorf("%s must be absent without dashboard.revenue.view", k)
 		}
 	}
-	if len(denied["unconfirmedVendors"].([]any)) != 1 {
-		t.Error("unconfirmedVendors is not money: always present")
+	if len(denied["unconfirmedSuppliers"].([]any)) != 1 {
+		t.Error("unconfirmedSuppliers is not money: always present")
 	}
 }
 
 func TestDashboardRowsCarryNamesNotJustIds(t *testing.T) {
 	stats := domain.DashboardStats{
-		OpenIssues:     []domain.DashboardIssueRow{{Issue: domain.VendorIssue{ID: 1}, ProjectID: 2, VendorID: 4}, {Issue: domain.VendorIssue{ID: 2}, ProjectID: 2}},
+		OpenIssues:     []domain.DashboardIssueRow{{Issue: domain.VendorIssue{ID: 1}, ProjectID: 2, SupplierName: "Bunga"}, {Issue: domain.VendorIssue{ID: 2}, ProjectID: 2}},
 		RecentActivity: []domain.ActivityLogEntry{{ID: 1, ActorStaffID: 9}, {ID: 2, ActorStaffID: 0}, {ID: 3, ActorStaffID: 77}},
 	}
-	got := asMap(t, toDashboardResponse(stats, map[int64]string{4: "Bunga"}, map[int64]string{9: "Sari"}))
+	got := asMap(t, toDashboardResponse(stats, map[int64]string{9: "Sari"}))
 	issues := got["openIssues"].([]any)
-	if issues[0].(map[string]any)["vendorName"] != "Bunga" || issues[1].(map[string]any)["vendorName"] != "" {
+	if issues[0].(map[string]any)["supplierName"] != "Bunga" || issues[1].(map[string]any)["supplierName"] != "" {
 		t.Errorf("issues: %v", issues)
 	}
 	acts := got["recentActivity"].([]any)

@@ -66,9 +66,9 @@ func (s *PurgeService) Run(ctx context.Context, now time.Time) (report domain.Pu
 		}
 	}
 	if report.Total() > 0 {
-		logger.Info("purge: removed %d client payments, %d vendor payments, %d venue payments, %d vendor engagements (+%d milestones, %d kendala, %d payments), %d evidence rows, %d stored files",
-			report.ClientPayments, report.VendorPayments, report.VenuePayments, report.Engagements,
-			report.EngagementMilestones, report.EngagementIssues, report.EngagementPayments, report.Evidence, report.Objects)
+		logger.Info("purge: removed %d client payments, %d supplier payments, %d suppliers (+%d milestones, %d kendala, %d payments), %d evidence rows, %d lines, %d supplier bills, %d stored files",
+			report.ClientPayments, report.SupplierPayments, report.Suppliers,
+			report.SupplierMilestones, report.SupplierIssues, report.SupplierOwnedPayments, report.Evidence, report.Lines, report.BillTerms, report.Objects)
 	}
 	return report, true, nil
 }

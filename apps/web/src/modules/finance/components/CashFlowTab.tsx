@@ -68,27 +68,45 @@ function useWidth<T extends HTMLElement>() {
 
 const SERIES = [
   { key: "expectedIn", label: "Masuk", detail: "termin klien yang belum lunas", fill: "var(--chart-in)", swatch: "bg-chart-in" },
-  { key: "expectedOut", label: "Keluar", detail: "sisa bayar ke vendor", fill: "var(--chart-out)", swatch: "bg-chart-out" },
+  { key: "expectedOut", label: "Keluar", detail: "sisa bayar ke vendor dan venue", fill: "var(--chart-out)", swatch: "bg-chart-out" },
 ] as const;
+
+type Series = (typeof SERIES)[number];
 
 /**
  * One grouped bar chart of the 8-week cash flow (money in vs out per week, RISET WO Console §7.3/§7.6) and the same
  * numbers as a table. The weeks are the ones /dashboard computes: unpaid installments in, vendor balances out, anything
  * already overdue counted in the first week.
  */
-export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] | null; status: "loading" | "error" | "ready"; onRetry: () => void }) {
+export function CashFlowTab({
+  weeks,
+  status,
+  onRetry,
+  showOut,
+}: {
+  weeks: CashFlowWeek[] | null;
+  status: "loading" | "error" | "ready";
+  onRetry: () => void;
+  /** Money out is the WO's cost to its vendors and venues: only for those who may see the margin. */
+  showOut: boolean;
+}) {
   if (status === "error" && !weeks) return <LoadError message="Arus kas belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={onRetry} />;
   if (!weeks) return <Skeleton className="h-80 rounded-lg" />;
 
   const totalIn = weeks.reduce((n, w) => n + w.expectedIn, 0);
-  const totalOut = weeks.reduce((n, w) => n + w.expectedOut, 0);
+  const totalOut = showOut ? weeks.reduce((n, w) => n + w.expectedOut, 0) : 0;
+  const series: readonly Series[] = showOut ? SERIES : SERIES.slice(0, 1);
 
   if (totalIn === 0 && totalOut === 0) {
     return (
       <div className="rounded-lg border border-border bg-card">
         <EmptyState
           title="Belum ada uang yang dijadwalkan 8 minggu ke depan"
-          description="Arus kas dihitung dari termin klien yang belum lunas dan tanggal jatuh tempo vendor. Isi keduanya di tab Keuangan setiap proyek."
+          description={
+            showOut
+              ? "Arus kas dihitung dari termin klien yang belum lunas dan tanggal jatuh tempo vendor dan venue. Isi keduanya di tab Keuangan setiap proyek."
+              : "Arus kas dihitung dari termin klien yang belum lunas. Isi jadwal termin di tab Keuangan setiap proyek."
+          }
         />
       </div>
     );
@@ -101,11 +119,11 @@ export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] 
           <div>
             <h2 id="cashflow-title" className="text-[16px] font-semibold text-foreground">Arus kas 8 minggu ke depan</h2>
             <p className="mt-0.5 max-w-[60ch] text-[13px] text-muted-foreground">
-              Masuk: {SERIES[0].detail}. Keluar: {SERIES[1].detail}. Yang sudah lewat jatuh tempo dihitung di minggu ini.
+              {series.map((s) => `${s.label}: ${s.detail}. `).join("")}Yang sudah lewat jatuh tempo dihitung di minggu ini.
             </p>
           </div>
           <ul className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]" aria-label="Keterangan grafik">
-            {SERIES.map((s) => (
+            {series.map((s) => (
               <li key={s.key} className="flex items-center gap-2">
                 <span aria-hidden className={`size-2.5 rounded-sm ${s.swatch}`} />
                 <span className="text-muted-foreground">{s.label}</span>
@@ -114,7 +132,7 @@ export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] 
             ))}
           </ul>
         </div>
-        <Chart weeks={weeks} totalIn={totalIn} totalOut={totalOut} />
+        <Chart weeks={weeks} series={series} totalIn={totalIn} totalOut={totalOut} />
       </section>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -124,8 +142,8 @@ export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] 
             <tr className="h-10 text-[12.5px] text-muted-foreground shadow-[0_1px_0_var(--border)]">
               <th scope="col" className="px-4 font-semibold">Minggu</th>
               <th scope="col" className="px-4 text-right font-semibold">Masuk</th>
-              <th scope="col" className="px-4 text-right font-semibold">Keluar</th>
-              <th scope="col" className="hidden px-4 text-right font-semibold sm:table-cell">Selisih</th>
+              {showOut && <th scope="col" className="px-4 text-right font-semibold">Keluar</th>}
+              {showOut && <th scope="col" className="hidden px-4 text-right font-semibold sm:table-cell">Selisih</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -136,8 +154,8 @@ export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] 
                   {i === 0 && <span className="ml-1.5 text-[12.5px] font-normal text-muted-foreground">(minggu ini)</span>}
                 </th>
                 <td className="px-4 text-right whitespace-nowrap tabular-nums"><Amount value={w.expectedIn} /></td>
-                <td className="px-4 text-right whitespace-nowrap tabular-nums"><Amount value={w.expectedOut} /></td>
-                <td className="hidden px-4 text-right font-medium whitespace-nowrap tabular-nums sm:table-cell"><Amount value={w.expectedIn - w.expectedOut} /></td>
+                {showOut && <td className="px-4 text-right whitespace-nowrap tabular-nums"><Amount value={w.expectedOut} /></td>}
+                {showOut && <td className="hidden px-4 text-right font-medium whitespace-nowrap tabular-nums sm:table-cell"><Amount value={w.expectedIn - w.expectedOut} /></td>}
               </tr>
             ))}
           </tbody>
@@ -145,8 +163,8 @@ export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] 
             <tr className="h-11 border-t border-border font-semibold">
               <th scope="row" className="px-4 text-foreground">Total</th>
               <td className="px-4 text-right whitespace-nowrap tabular-nums"><Amount value={totalIn} /></td>
-              <td className="px-4 text-right whitespace-nowrap tabular-nums"><Amount value={totalOut} /></td>
-              <td className="hidden px-4 text-right whitespace-nowrap tabular-nums sm:table-cell"><Amount value={totalIn - totalOut} /></td>
+              {showOut && <td className="px-4 text-right whitespace-nowrap tabular-nums"><Amount value={totalOut} /></td>}
+              {showOut && <td className="hidden px-4 text-right whitespace-nowrap tabular-nums sm:table-cell"><Amount value={totalIn - totalOut} /></td>}
             </tr>
           </tfoot>
         </table>
@@ -155,19 +173,19 @@ export function CashFlowTab({ weeks, status, onRetry }: { weeks: CashFlowWeek[] 
   );
 }
 
-function Chart({ weeks, totalIn, totalOut }: { weeks: CashFlowWeek[]; totalIn: number; totalOut: number }) {
+function Chart({ weeks, series, totalIn, totalOut }: { weeks: CashFlowWeek[]; series: readonly Series[]; totalIn: number; totalOut: number }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const height = 240;
   const margin = { top: 12, right: 4, bottom: 28, left: 60 };
   const plotW = Math.max(0, width - margin.left - margin.right);
   const plotH = height - margin.top - margin.bottom;
-  const { top, step } = niceScale(Math.max(...weeks.flatMap((w) => [w.expectedIn, w.expectedOut])));
+  const { top, step } = niceScale(Math.max(...weeks.flatMap((w) => series.map((s) => w[s.key]))));
   const y = (v: number) => margin.top + plotH - (v / top) * plotH;
   const band = plotW / weeks.length;
   const barW = Math.max(4, Math.min(24, (band * 0.62 - 2) / 2));
   const ticks = Array.from({ length: 5 }, (_, i) => i * step);
-  const summary = `Arus kas 8 minggu: masuk ${formatCurrency(totalIn)}, keluar ${formatCurrency(totalOut)}. Angka per minggu ada di tabel di bawah grafik.`;
+  const summary = `Arus kas 8 minggu: masuk ${formatCurrency(totalIn)}${series.length > 1 ? `, keluar ${formatCurrency(totalOut)}` : ""}. Angka per minggu ada di tabel di bawah grafik.`;
 
   return (
     <div ref={ref} className="relative mt-4">
@@ -183,15 +201,16 @@ function Chart({ weeks, totalIn, totalOut }: { weeks: CashFlowWeek[]; totalIn: n
           ))}
           {weeks.map((w, i) => {
             const cx = margin.left + band * i + band / 2;
-            const values = [w.expectedIn, w.expectedOut];
+            const values = series.map((s) => w[s.key]);
+            const groupW = values.length * barW + (values.length - 1) * 2;
             return (
               <g key={w.weekStart} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover((h) => (h === i ? null : h))}>
                 {/* A hit target as tall as the plot, wider than the bars. */}
                 <rect x={margin.left + band * i} y={margin.top} width={band} height={plotH} fill={hover === i ? "var(--muted)" : "transparent"} opacity={0.6} />
                 {values.map((v, j) => {
                   const h = Math.max(0, y(0) - y(v));
-                  const x = cx - barW - 1 + j * (barW + 2);
-                  return h > 0 ? <path key={j} d={barPath(x, y(v), barW, h)} fill={SERIES[j].fill} /> : null;
+                  const x = cx - groupW / 2 + j * (barW + 2);
+                  return h > 0 ? <path key={j} d={barPath(x, y(v), barW, h)} fill={series[j].fill} /> : null;
                 })}
                 {/* On a phone the weeks are too narrow for eight dates: every other one is written. */}
                 {(band >= 48 || i % 2 === 0) && (
@@ -214,7 +233,7 @@ function Chart({ weeks, totalIn, totalOut }: { weeks: CashFlowWeek[]; totalIn: n
           style={{ left: margin.left + band * hover + (hover < weeks.length / 2 ? band - 4 : 4) }}
         >
           <p className="font-semibold text-foreground">Minggu {weekRange(weeks[hover].weekStart)}</p>
-          {SERIES.map((s) => (
+          {series.map((s) => (
             <p key={s.key} className="mt-1 flex items-center gap-2 text-muted-foreground">
               <span className={`size-2 rounded-sm ${s.swatch}`} />
               {s.label}

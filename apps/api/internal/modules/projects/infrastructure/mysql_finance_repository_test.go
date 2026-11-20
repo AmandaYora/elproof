@@ -8,8 +8,7 @@ import (
 	"elproof/internal/modules/projects/domain"
 )
 
-// The scope is part of every finance query, in both halves of the payables
-// union, before any filter the caller chose.
+// The scope is part of every finance query before any filter the caller chose.
 func TestFinanceQueriesCarryTheScope(t *testing.T) {
 	holder := int64(42)
 	today := time.Date(2026, 11, 9, 10, 0, 0, 0, time.FixedZone("WIB", 7*3600))
@@ -46,8 +45,11 @@ func TestFinanceQueriesCarryTheScope(t *testing.T) {
 		}
 
 		p, pargs := payableRowsSQL(scope, today)
-		if strings.Count(p, where) != 2 {
-			t.Errorf("payables: scope appears %d times, want 2 (vendor and venue)", strings.Count(p, where))
+		if strings.Count(p, where) != 1 {
+			t.Errorf("payables: scope appears %d times, want 1 (one query over vendors and venues)", strings.Count(p, where))
+		}
+		if !strings.Contains(p, "s.paid_by = 'WO'") {
+			t.Errorf("payables are only what the WO pays its suppliers")
 		}
 		if strings.Count(p, "?") != len(pargs) {
 			t.Errorf("payables: %d placeholders, %d args", strings.Count(p, "?"), len(pargs))

@@ -13,8 +13,8 @@ import (
 func TestClientCanRead(t *testing.T) {
 	ok := [][]string{
 		{},
-		{"milestones"}, {"vendors"}, {"client-payments"}, {"issues"},
-		{"evidence"}, {"documents"}, {"venue"}, {"payment-terms"},
+		{"milestones"}, {"events"}, {"suppliers"}, {"supplier-payments"}, {"client-payments"}, {"issues"},
+		{"evidence"}, {"documents"}, {"payment-terms"},
 		{"evidence", "9", "file"},
 	}
 	for _, rest := range ok {
@@ -23,9 +23,9 @@ func TestClientCanRead(t *testing.T) {
 		}
 	}
 	denied := [][]string{
-		{"payments"}, {"venue-payments"}, {"activity"}, {"closing-checklist"}, {"transition"},
-		{"payment-terms", "1"},
-		{"vendors", "4", "milestones"}, {"evidence", "9"}, {"milestones", "3"},
+		{"vendors"}, {"venue"}, {"payments"}, {"venue-payments"}, {"activity"}, {"closing-checklist"}, {"transition"},
+		{"payment-terms", "1"}, {"events", "2"}, {"suppliers", "4"},
+		{"suppliers", "4", "milestones"}, {"evidence", "9"}, {"milestones", "3"},
 		{"client-payments", "3", "verify"}, {"evidence", "9", "visibility"},
 	}
 	for _, rest := range denied {
@@ -35,73 +35,113 @@ func TestClientCanRead(t *testing.T) {
 	}
 }
 
+// owners of the files below: supplier 1 is paid by the WO, supplier 2 by the
+// client; milestone 10 belongs to supplier 1, 20 to supplier 2; payment 7 is
+// the WO's (to supplier 1), payment 8 the client's (to supplier 2).
+var testOwners = domain.EvidenceOwners{
+	SupplierPaidBy:  map[int64]domain.Payer{1: domain.PayerWO, 2: domain.PayerClient},
+	MilestonePaidBy: map[int64]domain.Payer{10: domain.PayerWO, 20: domain.PayerClient},
+	PaymentPayer:    map[int64]domain.Payer{7: domain.PayerWO, 8: domain.PayerClient},
+}
+
+func clientView(can func(string) bool) *portalView {
+	return &portalView{policy: domain.NewPortalPolicy(can), owners: testOwners}
+}
+
 func TestClientCanSeeEvidence(t *testing.T) {
+	all := clientView(func(string) bool { return true })
 	cases := []struct {
 		kind    domain.EvidenceRelatedKind
+		id      int64
 		visible bool
 		want    bool
 	}{
-		{domain.RelatedClientPayment, false, true},
-		{domain.RelatedIssue, false, true},
-		{domain.RelatedVendorMilestone, false, true},
-		{domain.RelatedGeneral, true, true},
-		{domain.RelatedGeneral, false, false},
-		{domain.RelatedPayment, false, false},
-		{domain.RelatedVenuePayment, false, false},
-		{domain.RelatedProjectVendor, false, false},
-		{domain.RelatedProjectMilestone, false, false},
+		{domain.RelatedClientPayment, 3, false, true},
+		{domain.RelatedIssue, 3, false, true},
+		{domain.RelatedGeneral, 0, true, true},
+		{domain.RelatedGeneral, 0, false, false},
+		{domain.RelatedProjectMilestone, 1, false, false},
 		// A timeline attachment is visible only once staff flag it (ADR-0032).
-		{domain.RelatedProjectMilestone, true, true},
-		{domain.RelatedPayment, true, false},
-		{domain.RelatedVenuePayment, true, false},
+		{domain.RelatedProjectMilestone, 1, true, true},
+		// What the WO pays its suppliers is never shown, flagged or not.
+		{domain.RelatedSupplierPayment, 7, false, false},
+		{domain.RelatedSupplierPayment, 7, true, false},
+		// The client's own payment to a supplier they pay is.
+		{domain.RelatedSupplierPayment, 8, false, true},
+		// A payment whose owner is gone (deleted) is not shown.
+		{domain.RelatedSupplierPayment, 99, false, false},
 	}
 	for _, c := range cases {
-		got := clientCanSeeEvidence(domain.Evidence{RelatedKind: c.kind, IsClientVisible: c.visible}, func(string) bool { return true })
+		got := all.canSee(domain.Evidence{RelatedKind: c.kind, RelatedID: c.id, IsClientVisible: c.visible})
 		if got != c.want {
-			t.Errorf("kind=%s visible=%v: got %v, want %v", c.kind, c.visible, got, c.want)
+			t.Errorf("kind=%s id=%d visible=%v: got %v, want %v", c.kind, c.id, c.visible, got, c.want)
 		}
 	}
 	// Without portal.finance.view (Keluarga) payment receipts stay hidden,
 	// while documents the WO shared remain visible.
-	noFinance := func(p string) bool { return p != "portal.finance.view" }
-	if clientCanSeeEvidence(domain.Evidence{RelatedKind: domain.RelatedClientPayment}, noFinance) {
+	noFinance := clientView(func(p string) bool { return p != "portal.finance.view" })
+	if noFinance.canSee(domain.Evidence{RelatedKind: domain.RelatedClientPayment}) {
 		t.Error("payment receipt visible without portal.finance.view")
 	}
-	if !clientCanSeeEvidence(domain.Evidence{RelatedKind: domain.RelatedGeneral, IsClientVisible: true}, noFinance) {
+	if noFinance.canSee(domain.Evidence{RelatedKind: domain.RelatedSupplierPayment, RelatedID: 8}) {
+		t.Error("supplier payment receipt visible without portal.finance.view")
+	}
+	if !noFinance.canSee(domain.Evidence{RelatedKind: domain.RelatedGeneral, IsClientVisible: true}) {
 		t.Error("shared document hidden without portal.finance.view")
 	}
 	// A role without portal.documents.view sees no shared documents, but its
 	// payment, step and issue proof still follow their own permissions.
-	noDocs := func(p string) bool { return p != "portal.documents.view" }
-	if clientCanSeeEvidence(domain.Evidence{RelatedKind: domain.RelatedGeneral, IsClientVisible: true}, noDocs) {
+	noDocs := clientView(func(p string) bool { return p != "portal.documents.view" })
+	if noDocs.canSee(domain.Evidence{RelatedKind: domain.RelatedGeneral, IsClientVisible: true}) {
 		t.Error("shared document visible without portal.documents.view")
 	}
-	if !clientCanSeeEvidence(domain.Evidence{RelatedKind: domain.RelatedClientPayment}, noDocs) {
+	if !noDocs.canSee(domain.Evidence{RelatedKind: domain.RelatedClientPayment}) {
 		t.Error("payment proof must not depend on portal.documents.view")
 	}
 }
 
+func TestStaffWithoutMarginDoNotSeeWOPaymentFiles(t *testing.T) {
+	var full *portalView
+	planner := &portalView{staff: true, owners: testOwners}
+	wo := domain.Evidence{RelatedKind: domain.RelatedSupplierPayment, RelatedID: 7}
+	client := domain.Evidence{RelatedKind: domain.RelatedSupplierPayment, RelatedID: 8}
+	if !full.canSee(wo) || !full.canSee(client) {
+		t.Error("staff with finance.margin.view see every file")
+	}
+	if planner.canSee(wo) {
+		t.Error("a Wedding Planner must not see the proof of what the WO pays a supplier")
+	}
+	if !planner.canSee(client) || !planner.canSee(domain.Evidence{RelatedKind: domain.RelatedVendorMilestone, RelatedID: 10}) {
+		t.Error("a Wedding Planner still sees the client's supplier payments and the vendor steps")
+	}
+}
+
 func TestRedactionRemovesInternalFields(t *testing.T) {
-	rental, charge := int64(50_000_000), int64(2_000_000)
-	p := projectResponse{VenueRentalPrice: &rental, VenueCharge: &charge, PrepStartDate: "2026-01-01", PICSalesStaffID: 4, ContractValue: 150_000_000}
+	p := projectResponse{PrepStartDate: "2026-01-01", PICSalesStaffID: 4, ContractValue: money(150_000_000)}
 	redactProjectForClient(&p)
-	if p.VenueRentalPrice != nil || p.VenueCharge != nil || p.PrepStartDate != "" || p.PICSalesStaffID != 0 {
+	if p.PrepStartDate != "" || p.PICSalesStaffID != 0 {
 		t.Errorf("project internal fields not redacted: %+v", p)
 	}
-	if p.ContractValue != 150_000_000 {
+	if p.ContractValue == nil || *p.ContractValue != 150_000_000 {
 		t.Error("the client's own contract value must stay visible")
 	}
 
 	due, booked := "2026-05-01", "2026-01-10"
-	v := projectVendorResponse{
-		ContractValue: 10, DPAmount: 5, PaidAmount: 5, DueDate: &due, BookingDate: &booked, PricingTier: "Akad", Notes: "nego",
-		EngagementStatus: "Booked", Milestones: []vendorMilestoneResponse{{Name: "Fitting", Notes: "internal"}},
+	cost, paid, standing := int64(10), int64(5), 600
+	v := supplierResponse{
+		SupplierID: 9, Name: "Rias Ayu", AgreedCost: &cost, PaidWO: &paid, DueDate: &due, BookingDate: &booked, Notes: "nego",
+		PICStaffID: 3, PICName: "Dewi", CapacityStanding: &standing, PaidByLocked: "Sudah ada pembayaran", UsedByEvents: 1,
+		EngagementStatus: "Booked", Milestones: []vendorMilestoneResponse{{Name: "Fitting", Notes: "internal", PICStaffID: 3}},
 	}
-	redactVendorForClient(&v)
-	if v.ContractValue != 0 || v.DPAmount != 0 || v.PaidAmount != 0 || v.DueDate != nil || v.BookingDate != nil || v.PricingTier != "" || v.Notes != "" {
-		t.Errorf("vendor commercial fields not redacted: %+v", v)
+	redactSupplierForClient(&v, "Rias & busana")
+	if v.SupplierID != 0 || v.AgreedCost != nil || v.PaidWO != nil || v.DueDate != nil || v.BookingDate != nil || v.Notes != "" ||
+		v.PICStaffID != 0 || v.PICName != "" || v.CapacityStanding != nil || v.PaidByLocked != "" || v.UsedByEvents != 0 {
+		t.Errorf("supplier internal fields not redacted: %+v", v)
 	}
-	if v.Milestones[0].Notes != "" || v.Milestones[0].Name != "Fitting" || v.EngagementStatus != "Booked" {
+	if v.Name != "Rias & busana" {
+		t.Errorf("a client sees the name the portal policy chose: %q", v.Name)
+	}
+	if v.Milestones[0].Notes != "" || v.Milestones[0].PICStaffID != 0 || v.Milestones[0].Name != "Fitting" || v.EngagementStatus != "Booked" {
 		t.Errorf("vendor milestone redaction wrong: %+v", v.Milestones[0])
 	}
 
@@ -130,29 +170,29 @@ func TestIndexEvidenceFiltersForClientsAndKeepsStaffView(t *testing.T) {
 		{ID: 4, RelatedKind: domain.RelatedProjectMilestone, RelatedID: 1, Type: domain.EvidencePhoto, FileName: "d.jpg", UploadedAt: up(4), IsClientVisible: true},
 		{ID: 3, RelatedKind: domain.RelatedProjectMilestone, RelatedID: 1, Type: domain.EvidencePhoto, FileName: "c.jpg", UploadedAt: up(3)},
 		{ID: 2, RelatedKind: domain.RelatedClientPayment, RelatedID: 7, Type: domain.EvidenceTransferProof, FileName: "b.pdf", UploadedAt: up(2)},
-		{ID: 1, RelatedKind: domain.RelatedPayment, RelatedID: 7, Type: domain.EvidenceInvoice, FileName: "a.pdf", UploadedAt: up(1)},
+		{ID: 1, RelatedKind: domain.RelatedSupplierPayment, RelatedID: 7, Type: domain.EvidenceInvoice, FileName: "a.pdf", UploadedAt: up(1)},
 	}
-	all := func(string) bool { return true }
-	noFinance := func(p string) bool { return p != "portal.finance.view" }
+	all := clientView(func(string) bool { return true })
+	noFinance := clientView(func(p string) bool { return p != "portal.finance.view" })
 
-	staff := indexEvidence(list, false, nil)
+	staff := indexEvidence(list, nil)
 	if got := staff.refs(domain.RelatedProjectMilestone, 1); len(got) != 2 || got[0].ID != 3 || got[1].ID != 4 {
 		t.Errorf("staff see every file of the step, oldest first: %+v", got)
 	}
 
-	client := indexEvidence(list, true, all)
+	client := indexEvidence(list, all)
 	if got := client.refs(domain.RelatedProjectMilestone, 1); len(got) != 1 || got[0].ID != 4 {
 		t.Errorf("a client sees only the flagged file: %+v", got)
 	}
 	if got := client.refs(domain.RelatedClientPayment, 7); len(got) != 1 || got[0].ID != 2 || got[0].FileName != "b.pdf" || got[0].UploadedAt == "" {
 		t.Errorf("a client sees their payment proof: %+v", got)
 	}
-	// payments (vendor) 7 shares the numeric id with client payment 7: kinds never mix.
-	if got := client.refs(domain.RelatedPayment, 7); len(got) != 0 {
-		t.Errorf("vendor payment files are never shown to a client: %+v", got)
+	// supplier payment 7 (the WO's) shares the numeric id with client payment 7: kinds never mix.
+	if got := client.refs(domain.RelatedSupplierPayment, 7); len(got) != 0 {
+		t.Errorf("the WO's supplier payment files are never shown to a client: %+v", got)
 	}
 
-	keluarga := indexEvidence(list, true, noFinance)
+	keluarga := indexEvidence(list, noFinance)
 	if got := keluarga.refs(domain.RelatedClientPayment, 7); got == nil || len(got) != 0 {
 		t.Errorf("without portal.finance.view there is no payment proof, and the field is [] not null: %#v", got)
 	}

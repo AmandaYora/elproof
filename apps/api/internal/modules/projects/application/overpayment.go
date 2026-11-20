@@ -11,25 +11,24 @@ import (
 )
 
 // ContractReader gives the payment services the amount a payment is checked
-// against (what the client, a vendor or the venue is owed). Everything it
-// reads belongs to this module.
+// against (what the client or a supplier is owed). Everything it reads belongs
+// to this module.
 type ContractReader interface {
 	// ProjectContractValue is the project's contract value with the client.
 	ProjectContractValue(ctx context.Context, tenantID, projectID int64) (int64, error)
-	// VenueCost is the venue's rental price plus charge on the project (0 when none).
-	VenueCost(ctx context.Context, tenantID, projectID int64) (int64, error)
-	// EngagementContractValue is the agreed price of one vendor engagement.
-	EngagementContractValue(ctx context.Context, projectID, projectVendorID int64) (int64, error)
+	// Supplier is one live vendor or venue of the project (a not found when there
+	// is none): its payer and the cost the WO agreed to pay it.
+	Supplier(ctx context.Context, projectID, projectSupplierID int64) (*domain.ProjectSupplier, error)
 }
 
 type contractReader struct {
-	projects *ProjectService
-	vendors  VendorEngagementRepository
+	projects  *ProjectService
+	suppliers SupplierRepository
 }
 
 // NewContractReader builds the ContractReader the payment services share.
-func NewContractReader(projects *ProjectService, vendors VendorEngagementRepository) ContractReader {
-	return &contractReader{projects: projects, vendors: vendors}
+func NewContractReader(projects *ProjectService, suppliers SupplierRepository) ContractReader {
+	return &contractReader{projects: projects, suppliers: suppliers}
 }
 
 func (c *contractReader) ProjectContractValue(ctx context.Context, tenantID, projectID int64) (int64, error) {
@@ -37,33 +36,18 @@ func (c *contractReader) ProjectContractValue(ctx context.Context, tenantID, pro
 	if err != nil {
 		return 0, err
 	}
-	return p.ContractValue, nil
+	return p.ContractTotal, nil
 }
 
-func (c *contractReader) VenueCost(ctx context.Context, tenantID, projectID int64) (int64, error) {
-	p, err := c.projects.Get(ctx, tenantID, projectID)
+func (c *contractReader) Supplier(ctx context.Context, projectID, projectSupplierID int64) (*domain.ProjectSupplier, error) {
+	s, err := c.suppliers.FindByID(ctx, projectID, projectSupplierID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	var cost int64
-	if p.VenueRentalPrice != nil {
-		cost += *p.VenueRentalPrice
+	if s == nil {
+		return nil, errSupplierNotFound
 	}
-	if p.VenueCharge != nil {
-		cost += *p.VenueCharge
-	}
-	return cost, nil
-}
-
-func (c *contractReader) EngagementContractValue(ctx context.Context, projectID, projectVendorID int64) (int64, error) {
-	pv, err := c.vendors.FindByID(ctx, projectID, projectVendorID)
-	if err != nil {
-		return 0, err
-	}
-	if pv == nil {
-		return 0, apperror.NotFound("Kerja sama vendor tidak ditemukan")
-	}
-	return pv.ContractValue, nil
+	return s, nil
 }
 
 // formatRupiah renders 1500000 as "Rp1.500.000".

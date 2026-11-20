@@ -7,37 +7,29 @@ import "time"
 // for the dashboard aggregation — nothing else in the module needs this
 // shape, so it lives next to the aggregate it serves rather than polluting
 // the entities themselves.
+// SupplierName is the project supplier's name (a copy taken when it was
+// chosen); "" for a kendala about the event in general.
 type DashboardIssueRow struct {
-	Issue       VendorIssue
-	ProjectID   int64
-	ProjectName string
-	VendorID    int64
+	Issue        VendorIssue
+	ProjectID    int64
+	ProjectName  string
+	SupplierName string
 }
 
 type DashboardMilestoneRow struct {
-	Milestone   VendorMilestone
-	ProjectID   int64
-	ProjectName string
-	VendorID    int64
+	Milestone    VendorMilestone
+	ProjectID    int64
+	ProjectName  string
+	SupplierName string
 }
 
+// DashboardPaymentRow is a payment the WO made to a vendor or venue whose
+// proof is not complete yet.
 type DashboardPaymentRow struct {
-	Payment     VendorPayment
-	ProjectName string
-	VendorID    int64
-}
-
-// DashboardVenuePaymentRow deliberately stays a separate slice/type from
-// DashboardPaymentRow above rather than a merged, source-discriminated one --
-// there's no VendorID-equivalent for a venue payment, and keeping the
-// already-working vendor path untouched was judged safer than reshaping it
-// just to accommodate a second source. The two lists are merged into one
-// labeled feed at the presentation layer instead (dashboard/lib/attention.ts
-// on the frontend). See PLAN.md "Venue Payments + Pembayaran tab
-// restructuring".
-type DashboardVenuePaymentRow struct {
-	Payment     VenuePayment
-	ProjectName string
+	Payment      SupplierPayment
+	ProjectName  string
+	SupplierKind SupplierKind
+	SupplierName string
 }
 
 type LaggingProjectRow struct {
@@ -72,7 +64,6 @@ type DashboardStats struct {
 	OpenIssues              []DashboardIssueRow
 	OverdueVendorMilestones []DashboardMilestoneRow
 	IncompletePayments      []DashboardPaymentRow
-	IncompleteVenuePayments []DashboardVenuePaymentRow
 	NearDDayProjects        []Project
 	LaggingProjects         []LaggingProjectRow
 	UpcomingProjects        []Project
@@ -85,12 +76,20 @@ type DashboardStats struct {
 	Revenue                 RevenueSummary
 	ProjectTrend            []ProjectTrendPoint
 	RevenueTrend            []RevenueTrendPoint
-	// CashFlow/VendorPaymentsDue are only filled for a caller who may see revenue
-	// figures (MoneySections); UnconfirmedVendors never needs that permission.
-	CashFlow           []CashFlowWeek
-	VendorPaymentsDue  []VendorDue
-	UnconfirmedVendors []UnconfirmedVendorRow
-	MoneySections      bool
+	// CashFlow/SupplierPaymentsDue are only filled for a caller who may see revenue
+	// figures (MoneySections); UnconfirmedSuppliers never needs that permission.
+	CashFlow             []CashFlowWeek
+	SupplierPaymentsDue  []SupplierDue
+	UnconfirmedSuppliers []UnconfirmedSupplierRow
+	MoneySections        bool
+	// ClientBillsDue/SupplierProofsPending/SupplierProofsPendingCount are the
+	// client-paid vendors' attention items (Paket WO Tahap 4), only filled for a
+	// caller with finance.record (ClientBillSections). They are the client's own
+	// money, so they show without finance.margin.view (PLAN §9.15).
+	ClientBillsDue             []ClientBillDue
+	SupplierProofsPending      []SupplierProofPending
+	SupplierProofsPendingCount int
+	ClientBillSections         bool
 }
 
 const nearDDayThresholdDays = 30

@@ -27,9 +27,9 @@ type Filter = "semua" | Exclude<AttentionGroup, "lainnya">;
 
 const FILTERS: { key: Filter; label: string; empty: string }[] = [
   { key: "semua", label: "Semua", empty: "Tidak ada yang perlu ditindaklanjuti. Seluruh proyek berjalan sesuai rencana." },
-  { key: "tagihan", label: "Tagihan", empty: "Tidak ada tagihan klien yang terlambat." },
+  { key: "tagihan", label: "Tagihan", empty: "Tidak ada tagihan klien yang terlambat dan tidak ada tagihan vendor yang segera jatuh tempo." },
   { key: "kendala", label: "Kendala", empty: "Tidak ada kendala yang masih terbuka." },
-  { key: "bukti", label: "Bukti", empty: "Semua pembayaran sudah memiliki bukti lengkap." },
+  { key: "bukti", label: "Bukti", empty: "Semua pembayaran sudah memiliki bukti lengkap dan tidak ada bukti dari pasangan yang menunggu diperiksa." },
 ];
 
 /** How many rows show before "Tampilkan semua". */

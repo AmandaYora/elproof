@@ -40,7 +40,27 @@ const TERMS = [
   // The shared sign-in page reads the same for everyone (18 Nov 2026): Indonesian words only.
   [/\bUsername\b/i, "Nama pengguna"],
   [/(?<!(Google|Microsoft) )\bAuthenticator\b/i, "autentikator (nama produk seperti Google Authenticator boleh)"],
+  // Paket WO (DESAIN.md §8, 19 Nov 2026): one word per concept across quotations, packages and the venue directory.
+  [/\b(Quotations?|Proposals?)\b/i, "Penawaran"],
+  [/\bKomponen\b/i, "Isi paket"],
+  [/(?<![-\w])Events?\b/i, "Acara / Jenis acara"],
+  [/\bPax\b/i, "Tamu"],
+  [/\bDiskon\b/i, "Potongan"],
+  [/\b(Standing|Seated)\b/i, "Berdiri / Duduk"],
+  [/\bPrefix\b/i, "Kode usaha"],
+  [/\bPemasok\b/i, "Vendor / venue"],
+  [/\bHarga modal\b/i, "Biaya rekanan"],
+  [/\bSuperseded\b/i, "Digantikan"],
+  [/\bSnapshot\b/i, "Kesepakatan awal"],
+  // Paket WO Tahap 4 (20 Nov 2026): what the couple pays a vendor directly is a "Tagihan vendor"; the WO checks the proof
+  // they send with "Tandai sesuai" or "Tolak dengan alasan".
+  [/\bBills?\b/i, "Tagihan vendor"],
+  [/\b(Approve[ds]?|Reject(ed|s)?)\b/i, "Tandai sesuai / Tolak dengan alasan"],
 ];
+// "Paket" alone is a WO's own package (Katalog › Paket); ElProof's subscription is always "Paket langganan" on the
+// screens that sell or manage it, so the two never share one word (DESAIN.md §8).
+const SUBSCRIPTION_FILES = /^modules\/subscription\//;
+const SUBSCRIPTION_TERMS = [[/\bpaket\b(?! langganan)/i, "Paket langganan (\"Paket\" saja = paket WO)"]];
 // The platform team's own console is not part of the product people outside ElProof see (18 Nov 2026): no text outside
 // modules/platform-admin names it or its admins. Public pages speak of "personel ElProof yang berwenang" instead.
 const INTERNAL_TERMS = [
@@ -103,7 +123,8 @@ for (const file of walk(ROOT)) {
   const lines = src.split("\n");
   const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const report = (node, text) => {
-    for (const [re, use] of INTERNAL_OK.test(rel) ? TERMS : [...TERMS, ...INTERNAL_TERMS]) {
+    const terms = [...TERMS, ...(INTERNAL_OK.test(rel) ? [] : INTERNAL_TERMS), ...(SUBSCRIPTION_FILES.test(rel) ? SUBSCRIPTION_TERMS : [])];
+    for (const [re, use] of terms) {
       const m = re.exec(text);
       if (!m) continue;
       const line = sf.getLineAndCharacterOfPosition(node.getStart()).line;

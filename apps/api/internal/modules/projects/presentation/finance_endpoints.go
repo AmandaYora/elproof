@@ -31,20 +31,20 @@ func (h *Handler) SetFinance(f FinanceReader) { h.finance = f }
 // permission records). The scope is the caller's: a role limited to its own
 // projects sees only the projects where the person is PIC or PIC Sales — never
 // a 403, the same narrowing GET /projects applies.
-func (h *Handler) financeAccess(w http.ResponseWriter, r *http.Request) (domain.FinanceScope, bool) {
+func (h *Handler) financeAccess(w http.ResponseWriter, r *http.Request) (domain.FinanceScope, staffClaims, bool) {
 	claims, ok := requireStaff(w, r)
 	if !ok {
-		return domain.FinanceScope{}, false
+		return domain.FinanceScope{}, claims, false
 	}
 	if r.Method != http.MethodGet {
 		response.Error(w, http.StatusMethodNotAllowed, "Metode HTTP tidak diizinkan untuk endpoint ini", nil)
-		return domain.FinanceScope{}, false
+		return domain.FinanceScope{}, claims, false
 	}
 	if !claims.can("finance.record") {
 		forbiddenPermission(w, "Peran Anda tidak dapat membuka halaman keuangan")
-		return domain.FinanceScope{}, false
+		return domain.FinanceScope{}, claims, false
 	}
-	return financeScopeOf(claims), true
+	return financeScopeOf(claims), claims, true
 }
 
 func financeScopeOf(claims staffClaims) domain.FinanceScope {
@@ -67,15 +67,19 @@ type payablesSummaryResponse struct {
 	Count         int   `json:"count"`
 	OverdueAmount int64 `json:"overdueAmount"`
 	OverdueCount  int   `json:"overdueCount"`
+	// IncompleteCount: WO-paid suppliers without an agreed cost, not in amount.
+	IncompleteCount int `json:"incompleteCount"`
 }
 
 type financeSummaryResponse struct {
-	Overdue             moneyCountResponse      `json:"overdue"`
-	DueSoon             moneyCountResponse      `json:"dueSoon"`
-	Received            moneyCountResponse      `json:"received"`
-	Payables            payablesSummaryResponse `json:"payables"`
-	PendingVerification moneyCountResponse      `json:"pendingVerification"`
-	CashFlow            []cashFlowWeekResponse  `json:"cashFlow"`
+	Overdue  moneyCountResponse `json:"overdue"`
+	DueSoon  moneyCountResponse `json:"dueSoon"`
+	Received moneyCountResponse `json:"received"`
+	// Payables is what the WO still owes its vendors and venues: absent
+	// without finance.margin.view, and the cash flow then has no money out.
+	Payables            *payablesSummaryResponse `json:"payables,omitempty"`
+	PendingVerification moneyCountResponse       `json:"pendingVerification"`
+	CashFlow            []cashFlowWeekResponse   `json:"cashFlow"`
 }
 
 func toMoneyCount(m domain.MoneyCount) moneyCountResponse {
@@ -84,7 +88,7 @@ func toMoneyCount(m domain.MoneyCount) moneyCountResponse {
 
 // FinanceSummary is GET /finance/summary.
 func (h *Handler) FinanceSummary(w http.ResponseWriter, r *http.Request) {
-	scope, ok := h.financeAccess(w, r)
+	scope, claims, ok := h.financeAccess(w, r)
 	if !ok {
 		return
 	}
@@ -95,12 +99,20 @@ func (h *Handler) FinanceSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := financeSummaryResponse{
 		Overdue: toMoneyCount(s.Overdue), DueSoon: toMoneyCount(s.DueSoon), Received: toMoneyCount(s.Received),
-		Payables:            payablesSummaryResponse{Amount: s.Payables.Amount, Count: s.Payables.Count, OverdueAmount: s.Payables.OverdueAmount, OverdueCount: s.Payables.OverdueCount},
 		PendingVerification: toMoneyCount(s.PendingVerification),
 		CashFlow:            make([]cashFlowWeekResponse, 0, len(s.CashFlow)),
 	}
+	margin := claims.can("finance.margin.view")
+	if margin {
+		resp.Payables = &payablesSummaryResponse{Amount: s.Payables.Amount, Count: s.Payables.Count, OverdueAmount: s.Payables.OverdueAmount, OverdueCount: s.Payables.OverdueCount,
+			IncompleteCount: s.Payables.IncompleteCount}
+	}
 	for _, wk := range s.CashFlow {
-		resp.CashFlow = append(resp.CashFlow, cashFlowWeekResponse{WeekStart: wk.WeekStart.Format(dateLayout), ExpectedIn: wk.ExpectedIn, ExpectedOut: wk.ExpectedOut})
+		week := cashFlowWeekResponse{WeekStart: wk.WeekStart.Format(dateLayout), ExpectedIn: wk.ExpectedIn}
+		if margin {
+			week.ExpectedOut = wk.ExpectedOut
+		}
+		resp.CashFlow = append(resp.CashFlow, week)
 	}
 	response.OK(w, "ok", resp)
 }
@@ -124,7 +136,7 @@ type receivableResponse struct {
 
 // FinanceReceivables is GET /finance/receivables.
 func (h *Handler) FinanceReceivables(w http.ResponseWriter, r *http.Request) {
-	scope, ok := h.financeAccess(w, r)
+	scope, _, ok := h.financeAccess(w, r)
 	if !ok {
 		return
 	}
@@ -214,33 +226,40 @@ func dateFilterOf(raw, key string, bad map[string][]string) *time.Time {
 	return &t
 }
 
+// payableResponse is one vendor or venue the WO pays, with what is still owed.
 type payableResponse struct {
-	Kind          string  `json:"kind"`
-	ID            int64   `json:"id"`
-	ProjectID     int64   `json:"projectId"`
-	ProjectName   string  `json:"projectName"`
-	BrideName     string  `json:"brideName"`
-	GroomName     string  `json:"groomName"`
-	PayeeName     string  `json:"payeeName"`
-	CategoryName  string  `json:"categoryName"`
-	ContractValue int64   `json:"contractValue"`
-	Paid          int64   `json:"paid"`
-	Remaining     int64   `json:"remaining"`
-	DueDate       *string `json:"dueDate"`
-	Status        string  `json:"status"`
-	DaysLate      int     `json:"daysLate"`
+	Kind         string  `json:"kind"`
+	ID           int64   `json:"id"`
+	ProjectID    int64   `json:"projectId"`
+	ProjectName  string  `json:"projectName"`
+	BrideName    string  `json:"brideName"`
+	GroomName    string  `json:"groomName"`
+	PayeeName    string  `json:"payeeName"`
+	CategoryName string  `json:"categoryName"`
+	AgreedCost   int64   `json:"agreedCost"`
+	Paid         int64   `json:"paid"`
+	Remaining    int64   `json:"remaining"`
+	DueDate      *string `json:"dueDate"`
+	Status       string  `json:"status"`
+	DaysLate     int     `json:"daysLate"`
+	Incomplete   bool    `json:"incomplete"` // no agreed cost yet: agreedCost and remaining are 0, status "incomplete"
 }
 
-// FinancePayables is GET /finance/payables.
+// FinancePayables is GET /finance/payables: what the WO still owes the vendors
+// and venues it pays. It needs finance.margin.view on top of finance.record.
 func (h *Handler) FinancePayables(w http.ResponseWriter, r *http.Request) {
-	scope, ok := h.financeAccess(w, r)
+	scope, claims, ok := h.financeAccess(w, r)
 	if !ok {
 		return
 	}
+	if !claims.can("finance.margin.view") {
+		forbiddenPermission(w, "Peran Anda tidak dapat melihat pembayaran WO ke rekanan")
+		return
+	}
 	q := r.URL.Query()
-	f := domain.PayableFilter{Search: pagination.SearchFromRequest(r), Kind: domain.PayableKind(q.Get("kind")), Status: q.Get("status")}
+	f := domain.PayableFilter{Search: pagination.SearchFromRequest(r), Kind: domain.SupplierKind(q.Get("kind")), Status: q.Get("status")}
 	bad := map[string][]string{}
-	if f.Kind != "" && f.Kind != domain.PayableVendor && f.Kind != domain.PayableVenue {
+	if f.Kind != "" && f.Kind != domain.SupplierVendor && f.Kind != domain.SupplierVenue {
 		bad["kind"] = []string{"Jenis harus vendor atau venue"}
 	}
 	if f.Status != "" {
@@ -249,7 +268,7 @@ func (h *Handler) FinancePayables(w http.ResponseWriter, r *http.Request) {
 			valid = valid || s == f.Status
 		}
 		if !valid {
-			bad["status"] = []string{"Status harus salah satu dari: open, unpaid, overdue, paid"}
+			bad["status"] = []string{"Status harus salah satu dari: open, unpaid, overdue, paid, incomplete"}
 		}
 	}
 	f.PICStaffID = picFilterOf(q.Get("picStaffId"), bad)
@@ -270,28 +289,23 @@ func (h *Handler) FinancePayables(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	var vendorIDs, categoryIDs []int64
+	var categoryIDs []int64
 	for _, row := range rows {
-		if row.Kind == domain.PayableVendor {
-			vendorIDs = append(vendorIDs, row.VendorID)
+		if row.CategoryID != 0 {
 			categoryIDs = append(categoryIDs, row.CategoryID)
 		}
 	}
-	vendorNames, categoryNames := map[int64]string{}, map[int64]string{}
+	categoryNames := map[int64]string{}
 	if h.refs != nil {
-		vendorNames = h.refs.VendorNames(r.Context(), scope.TenantID, vendorIDs)
 		categoryNames = h.refs.CategoryNames(r.Context(), scope.TenantID, categoryIDs)
 	}
 	items := make([]payableResponse, 0, len(rows))
 	for _, row := range rows {
 		item := payableResponse{
 			Kind: string(row.Kind), ID: row.ID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, BrideName: row.BrideName, GroomName: row.GroomName,
-			ContractValue: row.ContractValue, Paid: row.Paid, Remaining: row.Remaining(), Status: string(row.Status(today)),
-		}
-		if row.Kind == domain.PayableVendor {
-			item.PayeeName, item.CategoryName = vendorNames[row.VendorID], categoryNames[row.CategoryID]
-		} else {
-			item.PayeeName = row.VenueName
+			PayeeName: row.SupplierName, CategoryName: categoryNames[row.CategoryID],
+			AgreedCost: row.AgreedCost, Paid: row.Paid, Remaining: row.Remaining(), Status: string(row.Status(today)),
+			Incomplete: row.Incomplete,
 		}
 		if row.DueDate != nil {
 			d := row.DueDate.Format(dateLayout)
@@ -317,12 +331,25 @@ type verificationResponse struct {
 	RecordedByName  string `json:"recordedByName"`
 	// Source is "client" when the couple sent the proof from the portal (ADR-0047).
 	Source string `json:"source"`
+	// Kind is "clientPayment" (money to the WO: verify with POST
+	// /projects/{projectId}/client-payments/{id}/verify) or "supplierPayment"
+	// (the client's proof of a payment to a vendor they pay directly, Paket WO
+	// Tahap 4: POST /projects/{projectId}/supplier-payments/{id}/verify or
+	// /reject). The ids of the two kinds may collide: key rows by kind + id.
+	Kind string `json:"kind"`
+	// For a supplierPayment: the vendor or venue (always named: the client pays
+	// it) and the bill it pays; null for a clientPayment.
+	ProjectSupplierID *int64  `json:"projectSupplierId"`
+	SupplierName      *string `json:"supplierName"`
+	BillTermID        *int64  `json:"billTermId"`
+	BillTermLabel     *string `json:"billTermLabel"`
 }
 
 // FinanceVerifications is GET /finance/verifications: client payments with
-// proof that nobody has verified yet.
+// proof that nobody has verified yet, and the client's proofs to vendors they
+// pay directly that the WO has not checked yet (kind, Paket WO Tahap 4).
 func (h *Handler) FinanceVerifications(w http.ResponseWriter, r *http.Request) {
-	scope, ok := h.financeAccess(w, r)
+	scope, _, ok := h.financeAccess(w, r)
 	if !ok {
 		return
 	}
@@ -345,12 +372,25 @@ func (h *Handler) FinanceVerifications(w http.ResponseWriter, r *http.Request) {
 	names := h.staffNames(r.Context(), scope.TenantID, ids)
 	items := make([]verificationResponse, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, verificationResponse{
+		item := verificationResponse{
 			ID: row.PaymentID, ProjectID: row.ProjectID, ProjectName: row.ProjectName, BrideName: row.BrideName, GroomName: row.GroomName,
 			Type: string(row.Type), Amount: row.Amount, PaymentDate: row.PaymentDate.Format(dateLayout), Method: row.Method,
 			ReferenceNumber: row.ReferenceNumber, RecordedByName: names[row.RecordedByID],
 			Source: string(domain.ClientPayment{SubmittedByClientID: row.SubmittedByClientID}.Source()),
-		})
+			Kind:   row.Kind,
+		}
+		if item.Kind == "" {
+			item.Kind = domain.VerificationClientPayment
+		}
+		if row.Kind == domain.VerificationSupplierPayment {
+			supID, supName, label := row.ProjectSupplierID, row.SupplierName, row.BillTermLabel
+			item.ProjectSupplierID, item.SupplierName = &supID, &supName
+			if row.BillTermID != 0 {
+				billID := row.BillTermID
+				item.BillTermID, item.BillTermLabel = &billID, &label
+			}
+		}
+		items = append(items, item)
 	}
 	response.OKPaginated(w, "ok", items, pagination.BuildMeta(params, total).WithSort(sort))
 }

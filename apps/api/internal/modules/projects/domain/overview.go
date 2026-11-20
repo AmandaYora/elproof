@@ -67,9 +67,7 @@ type ActionInput struct {
 	EventDate  time.Time
 	Terms      []TermProgress
 	Issues     []VendorIssue
-	Engagement []ProjectVendor
-	// VendorName names an engagement (by engagement id); "" falls back to "Vendor".
-	VendorName map[int64]string
+	Suppliers  []ProjectSupplier
 	Milestones []ProjectMilestone
 }
 
@@ -109,14 +107,11 @@ func BuildProjectActions(in ActionInput) []ProjectAction {
 		if d == 0 {
 			when = "Acara hari ini" // not "H-0" (DESIGN.md §7: H-30, Hari H, H+3)
 		}
-		for _, e := range in.Engagement {
+		for _, e := range in.Suppliers {
 			if !e.IsUnconfirmed() {
 				continue
 			}
-			name := in.VendorName[e.ID]
-			if name == "" {
-				name = "Vendor"
-			}
+			name := e.Name
 			items = append(items, ProjectAction{
 				Kind: ActionVendorUnconfirm, ID: "vendor-" + strconv.FormatInt(e.ID, 10), Tone: ActionToneWarning,
 				Title:  name + " belum terkonfirmasi",
@@ -157,9 +152,10 @@ func NextMilestones(list []ProjectMilestone) []ProjectMilestone {
 	return open
 }
 
-// UnconfirmedEngagements are the vendors not booked yet (Planned or Negotiation).
-func UnconfirmedEngagements(list []ProjectVendor) []ProjectVendor {
-	var out []ProjectVendor
+// UnconfirmedSuppliers are the vendors and venues not booked yet (Planned or
+// Negotiation).
+func UnconfirmedSuppliers(list []ProjectSupplier) []ProjectSupplier {
+	var out []ProjectSupplier
 	for _, e := range list {
 		if e.IsUnconfirmed() {
 			out = append(out, e)
@@ -192,39 +188,59 @@ func OverdueRemaining(terms []TermProgress) int64 {
 
 // FinanceOverview is the money summary of one project.
 type FinanceOverview struct {
-	ContractValue int64
-	Paid          int64
-	Remaining     int64
-	OverdueTotal  int64
-	VendorCost    int64
-	VenueCost     int64
-	Margin        int64
+	// ContractValue is the contract total (subtotal + PPN); ContractSubtotal and
+	// ContractTax are its parts (the project's cache of its lines).
+	ContractValue    int64
+	ContractSubtotal int64
+	ContractTax      int64
+	Paid             int64
+	Remaining        int64
+	OverdueTotal     int64
+	// TermsTotal is what the client's schedule adds up to; TermsMismatch is set
+	// when a schedule exists and no longer equals the contract value.
+	TermsTotal    int64
+	TermsMismatch bool
+	// SupplierCost is the agreed cost of the active vendors and venues the WO
+	// pays; MissingCost counts those without one yet. Margin = subtotal -
+	// SupplierCost (may be negative; PPN is not the WO's) and is incomplete while
+	// MissingCost > 0 ("Margin belum lengkap"). A supplier the client pays is
+	// outside both.
+	SupplierCost int64
+	MissingCost  int
+	Margin       int64
 }
 
 // ComputeFinanceOverview derives the project's money summary from its raw
 // numbers. Paid and Remaining are the client's payments applied to the contract
 // (DP + Termin + Pelunasan - Refund, Tambahan excluded; Remaining never
-// negative: see ComputeLedger), VendorCost is the sum of the contract values of
-// the engagements that are not cancelled, VenueCost the venue's rental price
-// plus charge and Margin = contract - vendor cost - venue cost (may be negative).
-func ComputeFinanceOverview(contractValue int64, clientPayments []PaymentLine, terms []TermProgress, engagements []ProjectVendor, venueRental, venueCharge *int64) FinanceOverview {
-	ledger := ComputeLedger(clientPayments, contractValue)
-	var vendorCost int64
-	for _, e := range engagements {
-		if e.EngagementStatus != EngagementCancelled {
-			vendorCost += e.ContractValue
-		}
-	}
-	var venueCost int64
-	if venueRental != nil {
-		venueCost += *venueRental
-	}
-	if venueCharge != nil {
-		venueCost += *venueCharge
+// negative: see ComputeLedger).
+func ComputeFinanceOverview(p Project, clientPayments []PaymentLine, terms []TermProgress, suppliers []ProjectSupplier) FinanceOverview {
+	ledger := ComputeLedger(clientPayments, p.ContractTotal)
+	margin := ComputeMargin(p.ContractSubtotal, suppliers)
+	raw := make([]PaymentTerm, len(terms))
+	for i, t := range terms {
+		raw[i] = t.Term
 	}
 	return FinanceOverview{
-		ContractValue: contractValue, Paid: ledger.Paid, Remaining: ledger.Remaining,
-		OverdueTotal: OverdueRemaining(terms), VendorCost: vendorCost, VenueCost: venueCost,
-		Margin: contractValue - vendorCost - venueCost,
+		ContractValue: p.ContractTotal, ContractSubtotal: p.ContractSubtotal, ContractTax: p.ContractTax,
+		Paid: ledger.Paid, Remaining: ledger.Remaining, OverdueTotal: OverdueRemaining(terms),
+		TermsTotal: TermsTotal(raw), TermsMismatch: TermsMismatch(raw, p.ContractTotal),
+		SupplierCost: margin.SupplierCost, MissingCost: margin.MissingCost, Margin: margin.Margin,
 	}
+}
+
+// SupplierCost sums the agreed cost of the active (not cancelled, not deleted)
+// suppliers the WO pays, and counts those that have none yet.
+func SupplierCost(suppliers []ProjectSupplier) (cost int64, missing int) {
+	for _, s := range suppliers {
+		if !s.IsActive() || s.DeletedAt != nil || s.PaidBy != PayerWO {
+			continue
+		}
+		if s.AgreedCost == nil {
+			missing++
+			continue
+		}
+		cost += *s.AgreedCost
+	}
+	return cost, missing
 }

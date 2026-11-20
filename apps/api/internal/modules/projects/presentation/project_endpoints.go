@@ -164,54 +164,41 @@ func (h *Handler) toProjectResponsesWithProgress(r *http.Request, tenantID int64
 		}
 		result = append(result, resp)
 	}
+	refs := make([]*projectResponse, len(result))
+	for i := range result {
+		refs[i] = &result[i]
+	}
+	h.describeProjects(r.Context(), tenantID, refs)
 	return result, nil
 }
 
 type projectInputBody struct {
-	Name          string `json:"name"`
-	BrideName     string `json:"brideName"`
-	GroomName     string `json:"groomName"`
+	Name      string `json:"name"`
+	BrideName string `json:"brideName"`
+	GroomName string `json:"groomName"`
+	// EventDate is read by duplicate only (where the copy's main event lands); a
+	// new project takes it from its first event.
 	EventDate     string `json:"eventDate"`
-	Venue         string `json:"venue"`
 	PrepStartDate string `json:"prepStartDate"`
-	PackageName   string `json:"packageName"`
-	ContractValue int64  `json:"contractValue"`
-	Status        string `json:"status"`
-	PICStaffID    int64  `json:"picStaffId"`
+	// The package and the contract value are not typed any more: they come
+	// from the Rincian (PUT /projects/{id}/lines), saved after the project.
+	Status     string `json:"status"`
+	PICStaffID int64  `json:"picStaffId"`
 	// PICSalesStaffID is the "PIC Sales" slot -- see
 	// application.ProjectInput.PICSalesStaffID's doc comment for how Create
 	// enforces it for a Sales caller.
 	PICSalesStaffID int64  `json:"picSalesStaffId"`
 	Description     string `json:"description"`
-	// VenueID is only meaningful on update -- see ProjectInput.VenueID's doc
-	// comment for the omitted/0/positive tri-state. create/duplicate bodies
-	// never send this key, so it decodes to nil and Create simply never
-	// reads it (ADR-0016: attaching a venue is a separate, post-creation
-	// action).
-	VenueID *int64 `json:"venueId"`
-	// VenueRentalPrice/VenueCharge ride along with VenueID whenever it's
-	// present at all -- the per-project cost snapshot (PLAN.md "Financial
-	// Calculation Correctness"). Meaningless (and ignored by
-	// ProjectService.Update) when VenueID itself is nil or the detach
-	// sentinel 0.
-	VenueRentalPrice *int64 `json:"venueRentalPrice"`
-	VenueCharge      *int64 `json:"venueCharge"`
-	// Terms is read by create only: the client's payment schedule, saved in the
-	// same transaction as the project (and, with venueId, its venue).
-	Terms []projectTermBody `json:"terms"`
+	// Events is read by create only: at least one; the first is the main event.
+	// Saved in the same transaction as the project, with the venues they bring in.
+	Events []eventBody `json:"events"`
 }
 
-// projectTermBody is one installment of the payment schedule sent with a new project.
-type projectTermBody struct {
-	Label   string `json:"label"`
-	Amount  int64  `json:"amount"`
-	DueDate string `json:"dueDate"`
-}
-
-// toProjectInput reads the two dates of a project body. A date that is not
+// toProjectInput reads the dates of a project body. A date that is not
 // YYYY-MM-DD is reported under its own key ("eventDate", "prepStartDate"), both
 // at once when both are wrong; the input still comes back (with the zero time
-// for a bad date) so the caller can add the other problems it finds.
+// for a bad date) so the caller can add the other problems it finds. An empty
+// eventDate is left zero (create takes it from the events).
 func toProjectInput(body projectInputBody) (application.ProjectInput, map[string][]string) {
 	var bad map[string][]string
 	fail := func(key string) {
@@ -220,9 +207,13 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, map[string
 		}
 		bad[key] = []string{"Gunakan format YYYY-MM-DD"}
 	}
-	eventDate, err := parseDate(body.EventDate)
-	if err != nil {
-		fail("eventDate")
+	var eventDate time.Time
+	if body.EventDate != "" {
+		d, err := parseDate(body.EventDate)
+		if err != nil {
+			fail("eventDate")
+		}
+		eventDate = d
 	}
 	prepStartDate, err := parseDate(body.PrepStartDate)
 	if err != nil {
@@ -230,22 +221,16 @@ func toProjectInput(body projectInputBody) (application.ProjectInput, map[string
 	}
 	return application.ProjectInput{
 		Name: body.Name, BrideName: body.BrideName, GroomName: body.GroomName, EventDate: eventDate,
-		Venue: body.Venue, PrepStartDate: prepStartDate, PackageName: body.PackageName,
-		ContractValue: body.ContractValue, Status: domain.ProjectStatus(body.Status),
-		PICStaffID: body.PICStaffID, PICSalesStaffID: body.PICSalesStaffID, Description: body.Description, VenueID: body.VenueID,
-		VenueRentalPrice: body.VenueRentalPrice, VenueCharge: body.VenueCharge,
+		PrepStartDate: prepStartDate, Status: domain.ProjectStatus(body.Status),
+		PICStaffID: body.PICStaffID, PICSalesStaffID: body.PICSalesStaffID, Description: body.Description,
 	}, bad
 }
 
-// projectCreatedResponse is the new project (as before, `venue` stays the
-// venue's name as text) plus what was saved with it: the payment schedule as
-// GET /payment-terms would list it (`[]` when none was sent) and the attached
-// venue's summary as `venueSummary` (`null` when none; a different key because
-// `venue` is already the project's venue text).
+// projectCreatedResponse is the new project plus the events saved with it, as
+// GET /events lists them.
 type projectCreatedResponse struct {
 	projectResponse
-	Terms        []paymentTermResponse `json:"terms"`
-	VenueSummary *venueSummaryResponse `json:"venueSummary"`
+	Events []eventResponse `json:"events"`
 }
 
 // createProject is Owner/Admin/Sales (confirmed role rule) — a Wedding
@@ -254,9 +239,10 @@ type projectCreatedResponse struct {
 // their own (see ProjectService.Create's callerRole handling for how their
 // PICSalesStaffID gets forced to themselves).
 //
-// One call creates everything (E7): the project and its default milestones, its
-// venue (venueId, venueRentalPrice, venueCharge) and its payment schedule
-// (terms), in one transaction, under the optional Idempotency-Key header.
+// One call creates everything (E7): the project, its default milestones and its
+// events (with the venues they bring in), in one transaction, under the optional
+// Idempotency-Key header. The payment schedule comes later, once the project's
+// rincian is saved.
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, claims staffClaims) {
 	if !claims.can("project.create") {
 		forbiddenPermission(w, "Peran Anda tidak dapat membuat proyek baru")
@@ -274,46 +260,64 @@ func (h *Handler) createProjectNow(w http.ResponseWriter, r *http.Request, claim
 		return
 	}
 	input, badDates := toProjectInput(body)
-	setup := application.ProjectSetup{FieldErrors: badDates}
-	for i, t := range body.Terms {
-		due, err := parseDate(t.DueDate)
-		if err != nil && t.DueDate != "" {
-			if setup.FieldErrors == nil {
-				setup.FieldErrors = map[string][]string{}
-			}
-			setup.FieldErrors["terms["+strconv.Itoa(i)+"].dueDate"] = []string{"Gunakan format YYYY-MM-DD"}
-			// A placeholder, so the schedule check does not also say "isi tanggal".
-			due = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	fields := map[string][]string{}
+	for k, v := range badDates {
+		if k != "eventDate" {
+			fields[k] = v
 		}
-		setup.Terms = append(setup.Terms, application.PaymentTermInput{Label: t.Label, Amount: t.Amount, DueDate: due})
 	}
+	setup := application.ProjectSetup{}
+	for i, e := range body.Events {
+		setup.Events = append(setup.Events, toEventInput(e, "events."+strconv.Itoa(i)+".", fields))
+	}
+	setup.FieldErrors = fields
 	p, err := h.projects.CreateAtomic(r.Context(), claims.tenantID, claims.actor(), input, setup)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	resp := projectCreatedResponse{projectResponse: toProjectResponse(*p), Terms: []paymentTermResponse{}}
+	resp := projectCreatedResponse{projectResponse: toProjectResponse(*p), Events: []eventResponse{}}
 	resp.PICName = h.projects.ResolvePICName(r.Context(), claims.tenantID, p.PICStaffID)
-	if len(setup.Terms) > 0 {
-		list, err := h.terms.List(r.Context(), claims.tenantID, p.ID, nowWIB())
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		resp.Terms = toPaymentTermResponses(list)
+	events, err := h.events.List(r.Context(), claims.tenantID, p.ID)
+	if err != nil {
+		writeAppError(w, err)
+		return
 	}
-	if p.VenueID != nil {
-		summary, err := h.projects.GetVenue(r.Context(), claims.tenantID, p.ID)
-		if err != nil {
-			writeAppError(w, err)
-			return
-		}
-		if summary != nil {
-			v := toVenueSummaryResponse(*summary)
-			resp.VenueSummary = &v
-		}
+	if resp.Events, err = h.eventRows(r.Context(), claims, p.ID, events); err != nil {
+		writeAppError(w, err)
+		return
 	}
+	h.describeProjects(r.Context(), claims.tenantID, []*projectResponse{&resp.projectResponse})
 	response.Created(w, "Proyek berhasil dibuat", resp)
+}
+
+// describeProjects fills where each project happens and which events it has
+// (best effort: a failed lookup leaves them empty).
+func (h *Handler) describeProjects(ctx context.Context, tenantID int64, list []*projectResponse) {
+	if len(list) == 0 {
+		return
+	}
+	ids := make([]int64, len(list))
+	for i, p := range list {
+		ids[i] = p.ID
+	}
+	locations, err := h.suppliers.Locations(ctx, ids)
+	if err != nil {
+		return
+	}
+	events, err := h.events.ListByProjects(ctx, ids)
+	if err != nil {
+		return
+	}
+	packages := h.lines.PackageNames(ctx, tenantID, ids)
+	for _, p := range list {
+		p.Location = locations[p.ID]
+		p.EventsLine = domain.EventsLine(events[p.ID])
+		p.PackageNames = packages[p.ID]
+		if p.PackageNames == nil {
+			p.PackageNames = []string{}
+		}
+	}
 }
 
 // me is the Client Portal's entry point (Fase 6) — a client principal has no
@@ -377,14 +381,20 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 		return
 	}
 	resp := toProjectResponse(*p)
+	var policy domain.PortalPolicy
+	if isClient {
+		policy = domain.NewPortalPolicy(middleware.GrantsFrom(r.Context()).Can)
+		resp = toPortalProjectResponse(policy.Project(*p))
+	}
 	progressResp := toProgressResponse(*progress)
 	resp.Progress = &progressResp
 	resp.PICName = h.projects.ResolvePICName(r.Context(), tenantID, p.PICStaffID)
+	h.describeProjects(r.Context(), tenantID, []*projectResponse{&resp})
 	if isClient {
 		redactProjectForClient(&resp)
 		resp.PICPhone = h.projects.ResolvePICPhone(r.Context(), tenantID, p.PICStaffID)
-		if !middleware.GrantsFrom(r.Context()).Can("portal.finance.view") {
-			resp.ContractValue = 0
+		if !policy.Home().Services {
+			resp.PackageNames = []string{}
 		}
 	}
 	response.OK(w, "ok", resp)
@@ -396,6 +406,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, tenantID, p
 func (h *Handler) projectItem(ctx context.Context, tenantID int64, p domain.Project) projectResponse {
 	resp := toProjectResponse(p)
 	resp.PICName = h.projects.ResolvePICName(ctx, tenantID, p.PICStaffID)
+	h.describeProjects(ctx, tenantID, []*projectResponse{&resp})
 	if progress, err := h.projects.ComputeProgress(ctx, tenantID, p.ID, clock.Now()); err == nil {
 		pr := toProgressResponse(*progress)
 		resp.Progress = &pr
@@ -431,12 +442,9 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 	}
 	patch := application.ProjectPatch{
 		Name: pr.text("name", false), BrideName: pr.text("brideName", false), GroomName: pr.text("groomName", false),
-		EventDate: pr.date("eventDate", false), Venue: pr.text("venue", true), PrepStartDate: pr.date("prepStartDate", false),
-		PackageName: pr.text("packageName", false), ContractValue: pr.integer("contractValue", false),
-		PICStaffID: pr.integer("picStaffId", false), PICSalesStaffID: pr.integer("picSalesStaffId", true),
-		Description: pr.text("description", true),
-		VenueID:     pr.integer("venueId", true), VenueRentalPrice: pr.integer("venueRentalPrice", true), VenueCharge: pr.integer("venueCharge", true),
-		IsArchived: pr.boolean("isArchived"),
+		PrepStartDate: pr.date("prepStartDate", false),
+		PICStaffID:    pr.integer("picStaffId", false), PICSalesStaffID: pr.integer("picSalesStaffId", true),
+		Description: pr.text("description", true), IsArchived: pr.boolean("isArchived"),
 	}
 	if err := pr.finish(); err != nil {
 		writeAppError(w, err)
@@ -458,25 +466,6 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request, claims s
 		return
 	}
 	response.OK(w, "Proyek berhasil diperbarui", h.projectItem(r.Context(), claims.tenantID, *p))
-}
-
-// getProjectVenue backs GET /projects/{id}/venue (ADR-0016) -- reachable by
-// both staff and client principals (resolveProjectAccess in handler.go
-// already scoped access before this is called), always the public-safe
-// VenueSummary shape regardless of caller. Returns `data: null` (not an
-// error) when no venue is attached, so both the WO Console tab and Client
-// Portal's tab can render an empty state.
-func (h *Handler) getProjectVenue(w http.ResponseWriter, r *http.Request, tenantID, projectID int64) {
-	summary, err := h.projects.GetVenue(r.Context(), tenantID, projectID)
-	if err != nil {
-		writeAppError(w, err)
-		return
-	}
-	if summary == nil {
-		response.OK(w, "ok", nil)
-		return
-	}
-	response.OK(w, "ok", toVenueSummaryResponse(*summary))
 }
 
 func (h *Handler) cancelProject(w http.ResponseWriter, r *http.Request, claims staffClaims, projectID int64) {
@@ -560,7 +549,12 @@ func (h *Handler) listMilestones(w http.ResponseWriter, r *http.Request, claims 
 		writeAppError(w, err)
 		return
 	}
-	ix := indexEvidence(evidences, claims.isClient, claims.can)
+	view, err := h.portalViewFor(r.Context(), claims, projectID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	ix := indexEvidence(evidences, view)
 	result := make([]milestoneResponse, 0, len(milestones))
 	for _, m := range milestones {
 		resp := toMilestoneResponse(m)
@@ -602,7 +596,11 @@ func (h *Handler) milestoneItem(ctx context.Context, claims staffClaims, project
 	if err != nil {
 		return resp, err
 	}
-	resp.Evidence = indexEvidence(evidences, claims.isClient, claims.can).refs(domain.RelatedProjectMilestone, m.ID)
+	view, err := h.portalViewFor(ctx, claims, projectID)
+	if err != nil {
+		return resp, err
+	}
+	resp.Evidence = indexEvidence(evidences, view).refs(domain.RelatedProjectMilestone, m.ID)
 	return resp, nil
 }
 

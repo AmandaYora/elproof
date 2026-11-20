@@ -322,6 +322,37 @@ func (r *MySQLTenantRepository) SaveBusinessDetails(ctx context.Context, tenantI
 	return err
 }
 
+// GetQuoteSettings reads the Penawaran part of the business details. A tenant
+// without a row, or with no document code yet, is not found.
+func (r *MySQLTenantRepository) GetQuoteSettings(ctx context.Context, tenantID int64) (domain.QuoteSettings, bool, error) {
+	var q domain.QuoteSettings
+	var terms sql.NullString
+	err := r.db.QueryRowContext(ctx,
+		`SELECT document_code, is_pkp, default_quote_validity_days, default_terms_text
+		 FROM tenant_business_details WHERE tenant_id = ?`, tenantID,
+	).Scan(&q.DocumentCode, &q.IsPKP, &q.DefaultValidityDays, &terms)
+	if err == sql.ErrNoRows {
+		return domain.QuoteSettings{}, false, nil
+	}
+	if err != nil {
+		return domain.QuoteSettings{}, false, err
+	}
+	q.DefaultTermsText = terms.String
+	return q, q.DocumentCode != "", nil
+}
+
+// SaveQuoteSettings upserts only the Penawaran columns; the address and bank
+// account of the same row are left alone.
+func (r *MySQLTenantRepository) SaveQuoteSettings(ctx context.Context, tenantID int64, q domain.QuoteSettings) error {
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO tenant_business_details (tenant_id, document_code, is_pkp, default_quote_validity_days, default_terms_text)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE document_code = VALUES(document_code), is_pkp = VALUES(is_pkp),
+		   default_quote_validity_days = VALUES(default_quote_validity_days), default_terms_text = VALUES(default_terms_text)`,
+		tenantID, q.DocumentCode, q.IsPKP, q.DefaultValidityDays, q.DefaultTermsText)
+	return err
+}
+
 // FreeGrantTenantIDs returns tenants whose current paid period (the date their
 // subscription ends) was set by a manual activation with a non-revenue reason.
 // A later paid renewal moves the end date, so the tenant counts again.

@@ -14,12 +14,14 @@ import (
 // a staff-only endpoint just because that module forgot to check the
 // principal type. Add a route here only when the portal really calls it.
 //
-// The client portal is read-only except for exactly four writes on the
+// The client portal is read-only except for exactly five writes on the
 // client's own project (ADR-0047), each behind its own portal permission in
 // the projects module: the two halves of a signed upload (POST
 // /projects/{id}/uploads, PUT /projects/{id}/uploads/{token}), sending a
-// transfer proof (POST /projects/{id}/client-payments/submissions) and marking
-// a task done (POST /projects/{id}/milestones/{mid}/complete). Every other
+// transfer proof to the WO (POST /projects/{id}/client-payments/submissions)
+// or to a vendor the client pays directly (POST
+// /projects/{id}/supplier-bills/submissions, Paket WO Tahap 4) and marking a
+// task done (POST /projects/{id}/milestones/{mid}/complete). Every other
 // method is refused here.
 func clientPortalAllowed(method, path string) bool {
 	s := strings.Split(strings.Trim(path, "/"), "/")
@@ -47,8 +49,8 @@ func clientPortalAllowed(method, path string) bool {
 	// NOT allowed: vendors/summary (a route removed in Tahap 9; the path stays
 	// refused here, see client_scope_test.go) and vendor-categories list every
 	// vendor and category of the workspace. The portal gets vendor and category names
-	// inside GET /projects/{id}/vendors, for the project's own vendors only
-	// (E6, ADR-0032).
+	// inside GET /projects/{id}/suppliers, for the project's own vendors and
+	// venues only, a hidden vendor by its category (E6, ADR-0032).
 	case len(s) == 3 && s[0] == "venues" && isID(s[1]) && s[2] == "attachment":
 		return true
 	default:
@@ -56,7 +58,7 @@ func clientPortalAllowed(method, path string) bool {
 	}
 }
 
-// clientPortalWriteAllowed is the four non-GET routes of the portal (segments
+// clientPortalWriteAllowed is the five non-GET routes of the portal (segments
 // after /api/v1/). Anything else — another method, another path, a malformed
 // id — is refused.
 func clientPortalWriteAllowed(method string, s []string) bool {
@@ -71,6 +73,8 @@ func clientPortalWriteAllowed(method string, s []string) bool {
 		return true
 	case method == http.MethodPost && match(rest, "client-payments", "submissions"):
 		return true
+	case method == http.MethodPost && match(rest, "supplier-bills", "submissions"):
+		return true
 	case method == http.MethodPost && len(rest) == 3 && rest[0] == "milestones" && isID(rest[1]) && rest[2] == "complete":
 		return true
 	}
@@ -83,7 +87,7 @@ func clientProjectSubpathAllowed(rest []string) bool {
 		return true
 	case 1:
 		switch rest[0] {
-		case "milestones", "vendors", "client-payments", "payment-terms", "issues", "evidence", "documents", "venue", "cover":
+		case "milestones", "events", "suppliers", "lines", "supplier-payments", "supplier-bills", "client-payments", "payment-terms", "issues", "evidence", "documents", "cover":
 			return true
 		}
 		return false

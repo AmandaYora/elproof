@@ -65,7 +65,7 @@ export interface State {
     tenantBerbayar: number;
     tenantKosong: number;
     vendor: number;
-    engagement: number;
+    supplier: number;
     transaction: number;
   };
   bundle?: { totalJsRaw: number; totalJsGzip: number; chunks: { file: string; raw: number; gzip: number }[] };

@@ -4,30 +4,34 @@ package isolation
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestFinance covers GET /finance/summary, /receivables, /payables and
 // /verifications (Keuangan page) on a real database: the SQL allocation of each
 // installment equals GET /payment-terms (the Go rule), the views and sorts, the
 // headline figures, the cash flow equal to /dashboard's, the scope of a role
-// limited to its own projects, and that another workspace never shows up.
+// limited to its own projects, that what the WO owes its suppliers needs
+// finance.margin.view, and that another workspace never shows up.
 func TestFinance(t *testing.T) {
 	s := startStack(t)
 	x, y := s.signUp("finx"), s.signUp("finy")
 	wpTok, wpID := s.staffAs(x, "Wedding Planner")
 
-	// ---- workspace Y: an overdue installment and a vendor balance that must never appear in X ----
-	yP := s.projectAt(y, "Proyek "+y.marker, 70_000_000, 90, 3_000_000, 0)
+	// ---- workspace Y: an overdue installment and a supplier balance that must never appear in X ----
+	yP := s.projectAt(y, "Proyek "+y.marker, 70_000_000, 90, 0)
 	s.setTerms(y, yP, term("DP "+y.marker, 20_000_000, -10))
-	yVendor, yCat := s.newVendor(y, "Vendor "+y.marker)
-	s.engage(y, yP, yVendor, yCat, "Dekor "+y.marker, 9_000_000, "Booked", ptr(-1))
+	yVendor, _ := s.newVendor(y, "Vendor "+y.marker)
+	s.engage(y, yP, yVendor, "Dekor "+y.marker, 9_000_000, "Booked", ptr(-1))
 
 	// ---- workspace X ----
 	// P1 (Owner's): DP 30 paid, Termin 1 overdue with 5 paid, Termin 2 due in 10 days.
-	p1 := s.projectAt(x, "Proyek satu", 100_000_000, 120, 0, 0)
+	p1 := s.projectAt(x, "Proyek satu", 100_000_000, 120, 0)
 	s.setTerms(x, p1, term("DP", 30_000_000, -20), term("Termin 1", 40_000_000, -3), term("Termin 2", 30_000_000, 10))
 	pay := s.mustOK("client payment", s.do(x.token, "POST", s.projectsPath(p1, "/client-payments"), map[string]any{
 		"type": "DP", "amount": 35_000_000, "paymentDate": day(-5), "method": "Transfer", "referenceNumber": "REF-FIN-1",
@@ -41,30 +45,39 @@ func TestFinance(t *testing.T) {
 		"name": "Bukti DP", "type": "Transfer Proof", "fileName": "bukti.pdf", "mimeType": "application/pdf", "base64Data": pdf,
 		"documentDate": day(-5), "description": "", "relatedKind": "clientPayment", "relatedId": pay, "isClientVisible": false,
 	}))
-	vendor, cat := s.newVendor(x, "Vendor satu")
-	eng := s.engage(x, p1, vendor, cat, "Dekor", 5_000_000, "Booked", ptr(-2))
-	s.mustOK("vendor payment", s.do(x.token, "POST", s.projectsPath(p1, "/payments"), map[string]any{
-		"projectVendorId": eng, "type": "DP", "amount": 1_000_000, "paymentDate": day(-2), "method": "Transfer",
-	}))
-	// An engagement without a price is not a payable; a cancelled one neither.
-	s.engage(x, p1, vendor, cat, "Tanpa harga", 0, "Planned", nil)
-	gone := s.engage(x, p1, vendor, cat, "Batal", 7_000_000, "Booked", ptr(3))
-	s.mustOK("cancel engagement", s.do(x.token, "POST", s.projectsPath(p1, fmt.Sprintf("/vendors/%d/cancel", gone)), map[string]any{}))
+	vendor, _ := s.newVendor(x, "Vendor satu")
+	eng := s.engage(x, p1, vendor, "Dekor", 5_000_000, "Booked", ptr(-2))
+	s.supplierPay(x, p1, eng, "DP", 1_000_000, "VREF-FIN-1")
+	// A supplier the client pays is never the WO's debt, whatever it is paid.
+	clientPaid := s.engageBy(x, p1, vendor, "Dibayar klien", "Client", false)
+	s.supplierPay(x, p1, clientPaid, "DP", 3_000_000, "CREF-FIN-1")
+	// A supplier without an agreed cost is listed as incomplete (owed, amount
+	// unknown); a cancelled one is not a payable.
+	noCost := s.engage(x, p1, vendor, "Tanpa harga", 0, "Planned", nil)
+	gone := s.engage(x, p1, vendor, "Batal", 7_000_000, "Booked", ptr(3))
+	s.mustOK("cancel supplier", finPatchSupplier(s, x, p1, gone, map[string]any{"engagementStatus": "Cancelled"}))
 
-	// P2 (the planner's): a venue cost and two installments not due yet.
+	// P2 (the planner's, and the scoped finance person's as PIC Sales): its event
+	// at a venue brings the venue in; the venue's agreed cost (rental + charge,
+	// 10.5 jt, no due date) is what the WO owes it. Two installments not due yet.
+	scopedTok, scopedID := finScopedStaff(s, x)
 	venue := s.mustOK("venue", s.do(x.token, "POST", "/api/v1/venues", venueBody(x, "Venue dua"))).id("data", "id")
-	p2 := s.mustOK("project dua", s.do(x.token, "POST", "/api/v1/projects", map[string]any{
-		"name": "Proyek dua", "brideName": "Bride dua", "groomName": "Groom dua", "eventDate": day(200), "venue": "Gedung dua",
-		"prepStartDate": day(-30), "packageName": "Paket", "contractValue": 50_000_000, "status": "Preparation", "picStaffId": wpID,
-		"venueId": venue, "venueRentalPrice": 10_000_000, "venueCharge": 500_000,
-	})).id("data", "id")
+	p2Body := s.projectBody(x, "Proyek dua", 200, eventOf(s.kind(x, "Resepsi"), day(200), 200, venue))
+	p2Body["brideName"], p2Body["groomName"], p2Body["picStaffId"], p2Body["picSalesStaffId"] = "Bride dua", "Groom dua", wpID, scopedID
+	p2 := s.mustOK("project dua", s.do(x.token, "POST", "/api/v1/projects", p2Body)).id("data", "id")
+	s.setContract(x, p2, 50_000_000)
+	venueSup := s.venueSupplier(x, p2, venue)
+	if venueSup == 0 {
+		t.Fatalf("the event's venue is not among P2's suppliers")
+	}
+	s.mustOK("venue agreed cost", finPatchSupplier(s, x, p2, venueSup, map[string]any{"agreedCost": 10_500_000}))
 	s.setTerms(x, p2, term("DP", 20_000_000, 5), term("Pelunasan", 30_000_000, 60))
 
 	// P3 cancelled and P4 archived: both left out everywhere.
-	p3 := s.projectAt(x, "Proyek batal", 10_000_000, 30, 0, 0)
+	p3 := s.projectAt(x, "Proyek batal", 10_000_000, 30, 0)
 	s.setTerms(x, p3, term("DP", 10_000_000, -5))
 	s.mustOK("cancel p3", s.do(x.token, "POST", s.projectsPath(p3, "/cancel"), map[string]any{}))
-	p4 := s.projectAt(x, "Proyek arsip", 10_000_000, 30, 0, 0)
+	p4 := s.projectAt(x, "Proyek arsip", 10_000_000, 30, 0)
 	s.setTerms(x, p4, term("DP", 10_000_000, -5))
 	s.mustOK("archive p4", s.do(x.token, "PATCH", s.projectsPath(p4, ""), map[string]any{"isArchived": true}))
 
@@ -150,11 +163,25 @@ func TestFinance(t *testing.T) {
 		r := s.mustOK("payables", s.do(x.token, "GET", "/api/v1/finance/payables", nil))
 		noLeak(t, "payables", r)
 		got := rows(r, "data")
-		if len(got) != 2 {
-			t.Fatalf("want the vendor and the venue, got %s", r)
+		if len(got) != 3 {
+			t.Fatalf("want the vendor, the venue and the one without a cost, got %s", r)
 		}
-		// Most still owed first: the venue (10.5 jt), then the vendor (4 jt, overdue).
-		venue, vend := got[0], got[1]
+		// Most still owed first: the venue (10.5 jt), then the vendor (4 jt,
+		// overdue), then the supplier without an agreed cost (nothing known).
+		venue, vend, incomplete := got[0], got[1], got[2]
+		if incomplete["id"] != float64(noCost) || incomplete["incomplete"] != true || incomplete["status"] != "incomplete" ||
+			incomplete["agreedCost"] != float64(0) || incomplete["remaining"] != float64(0) {
+			t.Errorf("a WO-paid supplier without a cost is listed as incomplete: %v", incomplete)
+		}
+		if vend["incomplete"] != false || venue["incomplete"] != false {
+			t.Errorf("rows with a cost are complete: %v / %v", venue, vend)
+		}
+		if k := rows(s.mustOK("incomplete", s.do(x.token, "GET", "/api/v1/finance/payables?status=incomplete", nil)), "data"); len(k) != 1 || k[0]["id"] != float64(noCost) {
+			t.Errorf("status=incomplete: %v", k)
+		}
+		if k := rows(s.mustOK("open", s.do(x.token, "GET", "/api/v1/finance/payables?status=open", nil)), "data"); len(k) != 3 {
+			t.Errorf("status=open includes the incomplete one: %v", k)
+		}
 		if venue["kind"] != "venue" || venue["remaining"] != float64(10_500_000) || venue["status"] != "unpaid" || venue["dueDate"] != nil || venue["projectId"] != float64(p2) {
 			t.Errorf("venue row: %v", venue)
 		}
@@ -180,7 +207,7 @@ func TestFinance(t *testing.T) {
 			"overdue":             {"amount": 35_000_000.0, "count": 1.0, "projects": 1.0},
 			"dueSoon":             {"amount": 50_000_000.0, "count": 2.0, "projects": 2.0},
 			"received":            {"amount": 35_000_000.0, "count": 1.0, "projects": 0.0},
-			"payables":            {"amount": 14_500_000.0, "count": 2.0, "overdueAmount": 4_000_000.0, "overdueCount": 1.0},
+			"payables":            {"amount": 14_500_000.0, "count": 2.0, "overdueAmount": 4_000_000.0, "overdueCount": 1.0, "incompleteCount": 1.0},
 			"pendingVerification": {"amount": 35_000_000.0, "count": 1.0, "projects": 1.0},
 		}
 		for key, fields := range want {
@@ -210,11 +237,7 @@ func TestFinance(t *testing.T) {
 	})
 
 	t.Run("a role limited to its own projects", func(t *testing.T) {
-		r := s.do(wpTok, "GET", "/api/v1/finance/receivables", nil)
-		if r.status == 403 {
-			t.Skip("the Wedding Planner template has no finance.record in this build")
-		}
-		s.mustOK("wp receivables", r)
+		r := s.mustOK("wp receivables", s.do(wpTok, "GET", "/api/v1/finance/receivables", nil))
 		for _, m := range rows(r, "data") {
 			if m["projectId"] != float64(p2) {
 				t.Errorf("planner sees a project they do not hold: %v", m)
@@ -227,13 +250,52 @@ func TestFinance(t *testing.T) {
 		if mine := rows(s.mustOK("wp pic", s.do(wpTok, "GET", fmt.Sprintf("/api/v1/finance/receivables?picStaffId=%d", x.staffID), nil)), "data"); len(mine) != 0 {
 			t.Errorf("planner with the Owner's picStaffId: %v", mine)
 		}
-		sum := s.mustOK("wp summary", s.do(wpTok, "GET", "/api/v1/finance/summary", nil))
+		// A role with finance.margin.view and the same narrow scope sees only the venue of P2.
+		sum := s.mustOK("scoped summary", s.do(scopedTok, "GET", "/api/v1/finance/summary", nil))
 		if sum.dig("data", "overdue", "amount") != 0.0 || sum.dig("data", "payables", "amount") != 10_500_000.0 {
-			t.Errorf("planner summary: %s", sum)
+			t.Errorf("scoped summary: %s", sum)
 		}
-		pays := rows(s.mustOK("wp payables", s.do(wpTok, "GET", "/api/v1/finance/payables", nil)), "data")
-		if len(pays) != 1 || pays[0]["kind"] != "venue" {
-			t.Errorf("planner payables: %v", pays)
+		pays := rows(s.mustOK("scoped payables", s.do(scopedTok, "GET", "/api/v1/finance/payables", nil)), "data")
+		if len(pays) != 1 || pays[0]["kind"] != "venue" || pays[0]["projectId"] != float64(p2) {
+			t.Errorf("scoped payables: %v", pays)
+		}
+	})
+
+	t.Run("what the WO owes its suppliers needs finance.margin.view", func(t *testing.T) {
+		// The Wedding Planner records payments (finance.record) but has no finance.margin.view.
+		r := s.do(wpTok, "GET", "/api/v1/finance/payables", nil)
+		wantStatus(t, "planner payables", r, http.StatusForbidden)
+		if r.dig("errors", "code") != "forbidden_permission" {
+			t.Errorf("planner payables: want forbidden_permission: %s", r)
+		}
+		if strings.Contains(string(r.body), "Venue dua") || strings.Contains(string(r.body), "10500000") {
+			t.Errorf("refusal carries the payable: %s", r)
+		}
+		sum := s.mustOK("wp summary", s.do(wpTok, "GET", "/api/v1/finance/summary", nil))
+		if _, present := data(sum)["payables"]; present {
+			t.Errorf("summary without finance.margin.view carries payables: %s", sum)
+		}
+		for _, wk := range rows(sum, "data", "cashFlow") {
+			if out, _ := wk["expectedOut"].(float64); out != 0 {
+				t.Errorf("summary without finance.margin.view shows money out: %v", wk)
+			}
+		}
+		if sum.dig("data", "dueSoon", "amount") != 20_000_000.0 {
+			t.Errorf("planner still sees what is owed to the WO: %s", sum)
+		}
+		// The same narrow scope with the permission does see it (the refusal is the permission, not the scope).
+		if r := s.do(scopedTok, "GET", "/api/v1/finance/payables", nil); r.status != http.StatusOK {
+			t.Errorf("scoped role with finance.margin.view: %s", r)
+		}
+		// A role with every finance permission but finance.margin.view, across all projects.
+		noMargin := s.staffWith(x, "Kasir", "finance.record", "finance.payment.delete")
+		wantStatus(t, "no-margin payables", s.do(noMargin, "GET", "/api/v1/finance/payables", nil), http.StatusForbidden)
+		ns := s.mustOK("no-margin summary", s.do(noMargin, "GET", "/api/v1/finance/summary", nil))
+		if _, present := data(ns)["payables"]; present {
+			t.Errorf("no-margin summary carries payables: %s", ns)
+		}
+		if ns.dig("data", "overdue", "amount") != 35_000_000.0 {
+			t.Errorf("no-margin summary lost the receivables: %s", ns)
 		}
 	})
 
@@ -250,3 +312,43 @@ func TestFinance(t *testing.T) {
 }
 
 func ptr(v int) *int { return &v }
+
+// finPatchSupplier edits one of the project's suppliers as the list shows it
+// now (its updatedAt as If-Match).
+func finPatchSupplier(s *stack, t tenant, projectID, supplierID int64, body map[string]any) reply {
+	s.t.Helper()
+	var version string
+	for _, m := range rows(s.mustOK("suppliers", s.do(t.token, "GET", s.projectsPath(projectID, "/suppliers"), nil)), "data") {
+		if m["id"] == float64(supplierID) {
+			version, _ = m["updatedAt"].(string)
+		}
+	}
+	if version == "" {
+		s.t.Fatalf("supplier %d not on project %d", supplierID, projectID)
+	}
+	return s.doWith(t.token, "PATCH", s.projectsPath(projectID, fmt.Sprintf("/suppliers/%d", supplierID)), body,
+		map[string]string{"If-Match": `"` + version + `"`})
+}
+
+// finScopedStaff signs in a staff member whose role holds finance.record and
+// finance.margin.view but reaches only the projects they hold.
+func finScopedStaff(s *stack, t tenant) (string, int64) {
+	s.t.Helper()
+	role := s.mustOK("scoped role", s.do(t.token, "POST", "/api/v1/access/roles", map[string]any{
+		"kind": "staff", "name": "Keuangan proyek " + t.marker, "description": "uji", "projectScope": "assigned",
+		"permissions": []string{"finance.record", "finance.margin.view"},
+	})).id("data", "id")
+	email := fmt.Sprintf("keuangan.proyek.%d@example.com", time.Now().UnixNano())
+	st := s.mustOK("scoped staff", s.do(t.token, "POST", "/api/v1/staff", map[string]any{
+		"name": "Keuangan proyek", "title": "Uji", "roleId": role, "email": email, "phone": "081234567890",
+	}))
+	sess := s.mustOK("scoped staff accepts", s.do("", "POST", "/api/v1/auth/links/"+str(st, "data", "invitation", "token")+"/google", map[string]any{
+		"credential": s.google.token(email, "Keuangan proyek", fmt.Sprintf("g-sub-fin-%d", time.Now().UnixNano())),
+	}))
+	id, _ := strconv.ParseInt(fmt.Sprint(sess.dig("data", "principalId")), 10, 64)
+	tok := str(sess, "data", "accessToken")
+	if tok == "" || id == 0 {
+		s.t.Fatalf("no session for the scoped finance staff: %s", sess)
+	}
+	return tok, id
+}

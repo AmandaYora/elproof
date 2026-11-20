@@ -44,5 +44,20 @@ export const useFinanceStore = create<FinanceState>((set) => ({
   },
   fetchReceivables: (params) => page<Receivable>(API.finance.receivables, params),
   fetchPayables: (params) => page<Payable>(API.finance.payables, params),
-  fetchVerifications: (params) => page<PendingVerification>(API.finance.verifications, params),
+  fetchVerifications: async (params) => {
+    const res = await page<PendingVerification>(API.finance.verifications, params);
+    // The supplier keys come as numbers (or null on a client payment row); everything else is keyed by string ids.
+    const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
+    return {
+      ...res,
+      rows: res.rows.map((r) => ({
+        ...r,
+        kind: r.kind ?? "clientPayment",
+        projectSupplierId: str(r.projectSupplierId),
+        supplierName: r.supplierName ?? null,
+        billTermId: str(r.billTermId),
+        billTermLabel: r.billTermLabel ?? null,
+      })),
+    };
+  },
 }));

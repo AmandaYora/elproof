@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useCan } from "@/shared/stores/usePermissionStore";
 import { Plus, Pencil, Trash2, Eye, BadgeCheck } from "lucide-react";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -9,8 +9,7 @@ import { CurrencyInput } from "@/shared/components/ui/CurrencyInput";
 import { RowActions } from "@/shared/components/ui/RowActions";
 import type { Column } from "@/shared/data-table/DataTable";
 import { FinanceSection, FinanceSummary, LedgerTable } from "@/modules/projects/components/detail/finance-ui";
-import { RecordPaymentDrawer } from "@/modules/projects/components/detail/RecordPaymentDrawer";
-import type { PaymentFormValues } from "@/modules/projects/schemas/payment.schema";
+import type { RecordPaymentValues } from "@/modules/projects/components/detail/RecordPaymentDrawer";
 import { deleteWithUndo } from "@/shared/lib/undo-delete";
 import { ConfirmDialog } from "@/shared/components/ui/ConfirmDialog";
 import { ProofStamp } from "@/shared/components/ui/ProofStamp";
@@ -38,6 +37,9 @@ import { formatCurrency, formatDate } from "@/shared/lib/formatters";
 // The proof viewer is only needed once someone opens a payment's proof.
 const EvidenceListModal = lazy(() => import("@/shared/components/ui/EvidenceListModal").then((m) => ({ default: m.EvidenceListModal })));
 
+// "Catat pembayaran" opens on a click: the drawer and its form load then.
+const RecordPaymentDrawer = lazy(() => import("@/modules/projects/components/detail/RecordPaymentDrawer").then((m) => ({ default: m.RecordPaymentDrawer })));
+
 export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const project = useProjectStore((s) => s.currentProject);
   const clientPayments = useProjectStore((s) => s.clientPayments);
@@ -60,9 +62,16 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
 
-  useEffect(() => {
-    void fetchClientPayments(projectId);
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  // A money screen never shows Rp0 received for a ledger it could not read: the totals wait, and a failure says so.
+  const load = useCallback(() => {
+    setStatus("loading");
+    fetchClientPayments(projectId).then(
+      () => setStatus("ready"),
+      () => setStatus("error"),
+    );
   }, [projectId, fetchClientPayments]);
+  useEffect(load, [load]);
 
   const contractValue = project?.contractValue ?? 0;
   // A couple's submission from the portal counts as received only once it is verified, the server's rule for the
@@ -91,7 +100,7 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
   }
 
   // Payment and proof are one request: if it fails nothing was saved and the drawer stays open (errors show inside it).
-  async function handleAddPayment(values: PaymentFormValues, options: SaveOptions) {
+  async function handleAddPayment(values: RecordPaymentValues, options: SaveOptions) {
     await createClientPayment(projectId, values, options);
     setModalOpen(false);
     toast.success("Pembayaran dicatat");
@@ -157,22 +166,24 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           )
         }
       >
-        <FinanceSummary
-          items={[
-            { label: "Nilai kontrak", value: formatCurrency(contractValue) },
-            {
-              label: "Total diterima",
-              value: formatCurrency(totalReceived),
-              note: pendingVerification > 0 ? `${formatCurrency(pendingVerification)} menunggu verifikasi` : undefined,
-              noteTone: "muted",
-            },
-            {
-              label: "Sisa tagihan",
-              value: formatCurrency(Math.max(totalRemaining, 0)),
-              note: totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : undefined,
-            },
-          ]}
-        />
+        {status === "ready" && (
+          <FinanceSummary
+            items={[
+              { label: "Nilai kontrak", value: formatCurrency(contractValue) },
+              {
+                label: "Total diterima",
+                value: formatCurrency(totalReceived),
+                note: pendingVerification > 0 ? `${formatCurrency(pendingVerification)} menunggu verifikasi` : undefined,
+                noteTone: "muted",
+              },
+              {
+                label: "Sisa tagihan",
+                value: formatCurrency(Math.max(totalRemaining, 0)),
+                note: totalRemaining < 0 ? `Lebih bayar ${formatCurrency(-totalRemaining)}` : undefined,
+              },
+            ]}
+          />
+        )}
         <LedgerTable
           label="Pembayaran dari klien"
           columns={columns}
@@ -183,6 +194,8 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
           totalPages={totalPages}
           totalItems={totalItems}
           onPageChange={setPage}
+          status={status}
+          onRetry={load}
           empty={{ title: "Belum ada pembayaran klien", description: "Catat setiap uang yang masuk dari klien beserta bukti transfernya, lalu verifikasi agar klien melihat tandanya." }}
           actions={(p) => (
             <RowActions
@@ -198,15 +211,19 @@ export function ClientPaymentsSection({ projectId }: { projectId: string }) {
         />
       </FinanceSection>
 
-      <RecordPaymentDrawer
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Catat pembayaran klien"
-        description="Catat pembayaran baru dari klien untuk proyek ini, beserta bukti transfernya."
-        slots={{ invoice: false }}
-        owed={() => ({ contractValue, existing: clientPayments, owedLabel: "sisa tagihan" })}
-        onSubmit={handleAddPayment}
-      />
+      {modalOpen && (
+        <Suspense fallback={null}>
+          <RecordPaymentDrawer
+            open
+            onClose={() => setModalOpen(false)}
+            title="Catat pembayaran klien"
+            description="Catat pembayaran baru dari klien untuk proyek ini, beserta bukti transfernya."
+            slots={{ invoice: false }}
+            owed={() => ({ contractValue, existing: clientPayments, owedLabel: "sisa tagihan" })}
+            onSubmit={handleAddPayment}
+          />
+        </Suspense>
+      )}
 
       {editingPayment && (
         <EditClientPaymentModal

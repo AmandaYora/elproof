@@ -14,14 +14,14 @@ import (
 
 // MySQLFinanceRepository backs the Keuangan page (/finance/*). Every query reads
 // only this module's tables: projects, client_payment_terms, client_payments,
-// project_vendors, vendor_payments, venue_payments and evidence. Lists are
+// project_suppliers, supplier_payments and evidence. Lists are
 // filtered, sorted and paged in SQL; the installment allocation is reproduced in
 // SQL with the rule of domain.AllocateTerms (payments spread over the schedule,
 // earliest due date first, then id), the way projectNextDueSQL already does for
 // the project list. The isolation suite checks the two agree.
 //
 // Indexes: every query starts at projects (tenant_id …) and reaches the child
-// rows by their project_id / project_vendor_id foreign-key indexes; the
+// rows by their project_id / project_supplier_id indexes; the
 // correlated sums are per project, bounded by one workspace. No new index.
 type MySQLFinanceRepository struct {
 	db *sql.DB
@@ -169,34 +169,27 @@ func (r *MySQLFinanceRepository) queryReceivables(ctx context.Context, q string,
 	return list, rows.Err()
 }
 
-// payableRowsSQL is one row per amount the WO owes: each live, not cancelled
-// vendor engagement with a price, and each project's venue with a cost (rental
-// price + charge), with what its own live payments applied (DP + Termin +
-// Pelunasan - Refund, never negative), the remaining amount and the status of
-// domain.PayableStatusOf (one placeholder: today).
+// payableRowsSQL is one row per supplier the WO owes: each live, not cancelled
+// vendor or venue the WO pays (one without an agreed cost is incomplete: cost
+// 0, nothing remaining, status 'incomplete'), with what its own live WO
+// payments applied (DP + Termin + Pelunasan - Refund, never negative), the
+// remaining amount and the status of domain.PayableStatusOf (one placeholder:
+// today). A supplier the client pays is never the WO's debt.
 func payableRowsSQL(scope domain.FinanceScope, today time.Time) (string, []interface{}) {
 	where, whereArgs := financeProjectWhere(scope)
-	vendorPart := `SELECT 'vendor' AS kind, pv.id AS item_id, pv.project_id, p.name AS project_name, p.bride_name, p.groom_name, p.pic_staff_id,
-			pv.vendor_id, pv.category_id, '' AS venue_name, CAST(pv.contract_value AS SIGNED) AS contract_value,
-			CAST(GREATEST(COALESCE((SELECT SUM(CASE WHEN vp.type IN ('DP','Termin','Pelunasan') THEN CAST(vp.amount AS SIGNED)
-					WHEN vp.type = 'Refund' THEN -CAST(vp.amount AS SIGNED) ELSE 0 END)
-				FROM vendor_payments vp WHERE vp.project_vendor_id = pv.id AND vp.deleted_at IS NULL), 0), 0) AS SIGNED) AS paid,
-			pv.due_date
-		FROM project_vendors pv JOIN projects p ON p.id = pv.project_id
-		WHERE ` + where + ` AND pv.deleted_at IS NULL AND pv.engagement_status <> 'Cancelled' AND pv.contract_value > 0`
-	venuePart := `SELECT 'venue', p.id, p.id, p.name, p.bride_name, p.groom_name, p.pic_staff_id,
-			0, 0, COALESCE(p.venue, ''), CAST(COALESCE(p.venue_rental_price, 0) + COALESCE(p.venue_charge, 0) AS SIGNED),
-			CAST(GREATEST(COALESCE((SELECT SUM(CASE WHEN vp.type IN ('DP','Termin','Pelunasan') THEN CAST(vp.amount AS SIGNED)
-					WHEN vp.type = 'Refund' THEN -CAST(vp.amount AS SIGNED) ELSE 0 END)
-				FROM venue_payments vp WHERE vp.project_id = p.id AND vp.deleted_at IS NULL), 0), 0) AS SIGNED),
-			NULL
-		FROM projects p
-		WHERE ` + where + ` AND p.venue_id IS NOT NULL AND COALESCE(p.venue_rental_price, 0) + COALESCE(p.venue_charge, 0) > 0`
-	rows := `SELECT u.*, GREATEST(u.contract_value - u.paid, 0) AS remaining,
-			CASE WHEN u.contract_value - u.paid <= 0 THEN 'paid' WHEN u.due_date IS NOT NULL AND u.due_date < ? THEN 'overdue' ELSE 'unpaid' END AS status
-		FROM (` + vendorPart + ` UNION ALL ` + venuePart + `) u`
+	inner := `SELECT s.supplier_kind AS kind, s.id AS item_id, s.project_id, p.name AS project_name, p.bride_name, p.groom_name, p.pic_staff_id,
+			s.supplier_id, IFNULL(s.category_id, 0) AS category_id, s.supplier_name, CAST(IFNULL(s.agreed_cost, 0) AS SIGNED) AS agreed_cost,
+			(s.agreed_cost IS NULL OR s.agreed_cost = 0) AS incomplete,
+			CAST(GREATEST(COALESCE((SELECT SUM(CASE WHEN sp.type IN ('DP','Termin','Pelunasan') THEN CAST(sp.amount AS SIGNED)
+					WHEN sp.type = 'Refund' THEN -CAST(sp.amount AS SIGNED) ELSE 0 END)
+				FROM supplier_payments sp WHERE sp.project_supplier_id = s.id AND sp.payer = 'WO' AND sp.deleted_at IS NULL), 0), 0) AS SIGNED) AS paid,
+			s.due_date
+		FROM project_suppliers s JOIN projects p ON p.id = s.project_id
+		WHERE ` + where + ` AND s.deleted_at IS NULL AND s.engagement_status <> 'Cancelled' AND s.paid_by = 'WO'`
+	rows := `SELECT u.*, GREATEST(u.agreed_cost - u.paid, 0) AS remaining,
+			CASE WHEN u.incomplete THEN 'incomplete' WHEN u.agreed_cost - u.paid <= 0 THEN 'paid' WHEN u.due_date IS NOT NULL AND u.due_date < ? THEN 'overdue' ELSE 'unpaid' END AS status
+		FROM (` + inner + `) u`
 	args := []interface{}{dayOf(today).Format(dateFmt)}
-	args = append(args, whereArgs...)
 	args = append(args, whereArgs...)
 	return rows, args
 }
@@ -211,14 +204,14 @@ func payableFilterWhere(f domain.PayableFilter) (string, []interface{}) {
 	switch f.Status {
 	case "":
 	case "open":
-		conds = append(conds, `z.remaining > 0`)
+		conds = append(conds, `(z.remaining > 0 OR z.incomplete)`)
 	default:
 		conds = append(conds, `z.status = ?`)
 		args = append(args, f.Status)
 	}
 	if f.Search != "" {
 		like := "%" + utils.EscapeLike(f.Search) + "%"
-		conds = append(conds, `(z.project_name LIKE ? OR z.bride_name LIKE ? OR z.groom_name LIKE ? OR z.venue_name LIKE ?)`)
+		conds = append(conds, `(z.project_name LIKE ? OR z.bride_name LIKE ? OR z.groom_name LIKE ? OR z.supplier_name LIKE ?)`)
 		args = append(args, like, like, like, like)
 	}
 	if f.PICStaffID != nil {
@@ -232,10 +225,10 @@ func payableFilterWhere(f domain.PayableFilter) (string, []interface{}) {
 }
 
 var payableSortColumns = map[string]pagination.SortColumn{
-	"dueDate":       pagination.NullableCol("z.due_date"),
-	"remaining":     pagination.Col("z.remaining"),
-	"contractValue": pagination.Col("z.contract_value"),
-	"projectName":   pagination.Col("z.project_name"),
+	"dueDate":     pagination.NullableCol("z.due_date"),
+	"remaining":   pagination.Col("z.remaining"),
+	"agreedCost":  pagination.Col("z.agreed_cost"),
+	"projectName": pagination.Col("z.project_name"),
 }
 
 // PayableSortSpec: most still owed first by default.
@@ -243,11 +236,11 @@ func (r *MySQLFinanceRepository) PayableSortSpec() (map[string]pagination.SortCo
 	return payableSortColumns, pagination.By("remaining", true)
 }
 
-const payableColumns = `z.kind, z.item_id, z.project_id, z.project_name, z.bride_name, z.groom_name, z.pic_staff_id, z.vendor_id, z.category_id, z.venue_name, z.contract_value, z.paid, z.due_date`
+const payableColumns = `z.kind, z.item_id, z.project_id, z.project_name, z.bride_name, z.groom_name, z.pic_staff_id, z.supplier_id, z.category_id, z.supplier_name, z.agreed_cost, z.paid, z.due_date, z.incomplete`
 
 func (r *MySQLFinanceRepository) OpenPayables(ctx context.Context, scope domain.FinanceScope) ([]domain.PayableRow, error) {
 	inner, args := payableRowsSQL(scope, clock.Now())
-	return r.queryPayables(ctx, `SELECT `+payableColumns+` FROM (`+inner+`) z WHERE z.remaining > 0 ORDER BY z.kind, z.item_id`, args)
+	return r.queryPayables(ctx, `SELECT `+payableColumns+` FROM (`+inner+`) z WHERE z.remaining > 0 OR z.incomplete ORDER BY z.item_id`, args)
 }
 
 func (r *MySQLFinanceRepository) ListPayables(ctx context.Context, scope domain.FinanceScope, today time.Time, f domain.PayableFilter, params pagination.Params, sort pagination.Sort) ([]domain.PayableRow, int64, error) {
@@ -259,8 +252,7 @@ func (r *MySQLFinanceRepository) ListPayables(ctx context.Context, scope domain.
 	if err := conn(ctx, r.db).QueryRowContext(ctx, `SELECT COUNT(*)`+from, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	// Vendor and venue ids are separate sequences: the kind keeps equal ids apart.
-	list, err := r.queryPayables(ctx, `SELECT `+payableColumns+from+sort.OrderBy("z.kind, z.item_id")+` LIMIT ? OFFSET ?`,
+	list, err := r.queryPayables(ctx, `SELECT `+payableColumns+from+sort.OrderBy("z.item_id")+` LIMIT ? OFFSET ?`,
 		append(args, params.Limit, params.Offset()))
 	return list, total, err
 }
@@ -277,10 +269,10 @@ func (r *MySQLFinanceRepository) queryPayables(ctx context.Context, q string, ar
 		var kind string
 		var due sql.NullTime
 		if err := rows.Scan(&kind, &row.ID, &row.ProjectID, &row.ProjectName, &row.BrideName, &row.GroomName, &row.PICStaffID,
-			&row.VendorID, &row.CategoryID, &row.VenueName, &row.ContractValue, &row.Paid, &due); err != nil {
+			&row.SupplierID, &row.CategoryID, &row.SupplierName, &row.AgreedCost, &row.Paid, &due, &row.Incomplete); err != nil {
 			return nil, err
 		}
-		row.Kind = domain.PayableKind(kind)
+		row.Kind = domain.SupplierKind(kind)
 		if due.Valid {
 			d := due.Time
 			row.DueDate = &d
@@ -313,27 +305,49 @@ func (r *MySQLFinanceRepository) ReceivedPayments(ctx context.Context, scope dom
 	return lines, rows.Err()
 }
 
-// pendingVerificationWhere: live client payments not verified yet that have at
-// least one proof file (only those can be verified, see ClientPaymentService.Verify).
+// pendingVerificationWhere is the verification queue as a derived table v:
+// live client payments not verified yet that have at least one proof file
+// (only those can be verified, see ClientPaymentService.Verify), and the
+// client's proofs to a vendor they pay directly that the WO has not checked
+// yet (supplier_payments with payer Client, Paket WO Tahap 4; filtered on the
+// payment's own payer and submission, never on the supplier's paid_by).
 func pendingVerificationWhere(scope domain.FinanceScope) (string, []interface{}) {
 	where, args := financeProjectWhere(scope)
-	return ` FROM client_payments cp JOIN projects p ON p.id = cp.project_id
+	return ` FROM (
+		SELECT 'clientPayment' AS kind, cp.id AS id, cp.project_id AS project_id, p.name AS project_name, p.bride_name AS bride_name,
+		       p.groom_name AS groom_name, cp.type AS type, cp.amount AS amount, cp.payment_date AS payment_date,
+		       COALESCE(cp.method, '') AS method, COALESCE(cp.reference_number, '') AS reference_number,
+		       COALESCE(cp.recorded_by_staff_id, 0) AS recorded_by, COALESCE(cp.submitted_by_client_id, 0) AS submitted_by,
+		       0 AS project_supplier_id, '' AS supplier_name, 0 AS bill_term_id, '' AS bill_term_label
+		FROM client_payments cp JOIN projects p ON p.id = cp.project_id
 		WHERE ` + where + ` AND cp.deleted_at IS NULL AND cp.verified_at IS NULL
-		  AND EXISTS (SELECT 1 FROM evidence e WHERE e.project_id = cp.project_id AND e.related_kind = 'clientPayment' AND e.related_id = cp.id)`, args
+		  AND EXISTS (SELECT 1 FROM evidence e WHERE e.project_id = cp.project_id AND e.related_kind = 'clientPayment' AND e.related_id = cp.id)
+		UNION ALL
+		SELECT 'supplierPayment', sp.id, sp.project_id, p.name, p.bride_name, p.groom_name, sp.type, sp.amount, sp.payment_date,
+		       COALESCE(sp.method, ''), COALESCE(sp.reference_number, ''), 0, COALESCE(sp.submitted_by_client_id, 0),
+		       sp.project_supplier_id, s.supplier_name, COALESCE(sp.bill_term_id, 0), COALESCE(bt.label, '')
+		FROM supplier_payments sp JOIN projects p ON p.id = sp.project_id
+		JOIN project_suppliers s ON s.id = sp.project_supplier_id AND s.deleted_at IS NULL
+		LEFT JOIN supplier_bill_terms bt ON bt.id = sp.bill_term_id AND bt.deleted_at IS NULL
+		WHERE ` + where + ` AND sp.payer = 'Client' AND sp.deleted_at IS NULL AND ` + domain.SupplierPaymentPendingSQL + `
+		  AND EXISTS (SELECT 1 FROM evidence e WHERE e.project_id = sp.project_id AND e.related_kind = 'supplierPayment' AND e.related_id = sp.id)
+	) v`, append(append([]interface{}{}, args...), args...)
 }
 
+// PendingVerification counts the queue. The amount is only money to the WO
+// (client payments): a client's payment to a vendor is never the WO's money.
 func (r *MySQLFinanceRepository) PendingVerification(ctx context.Context, scope domain.FinanceScope) (domain.MoneyCount, error) {
 	from, args := pendingVerificationWhere(scope)
 	var out domain.MoneyCount
 	err := conn(ctx, r.db).QueryRowContext(ctx,
-		`SELECT COUNT(*), CAST(COALESCE(SUM(cp.amount), 0) AS SIGNED), COUNT(DISTINCT cp.project_id)`+from, args...).
+		`SELECT COUNT(*), CAST(COALESCE(SUM(CASE WHEN v.kind = 'clientPayment' THEN v.amount ELSE 0 END), 0) AS SIGNED), COUNT(DISTINCT v.project_id)`+from, args...).
 		Scan(&out.Count, &out.Amount, &out.Projects)
 	return out, err
 }
 
 var verificationSortColumns = map[string]pagination.SortColumn{
-	"paymentDate": pagination.Col("cp.payment_date"),
-	"amount":      pagination.Col("cp.amount"),
+	"paymentDate": pagination.Col("v.payment_date"),
+	"amount":      pagination.Col("v.amount"),
 }
 
 // VerificationSortSpec: the payment waiting longest first.
@@ -348,9 +362,10 @@ func (r *MySQLFinanceRepository) ListVerifications(ctx context.Context, scope do
 		return nil, 0, err
 	}
 	rows, err := conn(ctx, r.db).QueryContext(ctx,
-		`SELECT cp.id, cp.project_id, p.name, p.bride_name, p.groom_name, cp.type, cp.amount, cp.payment_date,
-		        COALESCE(cp.method, ''), COALESCE(cp.reference_number, ''), COALESCE(cp.recorded_by_staff_id, 0), COALESCE(cp.submitted_by_client_id, 0)`+
-			from+sort.OrderBy("cp.id")+` LIMIT ? OFFSET ?`,
+		`SELECT v.kind, v.id, v.project_id, v.project_name, v.bride_name, v.groom_name, v.type, v.amount, v.payment_date,
+		        v.method, v.reference_number, v.recorded_by, v.submitted_by, v.project_supplier_id, v.supplier_name,
+		        v.bill_term_id, v.bill_term_label`+
+			from+sort.OrderBy("v.id")+`, v.kind LIMIT ? OFFSET ?`,
 		append(args, params.Limit, params.Offset())...)
 	if err != nil {
 		return nil, 0, err
@@ -360,8 +375,9 @@ func (r *MySQLFinanceRepository) ListVerifications(ctx context.Context, scope do
 	for rows.Next() {
 		var v domain.VerificationRow
 		var typ string
-		if err := rows.Scan(&v.PaymentID, &v.ProjectID, &v.ProjectName, &v.BrideName, &v.GroomName, &typ, &v.Amount, &v.PaymentDate,
-			&v.Method, &v.ReferenceNumber, &v.RecordedByID, &v.SubmittedByClientID); err != nil {
+		if err := rows.Scan(&v.Kind, &v.PaymentID, &v.ProjectID, &v.ProjectName, &v.BrideName, &v.GroomName, &typ, &v.Amount, &v.PaymentDate,
+			&v.Method, &v.ReferenceNumber, &v.RecordedByID, &v.SubmittedByClientID, &v.ProjectSupplierID, &v.SupplierName,
+			&v.BillTermID, &v.BillTermLabel); err != nil {
 			return nil, 0, err
 		}
 		v.Type = domain.PaymentType(typ)

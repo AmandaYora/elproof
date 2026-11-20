@@ -19,6 +19,7 @@ import type { ActivityLogEntry, ProjectProgress } from "@/modules/projects/types
 import { TERM_STATUS_LABELS } from "@/shared/lib/labels";
 import { formatCurrency, formatDate, formatDaysFromToday, formatEventOffset } from "@/shared/lib/formatters";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { SUPPLIER_FILTER_PARAM } from "@/modules/projects/components/suppliers/supplier-helpers";
 import type { ProjectDetailContext } from "@/modules/projects/pages/ProjectDetailLayout";
 
 // Opened from the two panels on the right; neither is needed until someone clicks.
@@ -59,14 +60,32 @@ export default function ProjectSummaryTabPage() {
   const overdue = finance.overdueTotal > 0;
   const total = (progress?.projectMilestoneStats.total ?? 0) + (progress?.vendorMilestoneStats.total ?? 0);
   const done = (progress?.projectMilestoneStats.completed ?? 0) + (progress?.vendorMilestoneStats.completed ?? 0);
+  // With the margin permission: vendors and venues the WO pays with no "Biaya rekanan" yet make the margin incomplete.
+  const missingCost = finance.margin !== undefined ? (finance.missingCost ?? 0) : 0;
 
   return (
     <div className="flex flex-col gap-5">
       <section aria-label="Angka utama" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard
           label="Nilai kontrak"
-          value={formatCurrency(finance.contractValue)}
-          sublabel={finance.margin !== undefined ? `Margin ${formatCurrency(finance.margin)}` : `Sudah dibayar ${formatCurrency(finance.paid)}`}
+          // The contract value is what the rincian comes to: none yet is said, not shown as Rp0.
+          value={finance.contractValue > 0 ? formatCurrency(finance.contractValue) : "Belum ada rincian"}
+          to={
+            finance.contractValue <= 0
+              ? ROUTE_PATHS.projectDetail(projectId, "acara-rincian")
+              : missingCost > 0
+                ? `${ROUTE_PATHS.projectDetail(projectId, "vendor")}?${SUPPLIER_FILTER_PARAM}=tanpa-biaya`
+                : undefined
+          }
+          sublabel={
+            finance.contractValue <= 0
+              ? "Susun rincian di Acara & rincian"
+              : missingCost > 0
+              ? `Margin belum lengkap (${missingCost} vendor)`
+              : finance.margin !== undefined
+                ? `Margin ${formatCurrency(finance.margin)}`
+                : `Sudah dibayar ${formatCurrency(finance.paid)}`
+          }
         />
         <StatCard
           label="Sisa tagihan"
@@ -214,7 +233,7 @@ function PanelLink({ to, children }: { to: string; children: ReactNode }) {
   );
 }
 
-/** The facts that used to fill the header: who, when booked, which package, the team, the notes. */
+/** The facts that used to fill the header: who, when booked, which package (from the rincian), the team, the notes. */
 function ProjectFacts() {
   const project = useProjectStore((s) => s.currentProject);
   const team = useProjectStore((s) => s.overview?.team);
@@ -228,8 +247,9 @@ function ProjectFacts() {
           <Fact label="Pasangan" value={couple || "-"} />
           <Fact label="Tanggal acara" value={formatDate(project.eventDate)} />
           <Fact label="Tanggal booking" value={formatDate(project.prepStartDate)} />
-          <Fact label="Paket" value={project.packageName || "-"} />
-          <Fact label="Venue" value={project.venue || "-"} />
+          <Fact label="Paket" value={project.packageNames.length > 0 ? project.packageNames.join(", ") : "Tanpa paket"} />
+          <Fact label="Acara" value={project.eventsLine || "-"} />
+          <Fact label="Lokasi" value={project.location || "Belum ada venue"} />
           <Fact label="PIC wedding planner" value={team?.picName || project.picName || "Belum ditugaskan"} />
           <Fact label="PIC sales" value={team?.picSalesName || "Belum ditugaskan"} />
         </dl>

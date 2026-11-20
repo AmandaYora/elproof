@@ -19,7 +19,8 @@ type FinanceRepository interface {
 	// ListReceivables is the paginated installment list, filtered and sorted in SQL.
 	ListReceivables(ctx context.Context, scope domain.FinanceScope, today time.Time, f domain.ReceivableFilter, params pagination.Params, sort pagination.Sort) ([]domain.ReceivableRow, int64, error)
 	ReceivableSortSpec() (map[string]pagination.SortColumn, pagination.Sort)
-	// OpenPayables returns every vendor engagement and venue with something left to pay.
+	// OpenPayables returns every vendor engagement and venue with something left to
+	// pay, and every WO-paid one without an agreed cost yet (Incomplete).
 	OpenPayables(ctx context.Context, scope domain.FinanceScope) ([]domain.PayableRow, error)
 	ListPayables(ctx context.Context, scope domain.FinanceScope, today time.Time, f domain.PayableFilter, params pagination.Params, sort pagination.Sort) ([]domain.PayableRow, int64, error)
 	PayableSortSpec() (map[string]pagination.SortColumn, pagination.Sort)

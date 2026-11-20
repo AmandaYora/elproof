@@ -4,11 +4,10 @@ import { httpClient, onProjectWrite } from "@/shared/services/http-client";
 import { API } from "@/shared/services/api-endpoints";
 import type { ProjectFormValues } from "@/modules/projects/schemas/project.schema";
 import type { ProjectMilestoneFormValues } from "@/modules/projects/schemas/project-milestone.schema";
-import type { ProjectVendorFormValues } from "@/modules/projects/schemas/project-vendor.schema";
+import { lineDraftBody, toRincian, type RawRincian, type SupplierFormValues } from "@/modules/rincian";
 import type { VendorMilestoneFormValues } from "@/modules/projects/schemas/vendor-milestone.schema";
-import type { PaymentFormValues, PaymentUpdateFormValues } from "@/modules/projects/schemas/payment.schema";
+import type { SupplierPaymentFormValues, SupplierPaymentUpdateFormValues } from "@/modules/projects/schemas/payment.schema";
 import type { ClientPaymentFormValues, ClientPaymentUpdateFormValues } from "@/modules/projects/schemas/client-payment.schema";
-import type { VenuePaymentFormValues, VenuePaymentUpdateFormValues } from "@/modules/projects/schemas/venue-payment.schema";
 import type { IssueFormValues } from "@/modules/projects/schemas/issue.schema";
 import type { CompressedFilePayload } from "@/shared/lib/image-compression";
 import { uploadFile } from "@/shared/lib/direct-upload";
@@ -32,21 +31,20 @@ import type {
   ProjectListItem,
   ProjectMilestone,
   ProjectProgress,
-  ProjectVendor,
-  ProjectVenueSummary,
+  ProjectEvent,
+  EventInput,
+  Rincian,
+  LineDraft,
+  ProjectSupplier,
+  SupplierPayment,
   VendorIssue,
   VendorMilestone,
-  VendorPayment,
-  VenuePayment,
 } from "@/modules/projects/types";
 import { toPaginationMeta, EMPTY_PAGINATION_META, type PaginationMeta, type RawPaginationMeta } from "@/shared/types/pagination";
 
-/** What a new project can carry besides its own fields: the venue it takes place at and the client's payment schedule. */
+/** What a new project carries besides its own fields: its events (at least one; the first is the main event). */
 export interface NewProjectExtras {
-  venueId?: string;
-  venueRentalPrice?: number;
-  venueCharge?: number;
-  terms?: PaymentTermInput[];
+  events: EventInput[];
 }
 
 /** Retrying the same save reuses the key, so the server replays the answer instead of recording the payment twice. */
@@ -127,13 +125,13 @@ export interface RawProject {
   brideName: string;
   groomName: string;
   eventDate: string;
-  venue: string;
-  venueId: number | null;
-  venueRentalPrice: number | null;
-  venueCharge: number | null;
   prepStartDate: string;
-  packageName: string;
+  packageNames?: string[] | null;
   contractValue: number;
+  contractSubtotal?: number;
+  contractTax?: number;
+  isPkp?: boolean;
+  linesVersion?: string;
   status: Project["status"];
   picStaffId: number;
   picSalesStaffId: number;
@@ -143,6 +141,9 @@ export interface RawProject {
   isArchived: boolean;
   progress?: RawProgress;
   coverUrl?: string | null;
+  location?: string;
+  eventsLine?: string;
+  quotation?: { id: number | string; number: string; revisionN: number } | null;
 }
 
 function toProgress(raw: RawProgress): ProjectProgress {
@@ -166,13 +167,13 @@ export function toProject(raw: RawProject): Project {
     brideName: raw.brideName,
     groomName: raw.groomName,
     eventDate: raw.eventDate,
-    venue: raw.venue,
-    venueId: raw.venueId !== null ? String(raw.venueId) : null,
-    venueRentalPrice: raw.venueRentalPrice,
-    venueCharge: raw.venueCharge,
     prepStartDate: raw.prepStartDate,
-    packageName: raw.packageName,
+    packageNames: raw.packageNames ?? [],
     contractValue: raw.contractValue,
+    contractSubtotal: raw.contractSubtotal ?? 0,
+    contractTax: raw.contractTax ?? 0,
+    isPkp: raw.isPkp ?? false,
+    linesVersion: raw.linesVersion ?? "",
     status: raw.status,
     picStaffId: raw.picStaffId ? String(raw.picStaffId) : "",
     picSalesStaffId: raw.picSalesStaffId ? String(raw.picSalesStaffId) : "",
@@ -182,6 +183,9 @@ export function toProject(raw: RawProject): Project {
     isArchived: raw.isArchived,
     progress: raw.progress ? toProgress(raw.progress) : undefined,
     coverUrl: raw.coverUrl ?? null,
+    location: raw.location ?? "",
+    eventsLine: raw.eventsLine ?? "",
+    quotation: raw.quotation ? { id: String(raw.quotation.id), number: raw.quotation.number, revisionN: raw.quotation.revisionN } : null,
   };
 }
 
@@ -195,16 +199,13 @@ function toProjectListItem(raw: RawProjectListItem): ProjectListItem {
   return { ...toProject(raw), remaining: raw.remaining ?? 0, nextDueDate: raw.nextDueDate ?? null };
 }
 
+/** The project's own fields as PATCH and duplicate take them (the date only matters to duplicate). */
 function projectInputBody(values: ProjectFormValues) {
   return {
     name: values.name,
     brideName: values.brideName,
     groomName: values.groomName,
-    eventDate: values.eventDate,
-    venue: values.venue,
     prepStartDate: values.prepStartDate,
-    packageName: values.packageName,
-    contractValue: values.contractValue,
     status: values.status,
     // "" (belum ditugaskan) -> 0, the backend's sentinel for both PIC slots.
     picStaffId: values.picStaffId ? Number(values.picStaffId) : 0,
@@ -213,32 +214,92 @@ function projectInputBody(values: ProjectFormValues) {
   };
 }
 
-interface RawProjectVenueSummary {
+interface RawEventSession {
   id: number;
-  name: string;
-  address: string | null;
-  city: string | null;
-  capacity: number | null;
-  facilities: string | null;
-  socialMedia: string | null;
-  hasVisibleAttachment: boolean;
+  label: string;
+  startTime: string | null;
+  endTime: string | null;
+  guests: number;
 }
 
-function toProjectVenueSummary(raw: RawProjectVenueSummary): ProjectVenueSummary {
+interface RawEvent {
+  updatedAt?: string;
+  id: number;
+  eventKindId: number;
+  kindName: string;
+  eventDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  venue: {
+    supplierId?: number;
+    venueId?: number;
+    name: string;
+    capacityStanding?: number | null;
+    capacitySeated?: number | null;
+    address: string | null;
+    city: string | null;
+  } | null;
+  layout: ProjectEvent["layout"];
+  isMain: boolean;
+  order: number;
+  sessions: RawEventSession[] | null;
+  totalGuests: number;
+}
+
+export function toEvent(raw: RawEvent): ProjectEvent {
   return {
-    id: String(raw.id), name: raw.name, address: raw.address, city: raw.city, capacity: raw.capacity,
-    facilities: raw.facilities, socialMedia: raw.socialMedia, hasVisibleAttachment: raw.hasVisibleAttachment,
+    updatedAt: raw.updatedAt ?? "",
+    id: String(raw.id),
+    eventKindId: String(raw.eventKindId),
+    kindName: raw.kindName,
+    eventDate: raw.eventDate,
+    startTime: raw.startTime,
+    endTime: raw.endTime,
+    venue: raw.venue
+      ? {
+          supplierId: raw.venue.supplierId ? String(raw.venue.supplierId) : "",
+          venueId: raw.venue.venueId ? String(raw.venue.venueId) : "",
+          name: raw.venue.name,
+          capacityStanding: raw.venue.capacityStanding ?? null,
+          capacitySeated: raw.venue.capacitySeated ?? null,
+          address: raw.venue.address,
+          city: raw.venue.city,
+        }
+      : null,
+    layout: raw.layout,
+    isMain: raw.isMain,
+    order: raw.order,
+    sessions: (raw.sessions ?? []).map((x) => ({ id: String(x.id), label: x.label, startTime: x.startTime, endTime: x.endTime, guests: x.guests })),
+    totalGuests: raw.totalGuests,
   };
 }
 
-interface RawEvidenceRef {
+/** An event as the API takes it: the whole event and its sessions. */
+export function eventInputBody(e: EventInput) {
+  return {
+    eventKindId: Number(e.eventKindId),
+    eventDate: e.eventDate,
+    startTime: e.startTime || null,
+    endTime: e.endTime || null,
+    venueId: e.venueId ? Number(e.venueId) : null,
+    layout: e.layout,
+    sessions: e.sessions.map((x) => ({ label: x.label, startTime: x.startTime || null, endTime: x.endTime || null, guests: x.guests })),
+  };
+}
+
+/** What an event write answers next to the event's own keys: the project's date, which the main event carries. */
+interface EventWriteResult {
+  projectEventDate?: string;
+}
+
+export interface RawEvidenceRef {
   id: number;
   type: EvidenceRef["type"];
   fileName: string;
   uploadedAt: string;
 }
 
-function toEvidenceRefs(raw: RawEvidenceRef[] | null | undefined): EvidenceRef[] {
+export function toEvidenceRefs(raw: RawEvidenceRef[] | null | undefined): EvidenceRef[] {
   return (raw ?? []).map((e) => ({ id: String(e.id), type: e.type, fileName: e.fileName, uploadedAt: e.uploadedAt }));
 }
 
@@ -280,78 +341,74 @@ export interface ProjectMilestoneUpdateFields {
   forClient: boolean;
 }
 
-interface RawProjectVendor {
-  /** The version for `If-Match` (ADR-0036). */
+interface RawSupplier {
   updatedAt?: string;
   id: number;
-  vendorId: number;
+  kind: ProjectSupplier["kind"];
+  supplierId?: number;
+  name: string;
   categoryId: number;
-  scope: string;
-  contractValue: number;
-  pricingTier: ProjectVendor["pricingTier"];
-  engagementStatus: ProjectVendor["engagementStatus"];
+  categoryName: string;
+  paidBy: ProjectSupplier["paidBy"];
+  showName: boolean;
+  capacityStanding?: number | null;
+  capacitySeated?: number | null;
+  agreedCost: number | null;
+  paidWo: number | null;
+  paidClient: number | null;
+  engagementStatus: ProjectSupplier["engagementStatus"];
   bookingDate: string | null;
-  eventDate: string;
-  eventStartTime: string | null;
-  eventEndTime: string | null;
-  dpAmount: number;
-  paidAmount: number;
   dueDate: string | null;
   picStaffId: number;
-  notes: string;
-  vendorName?: string;
-  categoryName?: string;
   picName?: string;
+  scope: string;
+  notes: string;
+  paidByLocked?: string;
+  usedByEvents?: number;
   evidenceCount?: number;
-  // Only populated by GET .../vendors (listVendorEngagements) — see
-  // fetchVendorSection, which reads this instead of issuing its own
-  // per-engagement GET .../milestones request.
-  milestones?: RawVendorMilestone[];
+  milestones?: RawVendorMilestone[] | null;
 }
 
-function toProjectVendor(raw: RawProjectVendor): ProjectVendor {
+function toSupplier(raw: RawSupplier): ProjectSupplier {
   return {
     updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
-    vendorId: String(raw.vendorId),
+    kind: raw.kind,
+    supplierId: raw.supplierId ? String(raw.supplierId) : "",
+    name: raw.name,
     categoryId: String(raw.categoryId),
-    scope: raw.scope,
-    contractValue: raw.contractValue,
-    pricingTier: raw.pricingTier,
+    categoryName: raw.categoryName,
+    paidBy: raw.paidBy,
+    showName: raw.showName,
+    capacityStanding: raw.capacityStanding ?? null,
+    capacitySeated: raw.capacitySeated ?? null,
+    agreedCost: raw.agreedCost ?? null,
+    paidWo: raw.paidWo ?? null,
+    paidClient: raw.paidClient ?? null,
     engagementStatus: raw.engagementStatus,
     bookingDate: raw.bookingDate,
-    eventDate: raw.eventDate,
-    eventStartTime: raw.eventStartTime,
-    eventEndTime: raw.eventEndTime,
-    dpAmount: raw.dpAmount,
-    paidAmount: raw.paidAmount,
     dueDate: raw.dueDate,
-    picStaffId: String(raw.picStaffId),
-    notes: raw.notes,
-    vendorName: raw.vendorName ?? "",
-    categoryName: raw.categoryName ?? "",
+    picStaffId: raw.picStaffId ? String(raw.picStaffId) : "",
     picName: raw.picName ?? "",
+    scope: raw.scope,
+    notes: raw.notes,
+    paidByLocked: raw.paidByLocked ?? "",
+    usedByEvents: raw.usedByEvents ?? 0,
     evidenceCount: raw.evidenceCount ?? 0,
   };
 }
 
-function vendorEngagementInputBody(values: ProjectVendorFormValues) {
+/** The money and status fields of a supplier form; the agreed cost only when the caller may see it. */
+function supplierBody(values: SupplierFormValues, withCost: boolean) {
   return {
-    vendorId: Number(values.vendorId),
-    // categoryId/eventDate are not part of the form — callers below fill
-    // these in from the vendor's own category and the project's event date.
-    categoryId: 0,
-    scope: values.scope,
-    contractValue: values.contractValue,
-    pricingTier: values.pricingTier,
+    paidBy: values.paidBy,
+    showName: values.paidBy === "WO" ? values.showName : true,
+    ...(withCost && { agreedCost: values.paidBy === "WO" && values.agreedCost !== "" ? Number(values.agreedCost) : null }),
     engagementStatus: values.engagementStatus,
-    bookingDate: values.bookingDate || "",
-    eventDate: "",
-    eventStartTime: values.eventStartTime || null,
-    eventEndTime: values.eventEndTime || null,
-    dpAmount: values.dpAmount,
-    dueDate: values.dueDate || "",
+    bookingDate: values.bookingDate || null,
+    dueDate: values.dueDate || null,
     picStaffId: Number(values.picStaffId),
+    scope: values.scope,
     notes: values.notes,
   };
 }
@@ -371,11 +428,11 @@ interface RawVendorMilestone {
   evidence?: RawEvidenceRef[] | null;
 }
 
-function toVendorMilestone(raw: RawVendorMilestone, projectVendorId: string): VendorMilestone {
+function toVendorMilestone(raw: RawVendorMilestone, projectSupplierId: string): VendorMilestone {
   return {
     updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
-    projectVendorId,
+    projectSupplierId,
     order: raw.order,
     name: raw.name,
     description: raw.description,
@@ -397,34 +454,52 @@ export interface VendorMilestoneUpdateFields {
   notes: string;
 }
 
-interface RawPayment {
-  /** The version for `If-Match` (ADR-0036). */
+export interface RawSupplierPayment {
   updatedAt?: string;
   id: number;
-  projectVendorId: number;
-  type: VendorPayment["type"];
+  projectSupplierId: number;
+  payer: SupplierPayment["payer"];
+  type: SupplierPayment["type"];
   amount: number;
   paymentDate: string;
   method: string;
   referenceNumber: string;
-  notes: string;
+  /** The portal never gets it. */
+  notes?: string;
   evidenceComplete: boolean;
   evidence?: RawEvidenceRef[] | null;
+  billTermId?: number | null;
+  source?: SupplierPayment["source"];
+  status?: SupplierPayment["status"];
+  verifiedAt?: string | null;
+  verifiedBy?: { name: string } | null;
+  rejectedAt?: string | null;
+  rejectedBy?: { name: string } | null;
+  rejectionReason?: string | null;
 }
 
-function toPayment(raw: RawPayment): VendorPayment {
+export function toSupplierPayment(raw: RawSupplierPayment): SupplierPayment {
   return {
     updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
-    projectVendorId: String(raw.projectVendorId),
+    projectSupplierId: String(raw.projectSupplierId),
+    payer: raw.payer,
     type: raw.type,
     amount: raw.amount,
     paymentDate: raw.paymentDate,
     method: raw.method,
     referenceNumber: raw.referenceNumber,
-    notes: raw.notes,
+    notes: raw.notes ?? "",
     evidenceComplete: raw.evidenceComplete,
     evidence: toEvidenceRefs(raw.evidence),
+    billTermId: raw.billTermId != null ? String(raw.billTermId) : null,
+    source: raw.source ?? "staff",
+    status: raw.status ?? "recorded",
+    verifiedAt: raw.verifiedAt ?? null,
+    verifiedBy: raw.verifiedBy?.name ?? null,
+    rejectedAt: raw.rejectedAt ?? null,
+    rejectedBy: raw.rejectedBy?.name ?? null,
+    rejectionReason: raw.rejectionReason ?? "",
   };
 }
 
@@ -465,40 +540,11 @@ function toClientPayment(raw: RawClientPayment): ClientPayment {
   };
 }
 
-interface RawVenuePayment {
-  /** The version for `If-Match` (ADR-0036). */
-  updatedAt?: string;
-  id: number;
-  type: VenuePayment["type"];
-  amount: number;
-  paymentDate: string;
-  method: string;
-  referenceNumber: string;
-  notes: string;
-  evidenceComplete: boolean;
-  evidence?: RawEvidenceRef[] | null;
-}
-
-function toVenuePayment(raw: RawVenuePayment): VenuePayment {
-  return {
-    updatedAt: raw.updatedAt ?? "",
-    id: String(raw.id),
-    type: raw.type,
-    amount: raw.amount,
-    paymentDate: raw.paymentDate,
-    method: raw.method,
-    referenceNumber: raw.referenceNumber,
-    notes: raw.notes,
-    evidenceComplete: raw.evidenceComplete,
-    evidence: toEvidenceRefs(raw.evidence),
-  };
-}
-
 interface RawIssue {
   /** The version for `If-Match` (ADR-0036). */
   updatedAt?: string;
   id: number;
-  projectVendorId: number | null;
+  projectSupplierId: number | null;
   vendorMilestoneId: number | null;
   title: string;
   description: string;
@@ -510,7 +556,7 @@ interface RawIssue {
   targetResolutionDate: string | null;
   resolvedDate: string | null;
   resolutionNotes: string;
-  vendorName?: string;
+  supplierName?: string;
   vendorMilestoneName?: string;
   picName?: string;
   isClientVisible?: boolean;
@@ -525,7 +571,7 @@ interface RawOverview {
   };
   actions: OverviewAction[] | null;
   nextMilestones: Array<Omit<ProjectOverview["nextMilestones"][number], "id"> & { id: number }> | null;
-  unconfirmedVendors: Array<Omit<ProjectOverview["unconfirmedVendors"][number], "id"> & { id: number }> | null;
+  unconfirmedSuppliers: Array<Omit<ProjectOverview["unconfirmedSuppliers"][number], "id"> & { id: number }> | null;
   openIssueCount: number;
   team: { picStaffId: number; picName: string; picSalesStaffId: number; picSalesName: string };
   clients: Array<Omit<ProjectOverview["clients"][number], "id"> & { id: number }> | null;
@@ -539,7 +585,7 @@ function toIssue(raw: RawIssue): VendorIssue {
   return {
     updatedAt: raw.updatedAt ?? "",
     id: String(raw.id),
-    projectVendorId: raw.projectVendorId ? String(raw.projectVendorId) : "",
+    projectSupplierId: raw.projectSupplierId ? String(raw.projectSupplierId) : "",
     vendorMilestoneId: raw.vendorMilestoneId !== null ? String(raw.vendorMilestoneId) : null,
     title: raw.title,
     description: raw.description,
@@ -551,7 +597,7 @@ function toIssue(raw: RawIssue): VendorIssue {
     targetResolutionDate: raw.targetResolutionDate,
     resolvedDate: raw.resolvedDate,
     resolutionNotes: raw.resolutionNotes,
-    vendorName: raw.vendorName ?? "",
+    supplierName: raw.supplierName ?? "",
     vendorMilestoneName: raw.vendorMilestoneName ?? "",
     picName: raw.picName ?? "",
     isClientVisible: raw.isClientVisible ?? true,
@@ -565,7 +611,7 @@ function toIssue(raw: RawIssue): VendorIssue {
 // toMilestoneUpdateFields's role for vendor milestones.
 export function toIssueUpdateFields(issue: VendorIssue): IssueFormValues {
   return {
-    projectVendorId: issue.projectVendorId,
+    projectSupplierId: issue.projectSupplierId,
     vendorMilestoneId: issue.vendorMilestoneId ?? "",
     title: issue.title,
     description: issue.description,
@@ -659,11 +705,13 @@ interface ProjectState {
   currentProject: Project | null;
   overview: ProjectOverview | null;
   milestones: ProjectMilestone[];
-  vendorEngagements: ProjectVendor[];
+  events: ProjectEvent[];
+  /** The project the loaded events belong to (null until they have loaded). */
+  eventsFor: string | null;
+  suppliers: ProjectSupplier[];
   vendorMilestones: VendorMilestone[];
-  payments: VendorPayment[];
+  supplierPayments: SupplierPayment[];
   clientPayments: ClientPayment[];
-  venuePayments: VenuePayment[];
   issues: VendorIssue[];
   evidence: Evidence[];
   // documents is Client Portal's own "Dokumen" tab feed — always only
@@ -689,29 +737,12 @@ interface ProjectState {
   /** The first 100 projects by name as {id, name}: a small picker for filters on other lists. Not cached in the store. */
   fetchProjectOptions: () => Promise<{ id: string; name: string }[]>;
   /**
-   * One call creates the project together with its venue and payment schedule (PLAN.md E7): all or nothing, every
-   * problem reported at once. Retrying with the same Idempotency-Key returns the project the first try made.
+   * One call creates the project together with its events and the venues they bring in (PLAN.md E7): all or nothing,
+   * every problem reported at once. Retrying with the same Idempotency-Key returns the project the first try made.
    */
-  createProject: (values: ProjectFormValues, extra?: NewProjectExtras, options?: SaveOptions) => Promise<Project>;
+  createProject: (values: ProjectFormValues, extra: NewProjectExtras, options?: SaveOptions) => Promise<Project>;
   /** `version` is the `updatedAt` the form was opened with; the API refuses the save (409) when the project changed since. */
   updateProject: (id: string, values: ProjectFormValues, version?: string) => Promise<Project>;
-  // Attaches/detaches this project's structured venue (ADR-0016) — pass
-  // null to detach. Sends a full-replace PATCH body sourced from the
-  // already-loaded currentProject (same wire shape as updateProject), since
-  // the backend's Update endpoint doesn't support a true partial patch.
-  // rentalPrice/charge are the per-project cost snapshot (PLAN.md
-  // "Financial Calculation Correctness") -- omitted/ignored on detach
-  // (venueId: null), since the backend force-clears them regardless.
-  setProjectVenue: (
-    id: string,
-    venueId: string | null,
-    rentalPrice?: number | null,
-    charge?: number | null
-  ) => Promise<Project>;
-  // Public-safe summary (ADR-0016) — not cached in store state, same
-  // "return directly, don't stash" convention as fetchVendorProjectHistory,
-  // since it's only ever needed by whichever single tab is currently open.
-  fetchProjectVenueSummary: (id: string) => Promise<ProjectVenueSummary | null>;
   cancelProject: (id: string) => Promise<void>;
   // One explicit step of the project's life (Draf → Persiapan → Siap →
   // Selesai, or reopen). The API refuses a step that does not fit the
@@ -727,6 +758,18 @@ interface ProjectState {
   savePaymentTerms: (projectId: string, terms: PaymentTermInput[]) => Promise<void>;
   /** Fits the schedule to the current contract value: paid installments stay, unpaid ones share the rest (EP-05). */
   recalculatePaymentTerms: (projectId: string) => Promise<void>;
+
+  /** The rincian of `rincianFor` (Tahap 3): its lines, totals, margin and how the schedule stands against it. */
+  rincian: Rincian | null;
+  rincianFor: string | null;
+  fetchRincian: (projectId: string) => Promise<Rincian>;
+  /**
+   * Saves the whole rincian as the editor holds it (PUT, If-Match = linesVersion). A stale version is left to the
+   * editor (409 with data.current), which keeps the person's edits instead of the global conflict dialog.
+   */
+  saveRincian: (projectId: string, lines: LineDraft[], version: string) => Promise<Rincian>;
+  /** What the drafts would come to, computed by the server; writes nothing. */
+  previewRincian: (projectId: string, lines: LineDraft[], signal?: AbortSignal) => Promise<Rincian>;
   /** Sets the archive state explicitly (ADR-0036): repeating it, or two people doing it, cannot undo it. */
   setProjectArchived: (id: string, isArchived: boolean) => Promise<void>;
   // Hard delete (ADR-0013) — Owner-only and requires the project already be
@@ -758,31 +801,41 @@ interface ProjectState {
   updateMilestone: (projectId: string, milestoneId: string, fields: ProjectMilestoneUpdateFields, version?: string) => Promise<void>;
   reorderMilestones: (projectId: string, orderedIds: string[]) => Promise<void>;
 
-  fetchVendorSection: (projectId: string) => Promise<void>;
-  createVendorEngagement: (projectId: string, values: ProjectVendorFormValues) => Promise<void>;
-  updateVendorEngagement: (projectId: string, pvId: string, values: ProjectVendorFormValues, version?: string) => Promise<void>;
-  cancelVendorEngagement: (projectId: string, pvId: string) => Promise<void>;
-  createVendorMilestone: (projectId: string, pvId: string, values: VendorMilestoneFormValues) => Promise<void>;
+  fetchEvents: (projectId: string) => Promise<void>;
+  /** Each event write may move the project's date (the main event's) and bring a venue into Vendor & venue. */
+  createEvent: (projectId: string, input: EventInput) => Promise<ProjectEvent>;
+  /** Replaces the event and its sessions; `version` is the event's `updatedAt` the drawer opened with (409 when it changed). */
+  updateEvent: (projectId: string, eventId: string, input: EventInput, version: string) => Promise<ProjectEvent>;
+  deleteEvent: (projectId: string, eventId: string) => Promise<void>;
+  setMainEvent: (projectId: string, eventId: string) => Promise<void>;
+  moveEvent: (projectId: string, eventId: string, direction: "up" | "down") => Promise<void>;
+  duplicateEvent: (projectId: string, eventId: string) => Promise<void>;
+
+  /** Vendor & venue with every step, one call. */
+  fetchSuppliers: (projectId: string) => Promise<void>;
+  /** Adds a directory vendor (a venue comes in through an event). `withCost`: the caller may send "Biaya rekanan". */
+  createSupplier: (projectId: string, values: SupplierFormValues, withCost: boolean) => Promise<void>;
+  /** Sends only what changed against `before` (ADR-0036): another person's edit to another field is kept. */
+  updateSupplier: (projectId: string, before: ProjectSupplier, values: SupplierFormValues, withCost: boolean) => Promise<void>;
+  /** Removes it at once and returns the function that restores it (the server keeps it 24 h). */
+  deleteSupplier: (projectId: string, supplierId: string) => Promise<() => Promise<void>>;
+  /** A venue: copies the directory's current capacities onto this project. */
+  refreshSupplierCapacity: (projectId: string, supplierId: string) => Promise<void>;
+  createVendorMilestone: (projectId: string, supplierId: string, values: VendorMilestoneFormValues) => Promise<void>;
   updateVendorMilestone: (
     projectId: string,
-    pvId: string,
+    supplierId: string,
     milestoneId: string,
     fields: Partial<VendorMilestoneUpdateFields>,
     version?: string
   ) => Promise<void>;
 
-  fetchPayments: (projectId: string) => Promise<void>;
-  createPayment: (projectId: string, values: PaymentFormValues, options?: SaveOptions) => Promise<void>;
-  // Edit scope is the ledger fields only (Type/Amount/PaymentDate/Method/
-  // ReferenceNumber/Notes) — no file re-upload, no re-parenting to a
-  // different vendor engagement (PLAN.md §2.5). Both also refetch
-  // `fetchVendorSection` alongside `fetchPayments` — PLAN.md §2.7's fix for
-  // the pre-existing `pv.paidAmount` staleness bug (that cached field lives
-  // on a sibling array populated only by fetchVendorSection, not derived
-  // from `payments` itself).
-  updatePayment: (projectId: string, paymentId: string, values: PaymentUpdateFormValues, version?: string) => Promise<void>;
+  /** Payments to vendors and venues the caller may see (the WO's need finance.margin.view). */
+  fetchSupplierPayments: (projectId: string) => Promise<void>;
+  createSupplierPayment: (projectId: string, values: SupplierPaymentFormValues, options?: SaveOptions) => Promise<void>;
+  updateSupplierPayment: (projectId: string, paymentId: string, values: SupplierPaymentUpdateFormValues, version?: string) => Promise<void>;
   /** Removes it at once and returns the function that restores it (the server keeps it 24 h). */
-  deletePayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
+  deleteSupplierPayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
 
   fetchClientPayments: (projectId: string) => Promise<void>;
   // Orchestrates POST .../client-payments then, only if values.proofFile is
@@ -795,13 +848,6 @@ interface ProjectState {
   deleteClientPayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
   /** The WO confirms the money arrived (E4). Needs a proof file; the client then sees the stamp. */
   verifyClientPayment: (projectId: string, paymentId: string) => Promise<void>;
-
-  fetchVenuePayments: (projectId: string) => Promise<void>;
-  // Same two-slot evidence orchestration as createPayment (vendor's own),
-  // just against .../venue-payments and relatedKind "venuePayment".
-  createVenuePayment: (projectId: string, values: VenuePaymentFormValues, options?: SaveOptions) => Promise<void>;
-  updateVenuePayment: (projectId: string, paymentId: string, values: VenuePaymentUpdateFormValues, version?: string) => Promise<void>;
-  deleteVenuePayment: (projectId: string, paymentId: string) => Promise<() => Promise<void>>;
 
   fetchIssues: (projectId: string) => Promise<void>;
   createIssue: (projectId: string, values: IssueFormValues) => Promise<void>;
@@ -836,7 +882,7 @@ async function loadOverview(projectId: string): Promise<Pick<ProjectState, "curr
       finance: { ...finance, nextTerm: finance.nextTerm ? { ...finance.nextTerm, id: String(finance.nextTerm.id) } : null, terms },
       actions: raw.actions ?? [],
       nextMilestones: (raw.nextMilestones ?? []).map((m) => ({ ...m, id: String(m.id) })),
-      unconfirmedVendors: (raw.unconfirmedVendors ?? []).map((v) => ({ ...v, id: String(v.id) })),
+      unconfirmedSuppliers: (raw.unconfirmedSuppliers ?? []).map((v) => ({ ...v, id: String(v.id) })),
       openIssueCount: raw.openIssueCount,
       team: {
         picStaffId: raw.team.picStaffId ? String(raw.team.picStaffId) : "",
@@ -855,19 +901,40 @@ async function loadOverview(projectId: string): Promise<Pick<ProjectState, "curr
 // after the last write of a burst; the progress that came back with the write is applied at once.
 let overviewTimer: ReturnType<typeof setTimeout> | undefined;
 
+/**
+ * After an event write: the list is reloaded (order, main event and sessions may all have moved), the project's date
+ * follows the main event, and Vendor & venue is reloaded when it is on screen (a chosen venue joins it at once).
+ */
+async function afterEventWrite(projectId: string, data: EventWriteResult | null | undefined): Promise<void> {
+  const store = useProjectStore.getState();
+  const date = data?.projectEventDate;
+  if (date && store.currentProject?.id === projectId && store.currentProject.eventDate !== date) {
+    useProjectStore.setState({ currentProject: { ...store.currentProject, eventDate: date } });
+  }
+  await Promise.all([
+    store.fetchEvents(projectId),
+    // Guests drive "Tambahan tamu": the rincian on screen is read again.
+    store.rincianFor === projectId ? store.fetchRincian(projectId).catch(() => undefined) : undefined,
+    store.suppliers.length > 0 || store.eventsFor === projectId ? store.fetchSuppliers(projectId).catch(() => undefined) : undefined,
+  ]);
+}
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   currentProject: null,
   overview: null,
   milestones: [],
-  vendorEngagements: [],
+  events: [],
+  eventsFor: null,
+  suppliers: [],
   vendorMilestones: [],
-  payments: [],
+  supplierPayments: [],
   clientPayments: [],
-  venuePayments: [],
   issues: [],
   paymentTerms: [],
   paymentTermsFor: null,
+  rincian: null,
+  rincianFor: null,
   evidence: [],
   documents: [],
   activity: [],
@@ -895,13 +962,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   createProject: async (values, extra, options) => {
-    const body: Record<string, unknown> = projectInputBody(values);
-    if (extra?.venueId) {
-      body.venueId = Number(extra.venueId);
-      body.venueRentalPrice = extra.venueRentalPrice;
-      body.venueCharge = extra.venueCharge;
-    }
-    if (extra?.terms && extra.terms.length > 0) body.terms = extra.terms;
+    const { eventDate: _eventDate, ...own } = projectInputBody(values) as ReturnType<typeof projectInputBody> & { eventDate?: string };
+    const body = { ...own, events: extra.events.map(eventInputBody) };
     const res = await httpClient.post(API.projects.base, body, {
       headers: options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : undefined,
     });
@@ -926,36 +988,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return project;
   },
 
-  setProjectVenue: async (id, venueId, rentalPrice, charge) => {
-    const current = get().currentProject;
-    if (!current || current.id !== id) {
-      throw new Error("Proyek belum dimuat");
-    }
-    // Only the venue changes: nothing else of the project is sent (ADR-0036). 0 is never a real venue id; the backend reads it
-    // as "detach" (ADR-0016) and clears both prices itself.
-    const res = await httpClient.patch(
-      API.projects.item(id),
-      {
-        venueId: venueId !== null ? Number(venueId) : 0,
-        venueRentalPrice: venueId !== null ? rentalPrice ?? null : null,
-        venueCharge: venueId !== null ? charge ?? null : null,
-      },
-      { headers: ifMatch(current.updatedAt) },
-    );
-    const project = toProject(res.data.data as RawProject);
-    set((state) => ({
-      projects: state.projects.map((p) => (p.id === id ? project : p)),
-      currentProject: state.currentProject?.id === id ? { ...project, progress: state.currentProject.progress } : state.currentProject,
-    }));
-    return project;
-  },
-
-  fetchProjectVenueSummary: async (id) => {
-    const res = await httpClient.get(API.projects.venue(id));
-    if (!res.data.data) return null;
-    return toProjectVenueSummary(res.data.data as RawProjectVenueSummary);
-  },
-
   transitionProject: async (id, action) => {
     const res = await httpClient.post(API.projects.transition(id), { action });
     const project = toProject(res.data.data as RawProject);
@@ -978,6 +1010,38 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   recalculatePaymentTerms: async (projectId) => {
     const res = await httpClient.post(API.projects.paymentTermsRecalculate(projectId));
     set({ paymentTerms: toPaymentTerms(res.data.data), paymentTermsFor: projectId });
+    // The schedule now adds up to the contract: the rincian's termsMismatch is read again.
+    if (get().rincianFor === projectId) await get().fetchRincian(projectId).catch(() => undefined);
+  },
+
+  fetchRincian: async (projectId) => {
+    const res = await httpClient.get(API.projects.lines(projectId));
+    const rincian = toRincian(res.data.data as RawRincian);
+    set({ rincian, rincianFor: projectId });
+    return rincian;
+  },
+
+  saveRincian: async (projectId, lines, version) => {
+    const res = await httpClient.put(
+      API.projects.lines(projectId),
+      { lines: lines.map(lineDraftBody) },
+      { headers: ifMatch(version), ownConflict: true },
+    );
+    const rincian = toRincian(res.data.data as RawRincian);
+    set((state) => ({
+      rincian,
+      rincianFor: projectId,
+      currentProject:
+        state.currentProject?.id === projectId && rincian.linesVersion
+          ? { ...state.currentProject, linesVersion: rincian.linesVersion }
+          : state.currentProject,
+    }));
+    return rincian;
+  },
+
+  previewRincian: async (projectId, lines, signal) => {
+    const res = await httpClient.post(API.projects.linesPreview(projectId), { lines: lines.map(lineDraftBody) }, { signal });
+    return toRincian(res.data.data as RawRincian);
   },
 
   fetchClosingChecklist: async (id) => {
@@ -1012,7 +1076,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   duplicateProject: async (sourceId, values) => {
-    const res = await httpClient.post(API.projects.duplicate(sourceId), projectInputBody(values));
+    const res = await httpClient.post(API.projects.duplicate(sourceId), { ...projectInputBody(values), eventDate: values.eventDate });
     const project = toProject(res.data.data as RawProject);
     await get().fetchProjects();
     return project;
@@ -1021,8 +1085,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   fetchOverview: async (projectId) => {
     // Everything scoped to a project is cleared with it, so nothing of the previous project can show or be edited.
     set({
-      vendorEngagements: [], vendorMilestones: [], milestones: [], payments: [], clientPayments: [], venuePayments: [],
-      evidence: [], issues: [], paymentTerms: [], paymentTermsFor: null, overview: null,
+      suppliers: [], vendorMilestones: [], milestones: [], supplierPayments: [], clientPayments: [], events: [], eventsFor: null,
+      evidence: [], issues: [], paymentTerms: [], paymentTermsFor: null, overview: null, rincian: null, rincianFor: null,
     });
     set(await loadOverview(projectId));
   },
@@ -1086,48 +1150,113 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchMilestones(projectId);
   },
 
-  fetchVendorSection: async (projectId) => {
-    const res = await httpClient.get(API.projects.vendors(projectId));
-    const raw = res.data.data as RawProjectVendor[];
-    const engagements = raw.map(toProjectVendor);
-    const allMilestones = raw.flatMap((pv) => (pv.milestones ?? []).map((m) => toVendorMilestone(m, String(pv.id))));
-    set({ vendorEngagements: engagements, vendorMilestones: allMilestones });
+  fetchEvents: async (projectId) => {
+    const res = await httpClient.get(API.projects.events(projectId));
+    set({ events: (res.data.data as RawEvent[]).map(toEvent), eventsFor: projectId });
   },
 
-  createVendorEngagement: async (projectId, values) => {
-    // The category comes from the vendor and the date from the project: the server derives both (E7), so a stale
-    // page cannot send a date the project no longer has.
-    await httpClient.post(API.projects.vendors(projectId), vendorEngagementInputBody(values));
-    await get().fetchVendorSection(projectId);
+  createEvent: async (projectId, input) => {
+    const res = await httpClient.post(API.projects.events(projectId), eventInputBody(input));
+    const data = res.data.data as RawEvent & EventWriteResult;
+    await afterEventWrite(projectId, data);
+    return toEvent(data);
   },
 
-  updateVendorEngagement: async (projectId, pvId, values, version) => {
-    const existing = get().vendorEngagements.find((pv) => pv.id === pvId);
-    // The form has no category or event date: leaving them out keeps what the engagement has (they were once sent back to fill the gap).
-    const { categoryId: _category, eventDate: _eventDate, ...body } = vendorEngagementInputBody(values);
-    await httpClient.patch(API.projects.vendor(projectId, pvId), body, { headers: ifMatch(version ?? existing?.updatedAt) });
-    await get().fetchVendorSection(projectId);
+  updateEvent: async (projectId, eventId, input, version) => {
+    const res = await httpClient.put(API.projects.event(projectId, eventId), eventInputBody(input), { headers: ifMatch(version) });
+    const data = res.data.data as RawEvent & EventWriteResult;
+    await afterEventWrite(projectId, data);
+    return toEvent(data);
   },
 
-  cancelVendorEngagement: async (projectId, pvId) => {
-    await httpClient.post(API.projects.vendorCancel(projectId, pvId));
-    await get().fetchVendorSection(projectId);
+  deleteEvent: async (projectId, eventId) => {
+    const res = await httpClient.delete(API.projects.event(projectId, eventId));
+    await afterEventWrite(projectId, res.data.data as EventWriteResult);
   },
 
-  createVendorMilestone: async (projectId, pvId, values) => {
-    await httpClient.post(API.projects.vendorMilestones(projectId, pvId), {
+  setMainEvent: async (projectId, eventId) => {
+    const res = await httpClient.post(API.projects.eventSetMain(projectId, eventId));
+    await afterEventWrite(projectId, res.data.data as EventWriteResult);
+  },
+
+  moveEvent: async (projectId, eventId, direction) => {
+    const res = await httpClient.post(API.projects.eventMove(projectId, eventId), { direction });
+    set({ events: (res.data.data as RawEvent[]).map(toEvent), eventsFor: projectId });
+  },
+
+  duplicateEvent: async (projectId, eventId) => {
+    const res = await httpClient.post(API.projects.eventDuplicate(projectId, eventId));
+    await afterEventWrite(projectId, res.data.data as EventWriteResult);
+  },
+
+  fetchSuppliers: async (projectId) => {
+    const res = await httpClient.get(API.projects.suppliers(projectId));
+    const raw = res.data.data as RawSupplier[];
+    set({
+      suppliers: raw.map(toSupplier),
+      vendorMilestones: raw.flatMap((sp) => (sp.milestones ?? []).map((m) => toVendorMilestone(m, String(sp.id)))),
+    });
+  },
+
+  createSupplier: async (projectId, values, withCost) => {
+    await httpClient.post(API.projects.suppliers(projectId), { vendorId: Number(values.vendorId), ...supplierBody(values, withCost) });
+    await get().fetchSuppliers(projectId);
+  },
+
+  updateSupplier: async (projectId, before, values, withCost) => {
+    const next = supplierBody(values, withCost) as Record<string, unknown>;
+    const was: Record<string, unknown> = {
+      paidBy: before.paidBy,
+      showName: before.showName,
+      agreedCost: before.agreedCost,
+      engagementStatus: before.engagementStatus,
+      bookingDate: before.bookingDate,
+      dueDate: before.dueDate,
+      picStaffId: before.picStaffId ? Number(before.picStaffId) : 0,
+      scope: before.scope,
+      notes: before.notes,
+    };
+    const body = Object.fromEntries(Object.entries(next).filter(([k, v]) => v !== was[k]));
+    if (Object.keys(body).length === 0) return;
+    await httpClient.patch(API.projects.supplier(projectId, before.id), body, { headers: ifMatch(before.updatedAt) });
+    await get().fetchSuppliers(projectId);
+  },
+
+  deleteSupplier: async (projectId, supplierId) => {
+    const before = get().suppliers;
+    set({ suppliers: before.filter((x) => x.id !== supplierId) });
+    try {
+      await httpClient.delete(API.projects.supplier(projectId, supplierId));
+    } catch (err) {
+      set({ suppliers: before });
+      throw err;
+    }
+    return async () => {
+      await httpClient.post(API.projects.supplierRestore(projectId, supplierId));
+      await get().fetchSuppliers(projectId);
+    };
+  },
+
+  refreshSupplierCapacity: async (projectId, supplierId) => {
+    await httpClient.post(API.projects.supplierRefreshCapacity(projectId, supplierId));
+    await get().fetchSuppliers(projectId);
+    if (get().eventsFor === projectId) await get().fetchEvents(projectId);
+  },
+
+  createVendorMilestone: async (projectId, supplierId, values) => {
+    await httpClient.post(API.projects.supplierMilestones(projectId, supplierId), {
       name: values.name,
       description: values.description,
       targetDate: values.targetDate,
       picStaffId: Number(values.picStaffId),
     });
-    await get().fetchVendorSection(projectId);
+    await get().fetchSuppliers(projectId);
   },
 
-  updateVendorMilestone: async (projectId, pvId, milestoneId, fields, version) => {
+  updateVendorMilestone: async (projectId, supplierId, milestoneId, fields, version) => {
     const existing = get().vendorMilestones.find((m) => m.id === milestoneId);
     await httpClient.patch(
-      API.projects.vendorMilestone(projectId, pvId, milestoneId),
+      API.projects.supplierMilestone(projectId, supplierId, milestoneId),
       // Only what was passed: a status change from the dropdown sends the status, not the whole step.
       {
         ...(fields.status !== undefined && { status: fields.status }),
@@ -1139,20 +1268,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       { headers: ifMatch(version ?? existing?.updatedAt) },
     );
-    await get().fetchVendorSection(projectId);
+    await get().fetchSuppliers(projectId);
   },
 
-  fetchPayments: async (projectId) => {
-    const res = await httpClient.get(API.projects.payments(projectId));
-    set({ payments: (res.data.data as RawPayment[]).map(toPayment) });
+  fetchSupplierPayments: async (projectId) => {
+    const res = await httpClient.get(API.projects.supplierPayments(projectId));
+    set({ supplierPayments: (res.data.data as RawSupplierPayment[]).map(toSupplierPayment) });
   },
 
-  createPayment: async (projectId, values, options) => {
+  createSupplierPayment: async (projectId, values, options) => {
     await savePaymentWithProof(
       projectId,
-      API.projects.payments(projectId),
+      API.projects.supplierPayments(projectId),
       {
-        projectVendorId: Number(values.projectVendorId),
+        projectSupplierId: Number(values.projectSupplierId),
         type: values.type,
         amount: values.amount,
         paymentDate: values.paymentDate,
@@ -1166,14 +1295,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       ],
       options?.idempotencyKey,
     );
-    // The engagement's paid amount is part of the vendor section.
-    await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
+    // What each supplier was paid (and whether "Dibayar oleh" is locked) is part of Vendor & venue.
+    await Promise.all([get().fetchSupplierPayments(projectId), get().fetchSuppliers(projectId)]);
   },
 
-  updatePayment: async (projectId, paymentId, values, version) => {
-    const existing = get().payments.find((p) => p.id === paymentId);
+  updateSupplierPayment: async (projectId, paymentId, values, version) => {
+    const existing = get().supplierPayments.find((p) => p.id === paymentId);
     await httpClient.patch(
-      API.projects.payment(projectId, paymentId),
+      API.projects.supplierPayment(projectId, paymentId),
       {
         type: values.type,
         amount: values.amount,
@@ -1184,22 +1313,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       { headers: ifMatch(version ?? existing?.updatedAt) },
     );
-    await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
+    await Promise.all([get().fetchSupplierPayments(projectId), get().fetchSuppliers(projectId)]);
   },
 
-  deletePayment: async (projectId, paymentId) => {
-    const before = get().payments;
-    set({ payments: before.filter((p) => p.id !== paymentId) });
+  deleteSupplierPayment: async (projectId, paymentId) => {
+    const before = get().supplierPayments;
+    set({ supplierPayments: before.filter((p) => p.id !== paymentId) });
     try {
-      await httpClient.delete(API.projects.payment(projectId, paymentId));
+      await httpClient.delete(API.projects.supplierPayment(projectId, paymentId));
     } catch (err) {
-      set({ payments: before });
+      set({ supplierPayments: before });
       throw err;
     }
-    void get().fetchVendorSection(projectId);
+    void get().fetchSuppliers(projectId);
     return async () => {
-      await httpClient.post(API.projects.paymentRestore(projectId, paymentId));
-      await Promise.all([get().fetchPayments(projectId), get().fetchVendorSection(projectId)]);
+      await httpClient.post(API.projects.supplierPaymentRestore(projectId, paymentId));
+      await Promise.all([get().fetchSupplierPayments(projectId), get().fetchSuppliers(projectId)]);
     };
   },
 
@@ -1263,64 +1392,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().fetchClientPayments(projectId);
   },
 
-  fetchVenuePayments: async (projectId) => {
-    const res = await httpClient.get(API.projects.venuePayments(projectId));
-    set({ venuePayments: (res.data.data as RawVenuePayment[]).map(toVenuePayment) });
-  },
-
-  createVenuePayment: async (projectId, values, options) => {
-    await savePaymentWithProof(
-      projectId,
-      API.projects.venuePayments(projectId),
-      {
-        type: values.type,
-        amount: values.amount,
-        paymentDate: values.paymentDate,
-        method: values.method,
-        referenceNumber: values.referenceNumber,
-        notes: values.notes,
-      },
-      [
-        { file: values.invoiceFile, type: "Invoice" },
-        { file: values.proofFile, type: "Transfer Proof" },
-      ],
-      options?.idempotencyKey,
-    );
-    await get().fetchVenuePayments(projectId);
-  },
-
-  updateVenuePayment: async (projectId, paymentId, values, version) => {
-    const existing = get().venuePayments.find((p) => p.id === paymentId);
-    await httpClient.patch(
-      API.projects.venuePayment(projectId, paymentId),
-      {
-        type: values.type,
-        amount: values.amount,
-        paymentDate: values.paymentDate,
-        method: values.method,
-        referenceNumber: values.referenceNumber,
-        notes: values.notes,
-      },
-      { headers: ifMatch(version ?? existing?.updatedAt) },
-    );
-    await get().fetchVenuePayments(projectId);
-  },
-
-  deleteVenuePayment: async (projectId, paymentId) => {
-    const before = get().venuePayments;
-    set({ venuePayments: before.filter((p) => p.id !== paymentId) });
-    try {
-      await httpClient.delete(API.projects.venuePayment(projectId, paymentId));
-    } catch (err) {
-      set({ venuePayments: before });
-      throw err;
-    }
-    return async () => {
-      await httpClient.post(API.projects.venuePaymentRestore(projectId, paymentId));
-      await get().fetchVenuePayments(projectId);
-    };
-  },
-
   fetchIssues: async (projectId) => {
     const res = await httpClient.get(API.projects.issues(projectId));
     set({ issues: (res.data.data as RawIssue[]).map(toIssue) });
@@ -1329,8 +1400,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   createIssue: async (projectId, values) => {
     await httpClient.post(API.projects.issues(projectId), {
       ...values,
-      projectVendorId: values.projectVendorId ? Number(values.projectVendorId) : null,
-      vendorMilestoneId: values.projectVendorId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
+      projectSupplierId: values.projectSupplierId ? Number(values.projectSupplierId) : null,
+      vendorMilestoneId: values.projectSupplierId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
       picStaffId: Number(values.picStaffId),
     });
     await get().fetchIssues(projectId);
@@ -1342,8 +1413,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       API.projects.issue(projectId, issueId),
       {
         ...values,
-        projectVendorId: values.projectVendorId ? Number(values.projectVendorId) : null,
-        vendorMilestoneId: values.projectVendorId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
+        projectSupplierId: values.projectSupplierId ? Number(values.projectSupplierId) : null,
+        vendorMilestoneId: values.projectSupplierId && values.vendorMilestoneId ? Number(values.vendorMilestoneId) : null,
         picStaffId: Number(values.picStaffId),
       },
       { headers: ifMatch(version ?? existing?.updatedAt) },

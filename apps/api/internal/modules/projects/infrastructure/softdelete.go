@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Soft delete (ADR-0034): a payment or a vendor engagement is "deleted" by
+// Soft delete (ADR-0034): a payment or a project supplier is "deleted" by
 // stamping deleted_at; every read of a live row filters `deleted_at IS NULL`.
 // These helpers are the three writes every table of this module shares. The
 // table name is always a constant of this package, never request input.
@@ -45,30 +45,29 @@ func deletedStamp(t sql.NullTime) *time.Time {
 	return &v
 }
 
-// SQL fragments saying "this row is visible" for the tables a deleted engagement
+// SQL fragments saying "this row is visible" for the tables a deleted supplier
 // takes its children down with. Written against unaliased table names.
 const (
-	// liveEngagementIDs: the engagements that are not deleted.
-	deletedEngagementIDs = `SELECT id FROM project_vendors WHERE deleted_at IS NOT NULL`
+	// deletedSupplierIDs: the project suppliers waiting in the "deleted" state.
+	deletedSupplierIDs = `SELECT id FROM project_suppliers WHERE deleted_at IS NOT NULL`
 
-	// A vendor payment is hidden when it is deleted itself or its engagement is.
-	liveVendorPaymentWhere = `deleted_at IS NULL AND project_vendor_id NOT IN (` + deletedEngagementIDs + `)`
+	// A supplier payment is hidden when it is deleted itself or its supplier is.
+	liveSupplierPaymentWhere = `deleted_at IS NULL AND project_supplier_id NOT IN (` + deletedSupplierIDs + `)`
 
-	// A kendala is hidden when its vendor engagement is deleted (a kendala with
-	// no vendor is never hidden that way).
-	liveIssueWhere = `(project_vendor_id IS NULL OR project_vendor_id NOT IN (` + deletedEngagementIDs + `))`
+	// A kendala is hidden when its supplier is deleted (a kendala about the
+	// event in general is never hidden that way).
+	liveIssueWhere = `(project_supplier_id IS NULL OR project_supplier_id NOT IN (` + deletedSupplierIDs + `))`
 
 	// evidenceLiveWhere hides the proof files of everything deleted: a deleted
-	// payment's (or engagement's, or its milestones'/kendala's) files are not
-	// listed, opened or linked by anyone until it is restored.
+	// payment's (or supplier's, or its steps'/kendala's) files are not listed,
+	// opened or linked by anyone until it is restored.
 	evidenceLiveWhere = `
 		AND NOT (related_kind = 'clientPayment' AND related_id IN (SELECT id FROM client_payments WHERE deleted_at IS NOT NULL))
-		AND NOT (related_kind = 'venuePayment' AND related_id IN (SELECT id FROM venue_payments WHERE deleted_at IS NOT NULL))
-		AND NOT (related_kind = 'payment' AND related_id IN (
-			SELECT id FROM vendor_payments WHERE deleted_at IS NOT NULL OR project_vendor_id IN (` + deletedEngagementIDs + `)))
-		AND NOT (related_kind = 'projectVendor' AND related_id IN (` + deletedEngagementIDs + `))
+		AND NOT (related_kind = 'supplierPayment' AND related_id IN (
+			SELECT id FROM supplier_payments WHERE deleted_at IS NOT NULL OR project_supplier_id IN (` + deletedSupplierIDs + `)))
+		AND NOT (related_kind = 'projectSupplier' AND related_id IN (` + deletedSupplierIDs + `))
 		AND NOT (related_kind = 'vendorMilestone' AND related_id IN (
-			SELECT vm.id FROM vendor_milestones vm JOIN project_vendors pv ON pv.id = vm.project_vendor_id WHERE pv.deleted_at IS NOT NULL))
+			SELECT id FROM vendor_milestones WHERE project_supplier_id IN (` + deletedSupplierIDs + `)))
 		AND NOT (related_kind = 'issue' AND related_id IN (
-			SELECT id FROM vendor_issues WHERE project_vendor_id IN (` + deletedEngagementIDs + `)))`
+			SELECT id FROM vendor_issues WHERE project_supplier_id IN (` + deletedSupplierIDs + `)))`
 )

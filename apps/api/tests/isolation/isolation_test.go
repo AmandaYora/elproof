@@ -106,17 +106,18 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 
 	projectBody := map[string]any{
 		"name": "Proyek B " + b.marker, "brideName": "Bride " + b.marker, "groomName": "Groom " + b.marker,
-		"eventDate": day(120), "venue": "Gedung " + b.marker, "prepStartDate": day(1), "packageName": "Paket " + b.marker,
-		"contractValue": w.bContract, "status": "Preparation", "picStaffId": b.staffID, "description": "Catatan " + b.marker,
+		"prepStartDate": day(-30), "status": "Preparation", "picStaffId": b.staffID, "description": "Catatan " + b.marker,
 	}
 	// Update controls resend each row's original values, so the integrity
 	// check at the end can still tell attacks from controls.
-	payment := map[string]any{"projectVendorId": w.Engagement, "type": "DP", "amount": 1000000, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VREF-" + b.marker, "notes": "Rahasia " + b.marker}
+	spay := map[string]any{"projectSupplierId": w.Supplier, "type": "DP", "amount": 1000000, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VREF-" + b.marker, "notes": "Rahasia " + b.marker}
+	spayEdit := map[string]any{"type": "DP", "amount": 1000000, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VREF-" + b.marker, "notes": "Rahasia " + b.marker}
+	vpayEdit := map[string]any{"type": "DP", "amount": 777777, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VNREF-" + b.marker, "notes": "Rahasia " + b.marker}
 	cpay := map[string]any{"type": "DP", "amount": 4444444, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "REF-" + b.marker, "notes": "Rahasia " + b.marker}
-	vpay := map[string]any{"type": "DP", "amount": 777777, "paymentDate": day(-2), "method": "Transfer", "referenceNumber": "VNREF-" + b.marker, "notes": "Rahasia " + b.marker}
-	issue := map[string]any{"projectVendorId": w.Engagement, "title": "Kendala " + b.marker, "description": "d", "impact": "Medium", "foundDate": day(-1), "resolutionPlan": "r", "picStaffId": b.staffID, "targetResolutionDate": day(10)}
-	engagement := map[string]any{"vendorId": w.Vendor, "categoryId": w.Category, "scope": "Tambahan " + b.marker, "contractValue": 100000, "pricingTier": "Akad", "engagementStatus": "Planned", "eventDate": day(120), "picStaffId": b.staffID}
-	engagementOrig := map[string]any{"vendorId": w.Vendor, "categoryId": w.Category, "scope": "Dekorasi " + b.marker, "contractValue": 5000000, "pricingTier": "Akad", "engagementStatus": "Booked", "eventDate": day(120), "dpAmount": 1000000, "dueDate": day(60), "picStaffId": b.staffID, "notes": "Rahasia " + b.marker}
+	issue := map[string]any{"projectSupplierId": w.Supplier, "title": "Kendala " + b.marker, "description": "d", "impact": "Medium", "foundDate": day(-1), "resolutionPlan": "r", "picStaffId": b.staffID, "targetResolutionDate": day(10)}
+	supplier := map[string]any{"vendorId": w.Vendor, "paidBy": "WO", "scope": "Tambahan " + b.marker, "engagementStatus": "Planned", "picStaffId": b.staffID}
+	supplierEdit := map[string]any{"scope": "Dekorasi " + b.marker, "notes": "Rahasia " + b.marker, "engagementStatus": "Booked"}
+	event := eventOf(w.Kind, day(120), 100, w.Venue)
 	vmilestone := map[string]any{"name": "Baru " + b.marker, "description": "d", "targetDate": day(20), "picStaffId": b.staffID}
 	upload := map[string]any{"name": "Baru " + b.marker, "type": "Document", "fileName": "x.pdf", "mimeType": "application/pdf", "base64Data": pdf, "documentDate": day(-1), "relatedKind": "general"}
 	vendorBodyB := vendorBody(s, b, "Vendor B "+b.marker, w.Category)
@@ -141,38 +142,48 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "milestone reorder", method: "PATCH", path: proj(P, "/milestones"), body: map[string]any{"orderedIds": []int64{w.ProjectMilestone}}, control: true},
 		{name: "milestone update", method: "PATCH", path: proj(P, fmt.Sprintf("/milestones/%d", w.ProjectMilestone)), body: map[string]any{"status": "In Progress", "targetDate": day(15)}, control: true},
 		{name: "project overview", method: "GET", path: proj(P, "/overview"), control: true},
-		{name: "engagements list", method: "GET", path: proj(P, "/vendors"), control: true},
+		// Events (Paket WO Tahap 2). The event list carries the venue, so it also
+		// stands for the removed GET /projects/{id}/venue.
+		{name: "events list", method: "GET", path: proj(P, "/events"), control: true},
+		{name: "event create", method: "POST", path: proj(P, "/events"), body: eventOf(w.Kind, day(121), 50, 0), control: true},
+		{name: "event update", method: "PUT", path: proj(P, fmt.Sprintf("/events/%d", w.Event)), body: event, control: true},
+		{name: "event delete", method: "DELETE", path: proj(P, fmt.Sprintf("/events/%d", w.Event))},
+		{name: "event set-main", method: "POST", path: proj(P, fmt.Sprintf("/events/%d/set-main", w.Event)), body: map[string]any{}, control: true},
+		{name: "event move", method: "POST", path: proj(P, fmt.Sprintf("/events/%d/move", w.Event)), body: map[string]any{"direction": "up"}, control: true},
+		{name: "event duplicate", method: "POST", path: proj(P, fmt.Sprintf("/events/%d/duplicate", w.Event)), body: map[string]any{}, control: true},
+		// Vendor & venue (suppliers) and their steps.
+		{name: "suppliers list", method: "GET", path: proj(P, "/suppliers"), control: true},
+		{name: "supplier create", method: "POST", path: proj(P, "/suppliers"), body: supplier, control: true},
+		{name: "supplier update", method: "PATCH", path: proj(P, fmt.Sprintf("/suppliers/%d", w.Supplier)), body: supplierEdit, control: true},
+		{name: "venue supplier update", method: "PATCH", path: proj(P, fmt.Sprintf("/suppliers/%d", w.VenueSupplier)), body: map[string]any{"engagementStatus": "Planned"}, control: true},
+		{name: "venue supplier refresh-capacity", method: "POST", path: proj(P, fmt.Sprintf("/suppliers/%d/refresh-capacity", w.VenueSupplier)), body: map[string]any{}, control: true},
 		// Tahap 5: soft delete and restore. No controls: a restore of something that is
 		// not deleted is a 404 for its own workspace too.
-		{name: "engagement delete", method: "DELETE", path: proj(P, fmt.Sprintf("/vendors/%d", w.Engagement))},
-		{name: "engagement restore", method: "POST", path: proj(P, fmt.Sprintf("/vendors/%d/restore", w.Engagement))},
-		{name: "vendor payment restore", method: "POST", path: proj(P, fmt.Sprintf("/payments/%d/restore", w.VendorPay))},
+		{name: "supplier delete", method: "DELETE", path: proj(P, fmt.Sprintf("/suppliers/%d", w.Supplier))},
+		{name: "venue supplier delete", method: "DELETE", path: proj(P, fmt.Sprintf("/suppliers/%d", w.VenueSupplier))},
+		{name: "supplier restore", method: "POST", path: proj(P, fmt.Sprintf("/suppliers/%d/restore", w.Supplier))},
+		{name: "supplier payment restore", method: "POST", path: proj(P, fmt.Sprintf("/supplier-payments/%d/restore", w.SupplierPay))},
 		{name: "client payment restore", method: "POST", path: proj(P, fmt.Sprintf("/client-payments/%d/restore", w.ClientPayment))},
-		{name: "venue payment restore", method: "POST", path: proj(P, fmt.Sprintf("/venue-payments/%d/restore", w.VenuePay))},
+		{name: "venue payment restore", method: "POST", path: proj(P, fmt.Sprintf("/supplier-payments/%d/restore", w.VenuePay))},
 		{name: "evidence delete", method: "DELETE", path: proj(P, fmt.Sprintf("/evidence/%d", w.EvidenceInternal))},
 		{name: "client restore", method: "POST", path: fmt.Sprintf("/api/v1/clients/%d/restore", w.Client)},
-		{name: "engagement create", method: "POST", path: proj(P, "/vendors"), body: engagement, control: true},
-		{name: "engagement update", method: "PATCH", path: proj(P, fmt.Sprintf("/vendors/%d", w.Engagement)), body: engagementOrig, control: true},
-		{name: "engagement cancel", method: "POST", path: proj(P, fmt.Sprintf("/vendors/%d/cancel", w.Engagement)), body: map[string]any{}},
-		// Vendor milestones are read from milestones[] inside the "engagements list" row above.
-		{name: "vendor milestone create", method: "POST", path: proj(P, fmt.Sprintf("/vendors/%d/milestones", w.Engagement)), body: vmilestone, control: true},
-		{name: "vendor milestone update", method: "PATCH", path: proj(P, fmt.Sprintf("/vendors/%d/milestones/%d", w.Engagement, w.VendorMilestone)), body: map[string]any{"status": "In Progress", "targetDate": day(30)}, control: true},
-		{name: "vendor payments list", method: "GET", path: proj(P, "/payments"), control: true},
-		{name: "vendor payment create", method: "POST", path: proj(P, "/payments"), body: payment, control: true},
-		{name: "vendor payment update", method: "PATCH", path: proj(P, fmt.Sprintf("/payments/%d", w.VendorPay)), body: payment, control: true},
-		{name: "vendor payment delete", method: "DELETE", path: proj(P, fmt.Sprintf("/payments/%d", w.VendorPay))},
+		// Supplier steps are read from milestones[] inside the "suppliers list" row above.
+		{name: "supplier milestone create", method: "POST", path: proj(P, fmt.Sprintf("/suppliers/%d/milestones", w.Supplier)), body: vmilestone, control: true},
+		{name: "supplier milestone update", method: "PATCH", path: proj(P, fmt.Sprintf("/suppliers/%d/milestones/%d", w.Supplier, w.VendorMilestone)), body: map[string]any{"status": "In Progress", "targetDate": day(30)}, control: true},
+		{name: "supplier payments list", method: "GET", path: proj(P, "/supplier-payments"), control: true},
+		{name: "supplier payment create", method: "POST", path: proj(P, "/supplier-payments"), body: spay, control: true},
+		{name: "supplier payment update", method: "PATCH", path: proj(P, fmt.Sprintf("/supplier-payments/%d", w.SupplierPay)), body: spayEdit, control: true},
+		{name: "supplier payment delete", method: "DELETE", path: proj(P, fmt.Sprintf("/supplier-payments/%d", w.SupplierPay))},
+		{name: "venue payment update", method: "PATCH", path: proj(P, fmt.Sprintf("/supplier-payments/%d", w.VenuePay)), body: vpayEdit, control: true},
+		{name: "venue payment delete", method: "DELETE", path: proj(P, fmt.Sprintf("/supplier-payments/%d", w.VenuePay))},
 		{name: "client payments list", method: "GET", path: proj(P, "/client-payments"), control: true},
 		{name: "client payment create", method: "POST", path: proj(P, "/client-payments"), body: cpay, control: true},
 		{name: "client payment update", method: "PATCH", path: proj(P, fmt.Sprintf("/client-payments/%d", w.ClientPayment)), body: cpay, control: true},
 		{name: "client payment delete", method: "DELETE", path: proj(P, fmt.Sprintf("/client-payments/%d", w.ClientPayment))},
-		{name: "venue payments list", method: "GET", path: proj(P, "/venue-payments"), control: true},
-		{name: "venue payment create", method: "POST", path: proj(P, "/venue-payments"), body: vpay, control: true},
-		{name: "venue payment update", method: "PATCH", path: proj(P, fmt.Sprintf("/venue-payments/%d", w.VenuePay)), body: vpay, control: true},
-		{name: "venue payment delete", method: "DELETE", path: proj(P, fmt.Sprintf("/venue-payments/%d", w.VenuePay))},
 		{name: "issues list", method: "GET", path: proj(P, "/issues"), control: true},
 		{name: "issue create", method: "POST", path: proj(P, "/issues"), body: issue, control: true},
 		{name: "issue update", method: "PATCH", path: proj(P, fmt.Sprintf("/issues/%d", w.Issue)), body: map[string]any{
-			"projectVendorId": w.Engagement, "title": "Kendala " + b.marker, "description": "d", "impact": "Medium", "foundDate": day(-1), "status": "Open",
+			"projectSupplierId": w.Supplier, "title": "Kendala " + b.marker, "description": "d", "impact": "Medium", "foundDate": day(-1), "status": "Open",
 			"resolutionPlan": "r", "picStaffId": b.staffID, "targetResolutionDate": day(10)}, control: true},
 		{name: "evidence list", method: "GET", path: proj(P, "/evidence"), control: true},
 		{name: "evidence upload", method: "POST", path: proj(P, "/evidence"), body: upload, control: true},
@@ -185,7 +196,6 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 		{name: "documents", method: "GET", path: proj(P, "/documents"), control: true},
 		{name: "activity", method: "GET", path: proj(P, "/activity"), control: true},
 		{name: "activity filtered and paged", method: "GET", path: proj(P, "/activity?entityType=client_payment&entityId=1&page=1&limit=5"), control: true},
-		{name: "venue", method: "GET", path: proj(P, "/venue"), control: true},
 		{name: "second project get", method: "GET", path: proj(P2, ""), control: true},
 
 		// ---- vendors, venues, categories ----
@@ -294,34 +304,47 @@ func (w *world) attackMatrix(t *testing.T, s *stack) {
 	}
 }
 
+// staleVersion is a well-formed If-Match no row carries.
+const staleVersion = `"2001-01-01T00:00:00.000000Z"`
+
 // mixedIDs combines A's own project with B's sub-resource ids: a lookup that
 // checks the project but not the child's owner would let these through.
 func (w *world) mixedIDs(t *testing.T, s *stack) {
-	// A needs its own engagement so that A's project has something to be mixed with.
-	cat := vendorBody(s, w.a, "x", 0)["categoryId"]
-	ownEng := s.mustOK("A engagement", s.do(w.a.token, "POST", fmt.Sprintf("/api/v1/projects/%d/vendors", w.aProject), map[string]any{
-		"vendorId": w.aVendor, "categoryId": cat, "scope": "Dekor A", "contractValue": 1000000, "pricingTier": "Akad",
-		"engagementStatus": "Booked", "eventDate": day(120), "picStaffId": w.a.staffID,
-	})).id("data", "id")
+	// A needs its own supplier (with a step) and event so that A's project has
+	// something to be mixed with.
+	ownSup := s.engage(w.a, w.aProject, w.aVendor, "Dekor A", 1000000, "Booked", nil)
 	ap := func(rest string) string { return fmt.Sprintf("/api/v1/projects/%d%s", w.aProject, rest) }
+	ownEvents := rows(s.mustOK("A events", s.do(w.a.token, "GET", ap("/events"), nil)), "data")
+	if len(ownEvents) == 0 {
+		t.Fatalf("A's project has no event")
+	}
+	ownEvent := int64(ownEvents[0]["id"].(float64))
 	cases := []attack{
 		{name: "A project + B milestone", method: "PATCH", path: ap(fmt.Sprintf("/milestones/%d", w.ProjectMilestone)), body: map[string]any{"status": "Completed", "targetDate": day(15)}},
-		{name: "A project + B engagement update", method: "PATCH", path: ap(fmt.Sprintf("/vendors/%d", w.Engagement)), body: map[string]any{"vendorId": w.aVendor, "categoryId": cat, "scope": "x", "pricingTier": "Akad", "engagementStatus": "Planned", "eventDate": day(120), "picStaffId": w.a.staffID}},
-		{name: "A project + B engagement cancel", method: "POST", path: ap(fmt.Sprintf("/vendors/%d/cancel", w.Engagement)), body: map[string]any{}},
-		{name: "A project + B engagement milestone create", method: "POST", path: ap(fmt.Sprintf("/vendors/%d/milestones", w.Engagement)), body: map[string]any{"name": "x", "targetDate": day(5), "picStaffId": w.a.staffID}},
-		{name: "A engagement + B vendor milestone", method: "PATCH", path: ap(fmt.Sprintf("/vendors/%d/milestones/%d", ownEng, w.VendorMilestone)), body: map[string]any{"status": "Completed", "targetDate": day(15)}},
-		{name: "A project + B vendor payment update", method: "PATCH", path: ap(fmt.Sprintf("/payments/%d", w.VendorPay)), body: map[string]any{"projectVendorId": ownEng, "type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}},
-		{name: "A project + B vendor payment delete", method: "DELETE", path: ap(fmt.Sprintf("/payments/%d", w.VendorPay))},
+		{name: "A project + B supplier update", method: "PATCH", path: ap(fmt.Sprintf("/suppliers/%d", w.Supplier)), body: map[string]any{"scope": "x", "engagementStatus": "Cancelled"}},
+		{name: "A project + B venue supplier update", method: "PATCH", path: ap(fmt.Sprintf("/suppliers/%d", w.VenueSupplier)), body: map[string]any{"agreedCost": 1}},
+		{name: "A project + B venue supplier refresh-capacity", method: "POST", path: ap(fmt.Sprintf("/suppliers/%d/refresh-capacity", w.VenueSupplier)), body: map[string]any{}},
+		{name: "A project + B supplier milestone create", method: "POST", path: ap(fmt.Sprintf("/suppliers/%d/milestones", w.Supplier)), body: map[string]any{"name": "x", "targetDate": day(5), "picStaffId": w.a.staffID}},
+		{name: "A supplier + B supplier milestone", method: "PATCH", path: ap(fmt.Sprintf("/suppliers/%d/milestones/%d", ownSup, w.VendorMilestone)), body: map[string]any{"status": "Completed", "targetDate": day(15)}},
+		{name: "A project + B supplier milestone", method: "PATCH", path: ap(fmt.Sprintf("/suppliers/%d/milestones/%d", w.Supplier, w.VendorMilestone)), body: map[string]any{"status": "Completed", "targetDate": day(15)}},
+		{name: "A project + B supplier payment update", method: "PATCH", path: ap(fmt.Sprintf("/supplier-payments/%d", w.SupplierPay)), body: map[string]any{"type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}},
+		{name: "A project + B supplier payment delete", method: "DELETE", path: ap(fmt.Sprintf("/supplier-payments/%d", w.SupplierPay))},
+		{name: "A project + B venue payment update", method: "PATCH", path: ap(fmt.Sprintf("/supplier-payments/%d", w.VenuePay)), body: map[string]any{"type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}},
+		{name: "A project + B venue payment delete", method: "DELETE", path: ap(fmt.Sprintf("/supplier-payments/%d", w.VenuePay))},
 		{name: "A project + B client payment update", method: "PATCH", path: ap(fmt.Sprintf("/client-payments/%d", w.ClientPayment)), body: map[string]any{"type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}},
 		{name: "A project + B client payment delete", method: "DELETE", path: ap(fmt.Sprintf("/client-payments/%d", w.ClientPayment))},
-		{name: "A project + B venue payment update", method: "PATCH", path: ap(fmt.Sprintf("/venue-payments/%d", w.VenuePay)), body: map[string]any{"type": "DP", "amount": 1, "paymentDate": day(-1), "method": "Transfer"}},
-		{name: "A project + B venue payment delete", method: "DELETE", path: ap(fmt.Sprintf("/venue-payments/%d", w.VenuePay))},
-		{name: "A project + B issue update", method: "PATCH", path: ap(fmt.Sprintf("/issues/%d", w.Issue)), body: map[string]any{"projectVendorId": ownEng, "title": "x", "description": "d", "impact": "Low", "foundDate": day(-1), "status": "Open", "picStaffId": w.a.staffID}},
-		{name: "A project + B engagement delete", method: "DELETE", path: ap(fmt.Sprintf("/vendors/%d", w.Engagement))},
-		{name: "A project + B engagement restore", method: "POST", path: ap(fmt.Sprintf("/vendors/%d/restore", w.Engagement))},
-		{name: "A project + B vendor payment restore", method: "POST", path: ap(fmt.Sprintf("/payments/%d/restore", w.VendorPay))},
+		{name: "A project + B issue update", method: "PATCH", path: ap(fmt.Sprintf("/issues/%d", w.Issue)), body: map[string]any{"projectSupplierId": ownSup, "title": "x", "description": "d", "impact": "Low", "foundDate": day(-1), "status": "Open", "picStaffId": w.a.staffID}},
+		{name: "A project + B supplier delete", method: "DELETE", path: ap(fmt.Sprintf("/suppliers/%d", w.Supplier))},
+		{name: "A project + B venue supplier delete", method: "DELETE", path: ap(fmt.Sprintf("/suppliers/%d", w.VenueSupplier))},
+		{name: "A project + B supplier restore", method: "POST", path: ap(fmt.Sprintf("/suppliers/%d/restore", w.Supplier))},
+		{name: "A project + B supplier payment restore", method: "POST", path: ap(fmt.Sprintf("/supplier-payments/%d/restore", w.SupplierPay))},
 		{name: "A project + B client payment restore", method: "POST", path: ap(fmt.Sprintf("/client-payments/%d/restore", w.ClientPayment))},
-		{name: "A project + B venue payment restore", method: "POST", path: ap(fmt.Sprintf("/venue-payments/%d/restore", w.VenuePay))},
+		{name: "A project + B venue payment restore", method: "POST", path: ap(fmt.Sprintf("/supplier-payments/%d/restore", w.VenuePay))},
+		{name: "A project + B event update", method: "PUT", path: ap(fmt.Sprintf("/events/%d", w.Event)), body: eventOf(w.aKind, day(120), 10, 0)},
+		{name: "A project + B event delete", method: "DELETE", path: ap(fmt.Sprintf("/events/%d", w.Event))},
+		{name: "A project + B event set-main", method: "POST", path: ap(fmt.Sprintf("/events/%d/set-main", w.Event)), body: map[string]any{}},
+		{name: "A project + B event move", method: "POST", path: ap(fmt.Sprintf("/events/%d/move", w.Event)), body: map[string]any{"direction": "down"}},
+		{name: "A project + B event duplicate", method: "POST", path: ap(fmt.Sprintf("/events/%d/duplicate", w.Event)), body: map[string]any{}},
 		{name: "A project + B evidence delete", method: "DELETE", path: ap(fmt.Sprintf("/evidence/%d", w.EvidenceVisible))},
 		{name: "A project + B evidence file", method: "GET", path: ap(fmt.Sprintf("/evidence/%d/file", w.EvidenceVisible))},
 		{name: "A project + B evidence link", method: "GET", path: ap(fmt.Sprintf("/evidence/%d/link", w.EvidenceVisible))},
@@ -331,24 +354,42 @@ func (w *world) mixedIDs(t *testing.T, s *stack) {
 		a := a
 		routesCovered++
 		t.Run(a.name, func(t *testing.T) {
-			r := s.do(w.a.token, a.method, a.path, a.body)
-			if r.status != http.StatusNotFound && r.status != http.StatusForbidden {
-				t.Errorf("%s %s: want 403 or 404, got %s", a.method, a.path, r)
+			headers := []map[string]string{nil}
+			if needsVersion(a.method, a.path, a.body) {
+				headers = append(headers, map[string]string{"If-Match": staleVersion})
 			}
-			if vacuous(r) {
-				t.Errorf("%s %s: router miss, not an ownership answer: %s", a.method, a.path, r)
+			for _, h := range headers {
+				r := s.doWith(w.a.token, a.method, a.path, a.body, h)
+				if r.status != http.StatusNotFound && r.status != http.StatusForbidden {
+					t.Errorf("%s %s (headers %v): want 403 or 404, got %s", a.method, a.path, h, r)
+				}
+				if vacuous(r) {
+					t.Errorf("%s %s: router miss, not an ownership answer: %s", a.method, a.path, r)
+				}
+				w.checkNoLeak(t, a.method+" "+a.path, r)
 			}
-			w.checkNoLeak(t, a.method+" "+a.path, r)
 		})
 	}
 
-	// Vendor milestones are only readable embedded in GET /projects/{id}/vendors
-	// (the GET on /vendors/{pv}/milestones is gone, Tahap 9). The old attack
-	// "A project + B engagement milestones" becomes: A reads B's project, and A
-	// reads its own project whose list must never carry B's milestones.
-	t.Run("embedded vendor milestones", func(t *testing.T) {
+	// A's own event and suppliers stay A's: none of the refusals above moved B's
+	// rows into A's project.
+	t.Run("A's own rows are untouched", func(t *testing.T) {
+		routesCovered++
+		for _, p := range []string{ap("/events"), ap("/suppliers"), ap("/supplier-payments"), ap("/issues")} {
+			r := s.mustOK("A "+p, s.do(w.a.token, "GET", p, nil))
+			w.checkNoLeak(t, "A GET "+p, r)
+		}
+		if r := s.mustOK("A event", s.do(w.a.token, "GET", ap("/events"), nil)); rowByID(rows(r, "data"), ownEvent) == nil {
+			t.Errorf("A's own event %d is gone: %s", ownEvent, r)
+		}
+	})
+
+	// Supplier steps are only readable embedded in GET /projects/{id}/suppliers
+	// (there is no GET on /suppliers/{sid}/milestones): A reads B's project, and
+	// A reads its own project whose list must never carry B's steps.
+	t.Run("embedded supplier milestones", func(t *testing.T) {
 		routesCovered += 3
-		foreign := fmt.Sprintf("/api/v1/projects/%d/vendors", w.Project)
+		foreign := fmt.Sprintf("/api/v1/projects/%d/suppliers", w.Project)
 		r := s.do(w.a.token, "GET", foreign, nil)
 		if r.status != http.StatusNotFound && r.status != http.StatusForbidden {
 			t.Errorf("A GET %s: want 403 or 404, got %s", foreign, r)
@@ -361,34 +402,49 @@ func (w *world) mixedIDs(t *testing.T, s *stack) {
 		}
 		w.checkNoLeak(t, "A GET "+foreign, r)
 
-		// A gets a milestone of its own so that its list is not empty, then reads it.
-		own := s.mustOK("A vendor milestone", s.do(w.a.token, "POST", fmt.Sprintf("/api/v1/projects/%d/vendors/%d/milestones", w.aProject, ownEng),
+		// A gets a step of its own so that its list is not empty, then reads it.
+		own := s.mustOK("A supplier milestone", s.do(w.a.token, "POST", ap(fmt.Sprintf("/suppliers/%d/milestones", ownSup)),
 			map[string]any{"name": "Milestone A", "description": "d", "targetDate": day(5), "picStaffId": w.a.staffID})).id("data", "id")
-		mine := s.mustOK("A engagements", s.do(w.a.token, "GET", ap("/vendors"), nil))
-		w.checkNoLeak(t, "A GET own engagements", mine)
+		mine := s.mustOK("A suppliers", s.do(w.a.token, "GET", ap("/suppliers"), nil))
+		w.checkNoLeak(t, "A GET own suppliers", mine)
 		found := false
 		for _, e := range rows(mine, "data") {
 			ms, _ := e["milestones"].([]any)
 			for _, m := range ms {
 				id := int64(m.(map[string]any)["id"].(float64))
 				if id == w.VendorMilestone {
-					t.Errorf("A's engagement list carries B's vendor milestone %d: %s", id, mine)
+					t.Errorf("A's supplier list carries B's step %d: %s", id, mine)
 				}
 				found = found || id == own
 			}
 		}
 		if !found {
-			t.Errorf("A's own milestone %d is not in its embedded milestones[]: %s", own, mine)
+			t.Errorf("A's own step %d is not in its embedded milestones[]: %s", own, mine)
 		}
 
-		// The standalone read is gone for everyone: never a 200, whoever asks and whatever the ids.
+		// There is no standalone read: never a 200, whoever asks and whatever the ids.
 		for name, path := range map[string]string{
-			"A on B's engagement":       fmt.Sprintf("/api/v1/projects/%d/vendors/%d/milestones", w.Project, w.Engagement),
-			"A on its own engagement":   ap(fmt.Sprintf("/vendors/%d/milestones", ownEng)),
-			"A project, B's engagement": ap(fmt.Sprintf("/vendors/%d/milestones", w.Engagement)),
+			"A on B's supplier":       fmt.Sprintf("/api/v1/projects/%d/suppliers/%d/milestones", w.Project, w.Supplier),
+			"A on its own supplier":   ap(fmt.Sprintf("/suppliers/%d/milestones", ownSup)),
+			"A project, B's supplier": ap(fmt.Sprintf("/suppliers/%d/milestones", w.Supplier)),
 		} {
 			if r := s.do(w.a.token, "GET", path, nil); r.status == http.StatusOK {
-				t.Errorf("%s: GET %s must no longer be a route, got %s", name, path, r)
+				t.Errorf("%s: GET %s must not be a route, got %s", name, path, r)
+			}
+		}
+	})
+
+	// The vendor/venue routes this redesign removed answer nobody, whatever the ids.
+	t.Run("removed vendor and venue routes", func(t *testing.T) {
+		for _, path := range []string{
+			fmt.Sprintf("/api/v1/projects/%d/vendors", w.Project), fmt.Sprintf("/api/v1/projects/%d/payments", w.Project),
+			fmt.Sprintf("/api/v1/projects/%d/venue-payments", w.Project), fmt.Sprintf("/api/v1/projects/%d/venue", w.Project),
+		} {
+			routesCovered++
+			for _, tok := range []string{w.a.token, w.b.token} {
+				if r := s.do(tok, "GET", path, nil); r.status == http.StatusOK {
+					t.Errorf("GET %s must no longer be a route, got %s", path, r)
+				}
 			}
 		}
 	})

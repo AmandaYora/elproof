@@ -13,9 +13,11 @@ export interface ProjectDetailContext {
   projectId: string;
 }
 
-// Six tabs that fit one row (RISET WO Console §3 #4). The clients and the history are panels on Ringkasan.
+// Seven tabs that fit one row (RISET WO Console §3 #4, DESAIN §5). The clients and the history are panels on Ringkasan.
+// Keuangan links its parent route, which opens "klien": the tab then stays marked on every Keuangan sub-tab.
 const TABS = [
   { to: "ringkasan", label: "Ringkasan" },
+  { to: "acara-rincian", label: "Acara & rincian" },
   { to: "jadwal", label: "Jadwal" },
   { to: "vendor", label: "Vendor & venue" },
   { to: "keuangan", label: "Keuangan" },

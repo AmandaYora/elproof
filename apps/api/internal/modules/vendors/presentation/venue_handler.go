@@ -21,7 +21,7 @@ import (
 
 // requireStaffTenant is requireTenant's stricter sibling: `client` principals
 // are otherwise tenant-scoped just like staff (requireTenant lets both
-// through), but venue records carry commercial data (rental price, charge,
+// through), but venue records carry commercial data (prices, charge,
 // PIC contact) never meant for a client to read directly — see ADR-0016's
 // Client Portal field-visibility decision. The attachment GET route
 // deliberately stays on requireTenant below (see downloadAttachment) since
@@ -67,9 +67,12 @@ type venueResponse struct {
 	Email             *string `json:"email"`
 	Address           *string `json:"address"`
 	City              *string `json:"city"`
-	RentalPrice       *int64  `json:"rentalPrice"`
+	CapacityStanding  *int    `json:"capacityStanding"`
+	CapacitySeated    *int    `json:"capacitySeated"`
+	PriceAkad         *int64  `json:"priceAkad"`
+	PriceResepsi      *int64  `json:"priceResepsi"`
+	PriceAkadResepsi  *int64  `json:"priceAkadResepsi"`
 	Charge            *int64  `json:"charge"`
-	Capacity          *int    `json:"capacity"`
 	Facilities        *string `json:"facilities"`
 	SocialMedia       *string `json:"socialMedia"`
 	Notes             string  `json:"notes"`
@@ -83,8 +86,10 @@ func toVenueResponse(v domain.Venue) venueResponse {
 	attachmentIsImage := v.AttachmentMimeType != nil && strings.HasPrefix(*v.AttachmentMimeType, "image/")
 	return venueResponse{
 		ID: v.ID, Name: v.Name, PICName: v.PICName, PhonePIC: v.PhonePIC, PhoneVenue: v.PhoneVenue,
-		Email: v.Email, Address: v.Address, City: v.City, RentalPrice: v.RentalPrice, Charge: v.Charge,
-		Capacity: v.Capacity, Facilities: v.Facilities, SocialMedia: v.SocialMedia, Notes: v.Notes,
+		Email: v.Email, Address: v.Address, City: v.City,
+		CapacityStanding: v.CapacityStanding, CapacitySeated: v.CapacitySeated,
+		PriceAkad: v.PriceAkad, PriceResepsi: v.PriceResepsi, PriceAkadResepsi: v.PriceAkadResepsi, Charge: v.Charge,
+		Facilities: v.Facilities, SocialMedia: v.SocialMedia, Notes: v.Notes,
 		HasAttachment: v.AttachmentPath != nil, AttachmentIsImage: attachmentIsImage, IsActive: v.IsActive,
 		CreatedAt: v.CreatedAt.Format("2006-01-02"),
 	}
@@ -202,8 +207,10 @@ func buildVenueExportWorkbook(venues []domain.Venue) *excelize.File {
 		row := rowIdx + 2
 		values := []interface{}{
 			v.Name, v.PICName, v.PhonePIC, stringPtrValue(v.PhoneVenue), stringPtrValue(v.Email),
-			stringPtrValue(v.Address), stringPtrValue(v.City), int64PtrValue(v.RentalPrice),
-			int64PtrValue(v.Charge), intPtrValue(v.Capacity), stringPtrValue(v.Facilities),
+			stringPtrValue(v.Address), stringPtrValue(v.City),
+			intPtrValue(v.CapacityStanding), intPtrValue(v.CapacitySeated),
+			int64PtrValue(v.PriceAkad), int64PtrValue(v.PriceResepsi), int64PtrValue(v.PriceAkadResepsi),
+			int64PtrValue(v.Charge), stringPtrValue(v.Facilities),
 			stringPtrValue(v.SocialMedia), v.Notes, activeStatusLabel(v.IsActive),
 		}
 		for i, val := range values {
@@ -215,26 +222,31 @@ func buildVenueExportWorkbook(venues []domain.Venue) *excelize.File {
 }
 
 type venueInputBody struct {
-	Name        string `json:"name"`
-	PICName     string `json:"picName"`
-	PhonePIC    string `json:"phonePic"`
-	PhoneVenue  string `json:"phoneVenue"`
-	Email       string `json:"email"`
-	Address     string `json:"address"`
-	City        string `json:"city"`
-	RentalPrice *int64 `json:"rentalPrice"`
-	Charge      *int64 `json:"charge"`
-	Capacity    *int   `json:"capacity"`
-	Facilities  string `json:"facilities"`
-	SocialMedia string `json:"socialMedia"`
-	Notes       string `json:"notes"`
+	Name             string `json:"name"`
+	PICName          string `json:"picName"`
+	PhonePIC         string `json:"phonePic"`
+	PhoneVenue       string `json:"phoneVenue"`
+	Email            string `json:"email"`
+	Address          string `json:"address"`
+	City             string `json:"city"`
+	CapacityStanding *int   `json:"capacityStanding"`
+	CapacitySeated   *int   `json:"capacitySeated"`
+	PriceAkad        *int64 `json:"priceAkad"`
+	PriceResepsi     *int64 `json:"priceResepsi"`
+	PriceAkadResepsi *int64 `json:"priceAkadResepsi"`
+	Charge           *int64 `json:"charge"`
+	Facilities       string `json:"facilities"`
+	SocialMedia      string `json:"socialMedia"`
+	Notes            string `json:"notes"`
 }
 
 func toVenueInput(body venueInputBody) application.VenueInput {
 	return application.VenueInput{
 		Name: body.Name, PICName: body.PICName, PhonePIC: body.PhonePIC, PhoneVenue: body.PhoneVenue,
-		Email: body.Email, Address: body.Address, City: body.City, RentalPrice: body.RentalPrice,
-		Charge: body.Charge, Capacity: body.Capacity, Facilities: body.Facilities, SocialMedia: body.SocialMedia,
+		Email: body.Email, Address: body.Address, City: body.City,
+		CapacityStanding: body.CapacityStanding, CapacitySeated: body.CapacitySeated,
+		PriceAkad: body.PriceAkad, PriceResepsi: body.PriceResepsi, PriceAkadResepsi: body.PriceAkadResepsi,
+		Charge: body.Charge, Facilities: body.Facilities, SocialMedia: body.SocialMedia,
 		Notes: body.Notes,
 	}
 }
@@ -380,6 +392,10 @@ func (h *VenueHandler) deleteImpact(w http.ResponseWriter, r *http.Request, tena
 		writeAppError(w, err)
 		return
 	}
+	if impact.UsedInOffers, err = h.venues.OfferReferenced(r.Context(), tenantID, venueID); err != nil {
+		writeAppError(w, err)
+		return
+	}
 	response.OK(w, "ok", impact)
 }
 
@@ -490,8 +506,12 @@ func (h *VenueHandler) downloadAttachment(w http.ResponseWriter, r *http.Request
 // keeping them as one slice means the two can never drift apart.
 var venueTemplateHeaders = []string{
 	"Nama Venue", "Nama PIC", "No Tlp PIC", "No Tlp Venue", "Email",
-	"Alamat", "Kota", "Harga Sewa", "Charge", "Kapasitas", "Fasilitas", "Sosial Media", "Catatan",
+	"Alamat", "Kota", "Kapasitas Berdiri", "Kapasitas Duduk", "Harga Akad", "Harga Resepsi",
+	"Harga Akad+Resepsi", "Charge", "Fasilitas", "Sosial Media", "Catatan",
 }
+
+// venueMoneyHeaders are the template's money columns (shown as Rupiah).
+var venueMoneyHeaders = []string{"Harga Akad", "Harga Resepsi", "Harga Akad+Resepsi", "Charge"}
 
 func (h *VenueHandler) Template(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireStaffTenant(w, r); !ok {
@@ -521,7 +541,7 @@ func (h *VenueHandler) Template(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
 		return
 	}
-	if err := styleTemplateSheet(f, sheet, venueTemplateHeaders, []string{"Harga Sewa", "Charge"}); err != nil {
+	if err := styleTemplateSheet(f, sheet, venueTemplateHeaders, venueMoneyHeaders); err != nil {
 		response.Error(w, http.StatusInternalServerError, "Gagal membuat berkas template", nil)
 		return
 	}
@@ -552,8 +572,9 @@ func parseVenueImportRow(cells []string) application.VenueImportRow {
 	c := &importCells{cells: cells, headers: venueTemplateHeaders}
 	row := application.VenueImportRow{
 		Name: c.text(0), PICName: c.text(1), PhonePIC: c.text(2), PhoneVenue: c.text(3), Email: c.text(4),
-		Address: c.text(5), City: c.text(6), RentalPrice: c.number(7), Charge: c.number(8),
-		Capacity: c.smallNumber(9), Facilities: c.text(10), SocialMedia: c.text(11), Notes: c.text(12),
+		Address: c.text(5), City: c.text(6), CapacityStanding: c.smallNumber(7), CapacitySeated: c.smallNumber(8),
+		PriceAkad: c.number(9), PriceResepsi: c.number(10), PriceAkadResepsi: c.number(11), Charge: c.number(12),
+		Facilities: c.text(13), SocialMedia: c.text(14), Notes: c.text(15),
 	}
 	row.NotNumber = c.notNumber
 	return row

@@ -68,17 +68,17 @@ func TestCashFlowWithNothingOwedIsEightZeroWeeks(t *testing.T) {
 	}
 }
 
-func TestVendorPaymentsDueWindowOrderAndCap(t *testing.T) {
+func TestSupplierPaymentsDueWindowOrderAndCap(t *testing.T) {
 	today := d("2026-11-10")
-	var rows []VendorDue
+	var rows []SupplierDue
 	rows = append(rows,
-		VendorDue{ProjectID: 1, DueDate: d("2026-12-10"), Remaining: 5}, // exactly 30 days: in
-		VendorDue{ProjectID: 2, DueDate: d("2026-12-11"), Remaining: 5}, // 31 days: out
-		VendorDue{ProjectID: 3, DueDate: d("2026-10-01"), Remaining: 5}, // overdue: in, first
-		VendorDue{ProjectID: 4, DueDate: d("2026-11-12"), Remaining: 0}, // settled: out
-		VendorDue{ProjectID: 5, DueDate: d("2026-11-11"), Remaining: 9},
+		SupplierDue{ProjectID: 1, DueDate: d("2026-12-10"), Remaining: 5}, // exactly 30 days: in
+		SupplierDue{ProjectID: 2, DueDate: d("2026-12-11"), Remaining: 5}, // 31 days: out
+		SupplierDue{ProjectID: 3, DueDate: d("2026-10-01"), Remaining: 5}, // overdue: in, first
+		SupplierDue{ProjectID: 4, DueDate: d("2026-11-12"), Remaining: 0}, // settled: out
+		SupplierDue{ProjectID: 5, DueDate: d("2026-11-11"), Remaining: 9},
 	)
-	got := SelectVendorPaymentsDue(today, rows)
+	got := SelectSupplierPaymentsDue(today, rows)
 	var ids []int64
 	for _, r := range got {
 		ids = append(ids, r.ProjectID)
@@ -86,20 +86,20 @@ func TestVendorPaymentsDueWindowOrderAndCap(t *testing.T) {
 	if len(ids) != 3 || ids[0] != 3 || ids[1] != 5 || ids[2] != 1 {
 		t.Fatalf("got %v, want [3 5 1] (overdue first, then nearest)", ids)
 	}
-	var many []VendorDue
+	var many []SupplierDue
 	for i := 0; i < 25; i++ {
-		many = append(many, VendorDue{ProjectID: int64(i), DueDate: today.AddDate(0, 0, i), Remaining: 1})
+		many = append(many, SupplierDue{ProjectID: int64(i), DueDate: today.AddDate(0, 0, i), Remaining: 1})
 	}
-	if got := SelectVendorPaymentsDue(today, many); len(got) != MaxDashboardRows || got[0].ProjectID != 0 {
+	if got := SelectSupplierPaymentsDue(today, many); len(got) != MaxDashboardRows || got[0].ProjectID != 0 {
 		t.Errorf("capped at %d nearest first, got %d rows", MaxDashboardRows, len(got))
 	}
 }
 
-func TestEngagementBalanceRemaining(t *testing.T) {
+func TestSupplierBalanceRemaining(t *testing.T) {
 	for _, c := range []struct {
 		contract, applied, want int64
 	}{{100, 30, 70}, {100, 100, 0}, {100, 150, 0}, {100, -20, 100}, {0, 0, 0}} {
-		if got := (EngagementBalanceRow{ContractValue: c.contract, Applied: c.applied}).Remaining(); got != c.want {
+		if got := (SupplierBalanceRow{AgreedCost: c.contract, Applied: c.applied}).Remaining(); got != c.want {
 			t.Errorf("contract %d applied %d: remaining %d, want %d", c.contract, c.applied, got, c.want)
 		}
 	}

@@ -214,6 +214,9 @@ func (s *TenantService) provisionWorkspace(ctx context.Context, req *domain.Sign
 	if err := s.projects.SeedDefaultMilestoneTemplate(ctx, tenantID); err != nil {
 		return err
 	}
+	if err := s.seedCatalogDefaults(ctx, tenantID); err != nil {
+		return err
+	}
 
 	ownerID, err := s.staff.FindOwner(ctx, tenantID)
 	if err != nil {

@@ -52,22 +52,22 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       group: "kendala",
       category: "Kendala aktif",
       title: `Kendala dampak ${ISSUE_IMPACT_LABELS.staff[issue.impact].toLowerCase()}: ${issue.title}`,
-      description: `${issue.projectName}${issue.vendorName ? ` · ${issue.vendorName}` : ""}`,
+      description: `${issue.projectName}${issue.supplierName ? ` · ${issue.supplierName}` : ""}`,
       to: ROUTE_PATHS.projectDetail(issue.projectId, "kendala"),
     });
   }
 
-  for (const v of stats.vendorPaymentsDue ?? []) {
+  for (const v of stats.supplierPaymentsDue ?? []) {
     const d = daysUntil(v.dueDate);
     if (d >= 0) continue;
     items.push({
-      id: `vendordue-${v.projectId}-${v.vendorName}-${v.dueDate}`,
+      id: `supplierdue-${v.projectId}-${v.supplierKind}-${v.supplierName}-${v.dueDate}`,
       tone: "warning",
       group: "lainnya",
-      category: "Pembayaran vendor terlambat",
-      title: `Pembayaran ke ${v.vendorName || "vendor"} terlambat ${Math.abs(d)} hari`,
+      category: `Pembayaran ${v.supplierKind} terlambat`,
+      title: `Pembayaran ke ${v.supplierName || v.supplierKind} terlambat ${Math.abs(d)} hari`,
       description: `${v.projectName} · sisa ${formatCurrency(v.remaining)}, jatuh tempo ${formatDate(v.dueDate)}`,
-      to: ROUTE_PATHS.projectDetail(v.projectId, "keuangan/vendor"),
+      to: ROUTE_PATHS.projectDetail(v.projectId, "keuangan/vendor-venue"),
     });
   }
 
@@ -78,11 +78,13 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       group: "lainnya",
       category: "Tahapan terlambat",
       title: `Tahapan "${m.name}" terlambat`,
-      description: `${m.projectName} · ${m.vendorName} · target ${formatDate(m.targetDate)}`,
+      description: `${m.projectName}${m.supplierName ? ` · ${m.supplierName}` : ""} · target ${formatDate(m.targetDate)}`,
       to: ROUTE_PATHS.projectDetail(m.projectId, "vendor"),
     });
   }
 
+  // One feed for vendors and venues, whoever paid: a payment the client made straight to a supplier lives in
+  // Keuangan › Dibayar klien, the WO's own in Keuangan › Vendor & venue.
   for (const p of stats.incompletePayments) {
     items.push({
       id: `pay-${p.id}`,
@@ -90,22 +92,39 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
       group: "bukti",
       category: "Bukti pembayaran",
       title: `Pembayaran ${p.type} belum memiliki bukti lengkap`,
-      description: `${p.projectName} · ${p.vendorName} · ${formatCurrency(p.amount)}`,
-      to: ROUTE_PATHS.projectDetail(p.projectId, "keuangan/vendor"),
+      description: `${p.projectName} · ${p.supplierName || p.supplierKind} · ${formatCurrency(p.amount)}`,
+      to: ROUTE_PATHS.projectDetail(p.projectId, p.payer === "Client" ? "keuangan/dibayar-klien" : "keuangan/vendor-venue"),
     });
   }
 
-  // Same category as the vendor's own incomplete-payment items above: the two ledgers merge into one feed, a venue
-  // payment named by "Venue" instead of a vendor name (it has none).
-  for (const p of stats.incompleteVenuePayments) {
+  // The couple's proofs of paying a vendor they pay directly (Paket WO Tahap 4): the link opens the check itself.
+  for (const p of stats.supplierProofsPending ?? []) {
     items.push({
-      id: `venuepay-${p.id}`,
+      id: `supplierproof-${p.supplierPaymentId}`,
       tone: "warning",
       group: "bukti",
-      category: "Bukti pembayaran",
-      title: `Pembayaran ${p.type} (venue) belum memiliki bukti lengkap`,
-      description: `${p.projectName} · Venue · ${formatCurrency(p.amount)}`,
-      to: ROUTE_PATHS.projectDetail(p.projectId, "keuangan/venue"),
+      category: "Bukti bayar vendor",
+      title: `Bukti bayar ${p.supplierName || p.supplierKind} dari pasangan menunggu diperiksa`,
+      description: `${p.projectName} · ${p.billTermLabel || p.type} · ${formatCurrency(p.amount)}`,
+      to: `${ROUTE_PATHS.projectDetail(p.projectId, "keuangan/dibayar-klien")}?periksa=${encodeURIComponent(p.supplierPaymentId)}`,
+    });
+  }
+
+  // Bills the couple pays a vendor directly, late or due within 7 days: the WO reminds them (never WO cash).
+  for (const b of stats.clientBillsDue ?? []) {
+    const d = daysUntil(b.dueDate);
+    const late = b.status === "overdue" || d < 0;
+    const name = b.supplierName || b.supplierKind;
+    items.push({
+      id: `clientbill-${b.billTermId}`,
+      tone: late ? "warning" : "info",
+      group: "tagihan",
+      category: "Tagihan vendor",
+      title: late
+        ? `Tagihan ${name} (${b.label}) lewat jatuh tempo ${Math.abs(d)} hari`
+        : `Tagihan ${name} (${b.label}) jatuh tempo ${d === 0 ? "hari ini" : formatDate(b.dueDate)}`,
+      description: `${b.projectName} · dibayar klien langsung, sisa ${formatCurrency(b.remaining)}${b.pending > 0 ? `, ${formatCurrency(b.pending)} menunggu diperiksa` : ""}`,
+      to: ROUTE_PATHS.projectDetail(b.projectId, "keuangan/dibayar-klien"),
     });
   }
 
@@ -139,13 +158,13 @@ export function buildAttentionItems(stats: DashboardStats): { items: AttentionIt
 
   items.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
 
-  for (const v of stats.unconfirmedVendors) {
+  for (const v of stats.unconfirmedSuppliers) {
     items.push({
-      id: `unconfirmed-${v.projectId}-${v.vendorName}`,
+      id: `unconfirmed-${v.projectId}-${v.supplierKind}-${v.supplierName}`,
       tone: "warning",
       group: "lainnya",
-      category: "Vendor belum pasti",
-      title: `${v.vendorName} belum terkonfirmasi`,
+      category: v.supplierKind === "venue" ? "Venue belum pasti" : "Vendor belum pasti",
+      title: `${v.supplierName} belum terkonfirmasi`,
       description: `${v.projectName} · acara ${formatDate(v.eventDate)} (${formatDayCountdown(daysUntil(v.eventDate))})`,
       to: ROUTE_PATHS.projectDetail(v.projectId, "vendor"),
     });

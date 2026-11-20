@@ -10,10 +10,15 @@ const (
 	ActivityProjectStatusChanged ActivityType = "project_status_changed"
 	ActivityVendorAdded          ActivityType = "vendor_added"
 	ActivityVendorStatusChanged  ActivityType = "vendor_status_changed"
-	ActivityMilestoneUpdated     ActivityType = "milestone_updated"
-	ActivityPaymentRecorded      ActivityType = "payment_recorded"
+	ActivityVendorUpdated        ActivityType = "vendor_updated"
+	// Events ("Acara"): added, changed (incl. main event, order), removed.
+	ActivityEventAdded       ActivityType = "event_added"
+	ActivityEventUpdated     ActivityType = "event_updated"
+	ActivityEventDeleted     ActivityType = "event_deleted"
+	ActivityMilestoneUpdated ActivityType = "milestone_updated"
+	ActivityPaymentRecorded  ActivityType = "payment_recorded"
 	// ActivityPaymentUpdated/ActivityPaymentDeleted are shared generically
-	// across all three payment types (vendor/client/venue), same convention
+	// across client and supplier payments, same convention
 	// as ActivityPaymentRecorded -- distinguished by entityType/entityLabel/
 	// description at the call site, not by separate per-type constants.
 	ActivityPaymentUpdated   ActivityType = "payment_updated"
@@ -27,8 +32,14 @@ const (
 	ActivityRestored ActivityType = "item_restored"
 	// ActivityEvidenceDeleted: one proof file was removed.
 	ActivityEvidenceDeleted ActivityType = "evidence_deleted"
-	// ActivityVendorDeleted: a vendor engagement was deleted (it can be restored).
+	// ActivityVendorDeleted: a vendor or venue of the project was deleted (it can
+	// be restored).
 	ActivityVendorDeleted ActivityType = "vendor_deleted"
+	// Rincian lines (paket WO Tahap 3): every change records the old and the
+	// new value in its description (PLAN §3.2 "Riwayat perubahan").
+	ActivityLineAdded   ActivityType = "line_added"
+	ActivityLineUpdated ActivityType = "line_updated"
+	ActivityLineDeleted ActivityType = "line_deleted"
 )
 
 // ActivityFilter narrows a project's activity to one entity; an empty field

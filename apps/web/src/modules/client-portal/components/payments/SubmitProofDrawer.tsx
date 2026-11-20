@@ -10,6 +10,7 @@ import { cn } from "@/shared/lib/cn";
 import { todayISO } from "@/shared/lib/formatters";
 import { SUBMIT_METHOD_OPTIONS, submitProofSchema } from "@/modules/client-portal/schemas/submit-proof.schema";
 import { submitTransferProof } from "@/modules/client-portal/lib/submit-proof";
+import type { SubmitProofValues } from "@/modules/client-portal/schemas/submit-proof.schema";
 
 type Values = FormValues<typeof submitProofSchema>;
 
@@ -31,7 +32,25 @@ interface Props {
   /** What the next term still asks for: filled in, the couple corrects it when they paid a different amount. */
   suggestedAmount: number;
   onSent: () => void;
+  /**
+   * What is being paid, when it is not the WO's own installment: a vendor's bill the couple pays directly ("Kirim bukti
+   * bayar", Paket WO Tahap 4) has its own words and its own request.
+   */
+  purpose?: {
+    title: string;
+    description: string;
+    submitLabel: string;
+    notesHint: string;
+    send: (values: SubmitProofValues, idempotencyKey: string) => Promise<void>;
+  };
 }
+
+const CLIENT_PAYMENT = {
+  title: "Kirim bukti transfer",
+  description: "Wedding organizer Anda memeriksa transfer ini dulu. Setelah diverifikasi, pembayaran dihitung dan diberi tanda terverifikasi.",
+  submitLabel: "Kirim bukti transfer",
+  notesHint: "Opsional, mis. untuk termin yang mana.",
+};
 
 /**
  * "Kirim bukti transfer": the couple reports a transfer with its receipt. It lands in the WO's "Bukti menunggu
@@ -39,7 +58,8 @@ interface Props {
  * The file goes up first (signed upload), then the payment, with one Idempotency-Key per attempt so a retry never
  * records it twice. A 422 lands under its field; typed values are never cleared.
  */
-export default function SubmitProofDrawer({ open, onClose, projectId, suggestedAmount, onSent }: Props) {
+export default function SubmitProofDrawer({ open, onClose, projectId, suggestedAmount, onSent, purpose }: Props) {
+  const copy = purpose ?? CLIENT_PAYMENT;
   const form = useZodForm({ schema: submitProofSchema, initial: initial(suggestedAmount) });
   const { values, errors, blur } = form;
   const keyRef = useRef(newIdempotencyKey());
@@ -61,7 +81,7 @@ export default function SubmitProofDrawer({ open, onClose, projectId, suggestedA
 
   const submit = form.handleSubmit(
     async (parsed) => {
-      await submitTransferProof(projectId, parsed, keyRef.current);
+      await (purpose ? purpose.send(parsed, keyRef.current) : submitTransferProof(projectId, parsed, keyRef.current));
       keyRef.current = newIdempotencyKey();
       onSent();
     },
@@ -72,14 +92,14 @@ export default function SubmitProofDrawer({ open, onClose, projectId, suggestedA
     <Drawer
       open={open}
       onClose={onClose}
-      title="Kirim bukti transfer"
-      description="Wedding organizer Anda memeriksa transfer ini dulu. Setelah diverifikasi, pembayaran dihitung dan diberi tanda terverifikasi."
+      title={copy.title}
+      description={copy.description}
       busy={form.submitting}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Batal</Button>
           <Button type="submit" form="submit-proof-form" disabled={form.submitting}>
-            {form.submitting ? "Mengirim..." : "Kirim bukti transfer"}
+            {form.submitting ? "Mengirim..." : copy.submitLabel}
           </Button>
         </>
       }
@@ -125,7 +145,7 @@ export default function SubmitProofDrawer({ open, onClose, projectId, suggestedA
         <Field label="No. referensi" name="referenceNumber" error={errors.referenceNumber} hint="Opsional. Tertera di struk atau riwayat m-banking.">
           <Input value={values.referenceNumber} onChange={(e) => set("referenceNumber", e.target.value)} onBlur={() => blur("referenceNumber")} />
         </Field>
-        <Field label="Catatan" name="notes" error={errors.notes} hint="Opsional, mis. untuk termin yang mana.">
+        <Field label="Catatan" name="notes" error={errors.notes} hint={copy.notesHint}>
           <Textarea rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} onBlur={() => blur("notes")} />
         </Field>
       </form>

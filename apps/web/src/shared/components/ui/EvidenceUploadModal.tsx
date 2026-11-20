@@ -12,16 +12,19 @@ import { todayISO } from "@/modules/projects/lib/dates";
 import type { EvidenceRelatedKind, EvidenceType } from "@/modules/projects/types";
 import { evidenceTypeLabel } from "@/shared/lib/labels";
 
+/** What a person reads for each "Terkait dengan" choice (EvidenceRelatedKind stays English on the wire). */
 const RELATED_KIND_LABEL: Record<EvidenceRelatedKind, string> = {
-  vendorMilestone: "Tahapan vendor",
-  payment: "Pembayaran",
-  projectVendor: "Kerja sama vendor",
-  issue: "Kendala",
+  general: "Umum (tidak terkait apa pun)",
+  projectMilestone: "Tahapan proyek",
+  projectSupplier: "Vendor & venue",
+  vendorMilestone: "Tahapan vendor & venue",
+  supplierPayment: "Pembayaran vendor & venue",
   clientPayment: "Pembayaran klien",
-  venuePayment: "Pembayaran venue",
-  general: "Umum (tidak terkait spesifik)",
-  projectMilestone: "Tahapan",
+  issue: "Kendala",
 };
+
+/** The kinds whose file can be shown in the Client Portal (the API stores the flag only for these). */
+const SHAREABLE_KINDS = new Set<EvidenceRelatedKind>(["general", "projectMilestone", "vendorMilestone"]);
 
 interface EvidenceUploadModalProps {
   open: boolean;
@@ -49,7 +52,7 @@ function emptyValues(defaultRelatedId: string, defaultType?: EvidenceType): Evid
   return {
     name: "",
     type: defaultType ?? "Document",
-    relatedKind: "vendorMilestone",
+    relatedKind: "general",
     relatedId: defaultRelatedId,
     documentDate: todayISO(),
     description: "",
@@ -73,13 +76,13 @@ export function EvidenceUploadModal({
   defaultType,
   canShareWithClient = true,
   title = "Tambah dokumen",
-  description = "Unggah dokumen pendukung dan kaitkan dengan jadwal, pembayaran, kerja sama vendor, atau kendala pada proyek ini.",
+  description = "Unggah dokumen pendukung dan kaitkan dengan tahapan, vendor & venue, pembayaran, atau kendala pada proyek ini.",
 }: EvidenceUploadModalProps) {
   const locked = lockedRelatedKind !== undefined;
   const [values, setValues] = useState<EvidenceUploadFormValues>(() =>
     locked
       ? { ...emptyValues(lockedRelatedId ?? "", defaultType), relatedKind: lockedRelatedKind, relatedId: lockedRelatedId ?? "" }
-      : emptyValues(relatedOptionsFor?.("vendorMilestone")[0]?.id ?? "", defaultType)
+      : emptyValues("", defaultType)
   );
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof EvidenceUploadFormValues, string>>>({});
@@ -98,7 +101,7 @@ export function EvidenceUploadModal({
       ...prev,
       relatedKind: kind,
       relatedId: firstOption,
-      isClientVisible: kind === "general" ? prev.isClientVisible : false,
+      isClientVisible: SHAREABLE_KINDS.has(kind) ? prev.isClientVisible : false,
     }));
   }
 
@@ -164,7 +167,7 @@ export function EvidenceUploadModal({
         </Field>
         {!locked && (
           <>
-            <Field label="Konteks">
+            <Field label="Terkait dengan">
               <Select value={values.relatedKind} onChange={(e) => handleRelatedKindChange(e.target.value as EvidenceRelatedKind)}>
                 {EVIDENCE_RELATED_KIND_OPTIONS.map((k) => (
                   <option key={k} value={k}>{RELATED_KIND_LABEL[k]}</option>
@@ -189,7 +192,7 @@ export function EvidenceUploadModal({
         <Field label="Deskripsi">
           <Textarea rows={2} value={values.description} onChange={(e) => set("description", e.target.value)} />
         </Field>
-        {canShareWithClient && !locked && values.relatedKind === "general" && (
+        {canShareWithClient && !locked && SHAREABLE_KINDS.has(values.relatedKind) && (
           <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[13px] text-text-secondary">
             <input
               type="checkbox"

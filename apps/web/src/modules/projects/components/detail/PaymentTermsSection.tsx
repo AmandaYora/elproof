@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Pencil, Plus, RefreshCw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { CalendarClock, ListPlus, Pencil, Plus, RefreshCw } from "lucide-react";
 import { FinanceSection } from "@/modules/projects/components/detail/finance-ui";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
@@ -18,12 +19,14 @@ import { TERM_STATUS_TONE } from "@/modules/projects/lib/status";
 import { defaultTermTemplate, termsTotal, termsVsContract } from "@/modules/projects/lib/terms";
 import { PaymentTermsEditor, validateTermRows } from "@/modules/projects/components/PaymentTermsEditor";
 import type { PaymentTerm, PaymentTermInput } from "@/modules/projects/types";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
 
 // Overdue first, then what is coming up by date, paid last (FLOW-IDEAL 2.4).
 const GROUP_ORDER: Record<PaymentTerm["status"], number> = { overdue: 0, partial: 1, due_soon: 1, upcoming: 1, paid: 2 };
 
 /** The client's payment schedule: what is due when, and how each installment stands. */
 export function PaymentTermsSection({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
   const project = useProjectStore((s) => s.currentProject);
   const terms = useProjectStore((s) => s.paymentTerms);
   const termsFor = useProjectStore((s) => s.paymentTermsFor);
@@ -90,6 +93,17 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
             ) : (
               <SkeletonRows rows={3} label="Memuat jadwal termin" />
             )
+          ) : terms.length === 0 && contractValue <= 0 ? (
+            // Terms are a share of the contract value, which comes from the rincian (DESAIN A6).
+            <EmptyState
+              title="Belum ada jadwal termin"
+              description="Susun rincian dulu agar termin bisa dihitung."
+              action={
+                <Button size="sm" icon={<ListPlus className="h-3.5 w-3.5" />} onClick={() => navigate(ROUTE_PATHS.projectDetail(projectId, "acara-rincian"))}>
+                  Buka rincian
+                </Button>
+              }
+            />
           ) : terms.length === 0 ? (
             <EmptyState
               title="Belum ada jadwal termin"
@@ -110,8 +124,8 @@ export function PaymentTermsSection({ projectId }: { projectId: string }) {
                   className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-[13px] text-warning-text"
                 >
                   <p className="min-w-0 flex-1">
-                    Jumlah termin {formatCurrency(total)} tidak sama dengan nilai kontrak {formatCurrency(contractValue)}
-                    {standing === "under" ? ` (kurang ${formatCurrency(contractValue - total)}).` : ` (lebih ${formatCurrency(total - contractValue)}).`}
+                    Jadwal termin ({formatCurrency(total)}) tidak sama dengan nilai kontrak ({formatCurrency(contractValue)})
+                    {standing === "under" ? `: kurang ${formatCurrency(contractValue - total)}.` : `: lebih ${formatCurrency(total - contractValue)}.`}
                   </p>
                   {canRecord && (
                     <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => setConfirmingRecalc(true)}>

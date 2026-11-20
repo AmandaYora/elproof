@@ -1,5 +1,7 @@
 # ADR-0019: Edit + hard delete for vendor/client/venue payments — Owner-or-Admin, evidence-first cascade
 
+> Sebagian digantikan oleh ADR-0048 (paket WO Tahap 2): `vendor_payments` dan `venue_payments` menjadi satu `supplier_payments` (Pembayaran ke rekanan, `related_kind = 'supplierPayment'`) dengan pembayarnya per baris; pembayaran oleh WO butuh `finance.margin.view`.
+
 ## Status
 Accepted — implemented.
 
