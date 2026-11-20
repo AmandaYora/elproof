@@ -2,6 +2,9 @@ import { StrictMode } from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import App from "@/app/App";
 import "@/styles/globals.css";
+import { reloadOnStaleBuild } from "@/shared/lib/stale-build";
+
+reloadOnStaleBuild();
 
 const container = document.getElementById("root")!;
 const app = (

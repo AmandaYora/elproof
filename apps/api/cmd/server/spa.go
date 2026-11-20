@@ -6,12 +6,15 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"elproof/internal/shared/middleware"
 	"elproof/internal/shared/response"
 )
 
@@ -88,8 +91,9 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	clean := normalizeSPAPath(r.URL.Path)
 
-	// The build's own bookkeeping is never a page: a prerendered file is reached by its public path only.
-	if clean == "/routes.json" || clean == "/prerendered" || strings.HasPrefix(clean, "/prerendered/") {
+	// The build's own bookkeeping is never a page: a prerendered file is reached by its public path only, and a dot-folder
+	// (Vite's .vite/manifest.json) is never served.
+	if clean == "/routes.json" || clean == "/prerendered" || strings.HasPrefix(clean, "/prerendered/") || hasDotSegment(clean) {
 		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		h.serveHTML(w, r, h.notFound, http.StatusNotFound)
 		return
@@ -99,7 +103,12 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info, err := os.Stat(filepath.Join(h.root, filepath.FromSlash(clean))); err == nil && !info.IsDir() {
-		h.files.ServeHTTP(w, r)
+		if strings.HasSuffix(clean, "/index.html") {
+			// http.FileServer sends /index.html to "/" (and so to the page that path answers).
+			h.files.ServeHTTP(w, r)
+			return
+		}
+		h.serveFile(w, r, strings.TrimPrefix(clean, "/"))
 		return
 	}
 	// The signed-in app is private. robots.txt does not list its paths (that would advertise them, the platform team's
@@ -115,27 +124,111 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveHTML writes one HTML file of the build with status. A 200 goes through http.ServeContent (HEAD, If-Modified-Since);
 // a 404 is written as is. HTML is always revalidated: it names the hashed asset files of the build it came from.
 func (h *spaHandler) serveHTML(w http.ResponseWriter, r *http.Request, rel string, status int) {
-	f, err := os.Open(filepath.Join(h.root, filepath.FromSlash(rel)))
-	if err != nil {
+	f, info, ok := h.openBuildFile(w, r, rel, "text/html; charset=utf-8")
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || info.IsDir() {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	if status == http.StatusOK {
 		http.ServeContent(w, r, rel, info.ModTime(), f)
 		return
 	}
+	w.Header().Set("Content-Length", strconvSize(info.Size()))
 	w.WriteHeader(status)
 	if r.Method != http.MethodHead {
 		_, _ = io.Copy(w, f)
 	}
+}
+
+// serveFile writes one static file of the build (a script, a style sheet, an icon) with how long a browser may keep it.
+func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, rel string) {
+	f, info, ok := h.openBuildFile(w, r, rel, contentTypeOf(rel))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Cache-Control", cacheControlOf(rel))
+	http.ServeContent(w, r, rel, info.ModTime(), f)
+}
+
+// openBuildFile opens rel, or the compressed copy of it the browser accepts (.br before .gz, written beside it by
+// apps/web/scripts/precompress.mjs), and sets Content-Type, Content-Encoding and Vary to match. A copy older than the
+// file (a rebuild that skipped compressing) is left alone, and so is any copy of a file of unknown type.
+func (h *spaHandler) openBuildFile(w http.ResponseWriter, r *http.Request, rel, contentType string) (*os.File, fs.FileInfo, bool) {
+	full := filepath.Join(h.root, filepath.FromSlash(rel))
+	plain, err := os.Stat(full)
+	if err != nil || plain.IsDir() {
+		return nil, nil, false
+	}
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+		hasCopy := false
+		for _, c := range [...]struct{ coding, ext string }{{"br", ".br"}, {"gzip", ".gz"}} {
+			info, err := os.Stat(full + c.ext)
+			if err != nil || info.IsDir() || info.ModTime().Before(plain.ModTime()) {
+				continue
+			}
+			hasCopy = true
+			if !middleware.AcceptsEncoding(r, c.coding) {
+				continue
+			}
+			f, err := os.Open(full + c.ext)
+			if err != nil {
+				continue
+			}
+			w.Header().Set("Content-Encoding", c.coding)
+			w.Header().Add("Vary", "Accept-Encoding")
+			return f, info, true
+		}
+		if hasCopy {
+			w.Header().Add("Vary", "Accept-Encoding")
+		}
+	}
+	f, err := os.Open(full)
+	if err != nil {
+		return nil, nil, false
+	}
+	return f, plain, true
+}
+
+// cacheControlOf: a file under assets/ is named after its content (index-Q3N4mQAD.js), so a browser keeps it for a year
+// and a new build simply names new files. The service worker, the web manifest and HTML are asked for again every time;
+// the rest (icons, robots.txt, the sitemap) for an hour.
+func cacheControlOf(rel string) string {
+	switch {
+	case strings.HasPrefix(rel, "assets/"):
+		return "public, max-age=31536000, immutable"
+	case rel == "sw.js", strings.HasSuffix(rel, ".html"), strings.HasSuffix(rel, ".webmanifest"):
+		return "no-cache"
+	default:
+		return "public, max-age=3600"
+	}
+}
+
+// contentTypeOf is the type of rel by its extension, set before any compressed copy is chosen (http.ServeContent would
+// otherwise read it from the compressed bytes). Empty when unknown: the file is then sent plain and sniffed.
+func contentTypeOf(rel string) string {
+	if strings.HasSuffix(rel, ".webmanifest") {
+		return "application/manifest+json"
+	}
+	return mime.TypeByExtension(path.Ext(rel))
+}
+
+func strconvSize(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
+
+// hasDotSegment reports whether any segment of p starts with a dot.
+func hasDotSegment(p string) bool {
+	for _, s := range strings.Split(p, "/") {
+		if strings.HasPrefix(s, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // isAppRoute reports whether the React router has a route for p (its own matching: literal segments ignore case, ":x"

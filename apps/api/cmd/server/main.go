@@ -504,7 +504,8 @@ func serve(cfg config.Config) {
 	// runs on its own Vite dev server (`npm run dev:web`) instead.
 	mux.Handle("/", spaFileServer("./public"))
 
-	handler := securityHeaders(cfg)(middleware.CORS(cfg.AppEnv == "development")(mux))
+	// Text answers (the API's JSON and CSV, web files without a precompressed copy) go out gzipped.
+	handler := securityHeaders(cfg)(middleware.CORS(cfg.AppEnv == "development")(middleware.Gzip(mux)))
 
 	log.Printf("%s api listening on :%s (%s)", cfg.AppName, cfg.AppPort, cfg.AppEnv)
 	server := &http.Server{

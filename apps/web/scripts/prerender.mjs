@@ -7,8 +7,11 @@
 //   dist/sitemap.xml              the indexable public pages
 //   dist/robots.txt               public/robots.txt plus the Sitemap line
 // dist/index.html stays the empty app shell: the browser build, the budget check and every non-public route use it.
+// Each page's head also names what the page needs right after the entry script (modulepreload of its lazy chunks, found by
+// rendering it in a worker, see scripts/prerender-imports.mjs) and the API reads it makes at once (PublicPageMeta.prefetch).
 import fs from "node:fs";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,14 +19,15 @@ const dist = path.join(root, "dist");
 const outDir = path.join(dist, "prerendered");
 const entry = path.join(root, "dist-ssr", "entry-server.js");
 
-for (const needed of [path.join(dist, "index.html"), entry]) {
+const chunkMapPath = path.join(dist, ".vite", "chunks.json");
+for (const needed of [path.join(dist, "index.html"), entry, chunkMapPath]) {
   if (!fs.existsSync(needed)) {
     console.error(`${path.relative(root, needed)} not found: run \`npm run build\``);
     process.exit(2);
   }
 }
 
-const { render, pages, routePatterns, SITE_URL, APP_NAME } = await import(pathToFileURL(entry).href);
+const { render, pages, routePatterns, SITE_URL, APP_NAME, API_BASE_URL } = await import(pathToFileURL(entry).href);
 
 const escapeHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const url = (p) => `${SITE_URL}${p}`;
@@ -52,6 +56,56 @@ function headFor(page) {
   return tags.join("\n    ");
 }
 
+// The browser build's chunks by source module (vite.config.ts: writeChunkMap).
+const chunkMap = JSON.parse(fs.readFileSync(chunkMapPath, "utf8"));
+const withImports = (file, out = new Set()) => {
+  if (out.has(file) || !chunkMap.chunks[file]) return out;
+  out.add(file);
+  for (const dep of chunkMap.chunks[file].imports) withImports(dep, out);
+  return out;
+};
+// What the shell already loads: the entry and its static imports (Vite writes those tags itself).
+const inShell = withImports(chunkMap.entry);
+const shellCss = new Set([...inShell].flatMap((f) => chunkMap.chunks[f].css));
+
+/** The lazy modules `pagePath` loads while it renders, as source files; each page in a fresh module graph. */
+function importsOf(pagePath) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./prerender-imports.mjs", import.meta.url), {
+      workerData: { entry: pathToFileURL(entry).href, path: pagePath },
+      // The main render already reported anything worth saying about the page.
+      stdout: true,
+      stderr: true,
+    });
+    worker.stdout.resume();
+    worker.stderr.resume();
+    let result = null;
+    worker.once("message", (m) => (result = m));
+    worker.once("error", reject);
+    worker.once("exit", (code) => (code === 0 && result ? resolve(result) : reject(new Error(`${pagePath}: worker exited ${code}`))));
+  });
+}
+
+/** The tags that let the browser fetch, alongside the entry script, what the page will ask for next. */
+async function preloadTagsFor(page) {
+  const files = new Set();
+  for (const src of await importsOf(page.path)) {
+    const file = chunkMap.modules[src];
+    if (!file) throw new Error(`${page.path}: ${src} is in no chunk of dist/.vite/chunks.json`);
+    withImports(file, files);
+  }
+  const tags = [];
+  for (const file of files) {
+    if (inShell.has(file)) continue;
+    // A lazy chunk's own style sheet must be there before the page is drawn; Vite skips a sheet already linked.
+    for (const css of chunkMap.chunks[file].css) if (!shellCss.has(css)) tags.push(`<link rel="stylesheet" crossorigin href="/${css}">`);
+    tags.push(`<link rel="modulepreload" crossorigin href="/${file}">`);
+  }
+  // The API client sends credentials (withCredentials), so the preload asks the same way or the browser fetches twice.
+  for (const api of page.prefetch ?? []) tags.push(`<link rel="preload" as="fetch" crossorigin="use-credentials" href="${escapeHtml(`${API_BASE_URL}${api}`)}">`);
+  return [...new Set(tags)];
+}
+
 const shell = fs.readFileSync(path.join(dist, "index.html"), "utf8");
 const META_BLOCK = /<!-- page-meta[\s\S]*?<!-- \/page-meta -->/;
 const ROOT_DIV = '<div id="root"></div>';
@@ -71,15 +125,19 @@ for (const page of pages) {
   if (/<script|<template|<!--\$\?-->/.test(markup)) throw new Error(`${page.path}: the markup still has streamed parts or inline scripts`);
   if (markup.includes("<!--$!-->")) console.warn(`${page.path}: a part could not render at build time and renders in the browser`);
   if (/\sstyle="/.test(markup)) console.warn(`${page.path}: a style attribute in the markup is ignored under a strict CSP (style-src without 'unsafe-inline'); prefer a class`);
+  const preloads = await preloadTagsFor(page);
   const html = shell
     .replace(META_BLOCK, () => headFor(page))
+    .replace("</head>", () => `${preloads.map((t) => `  ${t}\n`).join("")}  </head>`)
     // The public surface's tokens (useDocumentSurface) apply from the first paint instead of after the script runs.
     .replace('<html lang="id">', '<html lang="id" data-surface="marketing">')
     .replace(ROOT_DIV, () => `<div id="root" data-prerendered="${escapeHtml(page.path)}">${markup}</div>`);
   const file = fileFor(page.path);
   fs.writeFileSync(path.join(dist, file), html);
   manifestPages[page.path] = file;
-  console.log(`prerendered ${page.path.padEnd(30)} → dist/${file} (${(Buffer.byteLength(html) / 1024).toFixed(1)} KB)`);
+  console.log(
+    `prerendered ${page.path.padEnd(30)} → dist/${file} (${(Buffer.byteLength(html) / 1024).toFixed(1)} KB, ${preloads.length} preloads)`,
+  );
 }
 
 // The shell for a path no route answers (QA RT-06): the same empty app, but its tab already says what happened and search

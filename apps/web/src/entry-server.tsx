@@ -12,6 +12,9 @@ import { SITE_URL } from "@/shared/constants/site";
 
 export { APP_NAME, SITE_URL };
 
+/** Where the browser build sends API requests (empty: the page's own origin), for the prerender's API preloads. */
+export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
+
 /** Every page scripts/prerender.mjs writes, with its head tags. */
 export const pages: PublicPageMeta[] = Object.values(PUBLIC_PAGES);
 
